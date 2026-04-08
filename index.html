@@ -220,237 +220,1156 @@
       onerror="this.src = 'https://code.jquery.com/jquery-3.7.1.js'"
     ></script>
     
-    <!-- 旧代码 -->
-    <template>
-    <!-- CodeMirror (CDN) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/matchesonscrollbar.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/foldgutter.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
-    <!-- CodeMirror Modes -->
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/meta.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/markdown/markdown.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/xml/xml.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/css/css.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/gfm/gfm.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/clike/clike.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/shell/shell.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/sql/sql.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/yaml/yaml.min.js"></script>
-    <!-- CodeMirror Addons -->
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/matchbrackets.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closetag.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/foldcode.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/foldgutter.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/brace-fold.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/xml-fold.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/markdown-fold.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/mode/overlay.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/search.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/searchcursor.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/match-highlighter.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/display/placeholder.min.js"></script>
     
-    <!-- Editor.md 其他依赖 (CDN) -->
-    <!-- KaTeX 数学公式渲染 -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-    <!-- 流程图和时序图依赖 -->
-    <script src="https://cdn.jsdelivr.net/npm/raphael@2.3.0/raphael.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/underscore@1.13.6/underscore-min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flowchart.js@1.17.1/release/flowchart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jquery-flowchart@1.0.0/jquery.flowchart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/js-sequence-diagrams@1.0.6/dist/sequence-diagram-min.js"></script>
-    <!-- Markdown 解析和代码高亮 -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
-    </template>
+
     
-<!-- ============================== -->
-<!-- CodeMirror 核心依赖 -->
-<!-- 编辑器基础功能与核心样式 -->
-<!-- ============================== -->
-<!-- CodeMirror 编辑器核心脚本 -->
-<script
-  src="/api/cdn/codemirror-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.js'"
-></script>
-<!-- CodeMirror 编辑器核心样式表 -->
+
+<!-- CodeMirror：CodeMirror 编辑器基础样式（编辑区外观、光标、选区、滚动区域） -->
 <link
   rel="stylesheet"
-  href="/api/cdn/codemirror-css"
+  href="/api/cdn/lib-codemirror-css"
   onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.css'"
 >
-<!-- 搜索/替换弹窗对话框样式 -->
+<!-- CodeMirror：CodeMirror 核心脚本（编辑器实例、文档模型、键盘与光标等基础能力） -->
+<script
+  src="/api/cdn/lib-codemirror-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：注释编辑增强（comment.js） -->
+<script
+  src="/api/cdn/addon-comment-comment"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/comment/comment.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：注释编辑增强（continuecomment.js） -->
+<script
+  src="/api/cdn/addon-comment-continuecomment"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/comment/continuecomment.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：对话框 UI（搜索/跳转等）（dialog-css.css） -->
 <link
   rel="stylesheet"
-  href="/api/cdn/codemirror-dialog-css"
+  href="/api/cdn/addon-dialog-dialog-css"
   onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.css'"
 >
-<!-- 滚动条显示搜索匹配位置样式 -->
-<link
-  rel="stylesheet"
-  href="/api/cdn/codemirror-matchesonscrollbar-css"
-  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/search/matchesonscrollbar.css'"
->
-<!-- 代码折叠侧边栏样式 -->
-<link
-  rel="stylesheet"
-  href="/api/cdn/codemirror-foldgutter-css"
-  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.css'"
->
-
-<!-- ============================== -->
-<!-- CodeMirror 语言语法高亮 -->
-<!-- 支持各种编程语言的代码着色 -->
-<!-- ============================== -->
-<!-- 语言模式元信息，自动识别文件类型 -->
+<!-- CodeMirror：CodeMirror 插件：对话框 UI（搜索/跳转等）（dialog-js.js） -->
 <script
-  src="/api/cdn/codemirror-meta-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/meta.js'"
-></script>
-<!-- Markdown 语法高亮支持 -->
-<script
-  src="/api/cdn/codemirror-markdown-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/markdown/markdown.js'"
-></script>
-<!-- XML / HTML 标签语法高亮 -->
-<script
-  src="/api/cdn/codemirror-xml-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/xml/xml.js'"
-></script>
-<!-- JavaScript 语法高亮 -->
-<script
-  src="/api/cdn/codemirror-javascript-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/javascript/javascript.js'"
-></script>
-<!-- CSS 样式语法高亮 -->
-<script
-  src="/api/cdn/codemirror-css-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/css/css.js'"
-></script>
-<!-- HTML 混合模式（内嵌 JS/CSS）高亮 -->
-<script
-  src="/api/cdn/codemirror-htmlmixed-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/htmlmixed/htmlmixed.js'"
-></script>
-<!-- GitHub Markdown 扩展语法支持 -->
-<script
-  src="/api/cdn/codemirror-gfm-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/gfm/gfm.js'"
-></script>
-<!-- Python 语法高亮 -->
-<script
-  src="/api/cdn/codemirror-python-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/python/python.js'"
-></script>
-<!-- C/C++/Java 等类 C 语言语法高亮 -->
-<script
-  src="/api/cdn/codemirror-clike-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/clike/clike.js'"
-></script>
-<!-- Shell / Bash 命令行语法高亮 -->
-<script
-  src="/api/cdn/codemirror-shell-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/shell/shell.js'"
-></script>
-<!-- SQL 数据库语句语法高亮 -->
-<script
-  src="/api/cdn/codemirror-sql-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/sql/sql.js'"
-></script>
-<!-- YAML 配置文件语法高亮 -->
-<script
-  src="/api/cdn/codemirror-yaml-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/yaml/yaml.js'"
-></script>
-
-<!-- ============================== -->
-<!-- CodeMirror 编辑增强插件 -->
-<!-- 提升编辑体验的实用功能 -->
-<!-- ============================== -->
-<!-- 括号匹配高亮显示 -->
-<script
-  src="/api/cdn/codemirror-matchbrackets-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/matchbrackets.js'"
-></script>
-<!-- 自动补全括号、引号 -->
-<script
-  src="/api/cdn/codemirror-closebrackets-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closebrackets.js'"
-></script>
-<!-- HTML 标签自动闭合 -->
-<script
-  src="/api/cdn/codemirror-closetag-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closetag.js'"
-></script>
-<!-- 代码折叠核心功能 -->
-<script
-  src="/api/cdn/codemirror-foldcode-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldcode.js'"
-></script>
-<!-- 代码折叠侧边栏交互 -->
-<script
-  src="/api/cdn/codemirror-foldgutter-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.js'"
-></script>
-<!-- 大括号代码块折叠 -->
-<script
-  src="/api/cdn/codemirror-brace-fold-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/brace-fold.js'"
-></script>
-<!-- XML/HTML 标签区域折叠 -->
-<script
-  src="/api/cdn/codemirror-xml-fold-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/xml-fold.js'"
-></script>
-<!-- Markdown 内容区域折叠 -->
-<script
-  src="/api/cdn/codemirror-markdown-fold-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/markdown-fold.js'"
-></script>
-<!-- 多语言模式叠加支持 -->
-<script
-  src="/api/cdn/codemirror-overlay-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/mode/overlay.js'"
-></script>
-<!-- 当前光标所在行高亮 -->
-<script
-  src="/api/cdn/codemirror-active-line-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/selection/active-line.js'"
-></script>
-<!-- 编辑器内文本搜索 -->
-<script
-  src="/api/cdn/codemirror-search-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/search.js'"
-></script>
-<!-- 搜索结果光标定位遍历 -->
-<script
-  src="/api/cdn/codemirror-searchcursor-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/searchcursor.js'"
-></script>
-<!-- 选中单词全文高亮 -->
-<script
-  src="/api/cdn/codemirror-match-highlighter-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/match-highlighter.js'"
-></script>
-<!-- 搜索/替换弹窗功能 -->
-<script
-  src="/api/cdn/codemirror-dialog-js"
+  src="/api/cdn/addon-dialog-dialog-js"
   onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.js'"
 ></script>
-<!-- 编辑器空内容占位提示文字 -->
+<!-- CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（autorefresh.js） -->
 <script
-  src="/api/cdn/codemirror-placeholder-js"
+  src="/api/cdn/addon-display-autorefresh"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/display/autorefresh.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（fullscreen-css.css） -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/addon-display-fullscreen-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/display/fullscreen.css'"
+>
+<!-- CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（fullscreen-js.js） -->
+<script
+  src="/api/cdn/addon-display-fullscreen-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/display/fullscreen.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（panel.js） -->
+<script
+  src="/api/cdn/addon-display-panel"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/display/panel.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（placeholder.js） -->
+<script
+  src="/api/cdn/addon-display-placeholder"
   onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/display/placeholder.js'"
 ></script>
+<!-- CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（rulers.js） -->
+<script
+  src="/api/cdn/addon-display-rulers"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/display/rulers.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（closebrackets.js） -->
+<script
+  src="/api/cdn/addon-edit-closebrackets"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closebrackets.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（closetag.js） -->
+<script
+  src="/api/cdn/addon-edit-closetag"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closetag.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（continuelist.js） -->
+<script
+  src="/api/cdn/addon-edit-continuelist"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/continuelist.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（matchbrackets.js） -->
+<script
+  src="/api/cdn/addon-edit-matchbrackets"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/matchbrackets.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（matchtags.js） -->
+<script
+  src="/api/cdn/addon-edit-matchtags"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/matchtags.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（trailingspace.js） -->
+<script
+  src="/api/cdn/addon-edit-trailingspace"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/trailingspace.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：代码折叠能力（brace-fold.js） -->
+<script
+  src="/api/cdn/addon-fold-brace-fold"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/brace-fold.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：代码折叠能力（comment-fold.js） -->
+<script
+  src="/api/cdn/addon-fold-comment-fold"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/comment-fold.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：代码折叠能力（foldcode.js） -->
+<script
+  src="/api/cdn/addon-fold-foldcode"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldcode.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：代码折叠能力（foldgutter-css.css） -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/addon-fold-foldgutter-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.css'"
+>
+<!-- CodeMirror：CodeMirror 插件：代码折叠能力（foldgutter-js.js） -->
+<script
+  src="/api/cdn/addon-fold-foldgutter-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：代码折叠能力（indent-fold.js） -->
+<script
+  src="/api/cdn/addon-fold-indent-fold"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/indent-fold.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：代码折叠能力（markdown-fold.js） -->
+<script
+  src="/api/cdn/addon-fold-markdown-fold"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/markdown-fold.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：代码折叠能力（xml-fold.js） -->
+<script
+  src="/api/cdn/addon-fold-xml-fold"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/xml-fold.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：智能提示/补全（anyword-hint.js） -->
+<script
+  src="/api/cdn/addon-hint-anyword-hint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/hint/anyword-hint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：智能提示/补全（css-hint.js） -->
+<script
+  src="/api/cdn/addon-hint-css-hint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/hint/css-hint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：智能提示/补全（html-hint.js） -->
+<script
+  src="/api/cdn/addon-hint-html-hint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/hint/html-hint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：智能提示/补全（javascript-hint.js） -->
+<script
+  src="/api/cdn/addon-hint-javascript-hint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/hint/javascript-hint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：智能提示/补全（show-hint-css.css） -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/addon-hint-show-hint-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/hint/show-hint.css'"
+>
+<!-- CodeMirror：CodeMirror 插件：智能提示/补全（show-hint-js.js） -->
+<script
+  src="/api/cdn/addon-hint-show-hint-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/hint/show-hint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：智能提示/补全（sql-hint.js） -->
+<script
+  src="/api/cdn/addon-hint-sql-hint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/hint/sql-hint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：智能提示/补全（xml-hint.js） -->
+<script
+  src="/api/cdn/addon-hint-xml-hint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/hint/xml-hint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：语法检查与错误标注（coffeescript-lint.js） -->
+<script
+  src="/api/cdn/addon-lint-coffeescript-lint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/lint/coffeescript-lint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：语法检查与错误标注（css-lint.js） -->
+<script
+  src="/api/cdn/addon-lint-css-lint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/lint/css-lint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：语法检查与错误标注（html-lint.js） -->
+<script
+  src="/api/cdn/addon-lint-html-lint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/lint/html-lint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：语法检查与错误标注（javascript-lint.js） -->
+<script
+  src="/api/cdn/addon-lint-javascript-lint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/lint/javascript-lint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：语法检查与错误标注（json-lint.js） -->
+<script
+  src="/api/cdn/addon-lint-json-lint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/lint/json-lint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：语法检查与错误标注（lint-css.css） -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/addon-lint-lint-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/lint/lint.css'"
+>
+<!-- CodeMirror：CodeMirror 插件：语法检查与错误标注（lint-js.js） -->
+<script
+  src="/api/cdn/addon-lint-lint-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/lint/lint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：语法检查与错误标注（yaml-lint.js） -->
+<script
+  src="/api/cdn/addon-lint-yaml-lint"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/lint/yaml-lint.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：差异对比与合并视图（merge-css.css） -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/addon-merge-merge-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/merge/merge.css'"
+>
+<!-- CodeMirror：CodeMirror 插件：差异对比与合并视图（merge-js.js） -->
+<script
+  src="/api/cdn/addon-merge-merge-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/merge/merge.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：模式加载/组合能力（loadmode.js） -->
+<script
+  src="/api/cdn/addon-mode-loadmode"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/mode/loadmode.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：模式加载/组合能力（multiplex.js） -->
+<script
+  src="/api/cdn/addon-mode-multiplex"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/mode/multiplex.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件测试脚本（模式加载/组合能力，通常用于开发验证） -->
+<script
+  src="/api/cdn/addon-mode-multiplex-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/mode/multiplex_test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：模式加载/组合能力（overlay.js） -->
+<script
+  src="/api/cdn/addon-mode-overlay"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/mode/overlay.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：模式加载/组合能力（simple.js） -->
+<script
+  src="/api/cdn/addon-mode-simple"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/mode/simple.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：无编辑器实例的高亮渲染（colorize.js） -->
+<script
+  src="/api/cdn/addon-runmode-colorize"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/runmode/colorize.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：无编辑器实例的高亮渲染（runmode.js） -->
+<script
+  src="/api/cdn/addon-runmode-runmode"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/runmode/runmode.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：滚动条增强与标记（annotatescrollbar.js） -->
+<script
+  src="/api/cdn/addon-scroll-annotatescrollbar"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/scroll/annotatescrollbar.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：滚动条增强与标记（scrollpastend.js） -->
+<script
+  src="/api/cdn/addon-scroll-scrollpastend"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/scroll/scrollpastend.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：滚动条增强与标记（simplescrollbars-css.css） -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/addon-scroll-simplescrollbars-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/scroll/simplescrollbars.css'"
+>
+<!-- CodeMirror：CodeMirror 插件：滚动条增强与标记（simplescrollbars-js.js） -->
+<script
+  src="/api/cdn/addon-scroll-simplescrollbars-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/scroll/simplescrollbars.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：搜索与匹配高亮（jump-to-line.js） -->
+<script
+  src="/api/cdn/addon-search-jump-to-line"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/jump-to-line.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：搜索与匹配高亮（match-highlighter.js） -->
+<script
+  src="/api/cdn/addon-search-match-highlighter"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/match-highlighter.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：搜索与匹配高亮（matchesonscrollbar-css.css） -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/addon-search-matchesonscrollbar-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/search/matchesonscrollbar.css'"
+>
+<!-- CodeMirror：CodeMirror 插件：搜索与匹配高亮（matchesonscrollbar-js.js） -->
+<script
+  src="/api/cdn/addon-search-matchesonscrollbar-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/matchesonscrollbar.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：搜索与匹配高亮（search.js） -->
+<script
+  src="/api/cdn/addon-search-search"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/search.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：搜索与匹配高亮（searchcursor.js） -->
+<script
+  src="/api/cdn/addon-search-searchcursor"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/searchcursor.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：选区行为增强（active-line.js） -->
+<script
+  src="/api/cdn/addon-selection-active-line"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/selection/active-line.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：选区行为增强（mark-selection.js） -->
+<script
+  src="/api/cdn/addon-selection-mark-selection"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/selection/mark-selection.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：选区行为增强（selection-pointer.js） -->
+<script
+  src="/api/cdn/addon-selection-selection-pointer"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/selection/selection-pointer.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：Tern 代码分析/补全支持（tern-css.css） -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/addon-tern-tern-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/tern/tern.css'"
+>
+<!-- CodeMirror：CodeMirror 插件：Tern 代码分析/补全支持（tern-js.js） -->
+<script
+  src="/api/cdn/addon-tern-tern-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/tern/tern.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：Tern 代码分析/补全支持（worker.js） -->
+<script
+  src="/api/cdn/addon-tern-worker"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/tern/worker.js'"
+></script>
+<!-- CodeMirror：CodeMirror 插件：自动换行增强（hardwrap.js） -->
+<script
+  src="/api/cdn/addon-wrap-hardwrap"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/wrap/hardwrap.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（apl 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-apl-apl"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/apl/apl.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（asciiarmor 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-asciiarmor-asciiarmor"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/asciiarmor/asciiarmor.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言相关资源（asn-1-asn/1） -->
+<script
+  src="/api/cdn/mode-asn-1-asn-1"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/asn.1/asn.1.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（asterisk 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-asterisk-asterisk"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/asterisk/asterisk.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（brainfuck 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-brainfuck-brainfuck"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/brainfuck/brainfuck.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（clike 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-clike-clike"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/clike/clike.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（clike，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-clike-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/clike/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（clojure 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-clojure-clojure"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/clojure/clojure.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（clojure，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-clojure-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/clojure/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（cmake 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-cmake-cmake"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/cmake/cmake.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（cobol 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-cobol-cobol"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/cobol/cobol.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（coffeescript 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-coffeescript-coffeescript"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/coffeescript/coffeescript.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（commonlisp 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-commonlisp-commonlisp"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/commonlisp/commonlisp.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（crystal 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-crystal-crystal"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/crystal/crystal.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言样式（css 模式专用样式） -->
+<script
+  src="/api/cdn/mode-css-css"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/css/css.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（css-gss，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-css-gss-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/css/gss_test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（css-less，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-css-less-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/css/less_test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（css-scss，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-css-scss-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/css/scss_test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（css，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-css-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/css/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（cypher 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-cypher-cypher"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/cypher/cypher.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（cypher，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-cypher-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/cypher/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（d 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-d-d"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/d/d.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（d，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-d-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/d/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（dart 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-dart-dart"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/dart/dart.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（diff 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-diff-diff"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/diff/diff.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（django 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-django-django"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/django/django.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（dockerfile 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-dockerfile-dockerfile"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/dockerfile/dockerfile.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（dockerfile，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-dockerfile-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/dockerfile/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（dtd 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-dtd-dtd"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/dtd/dtd.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（dylan 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-dylan-dylan"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/dylan/dylan.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（dylan，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-dylan-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/dylan/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（ebnf 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-ebnf-ebnf"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/ebnf/ebnf.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（ecl 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-ecl-ecl"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/ecl/ecl.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（eiffel 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-eiffel-eiffel"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/eiffel/eiffel.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（elm 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-elm-elm"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/elm/elm.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（erlang 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-erlang-erlang"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/erlang/erlang.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（factor 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-factor-factor"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/factor/factor.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（fcl 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-fcl-fcl"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/fcl/fcl.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（forth 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-forth-forth"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/forth/forth.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（fortran 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-fortran-fortran"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/fortran/fortran.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（gas 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-gas-gas"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/gas/gas.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（gfm 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-gfm-gfm"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/gfm/gfm.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（gfm，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-gfm-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/gfm/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（gherkin 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-gherkin-gherkin"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/gherkin/gherkin.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（go 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-go-go"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/go/go.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（groovy 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-groovy-groovy"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/groovy/groovy.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（haml 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-haml-haml"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/haml/haml.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（haml，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-haml-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/haml/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（handlebars 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-handlebars-handlebars"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/handlebars/handlebars.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言相关资源（haskell-literate-haskell/literate） -->
+<script
+  src="/api/cdn/mode-haskell-literate-haskell-literate"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/haskell-literate/haskell-literate.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（haskell 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-haskell-haskell"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/haskell/haskell.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（haxe 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-haxe-haxe"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/haxe/haxe.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（htmlembedded 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-htmlembedded-htmlembedded"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/htmlembedded/htmlembedded.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（htmlmixed 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-htmlmixed-htmlmixed"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/htmlmixed/htmlmixed.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（http 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-http-http"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/http/http.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（idl 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-idl-idl"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/idl/idl.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（javascript 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-javascript-javascript"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/javascript/javascript.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（javascript，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-javascript-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/javascript/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（jinja2 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-jinja2-jinja2"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/jinja2/jinja2.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（jsx 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-jsx-jsx"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/jsx/jsx.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（jsx，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-jsx-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/jsx/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（julia 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-julia-julia"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/julia/julia.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（livescript 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-livescript-livescript"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/livescript/livescript.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（lua 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-lua-lua"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/lua/lua.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（markdown 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-markdown-markdown"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/markdown/markdown.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（markdown，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-markdown-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/markdown/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（mathematica 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-mathematica-mathematica"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/mathematica/mathematica.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（mbox 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-mbox-mbox"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/mbox/mbox.js'"
+></script>
+<!-- CodeMirror：CodeMirror 模式元数据（用于按名称查找/管理语言模式） -->
+<script
+  src="/api/cdn/mode-meta"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/meta.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（mirc 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-mirc-mirc"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/mirc/mirc.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（mllike 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-mllike-mllike"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/mllike/mllike.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（modelica 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-modelica-modelica"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/modelica/modelica.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（mscgen 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-mscgen-mscgen"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/mscgen/mscgen.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（mscgen-mscgen，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-mscgen-mscgen-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/mscgen/mscgen_test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（mscgen-msgenny，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-mscgen-msgenny-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/mscgen/msgenny_test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（mscgen-xu，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-mscgen-xu-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/mscgen/xu_test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（mumps 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-mumps-mumps"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/mumps/mumps.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（nginx 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-nginx-nginx"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/nginx/nginx.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（nsis 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-nsis-nsis"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/nsis/nsis.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（ntriples 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-ntriples-ntriples"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/ntriples/ntriples.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（octave 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-octave-octave"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/octave/octave.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（oz 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-oz-oz"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/oz/oz.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（pascal 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-pascal-pascal"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/pascal/pascal.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（pegjs 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-pegjs-pegjs"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/pegjs/pegjs.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（perl 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-perl-perl"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/perl/perl.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（php 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-php-php"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/php/php.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（php，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-php-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/php/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（pig 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-pig-pig"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/pig/pig.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（powershell 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-powershell-powershell"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/powershell/powershell.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（powershell，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-powershell-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/powershell/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（properties 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-properties-properties"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/properties/properties.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（protobuf 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-protobuf-protobuf"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/protobuf/protobuf.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（pug 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-pug-pug"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/pug/pug.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（puppet 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-puppet-puppet"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/puppet/puppet.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（python 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-python-python"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/python/python.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（python，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-python-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/python/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（q 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-q-q"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/q/q.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（r 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-r-r"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/r/r.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（rpm 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-rpm-rpm"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/rpm/rpm.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（rst 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-rst-rst"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/rst/rst.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（ruby 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-ruby-ruby"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/ruby/ruby.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（ruby，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-ruby-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/ruby/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（rust 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-rust-rust"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/rust/rust.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（rust，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-rust-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/rust/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（sas 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-sas-sas"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/sas/sas.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（sass 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-sass-sass"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/sass/sass.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（sass，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-sass-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/sass/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（scheme 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-scheme-scheme"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/scheme/scheme.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（shell 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-shell-shell"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/shell/shell.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（shell，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-shell-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/shell/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（sieve 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-sieve-sieve"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/sieve/sieve.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（slim 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-slim-slim"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/slim/slim.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（slim，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-slim-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/slim/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（smalltalk 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-smalltalk-smalltalk"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/smalltalk/smalltalk.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（smarty 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-smarty-smarty"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/smarty/smarty.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（solr 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-solr-solr"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/solr/solr.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（soy 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-soy-soy"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/soy/soy.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（soy，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-soy-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/soy/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（sparql 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-sparql-sparql"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/sparql/sparql.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（spreadsheet 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-spreadsheet-spreadsheet"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/spreadsheet/spreadsheet.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（sql 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-sql-sql"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/sql/sql.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（stex 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-stex-stex"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/stex/stex.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（stex，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-stex-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/stex/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（stylus 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-stylus-stylus"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/stylus/stylus.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（swift 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-swift-swift"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/swift/swift.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（swift，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-swift-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/swift/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（tcl 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-tcl-tcl"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/tcl/tcl.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（textile，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-textile-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/textile/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（textile 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-textile-textile"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/textile/textile.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言样式（tiddlywiki-tiddlywiki 模式专用样式） -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/mode-tiddlywiki-tiddlywiki-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/mode/tiddlywiki/tiddlywiki.css'"
+>
+<!-- CodeMirror：CodeMirror 语言脚本（tiddlywiki-tiddlywiki 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-tiddlywiki-tiddlywiki-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/tiddlywiki/tiddlywiki.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言样式（tiki-tiki 模式专用样式） -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/mode-tiki-tiki-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/mode/tiki/tiki.css'"
+>
+<!-- CodeMirror：CodeMirror 语言脚本（tiki-tiki 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-tiki-tiki-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/tiki/tiki.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（toml 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-toml-toml"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/toml/toml.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（tornado 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-tornado-tornado"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/tornado/tornado.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（troff 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-troff-troff"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/troff/troff.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言相关资源（ttcn-cfg-ttcn/cfg） -->
+<script
+  src="/api/cdn/mode-ttcn-cfg-ttcn-cfg"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/ttcn-cfg/ttcn-cfg.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（ttcn 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-ttcn-ttcn"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/ttcn/ttcn.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（turtle 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-turtle-turtle"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/turtle/turtle.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（twig 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-twig-twig"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/twig/twig.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（vb 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-vb-vb"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/vb/vb.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（vbscript 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-vbscript-vbscript"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/vbscript/vbscript.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（velocity 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-velocity-velocity"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/velocity/velocity.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（verilog，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-verilog-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/verilog/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（verilog 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-verilog-verilog"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/verilog/verilog.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（vhdl 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-vhdl-vhdl"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/vhdl/vhdl.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（vue 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-vue-vue"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/vue/vue.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（wast，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-wast-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/wast/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（wast 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-wast-wast"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/wast/wast.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（webidl 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-webidl-webidl"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/webidl/webidl.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（xml，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-xml-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/xml/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（xml 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-xml-xml"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/xml/xml.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式测试脚本（xquery，通常用于开发验证） -->
+<script
+  src="/api/cdn/mode-xquery-test"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/xquery/test.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（xquery 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-xquery-xquery"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/xquery/xquery.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（yacas 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-yacas-yacas"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/yacas/yacas.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言相关资源（yaml-frontmatter-yaml/frontmatter） -->
+<script
+  src="/api/cdn/mode-yaml-frontmatter-yaml-frontmatter"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/yaml-frontmatter/yaml-frontmatter.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（yaml 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-yaml-yaml"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/yaml/yaml.js'"
+></script>
+<!-- CodeMirror：CodeMirror 语言模式脚本（z80 语法高亮与解析规则） -->
+<script
+  src="/api/cdn/mode-z80-z80"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/z80/z80.js'"
+></script>
+
+
+
+
 
 <!-- ============================== -->
 <!-- KaTeX 数学公式渲染 -->

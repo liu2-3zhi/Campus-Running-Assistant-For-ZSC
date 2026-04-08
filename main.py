@@ -23200,211 +23200,1602 @@ def start_web_server(args_param):
 
 
 
-# ==============================
-# CodeMirror 核心依赖
-# 编辑器基础功能与核心样式
-# ==============================
-"codemirror-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.js",
-    "filename": "codemirror.js",
-    "type": "js",
-},
-# CodeMirror 编辑器核心样式表
-"codemirror-css": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.css",
-    "filename": "codemirror.css",
-    "type": "css",
-},
-# 搜索/替换弹窗对话框样式
-"codemirror-dialog-css": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.css",
-    "filename": "dialog.css",
-    "type": "css",
-},
-# 滚动条显示搜索匹配位置样式
-"codemirror-matchesonscrollbar-css": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/matchesonscrollbar.css",
-    "filename": "matchesonscrollbar.css",
-    "type": "css",
-},
-# 代码折叠侧边栏样式
-"codemirror-foldgutter-css": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.css",
-    "filename": "foldgutter.css",
-    "type": "css",
-},
 
-# ==============================
-# CodeMirror 语言语法高亮
-# 支持各种编程语言的代码着色
-# ==============================
-# 语言模式元信息，自动识别文件类型
-"codemirror-meta-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/meta.js",
-    "filename": "meta.js",
-    "type": "js",
-},
-# Markdown 语法高亮支持
-"codemirror-markdown-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/markdown/markdown.js",
-    "filename": "markdown.js",
-    "type": "js",
-},
-# XML / HTML 标签语法高亮
-"codemirror-xml-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/xml/xml.js",
-    "filename": "xml.js",
-    "type": "js",
-},
-# JavaScript 语法高亮
-"codemirror-javascript-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/javascript/javascript.js",
-    "filename": "javascript.js",
-    "type": "js",
-},
-# CSS 样式语法高亮
-"codemirror-css-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/css/css.js",
-    "filename": "css.js",
-    "type": "js",
-},
-# HTML 混合模式（内嵌 JS/CSS）高亮
-"codemirror-htmlmixed-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/htmlmixed/htmlmixed.js",
-    "filename": "htmlmixed.js",
-    "type": "js",
-},
-# GitHub Markdown 扩展语法支持
-"codemirror-gfm-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/gfm/gfm.js",
-    "filename": "gfm.js",
-    "type": "js",
-},
-# Python 语法高亮
-"codemirror-python-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/python/python.js",
-    "filename": "python.js",
-    "type": "js",
-},
-# C/C++/Java 等类 C 语言语法高亮
-"codemirror-clike-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/clike/clike.js",
-    "filename": "clike.js",
-    "type": "js",
-},
-# Shell / Bash 命令行语法高亮
-"codemirror-shell-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/shell/shell.js",
-    "filename": "shell.js",
-    "type": "js",
-},
-# SQL 数据库语句语法高亮
-"codemirror-sql-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/sql/sql.js",
-    "filename": "sql.js",
-    "type": "js",
-},
-# YAML 配置文件语法高亮
-"codemirror-yaml-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/yaml/yaml.js",
-    "filename": "yaml.js",
-    "type": "js",
-},
 
-# ==============================
-# CodeMirror 编辑增强插件
-# 提升编辑体验的实用功能
-# ==============================
-# 括号匹配高亮显示
-"codemirror-matchbrackets-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/matchbrackets.js",
-    "filename": "matchbrackets.js",
-    "type": "js",
-},
-# 自动补全括号、引号
-"codemirror-closebrackets-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closebrackets.js",
-    "filename": "closebrackets.js",
-    "type": "js",
-},
-# HTML 标签自动闭合
-"codemirror-closetag-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closetag.js",
-    "filename": "closetag.js",
-    "type": "js",
-},
-# 代码折叠核心功能
-"codemirror-foldcode-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldcode.js",
-    "filename": "foldcode.js",
-    "type": "js",
-},
-# 代码折叠侧边栏交互
-"codemirror-foldgutter-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.js",
-    "filename": "foldgutter.js",
-    "type": "js",
-},
-# 大括号代码块折叠
-"codemirror-brace-fold-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/brace-fold.js",
-    "filename": "brace-fold.js",
-    "type": "js",
-},
-# XML/HTML 标签区域折叠
-"codemirror-xml-fold-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/xml-fold.js",
-    "filename": "xml-fold.js",
-    "type": "js",
-},
-# Markdown 内容区域折叠
-"codemirror-markdown-fold-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/markdown-fold.js",
-    "filename": "markdown-fold.js",
-    "type": "js",
-},
-# 多语言模式叠加支持
-"codemirror-overlay-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/mode/overlay.js",
-    "filename": "overlay.js",
-    "type": "js",
-},
-# 当前光标所在行高亮
-"codemirror-active-line-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/selection/active-line.js",
-    "filename": "active-line.js",
-    "type": "js",
-},
-# 编辑器内文本搜索
-"codemirror-search-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/search.js",
-    "filename": "search.js",
-    "type": "js",
-},
-# 搜索结果光标定位遍历
-"codemirror-searchcursor-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/searchcursor.js",
-    "filename": "searchcursor.js",
-    "type": "js",
-},
-# 选中单词全文高亮
-"codemirror-match-highlighter-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/match-highlighter.js",
-    "filename": "match-highlighter.js",
-    "type": "js",
-},
-# 搜索/替换弹窗功能
-"codemirror-dialog-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.js",
-    "filename": "dialog.js",
-    "type": "js",
-},
-# 编辑器空内容占位提示文字
-"codemirror-placeholder-js": {
-    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/display/placeholder.js",
-    "filename": "placeholder.js",
-    "type": "js",
-},
+
+        # ==============================
+        # CodeMirror 编辑器依赖（核心 + 插件 + 语言模式）
+        # 规则：
+        # 1) key 使用路径语义命名，避免重名时追加 -css/-js
+        # 2) url 统一指向 jsdelivr 的 codemirror 包
+        # 3) filename 保留原始文件名，type 按扩展名区分
+        # ==============================
+        # CodeMirror 核心文件
+        # CodeMirror：CodeMirror 编辑器基础样式（编辑区外观、光标、选区、滚动区域）
+
+        "lib-codemirror-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.css",
+            "filename": "codemirror.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 核心脚本（编辑器实例、文档模型、键盘与光标等基础能力）
+
+        "lib-codemirror-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.js",
+            "filename": "codemirror.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：注释编辑增强（comment.js）
+
+        "addon-comment-comment": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/comment/comment.js",
+            "filename": "comment.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：注释编辑增强（continuecomment.js）
+
+        "addon-comment-continuecomment": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/comment/continuecomment.js",
+            "filename": "continuecomment.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：对话框 UI（搜索/跳转等）（dialog-css.css）
+
+        "addon-dialog-dialog-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.css",
+            "filename": "dialog.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 插件：对话框 UI（搜索/跳转等）（dialog-js.js）
+
+        "addon-dialog-dialog-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.js",
+            "filename": "dialog.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（autorefresh.js）
+
+        "addon-display-autorefresh": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/display/autorefresh.js",
+            "filename": "autorefresh.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（fullscreen-css.css）
+
+        "addon-display-fullscreen-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/display/fullscreen.css",
+            "filename": "fullscreen.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（fullscreen-js.js）
+
+        "addon-display-fullscreen-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/display/fullscreen.js",
+            "filename": "fullscreen.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（panel.js）
+
+        "addon-display-panel": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/display/panel.js",
+            "filename": "panel.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（placeholder.js）
+
+        "addon-display-placeholder": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/display/placeholder.js",
+            "filename": "placeholder.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：显示层增强（全屏、占位、标尺等）（rulers.js）
+
+        "addon-display-rulers": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/display/rulers.js",
+            "filename": "rulers.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（closebrackets.js）
+
+        "addon-edit-closebrackets": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closebrackets.js",
+            "filename": "closebrackets.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（closetag.js）
+
+        "addon-edit-closetag": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closetag.js",
+            "filename": "closetag.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（continuelist.js）
+
+        "addon-edit-continuelist": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/continuelist.js",
+            "filename": "continuelist.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（matchbrackets.js）
+
+        "addon-edit-matchbrackets": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/matchbrackets.js",
+            "filename": "matchbrackets.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（matchtags.js）
+
+        "addon-edit-matchtags": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/matchtags.js",
+            "filename": "matchtags.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：编辑行为增强（补全括号、标签匹配等）（trailingspace.js）
+
+        "addon-edit-trailingspace": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/trailingspace.js",
+            "filename": "trailingspace.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：代码折叠能力（brace-fold.js）
+
+        "addon-fold-brace-fold": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/brace-fold.js",
+            "filename": "brace-fold.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：代码折叠能力（comment-fold.js）
+
+        "addon-fold-comment-fold": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/comment-fold.js",
+            "filename": "comment-fold.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：代码折叠能力（foldcode.js）
+
+        "addon-fold-foldcode": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldcode.js",
+            "filename": "foldcode.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：代码折叠能力（foldgutter-css.css）
+
+        "addon-fold-foldgutter-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.css",
+            "filename": "foldgutter.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 插件：代码折叠能力（foldgutter-js.js）
+
+        "addon-fold-foldgutter-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.js",
+            "filename": "foldgutter.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：代码折叠能力（indent-fold.js）
+
+        "addon-fold-indent-fold": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/indent-fold.js",
+            "filename": "indent-fold.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：代码折叠能力（markdown-fold.js）
+
+        "addon-fold-markdown-fold": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/markdown-fold.js",
+            "filename": "markdown-fold.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：代码折叠能力（xml-fold.js）
+
+        "addon-fold-xml-fold": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/xml-fold.js",
+            "filename": "xml-fold.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：智能提示/补全（anyword-hint.js）
+
+        "addon-hint-anyword-hint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/hint/anyword-hint.js",
+            "filename": "anyword-hint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：智能提示/补全（css-hint.js）
+
+        "addon-hint-css-hint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/hint/css-hint.js",
+            "filename": "css-hint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：智能提示/补全（html-hint.js）
+
+        "addon-hint-html-hint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/hint/html-hint.js",
+            "filename": "html-hint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：智能提示/补全（javascript-hint.js）
+
+        "addon-hint-javascript-hint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/hint/javascript-hint.js",
+            "filename": "javascript-hint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：智能提示/补全（show-hint-css.css）
+
+        "addon-hint-show-hint-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/hint/show-hint.css",
+            "filename": "show-hint.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 插件：智能提示/补全（show-hint-js.js）
+
+        "addon-hint-show-hint-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/hint/show-hint.js",
+            "filename": "show-hint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：智能提示/补全（sql-hint.js）
+
+        "addon-hint-sql-hint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/hint/sql-hint.js",
+            "filename": "sql-hint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：智能提示/补全（xml-hint.js）
+
+        "addon-hint-xml-hint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/hint/xml-hint.js",
+            "filename": "xml-hint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：语法检查与错误标注（coffeescript-lint.js）
+
+        "addon-lint-coffeescript-lint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/lint/coffeescript-lint.js",
+            "filename": "coffeescript-lint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：语法检查与错误标注（css-lint.js）
+
+        "addon-lint-css-lint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/lint/css-lint.js",
+            "filename": "css-lint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：语法检查与错误标注（html-lint.js）
+
+        "addon-lint-html-lint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/lint/html-lint.js",
+            "filename": "html-lint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：语法检查与错误标注（javascript-lint.js）
+
+        "addon-lint-javascript-lint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/lint/javascript-lint.js",
+            "filename": "javascript-lint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：语法检查与错误标注（json-lint.js）
+
+        "addon-lint-json-lint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/lint/json-lint.js",
+            "filename": "json-lint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：语法检查与错误标注（lint-css.css）
+
+        "addon-lint-lint-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/lint/lint.css",
+            "filename": "lint.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 插件：语法检查与错误标注（lint-js.js）
+
+        "addon-lint-lint-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/lint/lint.js",
+            "filename": "lint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：语法检查与错误标注（yaml-lint.js）
+
+        "addon-lint-yaml-lint": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/lint/yaml-lint.js",
+            "filename": "yaml-lint.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：差异对比与合并视图（merge-css.css）
+
+        "addon-merge-merge-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/merge/merge.css",
+            "filename": "merge.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 插件：差异对比与合并视图（merge-js.js）
+
+        "addon-merge-merge-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/merge/merge.js",
+            "filename": "merge.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：模式加载/组合能力（loadmode.js）
+
+        "addon-mode-loadmode": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/mode/loadmode.js",
+            "filename": "loadmode.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：模式加载/组合能力（multiplex.js）
+
+        "addon-mode-multiplex": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/mode/multiplex.js",
+            "filename": "multiplex.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件测试脚本（模式加载/组合能力，通常用于开发验证）
+
+        "addon-mode-multiplex-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/mode/multiplex_test.js",
+            "filename": "multiplex_test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：模式加载/组合能力（overlay.js）
+
+        "addon-mode-overlay": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/mode/overlay.js",
+            "filename": "overlay.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：模式加载/组合能力（simple.js）
+
+        "addon-mode-simple": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/mode/simple.js",
+            "filename": "simple.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：无编辑器实例的高亮渲染（colorize.js）
+
+        "addon-runmode-colorize": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/runmode/colorize.js",
+            "filename": "colorize.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：无编辑器实例的高亮渲染（runmode.js）
+
+        "addon-runmode-runmode": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/runmode/runmode.js",
+            "filename": "runmode.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：滚动条增强与标记（annotatescrollbar.js）
+
+        "addon-scroll-annotatescrollbar": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/scroll/annotatescrollbar.js",
+            "filename": "annotatescrollbar.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：滚动条增强与标记（scrollpastend.js）
+
+        "addon-scroll-scrollpastend": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/scroll/scrollpastend.js",
+            "filename": "scrollpastend.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：滚动条增强与标记（simplescrollbars-css.css）
+
+        "addon-scroll-simplescrollbars-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/scroll/simplescrollbars.css",
+            "filename": "simplescrollbars.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 插件：滚动条增强与标记（simplescrollbars-js.js）
+
+        "addon-scroll-simplescrollbars-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/scroll/simplescrollbars.js",
+            "filename": "simplescrollbars.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：搜索与匹配高亮（jump-to-line.js）
+
+        "addon-search-jump-to-line": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/jump-to-line.js",
+            "filename": "jump-to-line.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：搜索与匹配高亮（match-highlighter.js）
+
+        "addon-search-match-highlighter": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/match-highlighter.js",
+            "filename": "match-highlighter.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：搜索与匹配高亮（matchesonscrollbar-css.css）
+
+        "addon-search-matchesonscrollbar-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/matchesonscrollbar.css",
+            "filename": "matchesonscrollbar.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 插件：搜索与匹配高亮（matchesonscrollbar-js.js）
+
+        "addon-search-matchesonscrollbar-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/matchesonscrollbar.js",
+            "filename": "matchesonscrollbar.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：搜索与匹配高亮（search.js）
+
+        "addon-search-search": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/search.js",
+            "filename": "search.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：搜索与匹配高亮（searchcursor.js）
+
+        "addon-search-searchcursor": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/searchcursor.js",
+            "filename": "searchcursor.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：选区行为增强（active-line.js）
+
+        "addon-selection-active-line": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/selection/active-line.js",
+            "filename": "active-line.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：选区行为增强（mark-selection.js）
+
+        "addon-selection-mark-selection": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/selection/mark-selection.js",
+            "filename": "mark-selection.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：选区行为增强（selection-pointer.js）
+
+        "addon-selection-selection-pointer": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/selection/selection-pointer.js",
+            "filename": "selection-pointer.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：Tern 代码分析/补全支持（tern-css.css）
+
+        "addon-tern-tern-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/tern/tern.css",
+            "filename": "tern.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 插件：Tern 代码分析/补全支持（tern-js.js）
+
+        "addon-tern-tern-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/tern/tern.js",
+            "filename": "tern.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：Tern 代码分析/补全支持（worker.js）
+
+        "addon-tern-worker": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/tern/worker.js",
+            "filename": "worker.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 插件：自动换行增强（hardwrap.js）
+
+        "addon-wrap-hardwrap": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/wrap/hardwrap.js",
+            "filename": "hardwrap.js",
+            "type": "js",
+        },
+
+        # CodeMirror 语言模式（mode/*）
+        # 包含官方 mode 与测试脚本，按你的原始清单完整缓存
+        # CodeMirror：CodeMirror 语言模式脚本（apl 语法高亮与解析规则）
+
+        "mode-apl-apl": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/apl/apl.js",
+            "filename": "apl.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（asciiarmor 语法高亮与解析规则）
+
+        "mode-asciiarmor-asciiarmor": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/asciiarmor/asciiarmor.js",
+            "filename": "asciiarmor.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言相关资源（asn-1-asn/1）
+
+        "mode-asn-1-asn-1": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/asn.1/asn.1.js",
+            "filename": "asn.1.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（asterisk 语法高亮与解析规则）
+
+        "mode-asterisk-asterisk": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/asterisk/asterisk.js",
+            "filename": "asterisk.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（brainfuck 语法高亮与解析规则）
+
+        "mode-brainfuck-brainfuck": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/brainfuck/brainfuck.js",
+            "filename": "brainfuck.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（clike 语法高亮与解析规则）
+
+        "mode-clike-clike": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/clike/clike.js",
+            "filename": "clike.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（clike，通常用于开发验证）
+
+        "mode-clike-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/clike/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（clojure 语法高亮与解析规则）
+
+        "mode-clojure-clojure": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/clojure/clojure.js",
+            "filename": "clojure.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（clojure，通常用于开发验证）
+
+        "mode-clojure-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/clojure/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（cmake 语法高亮与解析规则）
+
+        "mode-cmake-cmake": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/cmake/cmake.js",
+            "filename": "cmake.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（cobol 语法高亮与解析规则）
+
+        "mode-cobol-cobol": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/cobol/cobol.js",
+            "filename": "cobol.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（coffeescript 语法高亮与解析规则）
+
+        "mode-coffeescript-coffeescript": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/coffeescript/coffeescript.js",
+            "filename": "coffeescript.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（commonlisp 语法高亮与解析规则）
+
+        "mode-commonlisp-commonlisp": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/commonlisp/commonlisp.js",
+            "filename": "commonlisp.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（crystal 语法高亮与解析规则）
+
+        "mode-crystal-crystal": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/crystal/crystal.js",
+            "filename": "crystal.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言样式（css 模式专用样式）
+
+        "mode-css-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/css/css.js",
+            "filename": "css.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（css-gss，通常用于开发验证）
+
+        "mode-css-gss-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/css/gss_test.js",
+            "filename": "gss_test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（css-less，通常用于开发验证）
+
+        "mode-css-less-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/css/less_test.js",
+            "filename": "less_test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（css-scss，通常用于开发验证）
+
+        "mode-css-scss-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/css/scss_test.js",
+            "filename": "scss_test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（css，通常用于开发验证）
+
+        "mode-css-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/css/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（cypher 语法高亮与解析规则）
+
+        "mode-cypher-cypher": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/cypher/cypher.js",
+            "filename": "cypher.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（cypher，通常用于开发验证）
+
+        "mode-cypher-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/cypher/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（d 语法高亮与解析规则）
+
+        "mode-d-d": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/d/d.js",
+            "filename": "d.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（d，通常用于开发验证）
+
+        "mode-d-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/d/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（dart 语法高亮与解析规则）
+
+        "mode-dart-dart": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/dart/dart.js",
+            "filename": "dart.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（diff 语法高亮与解析规则）
+
+        "mode-diff-diff": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/diff/diff.js",
+            "filename": "diff.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（django 语法高亮与解析规则）
+
+        "mode-django-django": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/django/django.js",
+            "filename": "django.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（dockerfile 语法高亮与解析规则）
+
+        "mode-dockerfile-dockerfile": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/dockerfile/dockerfile.js",
+            "filename": "dockerfile.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（dockerfile，通常用于开发验证）
+
+        "mode-dockerfile-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/dockerfile/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（dtd 语法高亮与解析规则）
+
+        "mode-dtd-dtd": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/dtd/dtd.js",
+            "filename": "dtd.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（dylan 语法高亮与解析规则）
+
+        "mode-dylan-dylan": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/dylan/dylan.js",
+            "filename": "dylan.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（dylan，通常用于开发验证）
+
+        "mode-dylan-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/dylan/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（ebnf 语法高亮与解析规则）
+
+        "mode-ebnf-ebnf": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/ebnf/ebnf.js",
+            "filename": "ebnf.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（ecl 语法高亮与解析规则）
+
+        "mode-ecl-ecl": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/ecl/ecl.js",
+            "filename": "ecl.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（eiffel 语法高亮与解析规则）
+
+        "mode-eiffel-eiffel": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/eiffel/eiffel.js",
+            "filename": "eiffel.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（elm 语法高亮与解析规则）
+
+        "mode-elm-elm": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/elm/elm.js",
+            "filename": "elm.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（erlang 语法高亮与解析规则）
+
+        "mode-erlang-erlang": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/erlang/erlang.js",
+            "filename": "erlang.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（factor 语法高亮与解析规则）
+
+        "mode-factor-factor": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/factor/factor.js",
+            "filename": "factor.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（fcl 语法高亮与解析规则）
+
+        "mode-fcl-fcl": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/fcl/fcl.js",
+            "filename": "fcl.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（forth 语法高亮与解析规则）
+
+        "mode-forth-forth": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/forth/forth.js",
+            "filename": "forth.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（fortran 语法高亮与解析规则）
+
+        "mode-fortran-fortran": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/fortran/fortran.js",
+            "filename": "fortran.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（gas 语法高亮与解析规则）
+
+        "mode-gas-gas": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/gas/gas.js",
+            "filename": "gas.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（gfm 语法高亮与解析规则）
+
+        "mode-gfm-gfm": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/gfm/gfm.js",
+            "filename": "gfm.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（gfm，通常用于开发验证）
+
+        "mode-gfm-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/gfm/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（gherkin 语法高亮与解析规则）
+
+        "mode-gherkin-gherkin": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/gherkin/gherkin.js",
+            "filename": "gherkin.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（go 语法高亮与解析规则）
+
+        "mode-go-go": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/go/go.js",
+            "filename": "go.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（groovy 语法高亮与解析规则）
+
+        "mode-groovy-groovy": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/groovy/groovy.js",
+            "filename": "groovy.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（haml 语法高亮与解析规则）
+
+        "mode-haml-haml": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/haml/haml.js",
+            "filename": "haml.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（haml，通常用于开发验证）
+
+        "mode-haml-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/haml/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（handlebars 语法高亮与解析规则）
+
+        "mode-handlebars-handlebars": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/handlebars/handlebars.js",
+            "filename": "handlebars.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言相关资源（haskell-literate-haskell/literate）
+
+        "mode-haskell-literate-haskell-literate": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/haskell-literate/haskell-literate.js",
+            "filename": "haskell-literate.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（haskell 语法高亮与解析规则）
+
+        "mode-haskell-haskell": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/haskell/haskell.js",
+            "filename": "haskell.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（haxe 语法高亮与解析规则）
+
+        "mode-haxe-haxe": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/haxe/haxe.js",
+            "filename": "haxe.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（htmlembedded 语法高亮与解析规则）
+
+        "mode-htmlembedded-htmlembedded": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/htmlembedded/htmlembedded.js",
+            "filename": "htmlembedded.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（htmlmixed 语法高亮与解析规则）
+
+        "mode-htmlmixed-htmlmixed": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/htmlmixed/htmlmixed.js",
+            "filename": "htmlmixed.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（http 语法高亮与解析规则）
+
+        "mode-http-http": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/http/http.js",
+            "filename": "http.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（idl 语法高亮与解析规则）
+
+        "mode-idl-idl": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/idl/idl.js",
+            "filename": "idl.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（javascript 语法高亮与解析规则）
+
+        "mode-javascript-javascript": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/javascript/javascript.js",
+            "filename": "javascript.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（javascript，通常用于开发验证）
+
+        "mode-javascript-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/javascript/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（jinja2 语法高亮与解析规则）
+
+        "mode-jinja2-jinja2": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/jinja2/jinja2.js",
+            "filename": "jinja2.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（jsx 语法高亮与解析规则）
+
+        "mode-jsx-jsx": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/jsx/jsx.js",
+            "filename": "jsx.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（jsx，通常用于开发验证）
+
+        "mode-jsx-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/jsx/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（julia 语法高亮与解析规则）
+
+        "mode-julia-julia": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/julia/julia.js",
+            "filename": "julia.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（livescript 语法高亮与解析规则）
+
+        "mode-livescript-livescript": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/livescript/livescript.js",
+            "filename": "livescript.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（lua 语法高亮与解析规则）
+
+        "mode-lua-lua": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/lua/lua.js",
+            "filename": "lua.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（markdown 语法高亮与解析规则）
+
+        "mode-markdown-markdown": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/markdown/markdown.js",
+            "filename": "markdown.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（markdown，通常用于开发验证）
+
+        "mode-markdown-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/markdown/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（mathematica 语法高亮与解析规则）
+
+        "mode-mathematica-mathematica": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/mathematica/mathematica.js",
+            "filename": "mathematica.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（mbox 语法高亮与解析规则）
+
+        "mode-mbox-mbox": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/mbox/mbox.js",
+            "filename": "mbox.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 模式元数据（用于按名称查找/管理语言模式）
+
+        "mode-meta": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/meta.js",
+            "filename": "meta.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（mirc 语法高亮与解析规则）
+
+        "mode-mirc-mirc": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/mirc/mirc.js",
+            "filename": "mirc.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（mllike 语法高亮与解析规则）
+
+        "mode-mllike-mllike": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/mllike/mllike.js",
+            "filename": "mllike.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（modelica 语法高亮与解析规则）
+
+        "mode-modelica-modelica": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/modelica/modelica.js",
+            "filename": "modelica.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（mscgen 语法高亮与解析规则）
+
+        "mode-mscgen-mscgen": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/mscgen/mscgen.js",
+            "filename": "mscgen.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（mscgen-mscgen，通常用于开发验证）
+
+        "mode-mscgen-mscgen-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/mscgen/mscgen_test.js",
+            "filename": "mscgen_test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（mscgen-msgenny，通常用于开发验证）
+
+        "mode-mscgen-msgenny-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/mscgen/msgenny_test.js",
+            "filename": "msgenny_test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（mscgen-xu，通常用于开发验证）
+
+        "mode-mscgen-xu-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/mscgen/xu_test.js",
+            "filename": "xu_test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（mumps 语法高亮与解析规则）
+
+        "mode-mumps-mumps": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/mumps/mumps.js",
+            "filename": "mumps.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（nginx 语法高亮与解析规则）
+
+        "mode-nginx-nginx": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/nginx/nginx.js",
+            "filename": "nginx.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（nsis 语法高亮与解析规则）
+
+        "mode-nsis-nsis": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/nsis/nsis.js",
+            "filename": "nsis.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（ntriples 语法高亮与解析规则）
+
+        "mode-ntriples-ntriples": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/ntriples/ntriples.js",
+            "filename": "ntriples.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（octave 语法高亮与解析规则）
+
+        "mode-octave-octave": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/octave/octave.js",
+            "filename": "octave.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（oz 语法高亮与解析规则）
+
+        "mode-oz-oz": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/oz/oz.js",
+            "filename": "oz.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（pascal 语法高亮与解析规则）
+
+        "mode-pascal-pascal": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/pascal/pascal.js",
+            "filename": "pascal.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（pegjs 语法高亮与解析规则）
+
+        "mode-pegjs-pegjs": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/pegjs/pegjs.js",
+            "filename": "pegjs.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（perl 语法高亮与解析规则）
+
+        "mode-perl-perl": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/perl/perl.js",
+            "filename": "perl.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（php 语法高亮与解析规则）
+
+        "mode-php-php": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/php/php.js",
+            "filename": "php.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（php，通常用于开发验证）
+
+        "mode-php-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/php/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（pig 语法高亮与解析规则）
+
+        "mode-pig-pig": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/pig/pig.js",
+            "filename": "pig.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（powershell 语法高亮与解析规则）
+
+        "mode-powershell-powershell": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/powershell/powershell.js",
+            "filename": "powershell.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（powershell，通常用于开发验证）
+
+        "mode-powershell-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/powershell/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（properties 语法高亮与解析规则）
+
+        "mode-properties-properties": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/properties/properties.js",
+            "filename": "properties.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（protobuf 语法高亮与解析规则）
+
+        "mode-protobuf-protobuf": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/protobuf/protobuf.js",
+            "filename": "protobuf.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（pug 语法高亮与解析规则）
+
+        "mode-pug-pug": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/pug/pug.js",
+            "filename": "pug.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（puppet 语法高亮与解析规则）
+
+        "mode-puppet-puppet": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/puppet/puppet.js",
+            "filename": "puppet.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（python 语法高亮与解析规则）
+
+        "mode-python-python": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/python/python.js",
+            "filename": "python.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（python，通常用于开发验证）
+
+        "mode-python-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/python/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（q 语法高亮与解析规则）
+
+        "mode-q-q": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/q/q.js",
+            "filename": "q.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（r 语法高亮与解析规则）
+
+        "mode-r-r": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/r/r.js",
+            "filename": "r.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（rpm 语法高亮与解析规则）
+
+        "mode-rpm-rpm": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/rpm/rpm.js",
+            "filename": "rpm.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（rst 语法高亮与解析规则）
+
+        "mode-rst-rst": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/rst/rst.js",
+            "filename": "rst.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（ruby 语法高亮与解析规则）
+
+        "mode-ruby-ruby": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/ruby/ruby.js",
+            "filename": "ruby.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（ruby，通常用于开发验证）
+
+        "mode-ruby-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/ruby/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（rust 语法高亮与解析规则）
+
+        "mode-rust-rust": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/rust/rust.js",
+            "filename": "rust.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（rust，通常用于开发验证）
+
+        "mode-rust-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/rust/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（sas 语法高亮与解析规则）
+
+        "mode-sas-sas": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/sas/sas.js",
+            "filename": "sas.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（sass 语法高亮与解析规则）
+
+        "mode-sass-sass": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/sass/sass.js",
+            "filename": "sass.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（sass，通常用于开发验证）
+
+        "mode-sass-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/sass/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（scheme 语法高亮与解析规则）
+
+        "mode-scheme-scheme": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/scheme/scheme.js",
+            "filename": "scheme.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（shell 语法高亮与解析规则）
+
+        "mode-shell-shell": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/shell/shell.js",
+            "filename": "shell.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（shell，通常用于开发验证）
+
+        "mode-shell-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/shell/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（sieve 语法高亮与解析规则）
+
+        "mode-sieve-sieve": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/sieve/sieve.js",
+            "filename": "sieve.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（slim 语法高亮与解析规则）
+
+        "mode-slim-slim": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/slim/slim.js",
+            "filename": "slim.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（slim，通常用于开发验证）
+
+        "mode-slim-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/slim/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（smalltalk 语法高亮与解析规则）
+
+        "mode-smalltalk-smalltalk": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/smalltalk/smalltalk.js",
+            "filename": "smalltalk.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（smarty 语法高亮与解析规则）
+
+        "mode-smarty-smarty": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/smarty/smarty.js",
+            "filename": "smarty.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（solr 语法高亮与解析规则）
+
+        "mode-solr-solr": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/solr/solr.js",
+            "filename": "solr.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（soy 语法高亮与解析规则）
+
+        "mode-soy-soy": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/soy/soy.js",
+            "filename": "soy.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（soy，通常用于开发验证）
+
+        "mode-soy-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/soy/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（sparql 语法高亮与解析规则）
+
+        "mode-sparql-sparql": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/sparql/sparql.js",
+            "filename": "sparql.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（spreadsheet 语法高亮与解析规则）
+
+        "mode-spreadsheet-spreadsheet": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/spreadsheet/spreadsheet.js",
+            "filename": "spreadsheet.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（sql 语法高亮与解析规则）
+
+        "mode-sql-sql": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/sql/sql.js",
+            "filename": "sql.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（stex 语法高亮与解析规则）
+
+        "mode-stex-stex": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/stex/stex.js",
+            "filename": "stex.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（stex，通常用于开发验证）
+
+        "mode-stex-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/stex/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（stylus 语法高亮与解析规则）
+
+        "mode-stylus-stylus": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/stylus/stylus.js",
+            "filename": "stylus.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（swift 语法高亮与解析规则）
+
+        "mode-swift-swift": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/swift/swift.js",
+            "filename": "swift.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（swift，通常用于开发验证）
+
+        "mode-swift-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/swift/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（tcl 语法高亮与解析规则）
+
+        "mode-tcl-tcl": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/tcl/tcl.js",
+            "filename": "tcl.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（textile，通常用于开发验证）
+
+        "mode-textile-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/textile/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（textile 语法高亮与解析规则）
+
+        "mode-textile-textile": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/textile/textile.js",
+            "filename": "textile.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言样式（tiddlywiki-tiddlywiki 模式专用样式）
+
+        "mode-tiddlywiki-tiddlywiki-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/tiddlywiki/tiddlywiki.css",
+            "filename": "tiddlywiki.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 语言脚本（tiddlywiki-tiddlywiki 语法高亮与解析规则）
+
+        "mode-tiddlywiki-tiddlywiki-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/tiddlywiki/tiddlywiki.js",
+            "filename": "tiddlywiki.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言样式（tiki-tiki 模式专用样式）
+
+        "mode-tiki-tiki-css": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/tiki/tiki.css",
+            "filename": "tiki.css",
+            "type": "css",
+        },
+        # CodeMirror：CodeMirror 语言脚本（tiki-tiki 语法高亮与解析规则）
+
+        "mode-tiki-tiki-js": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/tiki/tiki.js",
+            "filename": "tiki.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（toml 语法高亮与解析规则）
+
+        "mode-toml-toml": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/toml/toml.js",
+            "filename": "toml.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（tornado 语法高亮与解析规则）
+
+        "mode-tornado-tornado": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/tornado/tornado.js",
+            "filename": "tornado.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（troff 语法高亮与解析规则）
+
+        "mode-troff-troff": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/troff/troff.js",
+            "filename": "troff.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言相关资源（ttcn-cfg-ttcn/cfg）
+
+        "mode-ttcn-cfg-ttcn-cfg": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/ttcn-cfg/ttcn-cfg.js",
+            "filename": "ttcn-cfg.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（ttcn 语法高亮与解析规则）
+
+        "mode-ttcn-ttcn": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/ttcn/ttcn.js",
+            "filename": "ttcn.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（turtle 语法高亮与解析规则）
+
+        "mode-turtle-turtle": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/turtle/turtle.js",
+            "filename": "turtle.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（twig 语法高亮与解析规则）
+
+        "mode-twig-twig": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/twig/twig.js",
+            "filename": "twig.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（vb 语法高亮与解析规则）
+
+        "mode-vb-vb": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/vb/vb.js",
+            "filename": "vb.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（vbscript 语法高亮与解析规则）
+
+        "mode-vbscript-vbscript": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/vbscript/vbscript.js",
+            "filename": "vbscript.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（velocity 语法高亮与解析规则）
+
+        "mode-velocity-velocity": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/velocity/velocity.js",
+            "filename": "velocity.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（verilog，通常用于开发验证）
+
+        "mode-verilog-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/verilog/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（verilog 语法高亮与解析规则）
+
+        "mode-verilog-verilog": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/verilog/verilog.js",
+            "filename": "verilog.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（vhdl 语法高亮与解析规则）
+
+        "mode-vhdl-vhdl": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/vhdl/vhdl.js",
+            "filename": "vhdl.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（vue 语法高亮与解析规则）
+
+        "mode-vue-vue": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/vue/vue.js",
+            "filename": "vue.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（wast，通常用于开发验证）
+
+        "mode-wast-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/wast/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（wast 语法高亮与解析规则）
+
+        "mode-wast-wast": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/wast/wast.js",
+            "filename": "wast.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（webidl 语法高亮与解析规则）
+
+        "mode-webidl-webidl": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/webidl/webidl.js",
+            "filename": "webidl.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（xml，通常用于开发验证）
+
+        "mode-xml-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/xml/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（xml 语法高亮与解析规则）
+
+        "mode-xml-xml": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/xml/xml.js",
+            "filename": "xml.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式测试脚本（xquery，通常用于开发验证）
+
+        "mode-xquery-test": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/xquery/test.js",
+            "filename": "test.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（xquery 语法高亮与解析规则）
+
+        "mode-xquery-xquery": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/xquery/xquery.js",
+            "filename": "xquery.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（yacas 语法高亮与解析规则）
+
+        "mode-yacas-yacas": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/yacas/yacas.js",
+            "filename": "yacas.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言相关资源（yaml-frontmatter-yaml/frontmatter）
+
+        "mode-yaml-frontmatter-yaml-frontmatter": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/yaml-frontmatter/yaml-frontmatter.js",
+            "filename": "yaml-frontmatter.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（yaml 语法高亮与解析规则）
+
+        "mode-yaml-yaml": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/yaml/yaml.js",
+            "filename": "yaml.js",
+            "type": "js",
+        },
+        # CodeMirror：CodeMirror 语言模式脚本（z80 语法高亮与解析规则）
+
+        "mode-z80-z80": {
+            "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/z80/z80.js",
+            "filename": "z80.js",
+            "type": "js",
+        },
 
 # ==============================
 # KaTeX 数学公式渲染
@@ -23441,7 +24832,7 @@ def start_web_server(args_param):
 },
 # 流程图解析与渲染
 "flowchart-js": {
-    "url": "https://cdn.jsdelivr.net/npm/flowchart.js/release/flowchart.js",
+    "url": "https://cdn.jsdelivr.net/npm/flowchart.js/index.js",
     "filename": "flowchart.js",
     "type": "js",
 },
@@ -23454,19 +24845,17 @@ def start_web_server(args_param):
 "jquery-flowchart-css": {
     "url": "https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.css",
     "filename": "jquery.flowchart.css",
-    "type": "js",
+    "type": "css",
 },
 
 
 # 时序图/序列图渲染
 "sequence-diagram-js": {
-    # "url": "https://cdn.jsdelivr.net/npm/js-sequence-diagrams/dist/sequence-diagram.js",  # URL错误
     "url": "https://cdn.jsdelivr.net/npm/@rokt33r/js-sequence-diagrams/dist/sequence-diagram-min.js",
     "filename": "sequence-diagram.js",
     "type": "js",
 },
 "sequence-diagram-css": {
-    # "url": "https://cdn.jsdelivr.net/npm/js-sequence-diagrams/dist/sequence-diagram.js",  # URL错误
     "url": "https://cdn.jsdelivr.net/npm/@rokt33r/js-sequence-diagrams/dist/sequence-diagram-min.css",
     "filename": "sequence-diagram.css",
     "type": "css",
