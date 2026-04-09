@@ -23454,7 +23454,7 @@ def start_web_server(args_param):
 "jquery-flowchart-css": {
     "url": "https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.css",
     "filename": "jquery.flowchart.css",
-    "type": "js",
+    "type": "css",
 },
 
 
