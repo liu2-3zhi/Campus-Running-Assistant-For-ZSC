@@ -43131,7 +43131,7 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
   // auth-username-container 内动态创建的 auth-username（手机登录）
-  const authUsernameContainer = document.getElementById("auth-username-container");
+  // const authUsernameContainer = document.getElementById("auth-username-container");
   if (authUsernameContainer) {
     let _authDebounce = null;
     authUsernameContainer.addEventListener("input", function (e) {
