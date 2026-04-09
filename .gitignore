@@ -30,3 +30,5 @@ auto_attendance_config.json
 *.back
 /.claude
 /random_background_image
+/.worktrees
+/docs
