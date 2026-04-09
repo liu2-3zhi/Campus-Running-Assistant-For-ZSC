@@ -111,6 +111,157 @@ if sys and sys.platform.startswith("win"):
         sys.stdout = codecs.getwriter("utf-8")(sys.stdout.buffer, "strict")
         sys.stderr = codecs.getwriter("utf-8")(sys.stderr.buffer, "strict")
 
+RE_REQUIRE = re.compile(r"(?<![\w$])require\(\s*['\"]([^'\"]+)['\"]\s*\)") if 're' in dir() else None
+
+
+def _extract_commonjs_requires(source_text: str) -> list[str]:
+    if not isinstance(source_text, str) or RE_REQUIRE is None:
+        return []
+    return [m.group(1).strip() for m in RE_REQUIRE.finditer(source_text)]
+
+
+def _sanitize_dep_name(name: str) -> str:
+    pattern = re if 're' in dir() else __import__('re')
+    cleaned = pattern.sub(r"[^a-zA-Z0-9._-]+", "_", (name or "").strip())
+    return cleaned.strip("_") or "dep"
+
+
+def _ensure_js_like_path(path_value: str) -> str:
+    p = (path_value or "").strip()
+    if not p:
+        return "index.js"
+    if p.endswith(".js") or p.endswith(".json"):
+        return p
+    if p.endswith("/"):
+        return p + "index.js"
+    return p + ".js"
+
+
+def _build_dep_storage_name(entry_pkg: str, require_spec: str, default_ext: str = ".js") -> str:
+    spec = (require_spec or "").strip()
+    if spec.startswith("./") or spec.startswith("../"):
+        spec = (re if 're' in dir() else __import__('re')).sub(r"^(\.\/|\.\.\/)+", "", spec)
+        base = f"{entry_pkg}_{spec}"
+    else:
+        base = spec.replace("/", "_")
+    base = _sanitize_dep_name(base)
+    lowered = base.lower()
+    if lowered.endswith(".js") or lowered.endswith(".json"):
+        return base
+    return f"{base}{default_ext}"
+
+
+def _default_cdn_meta(entry_url: str = "", entry_file: str = "", deps_dir: str = "") -> dict:
+    return {
+        "entry_url": entry_url,
+        "entry_file": entry_file,
+        "deps_dir": deps_dir,
+        "url_to_local": {},
+        "local_to_url": {},
+        "status": "partial",
+        "failed": [],
+    }
+
+
+def _load_cdn_meta(meta_path: str) -> dict:
+    _os = os if 'os' in dir() else __import__('os')
+    _json = json if 'json' in dir() else __import__('json')
+    if not _os.path.exists(meta_path):
+        return _default_cdn_meta()
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+        if not isinstance(data, dict):
+            return _default_cdn_meta()
+        data.setdefault("url_to_local", {})
+        data.setdefault("local_to_url", {})
+        data.setdefault("failed", [])
+        data.setdefault("status", "partial")
+        return data
+    except Exception:
+        return _default_cdn_meta()
+
+
+def _save_cdn_meta(meta_path: str, meta: dict) -> bool:
+    _os = os if 'os' in dir() else __import__('os')
+    _json = json if 'json' in dir() else __import__('json')
+    tmp = f"{meta_path}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            _json.dump(meta, f, ensure_ascii=False, indent=2)
+        _os.replace(tmp, meta_path)
+        return True
+    finally:
+        if _os.path.exists(tmp):
+            try:
+                _os.remove(tmp)
+            except OSError:
+                pass
+
+
+def _meta_set_mapping(meta: dict, remote_url: str, local_rel_path: str):
+    if not remote_url or not local_rel_path:
+        return
+    normalized = local_rel_path.replace("\\", "/")
+    meta.setdefault("url_to_local", {})[remote_url] = normalized
+    meta.setdefault("local_to_url", {})[normalized] = remote_url
+
+
+def _resolve_relative_require_url(current_file_url: str, require_spec: str) -> str:
+    _urllib = urllib if 'urllib' in dir() else __import__('urllib')
+    raw = _ensure_js_like_path(require_spec)
+    return _urllib.parse.urljoin(current_file_url, raw)
+
+
+def _split_package_require(require_spec: str) -> tuple[str, str]:
+    spec = (require_spec or "").strip()
+    if spec.startswith("@"):
+        parts = spec.split("/")
+        if len(parts) <= 2:
+            return spec, ""
+        return "/".join(parts[:2]), "/".join(parts[2:])
+    parts = spec.split("/", 1)
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], parts[1]
+
+
+def _rewrite_requires_to_local(source_text: str, require_to_local: dict[str, str]) -> str:
+    if not isinstance(source_text, str) or not require_to_local or RE_REQUIRE is None:
+        return source_text
+
+    def _replace(match):
+        spec = match.group(1).strip()
+        local_path = require_to_local.get(spec)
+        if not local_path:
+            return match.group(0)
+        return f"require('{local_path}')"
+
+    return RE_REQUIRE.sub(_replace, source_text)
+
+
+def _load_or_refetch_cached_file(local_rel_path: str, meta: dict, binary: bool = False):
+    local_rel_path = (local_rel_path or "").replace("\\", "/")
+    cached_loader = globals().get("load_cached_file")
+    fetcher = globals().get("fetch_cdn_file")
+    saver = globals().get("save_cached_file")
+
+    cached = cached_loader(local_rel_path, binary=binary) if callable(cached_loader) else None
+    if cached is not None:
+        return cached
+
+    remote_url = (meta or {}).get("local_to_url", {}).get(local_rel_path)
+    if not remote_url or not callable(fetcher):
+        return None
+
+    content = fetcher(remote_url, binary=binary)
+    if content is None:
+        return None
+
+    if callable(saver):
+        saver(local_rel_path, content, binary=binary)
+    return content
+
 
 def import_standard_libraries():
     """
@@ -25472,6 +25623,245 @@ def start_web_server(args_param):
         except Exception as e:
             logging.warning(f"[CDN缓存] 删除缓存文件失败: {filename}, 错误: {e}")
 
+    RE_REQUIRE = re.compile(r"(?<![\w$])require\(\s*['\"]([^'\"]+)['\"]\s*\)")
+
+    def _extract_commonjs_requires(source_text: str) -> list[str]:
+        if not isinstance(source_text, str):
+            return []
+        return [m.group(1).strip() for m in RE_REQUIRE.finditer(source_text)]
+
+    def _sanitize_dep_name(name: str) -> str:
+        cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "_", (name or "").strip())
+        return cleaned.strip("_") or "dep"
+
+    def _ensure_js_like_path(path_value: str) -> str:
+        p = (path_value or "").strip()
+        if not p:
+            return "index.js"
+        if p.endswith(".js") or p.endswith(".json"):
+            return p
+        if p.endswith("/"):
+            return p + "index.js"
+        return p + ".js"
+
+    def _build_dep_storage_name(entry_pkg: str, require_spec: str, default_ext: str = ".js") -> str:
+        spec = (require_spec or "").strip()
+        if spec.startswith("./") or spec.startswith("../"):
+            spec = re.sub(r"^(\.\/|\.\.\/)+", "", spec)
+            base = f"{entry_pkg}_{spec}"
+        else:
+            base = spec.replace("/", "_")
+        base = _sanitize_dep_name(base)
+        root, ext = os.path.splitext(base)
+        if ext:
+            return base
+        return f"{root or base}{default_ext}"
+
+    def _default_cdn_meta(entry_url: str = "", entry_file: str = "", deps_dir: str = "") -> dict:
+        return {
+            "entry_url": entry_url,
+            "entry_file": entry_file,
+            "deps_dir": deps_dir,
+            "url_to_local": {},
+            "local_to_url": {},
+            "status": "partial",
+            "failed": [],
+        }
+
+    def _load_cdn_meta(meta_path: str) -> dict:
+        if not os.path.exists(meta_path):
+            return _default_cdn_meta()
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                return _default_cdn_meta()
+            data.setdefault("url_to_local", {})
+            data.setdefault("local_to_url", {})
+            data.setdefault("failed", [])
+            data.setdefault("status", "partial")
+            return data
+        except Exception:
+            return _default_cdn_meta()
+
+    def _save_cdn_meta(meta_path: str, meta: dict) -> bool:
+        tmp = f"{meta_path}.tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(meta, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, meta_path)
+            return True
+        finally:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+
+    def _meta_set_mapping(meta: dict, remote_url: str, local_rel_path: str):
+        if not remote_url or not local_rel_path:
+            return
+        normalized = local_rel_path.replace("\\", "/")
+        meta.setdefault("url_to_local", {})[remote_url] = normalized
+        meta.setdefault("local_to_url", {})[normalized] = remote_url
+
+    def _resolve_relative_require_url(current_file_url: str, require_spec: str) -> str:
+        raw = _ensure_js_like_path(require_spec)
+        return urllib.parse.urljoin(current_file_url, raw)
+
+    def _split_package_require(require_spec: str) -> tuple[str, str]:
+        spec = (require_spec or "").strip()
+        if spec.startswith("@"):
+            parts = spec.split("/")
+            if len(parts) <= 2:
+                return spec, ""
+            return "/".join(parts[:2]), "/".join(parts[2:])
+        parts = spec.split("/", 1)
+        if len(parts) == 1:
+            return parts[0], ""
+        return parts[0], parts[1]
+
+    def _rewrite_requires_to_local(source_text: str, require_to_local: dict[str, str]) -> str:
+        if not isinstance(source_text, str) or not require_to_local:
+            return source_text
+
+        def _replace(match):
+            spec = match.group(1).strip()
+            local_path = require_to_local.get(spec)
+            if not local_path:
+                return match.group(0)
+            return f"require('{local_path}')"
+
+        return RE_REQUIRE.sub(_replace, source_text)
+
+    def _resolve_package_require_url(require_spec: str) -> str | None:
+        pkg, subpath = _split_package_require(require_spec)
+        if not pkg:
+            return None
+
+        pkg_root = f"https://cdn.jsdelivr.net/npm/{pkg}"
+        pkg_json_url = f"{pkg_root}/package.json"
+        pkg_json_text = fetch_cdn_file(pkg_json_url)
+        if not pkg_json_text:
+            return None
+
+        try:
+            pkg_json = json.loads(pkg_json_text)
+        except Exception:
+            return None
+
+        if subpath:
+            candidate = _ensure_js_like_path(subpath)
+            return f"{pkg_root}/{candidate}"
+
+        entry_path = ""
+        exports_value = pkg_json.get("exports")
+        if isinstance(exports_value, str):
+            entry_path = exports_value
+        elif isinstance(exports_value, dict):
+            dot_value = exports_value.get(".")
+            if isinstance(dot_value, str):
+                entry_path = dot_value
+            elif isinstance(dot_value, dict):
+                entry_path = dot_value.get("require") or dot_value.get("default") or ""
+
+        if not entry_path:
+            entry_path = pkg_json.get("module") or pkg_json.get("main") or "index.js"
+
+        entry_path = _ensure_js_like_path(str(entry_path).lstrip("./"))
+        return f"{pkg_root}/{entry_path}"
+
+    def _meta_path_for_entry(entry_filename: str) -> str:
+        entry_pkg = (entry_filename or "entry").rsplit(".", 1)[0]
+        return os.path.join(JS_CACHE_DIR, f"{entry_pkg}.meta.json")
+
+    def _load_meta_for_entry(entry_filename: str) -> dict:
+        return _load_cdn_meta(_meta_path_for_entry(entry_filename))
+
+    def _build_non_colliding_dep_rel_path(meta: dict, entry_pkg: str, require_spec: str, dep_url: str) -> str:
+        base_name = _build_dep_storage_name(entry_pkg, require_spec, ".js")
+        dep_rel_path = f"{entry_pkg}/{base_name}".replace("\\", "/")
+        current = meta.get("local_to_url", {}).get(dep_rel_path)
+        if current and current != dep_url:
+            root, ext = os.path.splitext(base_name)
+            digest = hashlib.sha1(dep_url.encode("utf-8")).hexdigest()[:8]
+            dep_rel_path = f"{entry_pkg}/{root}_{digest}{ext or '.js'}".replace("\\", "/")
+        return dep_rel_path
+
+    def _cache_js_entry_with_dependencies(entry_key: str, entry_url: str, entry_filename: str) -> bool:
+        entry_pkg = (entry_filename or entry_key or "entry").rsplit('.', 1)[0]
+        meta_path = _meta_path_for_entry(entry_filename)
+        meta = _load_cdn_meta(meta_path)
+        meta["entry_url"] = entry_url
+        meta["entry_file"] = entry_filename
+        meta["deps_dir"] = entry_pkg
+        meta["failed"] = []
+
+        visited = set()
+        queued = [(entry_url, entry_filename, True)]
+
+        while queued:
+            remote_url, local_name, is_entry = queued.pop(0)
+            if remote_url in visited:
+                continue
+            visited.add(remote_url)
+
+            text = fetch_cdn_file(remote_url)
+            if text is None:
+                meta.setdefault("failed", []).append({"url": remote_url, "error": "fetch_failed"})
+                continue
+
+            requires = _extract_commonjs_requires(text)
+            rewrite_map = {}
+
+            for spec in requires:
+                if spec.startswith("./") or spec.startswith("../"):
+                    dep_url = _resolve_relative_require_url(remote_url, spec)
+                else:
+                    dep_url = _resolve_package_require_url(spec)
+
+                if not dep_url:
+                    meta.setdefault("failed", []).append(
+                        {"url": remote_url, "require": spec, "error": "resolve_failed"}
+                    )
+                    continue
+
+                dep_rel_path = _build_non_colliding_dep_rel_path(meta, entry_pkg, spec, dep_url)
+                rewrite_map[spec] = f"./{dep_rel_path}"
+                _meta_set_mapping(meta, dep_url, dep_rel_path)
+                queued.append((dep_url, dep_rel_path, False))
+
+            rewritten = _rewrite_requires_to_local(text, rewrite_map)
+            target_name = entry_filename if is_entry else local_name
+            if not save_cached_file(target_name, rewritten):
+                meta.setdefault("failed", []).append(
+                    {"url": remote_url, "file": target_name, "error": "save_failed"}
+                )
+                continue
+
+            _meta_set_mapping(meta, remote_url, target_name)
+
+        meta["status"] = "complete" if not meta.get("failed") else "partial"
+        _save_cdn_meta(meta_path, meta)
+        return meta["status"] == "complete"
+
+    def _load_or_refetch_cached_file(local_rel_path: str, meta: dict, binary: bool = False):
+        local_rel_path = (local_rel_path or "").replace("\\", "/")
+        cached = load_cached_file(local_rel_path, binary=binary)
+        if cached is not None:
+            return cached
+
+        remote_url = (meta or {}).get("local_to_url", {}).get(local_rel_path)
+        if not remote_url:
+            return None
+
+        content = fetch_cdn_file(remote_url, binary=binary)
+        if content is None:
+            return None
+
+        save_cached_file(local_rel_path, content, binary=binary)
+        return content
+
     def process_asset_with_source_map(content, asset_url, key, file_type="js"):
         """
         处理资源中的 sourceMappingURL（支持JS/CSS）。
@@ -25540,16 +25930,29 @@ def start_web_server(args_param):
         file_type = config.get("type", "js")
 
         logging.info(f"[CDN缓存] 正在获取: {key} ({url})")
-        content = fetch_cdn_file(url)
 
+        if file_type == "js":
+            ok = _cache_js_entry_with_dependencies(key, url, filename)
+            cached_entry = load_cached_file(filename)
+            if cached_entry is not None:
+                cached_entry = process_asset_with_source_map(cached_entry, url, key, file_type="js")
+                if save_cached_file(filename, cached_entry):
+                    with js_cache_lock:
+                        js_cache_storage[key] = cached_entry
+                        js_cache_last_update[key] = time.time()
+                    logging.info(f"[CDN缓存] 成功更新(JS递归): {key}")
+                    return ok
+
+            logging.error(f"[CDN缓存] JS递归更新失败且入口无可用缓存: {key}")
+            return False
+
+        content = fetch_cdn_file(url)
         if content:
             # 先处理内容
             if file_type == "css":
                 logging.info(f"[CDN缓存] 正在解析CSS中的字体并缓存: {key}")
                 content = cache_google_fonts_with_ttf(content, key, url, filename)
                 content = process_asset_with_source_map(content, url, key, file_type="css")
-            elif file_type == "js":
-                content = process_asset_with_source_map(content, url, key, file_type="js")
 
             # 先落盘，成功后再更新内存缓存，避免更新中断导致文件缺失
             if save_cached_file(filename, content):
@@ -35059,32 +35462,43 @@ def start_web_server(args_param):
         if file_key.endswith(".map"):
             return make_response("", 204)
         try:
+            file_config = CDN_FILES.get(file_key, {})
+            filename = file_config.get("filename")
+            file_type = file_config.get("type", "js")
+
             with js_cache_lock:
-                if file_key in js_cache_storage:
-                    content = js_cache_storage[file_key]
-                    file_config = CDN_FILES.get(file_key, {})
-                    file_type = file_config.get("type", "js")
+                content = js_cache_storage.get(file_key)
 
-                    # 设置正确的Content-Type
-                    if file_type == "css":
-                        mimetype = "text/css"
-                    else:
-                        mimetype = "application/javascript"
-
-                    response = make_response(content)
-                    response.headers["Content-Type"] = mimetype
-                    response.headers["Cache-Control"] = (
-                        "public, max-age=3600"  # 缓存1小时
-                    )
-                    return response
+            if content is None and filename:
+                if file_type == "js":
+                    meta = _load_meta_for_entry(filename)
+                    content = _load_or_refetch_cached_file(filename, meta, binary=False)
                 else:
-                    logging.warning(f"[CDN缓存API] 请求的文件不存在: {file_key}")
-                    return (
-                        jsonify(
-                            {"success": False, "message": f"文件未找到: {file_key}"}
-                        ),
-                        404,
-                    )
+                    content = load_cached_file(filename)
+
+                if content is None and file_key in CDN_FILES:
+                    update_single_cdn_file(file_key, CDN_FILES[file_key])
+                    with js_cache_lock:
+                        content = js_cache_storage.get(file_key)
+
+                if content is not None:
+                    with js_cache_lock:
+                        js_cache_storage[file_key] = content
+
+            if content is not None:
+                mimetype = "text/css" if file_type == "css" else "application/javascript"
+                response = make_response(content)
+                response.headers["Content-Type"] = mimetype
+                response.headers["Cache-Control"] = "public, max-age=3600"
+                return response
+
+            logging.warning(f"[CDN缓存API] 请求的文件不存在: {file_key}")
+            return (
+                jsonify(
+                    {"success": False, "message": f"文件未找到: {file_key}"}
+                ),
+                404,
+            )
         except Exception as e:
             logging.error(f"[CDN缓存API] 返回文件时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
