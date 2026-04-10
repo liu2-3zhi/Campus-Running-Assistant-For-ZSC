@@ -16783,9 +16783,24 @@ function applyThemeGlobalEnvironmentVariables(themeConfig) {
 let currentThemeBackgroundTarget = null;
 let currentThemeBackgroundImageUrl = "";
 let themeBackgroundFeedbackInFlight = false;
+let activeThemeBackgroundFeedback = null;
 let pendingThemeBackgroundFeedback = null;
 let themeBackgroundConsumeDebounceTimer = null;
 const THEME_BACKGROUND_CONSUME_DEBOUNCE_MS = 300;
+let initialConsumeCompleted = false;
+const sessionBindEnsured = { pc: false, mobile: false };
+const anonConsumedBackgroundByTarget = { pc: "", mobile: "" };
+const preLoginBackgroundSnapshot = { pc: "", mobile: "" };
+const initialLoadBackgroundCandidateByTarget = { pc: "", mobile: "" };
+const themeBackgroundRequestCache = new Set();
+let themeBackgroundInitialLoadSettled =
+  typeof document !== "undefined" && document.readyState === "complete";
+if (typeof window !== "undefined") {
+  window.addEventListener("load", () => {
+    themeBackgroundInitialLoadSettled = true;
+    scheduleThemeBackgroundConsumed();
+  });
+}
 
 function getCurrentThemeBackgroundTarget() {
   return isMobileMode ? "mobile" : "pc";
@@ -16804,18 +16819,91 @@ function getThemeBackgroundImageUrlByTarget(target) {
     : extractThemeBackgroundImageUrl(env.auth_login_container_background || "");
 }
 
+function getThemeBackgroundRequestCacheKey(target, imageUrl, isLoggedIn) {
+  const normalizedTarget = target === "mobile" ? "mobile" : "pc";
+  const userScope = isLoggedIn && sessionUUID ? `session:${sessionUUID}` : "anon";
+  return `${userScope}|${normalizedTarget}|${imageUrl || ""}`;
+}
+
+function getRenderedThemeBackgroundImageUrlByTarget(target) {
+  const normalizedTarget = target === "mobile" ? "mobile" : "pc";
+  const sourceElement =
+    normalizedTarget === "mobile"
+      ? document.getElementById("mobile-content")
+      : document.getElementById("auth-login-container");
+
+  if (!sourceElement) {
+    return "";
+  }
+
+  const inlineBackgroundImage = sourceElement.style?.backgroundImage || "";
+  const inlineBackground = sourceElement.style?.background || "";
+  const computedBackgroundImage = window.getComputedStyle(sourceElement).backgroundImage || "";
+
+  return (
+    extractThemeBackgroundImageUrl(inlineBackgroundImage) ||
+    extractThemeBackgroundImageUrl(inlineBackground) ||
+    extractThemeBackgroundImageUrl(computedBackgroundImage) ||
+    ""
+  );
+}
+
+function capturePreLoginBackgroundSnapshot(preferredTarget = null) {
+  const normalizedTarget = preferredTarget === "mobile" ? "mobile" : "pc";
+  const renderedImageUrl = getRenderedThemeBackgroundImageUrlByTarget(normalizedTarget);
+  const imageUrl = renderedImageUrl || getThemeBackgroundImageUrlByTarget(normalizedTarget);
+  if (imageUrl) {
+    preLoginBackgroundSnapshot[normalizedTarget] = imageUrl;
+  }
+}
+
 function scheduleThemeBackgroundConsumed() {
   const target = getCurrentThemeBackgroundTarget();
-  const imageUrl = getThemeBackgroundImageUrlByTarget(target);
+  const normalizedTarget = target === "mobile" ? "mobile" : "pc";
+  const imageUrl = getThemeBackgroundImageUrlByTarget(normalizedTarget);
   if (!imageUrl) {
     return;
   }
+
+  if (!initialLoadBackgroundCandidateByTarget[normalizedTarget]) {
+    initialLoadBackgroundCandidateByTarget[normalizedTarget] = imageUrl;
+  }
+
+  const isLoggedIn = !!sessionUUID;
+  const cacheKey = getThemeBackgroundRequestCacheKey(
+    normalizedTarget,
+    imageUrl,
+    isLoggedIn,
+  );
+  if (themeBackgroundRequestCache.has(cacheKey)) {
+    return;
+  }
+  if (!isLoggedIn) {
+    if (!themeBackgroundInitialLoadSettled || initialConsumeCompleted) {
+      return;
+    }
+    const initialCandidate = initialLoadBackgroundCandidateByTarget[normalizedTarget];
+    if (initialCandidate && imageUrl !== initialCandidate) {
+      return;
+    }
+  } else if (sessionBindEnsured[normalizedTarget]) {
+    return;
+  }
+
+  if (
+    activeThemeBackgroundFeedback &&
+    activeThemeBackgroundFeedback.target === normalizedTarget &&
+    activeThemeBackgroundFeedback.imageUrl === imageUrl
+  ) {
+    return;
+  }
+
   if (themeBackgroundConsumeDebounceTimer) {
     clearTimeout(themeBackgroundConsumeDebounceTimer);
   }
   themeBackgroundConsumeDebounceTimer = setTimeout(() => {
     themeBackgroundConsumeDebounceTimer = null;
-    notifyThemeBackgroundConsumed(target, imageUrl);
+    notifyThemeBackgroundConsumed(normalizedTarget, imageUrl);
   }, THEME_BACKGROUND_CONSUME_DEBOUNCE_MS);
 }
 
@@ -16830,28 +16918,74 @@ async function notifyThemeBackgroundConsumed(target, imageUrlOverride = null) {
     return;
   }
 
+  const isLoggedIn = !!sessionUUID;
+  const cacheKey = getThemeBackgroundRequestCacheKey(
+    normalizedTarget,
+    imageUrl,
+    isLoggedIn,
+  );
+  if (themeBackgroundRequestCache.has(cacheKey)) {
+    return;
+  }
+  if (!isLoggedIn && (!themeBackgroundInitialLoadSettled || initialConsumeCompleted)) {
+    return;
+  }
+  if (!isLoggedIn) {
+    const initialCandidate = initialLoadBackgroundCandidateByTarget[normalizedTarget];
+    if (initialCandidate && imageUrl !== initialCandidate) {
+      return;
+    }
+  }
+  if (isLoggedIn && sessionBindEnsured[normalizedTarget]) {
+    return;
+  }
+
   if (themeBackgroundFeedbackInFlight) {
+    if (!isLoggedIn) {
+      return;
+    }
+    if (
+      activeThemeBackgroundFeedback &&
+      activeThemeBackgroundFeedback.target === normalizedTarget &&
+      activeThemeBackgroundFeedback.imageUrl === imageUrl
+    ) {
+      return;
+    }
     pendingThemeBackgroundFeedback = { target: normalizedTarget, imageUrl };
     return;
   }
 
   if (
     currentThemeBackgroundTarget === normalizedTarget &&
-    currentThemeBackgroundImageUrl === imageUrl
+    currentThemeBackgroundImageUrl === imageUrl &&
+    ((!isLoggedIn && initialConsumeCompleted) ||
+      (isLoggedIn && sessionBindEnsured[normalizedTarget]))
   ) {
     return;
   }
 
   themeBackgroundFeedbackInFlight = true;
+  themeBackgroundRequestCache.add(cacheKey);
+  activeThemeBackgroundFeedback = { target: normalizedTarget, imageUrl };
 
   try {
     let result = null;
     if (sessionUUID) {
-      result = await callPythonAPI(
-        "mark_theme_background_consumed",
-        normalizedTarget,
-        imageUrl,
-      );
+      const payload = {
+        target: normalizedTarget,
+        image_url: imageUrl,
+        login_context: !sessionBindEnsured[normalizedTarget],
+      };
+      const snapshotCandidate = preLoginBackgroundSnapshot[normalizedTarget];
+      const candidateImage =
+        snapshotCandidate || anonConsumedBackgroundByTarget[normalizedTarget];
+      if (payload.login_context && snapshotCandidate) {
+        payload.image_url = snapshotCandidate;
+      }
+      if (payload.login_context && candidateImage) {
+        payload.candidate_image_url = candidateImage;
+      }
+      result = await callPythonAPI("mark_theme_background_consumed", payload);
     } else {
       const response = await fetch("/api/public/theme_background/consume", {
         method: "POST",
@@ -16869,15 +17003,25 @@ async function notifyThemeBackgroundConsumed(target, imageUrlOverride = null) {
     if (result && result.success) {
       currentThemeBackgroundTarget = normalizedTarget;
       currentThemeBackgroundImageUrl = imageUrl;
+      if (sessionUUID) {
+        sessionBindEnsured[normalizedTarget] = true;
+        preLoginBackgroundSnapshot[normalizedTarget] = "";
+      } else {
+        initialConsumeCompleted = true;
+        anonConsumedBackgroundByTarget[normalizedTarget] = imageUrl;
+        initialLoadBackgroundCandidateByTarget[normalizedTarget] = imageUrl;
+      }
       if (result.theme_config && typeof result.theme_config === "object") {
         currentThemeConfig = result.theme_config;
         applyThemeLoginContainerStyle(currentThemeConfig);
       }
     }
   } catch (e) {
+    themeBackgroundRequestCache.delete(cacheKey);
     logMessage_Warning("[主题] 上报已使用背景失败:", e);
   } finally {
     themeBackgroundFeedbackInFlight = false;
+    activeThemeBackgroundFeedback = null;
     if (pendingThemeBackgroundFeedback) {
       const nextFeedback = pendingThemeBackgroundFeedback;
       pendingThemeBackgroundFeedback = null;
@@ -16976,13 +17120,9 @@ function getThemeStyleConfig(styleId) {
     : {};
 }
 
-function setThemeStyle(styleName, save = true) {
-  const normalizedStyle = normalizeThemeStyle(styleName);
-  const nextThemeConfig = getThemeStyleConfig(normalizedStyle);
-  const cachedStyle = cacheThemeStyle(normalizedStyle);
+function syncThemeStyleSelectionState(styleId) {
+  const cachedStyle = cacheThemeStyle(styleId);
   pythonParams.theme_style = cachedStyle;
-
-  applyThemeGlobalEnvironmentVariables(nextThemeConfig);
 
   document.querySelectorAll('[data-theme-style]').forEach((btn) => {
     if (btn.dataset.themeStyle === cachedStyle) {
@@ -16991,6 +17131,18 @@ function setThemeStyle(styleName, save = true) {
       btn.classList.remove("border-2", "border-sky-500");
     }
   });
+
+  return cachedStyle;
+}
+
+function setThemeStyle(styleName, save = true, applyConfig = true) {
+  const normalizedStyle = normalizeThemeStyle(styleName);
+  const nextThemeConfig = getThemeStyleConfig(normalizedStyle);
+  const cachedStyle = syncThemeStyleSelectionState(normalizedStyle);
+
+  if (applyConfig) {
+    applyThemeGlobalEnvironmentVariables(nextThemeConfig);
+  }
 
   if (save) {
     callPythonAPI("update_param", "theme_style", cachedStyle);
@@ -17316,7 +17468,11 @@ async function syncThemeFromServer(themeFromResponse = null, themeStyleFromRespo
   const finalThemeStyle = serverThemeStyle || getCachedThemeStyle();
 
   applyTheme(finalTheme);
-  setThemeStyle(finalThemeStyle, false);
+  if (responseThemeStyle) {
+    setThemeStyle(finalThemeStyle, false, false);
+  } else {
+    setThemeStyle(finalThemeStyle, false);
+  }
   logMessage_Info(`[主题] 已同步服务器主题: ${finalTheme}`);
   logMessage_Info(`[主题] 已同步服务器主题风格: ${finalThemeStyle}`);
 
@@ -17450,6 +17606,10 @@ function switchAuthTab(tab) {
   const registerTab = $("auth-tab-register");
   const loginForm = $("auth-login-form");
   const registerForm = $("auth-register-form");
+
+  if (!loginTab || !registerTab || !loginForm || !registerForm) {
+    return;
+  }
 
   if (tab === "login") {
     loginTab.classList.add("text-sky-600", "border-sky-600");
@@ -18156,6 +18316,7 @@ async function handleAuthLogin(isMobile_use = false) {
     }
   }
   const request_body = {};
+  capturePreLoginBackgroundSnapshot(isMobile_use ? "mobile" : "pc");
 
   if (login_mode === "username") {
     request_body.auth_username = login_id;
@@ -18486,62 +18647,68 @@ async function handleAuthLogin(isMobile_use = false) {
  */
 function handlePhoneNotRegisteredRedirect(phoneNumber, smsCode, isMobile) {
   console.log("[手机号未注册跳转] 开始处理:", { phoneNumber, smsCode, isMobile });
-  
-  // 切换到注册选项卡
-  const loginTab = document.querySelector('[data-auth-tab="login"]');
-  const registerTab = document.querySelector('[data-auth-tab="register"]');
-  const loginPanel = document.getElementById("auth-login-panel");
-  const registerPanel = document.getElementById("auth-register-panel");
-  
-  // 移动端选项卡
-  const mobileLoginTab = document.querySelector('[data-mobile-auth-tab="login"]');
-  const mobileRegisterTab = document.querySelector('[data-mobile-auth-tab="register"]');
-  const mobileLoginPanel = document.getElementById("mobile-auth-login-panel");
-  const mobileRegisterPanel = document.getElementById("mobile-auth-register-panel");
-  
+
   if (isMobile) {
-    // 移动端处理
-    if (mobileLoginTab && mobileRegisterTab && mobileLoginPanel && mobileRegisterPanel) {
-      // 切换选项卡激活状态
-      mobileLoginTab.classList.remove("border-sky-500", "text-sky-600", "font-semibold");
-      mobileLoginTab.classList.add("border-transparent", "text-slate-500");
-      mobileRegisterTab.classList.add("border-sky-500", "text-sky-600", "font-semibold");
-      mobileRegisterTab.classList.remove("border-transparent", "text-slate-500");
-      
-      // 切换面板显示
-      mobileLoginPanel.classList.add("hidden");
-      mobileRegisterPanel.classList.remove("hidden");
+    const mobileRegisterTab = document.getElementById("mobile-auth-tab-register");
+    if (mobileRegisterTab) {
+      mobileRegisterTab.click();
+    } else {
+      const mobileLoginTab = document.getElementById("mobile-auth-tab-login");
+      const mobileLoginForm = document.getElementById("mobile-login-form");
+      const mobileRegisterForm = document.getElementById("mobile-register-form");
+      const mobile2FAForm = document.getElementById("mobile-auth-2fa-form");
+
+      if (mobileLoginForm) mobileLoginForm.classList.add("hidden");
+      if (mobile2FAForm) mobile2FAForm.classList.add("hidden");
+      if (mobileRegisterForm) mobileRegisterForm.classList.remove("hidden");
+
+      if (mobileLoginTab) {
+        mobileLoginTab.className =
+          "flex-1 py-3 font-semibold text-slate-400 border-b-2 border-transparent transition";
+      }
+      if (mobileRegisterTab) {
+        mobileRegisterTab.className =
+          "flex-1 py-3 font-semibold text-sky-600 border-b-2 border-sky-600 transition";
+      }
     }
   } else {
-    // PC端处理
-    if (loginTab && registerTab && loginPanel && registerPanel) {
-      // 切换选项卡激活状态
-      loginTab.classList.remove("border-sky-500", "text-sky-600", "font-semibold");
-      loginTab.classList.add("border-transparent", "text-slate-500");
-      registerTab.classList.add("border-sky-500", "text-sky-600", "font-semibold");
-      registerTab.classList.remove("border-transparent", "text-slate-500");
-      
-      // 切换面板显示
-      loginPanel.classList.add("hidden");
-      registerPanel.classList.remove("hidden");
+    switchAuthTab("register");
+    const loginTab = document.getElementById("auth-tab-login");
+    const registerTab = document.getElementById("auth-tab-register");
+    const loginForm = document.getElementById("auth-login-form");
+    const registerForm = document.getElementById("auth-register-form");
+    if (loginTab && registerTab && loginForm && registerForm) {
+      loginTab.classList.remove("text-sky-600", "border-sky-600");
+      loginTab.classList.add("text-slate-400", "border-transparent");
+      registerTab.classList.add("text-sky-600", "border-sky-600");
+      registerTab.classList.remove("text-slate-400", "border-transparent");
+      loginForm.classList.add("hidden");
+      registerForm.classList.remove("hidden");
     }
   }
-  
+
   // 填充手机号到注册表单
-  const regPhoneInput = document.getElementById(isMobile ? "mobile-reg-phone" : "auth-reg-phone");
+  const regPhoneInput = document.getElementById(
+    isMobile ? "mobile-reg-phone" : "auth-reg-phone",
+  );
   if (regPhoneInput) {
     regPhoneInput.value = phoneNumber;
     console.log("[手机号未注册跳转] 已填充手机号:", phoneNumber);
   }
-  
+
   // 填充验证码到注册表单
-  const regSmsCodeInput = document.getElementById(isMobile ? "mobile-reg-sms-code" : "auth-reg-sms-code");
+  const regSmsCodeInput = document.getElementById(
+    isMobile ? "mobile-reg-sms-code" : "auth-reg-sms-code",
+  );
   if (regSmsCodeInput && smsCode) {
     regSmsCodeInput.value = smsCode;
     console.log("[手机号未注册跳转] 已填充验证码:", smsCode);
-    
-    // 调用后端API延长验证码有效期
+
+    // 调用后端API延长验证码有效期（拒绝/异常也不阻断注册流程）
     (async () => {
+      let extendStatusText = "延期状态未知，请尽快完成注册。";
+      let effectiveExpireAt = 0;
+
       try {
         const response = await fetch("/api/sms/extend_code", {
           method: "POST",
@@ -18552,45 +18719,81 @@ function handlePhoneNotRegisteredRedirect(phoneNumber, smsCode, isMobile) {
             phone: phoneNumber,
           }),
         });
-        
+
         const data = await response.json();
+        const expireAtFromResponse = Number(data.expires_at || 0);
+        const remainFromResponse = Number(data.remaining_seconds || 0);
+
         if (data.success) {
-          console.log("[手机号未注册跳转] 验证码有效期已延长:", data.extend_minutes, "分钟");
+          extendStatusText = "验证码已延期一次。";
+        } else if (data.error_code === "EXTEND_LIMIT_REACHED") {
+          extendStatusText = "该验证码已达延期上限，本次未再次延期，请尽快完成注册。";
         } else {
-          console.warn("[手机号未注册跳转] 验证码延长失败:", data.message);
+          extendStatusText = data.message || "延期状态获取失败，请尽快完成注册。";
+        }
+
+        if (expireAtFromResponse > 0) {
+          effectiveExpireAt = expireAtFromResponse;
+        } else if (remainFromResponse > 0) {
+          effectiveExpireAt = Math.floor(Date.now() / 1000) + remainFromResponse;
         }
       } catch (error) {
         console.error("[手机号未注册跳转] 延长验证码请求失败:", error);
+        extendStatusText = "延期状态获取失败，请尽快完成注册。";
       }
+
+      let countdownTimer = null;
+      fireVerificationCodesModalSwal({
+        icon: "success",
+        title: "信息已自动填充",
+        html: `
+          <div class="text-left">
+            <p class="mb-2 text-green-600">✅ 手机号和验证码已自动填充</p>
+            <p id="reg-sms-expire-countdown" class="text-sm text-slate-600">验证码剩余有效时间：计算中...</p>
+            <p class="text-sm text-slate-600 mt-2">${escapeHtml(extendStatusText)}</p>
+            <p class="text-sm text-slate-600 mt-2">请设置用户名和密码完成注册。</p>
+          </div>
+        `,
+        confirmButtonText: "我知道了",
+        confirmButtonColor: "#22c55e",
+        allowOutsideClick: false,
+        allowEscapeKey: true,
+        didOpen: () => {
+          const el = document.getElementById("reg-sms-expire-countdown");
+          const update = () => {
+            if (!el) return;
+            const now = Math.floor(Date.now() / 1000);
+            const remain = effectiveExpireAt > 0 ? Math.max(0, effectiveExpireAt - now) : 0;
+            if (remain <= 0) {
+              el.textContent = "验证码可能已过期，请重新获取。";
+              return;
+            }
+            const m = Math.floor(remain / 60);
+            const s = remain % 60;
+            el.textContent = `验证码剩余有效时间：${m}分${s}秒`;
+          };
+          update();
+          countdownTimer = setInterval(update, 1000);
+        },
+        willClose: () => {
+          if (countdownTimer) {
+            clearInterval(countdownTimer);
+            countdownTimer = null;
+          }
+        },
+      }).then(() => {
+        const regUsernameInput = document.getElementById(
+          isMobile ? "mobile-reg-username" : "auth-reg-username",
+        );
+        if (regUsernameInput) {
+          regUsernameInput.focus();
+        }
+      });
     })();
-    
-    // 通知用户验证码已复用
-    Swal.fire({
-      icon: "success",
-      title: "信息已自动填充",
-      html: `
-        <div class="text-left">
-          <p class="mb-2 text-green-600">✅ 手机号和验证码已自动填充</p>
-          <p class="text-sm text-slate-600">验证码有效期已自动延长5分钟</p>
-          <p class="text-sm text-slate-600 mt-2">请设置用户名和密码完成注册。</p>
-        </div>
-      `,
-      timer: 3000,
-      timerProgressBar: true,
-      showConfirmButton: false,
-    });
   }
-  
+
   // 刷新注册页验证码
   refreshCaptcha(isMobile ? "mobile-register" : "register");
-  
-  // 聚焦到用户名输入框
-  setTimeout(() => {
-    const regUsernameInput = document.getElementById(isMobile ? "mobile-reg-username" : "auth-reg-username");
-    if (regUsernameInput) {
-      regUsernameInput.focus();
-    }
-  }, 500);
 }
 
 async function handle2FAVerify() {
@@ -30006,13 +30209,64 @@ function stopVerificationCodesCountdown() {
     verificationCodesCountdownInterval = null;
   }
 }
+
+let verificationCodesPollingTimer = null;
+const VERIFICATION_CODES_POLLING_MS = 30000;
+let verificationCodesSocketHealthy = false;
+
+function isVerificationCodesModalOpen() {
+  const modal = $("verification-codes-modal");
+  return !!modal && !modal.classList.contains("hidden");
+}
+
+function isMobileVerificationCodesModalOpen() {
+  const modal = document.getElementById("mobile-verification-codes-modal");
+  return !!modal && !modal.classList.contains("hidden");
+}
+
+function refreshOpenVerificationCodeModals() {
+  if (isVerificationCodesModalOpen()) {
+    loadVerificationCodes();
+  }
+  if (isMobileVerificationCodesModalOpen()) {
+    loadMobileVerificationCodes();
+  }
+}
+
+function startVerificationCodesPollingFallback() {
+  if (verificationCodesPollingTimer) return;
+  verificationCodesPollingTimer = setInterval(() => {
+    if (!verificationCodesSocketHealthy) {
+      refreshOpenVerificationCodeModals();
+    }
+  }, VERIFICATION_CODES_POLLING_MS);
+}
+
+function stopVerificationCodesPollingFallback() {
+  if (!verificationCodesPollingTimer) return;
+  clearInterval(verificationCodesPollingTimer);
+  verificationCodesPollingTimer = null;
+}
+
+function syncVerificationCodesPollingByModalState() {
+  if (!isVerificationCodesModalOpen() && !isMobileVerificationCodesModalOpen()) {
+    stopVerificationCodesPollingFallback();
+    return;
+  }
+  if (!verificationCodesSocketHealthy) {
+    startVerificationCodesPollingFallback();
+  }
+}
+
 function openVerificationCodesModal() {
   $("verification-codes-modal").classList.remove("hidden");
   loadVerificationCodes();
+  syncVerificationCodesPollingByModalState();
 }
 function closeVerificationCodesModal() {
   $("verification-codes-modal").classList.add("hidden");
   stopVerificationCodesCountdown();
+  syncVerificationCodesPollingByModalState();
 }
 async function loadVerificationCodes() {
   try {
@@ -30056,7 +30310,7 @@ async function loadVerificationCodes() {
                     </p>
                   </div>
                 </div>
-                <button onclick="invalidateVerificationCode('${item.phone}')" 
+                <button onclick="invalidateVerificationCode('${item.phone}')"
                   class="btn btn-ghost border border-red-300 text-red-600 hover:bg-red-50 whitespace-nowrap">
                   ❌ 失效
                 </button>
@@ -30065,10 +30319,15 @@ async function loadVerificationCodes() {
           `;
         })
         .join("");
-      listContainer.querySelectorAll(".phone-location-badge[data-phone]").forEach(async (span) => {
-        const info = await fetchPhoneInfo(span.dataset.phone);
-        if (info) { const p = [info.province, info.city, info.sp].filter(Boolean); if (p.length) span.textContent = `(${p.join(" ")})`; }
-      });
+      listContainer
+        .querySelectorAll(".phone-location-badge[data-phone]")
+        .forEach(async (span) => {
+          const info = await fetchPhoneInfo(span.dataset.phone);
+          if (info) {
+            const p = [info.province, info.city, info.sp].filter(Boolean);
+            if (p.length) span.textContent = `(${p.join(" ")})`;
+          }
+        });
     } else {
       listContainer.innerHTML =
         '<p class="text-slate-400 text-center py-10">当前没有有效的验证码</p>';
@@ -30076,8 +30335,7 @@ async function loadVerificationCodes() {
 
     startVerificationCodesCountdown();
   } catch (e) {
-    // showModalAlert("加载验证码列表失败: " + e.message);
-    Swal.fire({
+    fireVerificationCodesModalSwal({
       title: "错误",
       text: "加载验证码列表失败: " + e.message,
       icon: "error",
@@ -30106,30 +30364,52 @@ async function invalidateVerificationCode(phone) {
     const result = await response.json();
 
     if (result.success) {
-      // showModalAlert("验证码已失效", "成功");
-      Swal.fire({
+      fireVerificationCodesModalSwal({
         title: "成功",
         text: "验证码已失效",
         icon: "success",
       });
       loadVerificationCodes();
     } else {
-      // showModalAlert(result.message || "操作失败");
-      Swal.fire({
+      fireVerificationCodesModalSwal({
         title: "错误",
         text: result.message || "操作失败",
         icon: "error",
       });
     }
   } catch (e) {
-    // showModalAlert("操作失败: " + e.message);
-    Swal.fire({
+    fireVerificationCodesModalSwal({
       title: "错误",
       text: "操作失败: " + e.message,
       icon: "error",
     });
   }
 }
+function fireVerificationCodesModalSwal(options = {}) {
+  const originalDidOpen = options.didOpen;
+  return Swal.fire({
+    target: document.body,
+    ...options,
+    didOpen: (popup) => {
+      const swalContainer =
+        popup?.closest(".swal2-container") ||
+        popup?.parentElement ||
+        Swal.getContainer();
+      if (swalContainer) {
+        swalContainer.style.zIndex = "2147483647";
+        swalContainer.style.position = "fixed";
+        swalContainer.style.inset = "0";
+      }
+      if (popup) {
+        popup.style.zIndex = "2147483647";
+      }
+      if (typeof originalDidOpen === "function") {
+        originalDidOpen(popup);
+      }
+    },
+  });
+}
+
 async function addManualVerificationCode() {
   const phone = $("manual-code-phone").value.trim();
   let code = $("manual-code-value").value.trim();
@@ -30137,8 +30417,7 @@ async function addManualVerificationCode() {
     code = Math.floor(100000 + Math.random() * 900000).toString();
     $("manual-code-value").value = code;
   } else if (!/^\d{6}$/.test(code)) {
-    // showModalAlert("验证码必须是6位数字");
-    Swal.fire({
+    fireVerificationCodesModalSwal({
       title: "错误",
       text: "验证码必须是6位数字",
       icon: "error",
@@ -30146,8 +30425,7 @@ async function addManualVerificationCode() {
     return;
   }
   if (!code || !/^\d{6}$/.test(code)) {
-    // showModalAlert("请输入6位数字验证码");
-    Swal.fire({
+    fireVerificationCodesModalSwal({
       title: "错误",
       text: "请输入6位数字验证码",
       icon: "error",
@@ -30170,8 +30448,7 @@ async function addManualVerificationCode() {
     const result = await response.json();
 
     if (result.success) {
-      // showModalAlert("验证码已添加", "成功");
-      Swal.fire({
+      fireVerificationCodesModalSwal({
         title: "成功",
         text: "验证码已添加",
         icon: "success",
@@ -30180,16 +30457,14 @@ async function addManualVerificationCode() {
       $("manual-code-value").value = "";
       loadVerificationCodes();
     } else {
-      // showModalAlert(result.message || "添加失败");
-      Swal.fire({
+      fireVerificationCodesModalSwal({
         title: "错误",
         text: result.message || "添加失败",
         icon: "error",
       });
     }
   } catch (e) {
-    // showModalAlert("操作失败: " + e.message);
-    Swal.fire({
+    fireVerificationCodesModalSwal({
       title: "错误",
       text: "操作失败: " + e.message,
       icon: "error",
@@ -30354,6 +30629,7 @@ function openMobileVerificationCodesModal() {
   modal.classList.remove("hidden");
   // 加载验证码列表数据
   loadMobileVerificationCodes();
+  syncVerificationCodesPollingByModalState();
   // 记录日志
   console.log("[移动端验证码管理] 模态框已打开");
 }
@@ -30372,6 +30648,7 @@ function closeMobileVerificationCodesModal() {
   }
   // 停止倒计时定时器以释放资源
   stopMobileVerificationCodesCountdown();
+  syncVerificationCodesPollingByModalState();
   // 记录日志
   console.log("[移动端验证码管理] 模态框已关闭");
 }
@@ -30463,7 +30740,7 @@ async function loadMobileVerificationCodes() {
     // 错误处理：显示错误提示
     console.error("[移动端验证码管理] 加载失败:", e);
     // showModalAlert("加载验证码列表失败: " + e.message);
-    Swal.fire({
+    fireVerificationCodesModalSwal({
       title: "错误",
       text: "加载验证码列表失败: " + e.message,
       icon: "error",
@@ -30504,7 +30781,7 @@ async function invalidateMobileVerificationCode(phone) {
     // 根据结果显示相应提示
     if (result.success) {
       // showModalAlert("验证码已失效", "成功");
-      Swal.fire({
+      fireVerificationCodesModalSwal({
         title: "成功",
         text: "验证码已失效",
         icon: "success",
@@ -30513,7 +30790,7 @@ async function invalidateMobileVerificationCode(phone) {
       loadMobileVerificationCodes();
     } else {
       // showModalAlert(result.message || "操作失败");
-      Swal.fire({
+      fireVerificationCodesModalSwal({
         title: "错误",
         text: result.message || "操作失败",
         icon: "error",
@@ -30523,7 +30800,7 @@ async function invalidateMobileVerificationCode(phone) {
     // 错误处理
     console.error("[移动端验证码管理] 使验证码失效失败:", e);
     // showModalAlert("操作失败: " + e.message);
-    Swal.fire({
+    fireVerificationCodesModalSwal({
       title: "错误",
       text: "操作失败: " + e.message,
       icon: "error",
@@ -30550,7 +30827,7 @@ async function addMobileManualVerificationCode() {
   } else if (!/^\d{6}$/.test(code)) {
     // 验证码格式校验：必须是6位数字
     // showModalAlert("验证码必须是6位数字");
-    Swal.fire({
+    fireVerificationCodesModalSwal({
       title: "错误",
       text: "验证码必须是6位数字",
       icon: "error",
@@ -30561,7 +30838,7 @@ async function addMobileManualVerificationCode() {
   // 再次校验验证码格式（防止自动生成的也出问题）
   if (!code || !/^\d{6}$/.test(code)) {
     // showModalAlert("请输入6位数字验证码");
-    Swal.fire({
+    fireVerificationCodesModalSwal({
       title: "错误",
       text: "请输入6位数字验证码",
       icon: "error",
@@ -30588,7 +30865,7 @@ async function addMobileManualVerificationCode() {
     // 根据结果显示相应提示
     if (result.success) {
       // showModalAlert("验证码已添加", "成功");
-      Swal.fire({
+      fireVerificationCodesModalSwal({
         title: "成功",
         text: "验证码已添加",
         icon: "success",
@@ -30600,7 +30877,7 @@ async function addMobileManualVerificationCode() {
       loadMobileVerificationCodes();
     } else {
       // showModalAlert(result.message || "添加失败");
-      Swal.fire({
+      fireVerificationCodesModalSwal({
         title: "错误",
         text: result.message || "添加失败",
         icon: "error",
@@ -30610,7 +30887,7 @@ async function addMobileManualVerificationCode() {
     // 错误处理
     console.error("[移动端验证码管理] 添加验证码失败:", e);
     // showModalAlert("操作失败: " + e.message);
-    Swal.fire({
+    fireVerificationCodesModalSwal({
       title: "错误",
       text: "操作失败: " + e.message,
       icon: "error",
@@ -32665,16 +32942,22 @@ function connectWebSocket() {
   socket.connect();
 
   socket.on("connect", () => {
+    verificationCodesSocketHealthy = true;
+    stopVerificationCodesPollingFallback();
     logMessage_Info("WebSocket 连接成功。SID:", socket.id);
     socket.emit("join", { session_id: sessionUUID });
   });
 
   socket.on("disconnect", (reason) => {
+    verificationCodesSocketHealthy = false;
+    syncVerificationCodesPollingByModalState();
     logMessage_Info("WebSocket 连接已断开:", reason);
     logMessage_Info("[System] WebSocket 连接已断开，尝试重连...");
   });
 
   socket.on("connect_error", (error) => {
+    verificationCodesSocketHealthy = false;
+    syncVerificationCodesPollingByModalState();
     if (!isInNetworkErrorState) {
       logMessage_Error("WebSocket 连接错误:", error);
       logMessage_Info("[System-Error] WebSocket 连接失败");
@@ -32779,13 +33062,7 @@ function connectWebSocket() {
 
   socket.on("verification_codes_updated", () => {
     logMessage_Info("[Socket] 收到验证码列表更新推送");
-    const modal = $("verification-codes-modal");
-    if (modal && !modal.classList.contains("hidden")) {
-      logMessage_Info("验证码模态框已打开，正在刷新列表...");
-      loadVerificationCodes();
-    } else {
-      logMessage_Info("验证码模态框未打开，跳过刷新。");
-    }
+    refreshOpenVerificationCodeModals();
   });
 }
 
@@ -42937,25 +43214,26 @@ document.addEventListener("DOMContentLoaded", function () {
     "auth-username-container",
   );
   if (usernameBtn && phoneBtn) {
+    const getCurrentAuthInput = () =>
+      document.getElementById("auth-username") || authInput;
+
     usernameBtn.addEventListener("click", function () {
       isPhoneLogin = false;
       usernameBtn.className =
         "px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm";
       phoneBtn.className =
         "px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm";
-      authInput.type = "text";
-      authInput.placeholder = "请输入用户名";
-      authInput.removeAttribute("inputmode");
-      authInput.removeAttribute("maxlength");
+      const currentAuthInput = getCurrentAuthInput();
+      const currentValue = currentAuthInput ? currentAuthInput.value : "";
       if (authLabel) authLabel.textContent = "用户名";
       if (authUsernameContainer) {
-        const currentValue = authInput.value;
         authUsernameContainer.innerHTML = `
-        <input type="text" id="auth-username" class="input-field mt-1" 
+        <input type="text" id="auth-username" class="input-field mt-1"
                placeholder="请输入用户名" autocomplete="username">
       `;
         const newAuthInput = document.getElementById("auth-username");
         newAuthInput.value = currentValue;
+        newAuthInput.removeAttribute("inputmode");
         newAuthInput.removeAttribute("maxlength");
       }
       const switchToSms = document.getElementById("auth-switch-to-sms");
@@ -42971,17 +43249,14 @@ document.addEventListener("DOMContentLoaded", function () {
         "px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm";
       usernameBtn.className =
         "px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm";
-      authInput.type = "tel";
-      authInput.placeholder = "请输入手机号";
-      authInput.setAttribute("inputmode", "numeric");
-      authInput.setAttribute("maxlength", "11");
+      const currentAuthInput = getCurrentAuthInput();
+      const currentValue = currentAuthInput ? currentAuthInput.value : "";
       if (authLabel) authLabel.textContent = "手机号";
       if (authUsernameContainer) {
-        const currentValue = authInput.value;
         authUsernameContainer.innerHTML = `
         <div class="phone-input-wrapper mt-1">
           <span class="phone-prefix">+86 </span>
-          <input type="tel" id="auth-username" class="input-field" 
+          <input type="tel" id="auth-username" class="input-field"
                  placeholder="请输入手机号" autocomplete="tel" inputmode="numeric" maxlength="11" pattern="[0-9]*" >
         </div>
       `;

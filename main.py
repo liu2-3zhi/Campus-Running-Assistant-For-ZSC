@@ -38,7 +38,18 @@ def _buffer_log(level, message):
     """
     暂存日志到缓冲区，同时打印到控制台。
     """
-    print(message)
+    try:
+        print(message)
+    except UnicodeEncodeError:
+        try:
+            _sys = __import__("sys")
+            output_encoding = getattr(getattr(_sys, "stdout", None), "encoding", None) or "utf-8"
+            safe_message = str(message).encode(output_encoding, errors="replace").decode(
+                output_encoding, errors="replace"
+            )
+            print(safe_message)
+        except Exception:
+            print(str(message).encode("ascii", errors="replace").decode("ascii"))
     _log_buffer.append((level, message))
 
 
@@ -8521,7 +8532,7 @@ class AccountSession:
 
 def _load_random_background_index(cache_dir):
     index_path = os.path.join(cache_dir, "index.json")
-    default_index = {"files": {}, "feedback": {}}
+    default_index = {"files": {}, "feedback": {}, "session_bindings": {}}
     try:
         if not os.path.exists(index_path):
             return default_index
@@ -8531,7 +8542,16 @@ def _load_random_background_index(cache_dir):
             return default_index
         files = data.get("files") if isinstance(data.get("files"), dict) else {}
         feedback = data.get("feedback") if isinstance(data.get("feedback"), dict) else {}
-        return {"files": files, "feedback": feedback}
+        session_bindings = (
+            data.get("session_bindings")
+            if isinstance(data.get("session_bindings"), dict)
+            else {}
+        )
+        return {
+            "files": files,
+            "feedback": feedback,
+            "session_bindings": session_bindings,
+        }
     except Exception as e:
         logging.warning(f"[主题背景] 读取背景索引失败 {index_path}: {e}")
         return default_index
@@ -8542,6 +8562,9 @@ def _save_random_background_index(cache_dir, index_data):
     safe_index = {
         "files": index_data.get("files", {}) if isinstance(index_data, dict) else {},
         "feedback": index_data.get("feedback", {}) if isinstance(index_data, dict) else {},
+        "session_bindings": (
+            index_data.get("session_bindings", {}) if isinstance(index_data, dict) else {}
+        ),
     }
     temp_index_path = f"{index_path}.tmp"
     try:
@@ -8555,6 +8578,149 @@ def _save_random_background_index(cache_dir, index_data):
         except OSError:
             pass
         logging.warning(f"[主题背景] 保存背景索引失败 {index_path}: {e}")
+
+
+def _normalize_theme_background_target(target):
+    return "mobile" if str(target or "").strip().lower() == "mobile" else "pc"
+
+
+def _normalize_theme_background_session_uuid(session_uuid):
+    normalized = str(session_uuid or "").strip()
+    if not normalized:
+        return ""
+    if normalized.lower() in {"null", "undefined", "none"}:
+        return ""
+    return normalized
+
+
+def _set_session_theme_background_binding(
+    cache_dir,
+    session_uuid,
+    target,
+    image_url,
+    ttl_seconds=1800,
+):
+    normalized_session_uuid = _normalize_theme_background_session_uuid(session_uuid)
+    normalized_image_url = str(image_url or "").strip()
+    if not normalized_session_uuid or not normalized_image_url:
+        return None
+
+    normalized_target = _normalize_theme_background_target(target)
+    index_data = _load_random_background_index(cache_dir)
+    session_bindings = index_data.setdefault("session_bindings", {})
+    session_entry = session_bindings.get(normalized_session_uuid)
+    if not isinstance(session_entry, dict):
+        session_entry = {}
+        session_bindings[normalized_session_uuid] = session_entry
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    expire_seconds = max(int(ttl_seconds or 0), 1)
+    expires_at = now + datetime.timedelta(seconds=expire_seconds)
+
+    binding_entry = {
+        "image_url": normalized_image_url,
+        "bound_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
+    }
+    session_entry[normalized_target] = binding_entry
+    _save_random_background_index(cache_dir, index_data)
+    return binding_entry
+
+
+def _get_session_theme_background_binding(cache_dir, session_uuid, target):
+    normalized_session_uuid = _normalize_theme_background_session_uuid(session_uuid)
+    if not normalized_session_uuid:
+        return None
+
+    normalized_target = _normalize_theme_background_target(target)
+    index_data = _load_random_background_index(cache_dir)
+    session_bindings = index_data.get("session_bindings")
+    if not isinstance(session_bindings, dict):
+        return None
+
+    session_entry = session_bindings.get(normalized_session_uuid)
+    if not isinstance(session_entry, dict):
+        return None
+
+    binding_entry = session_entry.get(normalized_target)
+    if not isinstance(binding_entry, dict):
+        return None
+
+    expires_at_raw = binding_entry.get("expires_at")
+    try:
+        expires_at = datetime.datetime.fromisoformat(str(expires_at_raw or ""))
+    except Exception:
+        return None
+
+    if expires_at <= datetime.datetime.now(datetime.timezone.utc):
+        session_entry.pop(normalized_target, None)
+        if not session_entry:
+            session_bindings.pop(normalized_session_uuid, None)
+        _save_random_background_index(cache_dir, index_data)
+        return None
+
+    return binding_entry
+
+
+def _resolve_theme_background_binding_decision(
+    cache_dir,
+    session_uuid,
+    target,
+    current_image_url,
+    login_context=False,
+    candidate_image_url="",
+    ttl_seconds=1800,
+):
+    normalized_session_uuid = _normalize_theme_background_session_uuid(session_uuid)
+    normalized_current_image_url = str(current_image_url or "").strip()
+    normalized_candidate_image_url = str(candidate_image_url or "").strip()
+
+    if not normalized_session_uuid:
+        return {"action": "noop", "selected_image_url": normalized_current_image_url}
+
+    if login_context and normalized_candidate_image_url:
+        _set_session_theme_background_binding(
+            cache_dir,
+            session_uuid=normalized_session_uuid,
+            target=target,
+            image_url=normalized_candidate_image_url,
+            ttl_seconds=ttl_seconds,
+        )
+        return {
+            "action": "override_binding",
+            "selected_image_url": normalized_candidate_image_url,
+        }
+
+    existing_binding = _get_session_theme_background_binding(
+        cache_dir,
+        normalized_session_uuid,
+        target,
+    )
+    existing_image_url = (
+        str(existing_binding.get("image_url") or "")
+        if isinstance(existing_binding, dict)
+        else ""
+    )
+    if existing_image_url:
+        return {
+            "action": "reuse_existing",
+            "selected_image_url": existing_image_url,
+        }
+
+    if normalized_current_image_url:
+        _set_session_theme_background_binding(
+            cache_dir,
+            session_uuid=normalized_session_uuid,
+            target=target,
+            image_url=normalized_current_image_url,
+            ttl_seconds=ttl_seconds,
+        )
+        return {
+            "action": "bind_new",
+            "selected_image_url": normalized_current_image_url,
+        }
+
+    return {"action": "noop", "selected_image_url": ""}
 
 
 def _parse_random_background_file_name(file_name):
@@ -13984,13 +14150,33 @@ class Api:
             "theme_config": auth_system.get_theme_config(current_theme_style, target_list or None),
         }
 
-    def mark_theme_background_consumed(self, target="pc", image_url=""):
-        normalized_target = "mobile" if str(target or "").strip().lower() == "mobile" else "pc"
+    def mark_theme_background_consumed(
+        self,
+        target="pc",
+        image_url="",
+        login_context=False,
+        candidate_image_url="",
+    ):
+        normalized_target = _normalize_theme_background_target(target)
         base_dir = os.path.dirname(os.path.abspath(__file__))
         cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
         os.makedirs(cache_dir, exist_ok=True)
-        if image_url:
-            _mark_random_background_file_expired(cache_dir, image_url, expired=True)
+
+        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+        decision = _resolve_theme_background_binding_decision(
+            cache_dir=cache_dir,
+            session_uuid=session_uuid,
+            target=normalized_target,
+            current_image_url=str(image_url or "").strip(),
+            login_context=bool(login_context),
+            candidate_image_url=str(candidate_image_url or "").strip(),
+            ttl_seconds=1800,
+        )
+
+        selected_image_url = str(decision.get("selected_image_url") or "").strip()
+        if selected_image_url:
+            _mark_random_background_file_expired(cache_dir, selected_image_url, expired=True)
+
         next_theme_config = auth_system.get_theme_config("default", [normalized_target])
         next_env = (
             next_theme_config.get("global_environment_variables")
@@ -14002,11 +14188,15 @@ class Api:
             if normalized_target == "mobile"
             else str(next_env.get("auth_login_container_background") or "")
         )
-        if image_url and image_url == _extract_background_image_url_from_value(next_image_url):
-            _reset_random_background_file_expired(cache_dir, image_url)
+        extracted_next_image_url = _extract_background_image_url_from_value(next_image_url)
+        if extracted_next_image_url:
+            _mark_random_background_file_expired(cache_dir, extracted_next_image_url, expired=True)
+        if selected_image_url and selected_image_url != extracted_next_image_url:
+            _reset_random_background_file_expired(cache_dir, selected_image_url)
         return {
             "success": True,
             "theme_config": next_theme_config,
+            "binding_action": decision.get("action", "noop"),
         }
 
     def get_params(self):
@@ -22725,6 +22915,42 @@ def _collect_overdue_accounts_from_billing(school_usernames):
     return overdue_accounts
 
 
+sms_verification_codes = {}
+sms_extended_once_keys = set()
+
+
+def _build_sms_extend_once_key(phone, code):
+    normalized_phone = str(phone or "").strip()
+    normalized_code = str(code or "").strip()
+    if not normalized_phone or not normalized_code:
+        return ""
+    return f"{normalized_phone}:{normalized_code}"
+
+
+def _is_sms_extend_allowed_once(phone, code):
+    key = _build_sms_extend_once_key(phone, code)
+    if not key:
+        return False
+    return key not in sms_extended_once_keys
+
+
+def _mark_sms_extend_used_once(phone, code):
+    key = _build_sms_extend_once_key(phone, code)
+    if key:
+        sms_extended_once_keys.add(key)
+
+
+def _reset_sms_extend_once_for_phone(phone):
+    normalized_phone = str(phone or "").strip()
+    if not normalized_phone:
+        return
+    stale_keys = [
+        key for key in sms_extended_once_keys if key.startswith(f"{normalized_phone}:")
+    ]
+    for key in stale_keys:
+        sms_extended_once_keys.discard(key)
+
+
 def start_web_server(args_param):
     """
     启动Flask Web服务器主函数，集成SocketIO实时通信和Chrome浏览器自动化。
@@ -22738,8 +22964,9 @@ def start_web_server(args_param):
     args = args_param
     global cache
     cache = {}
-    global sms_verification_codes
+    global sms_verification_codes, sms_extended_once_keys
     sms_verification_codes = {}
+    sms_extended_once_keys = set()
     web_sessions = {}
     web_sessions_lock = threading.Lock()
     session_file_locks = {}
@@ -25097,7 +25324,8 @@ def start_web_server(args_param):
                 api_instance._web_session_id = session_id
                 web_sessions[session_id] = api_instance
 
-            api_instance.auth_username = auth_result["auth_username"]
+            normalized_auth_username = auth_result.get("auth_username", "")
+            api_instance.auth_username = normalized_auth_username
             api_instance.auth_group = auth_result["group"]
             api_instance.is_guest = auth_result.get("is_guest", False)
             api_instance.is_authenticated = True
@@ -25106,7 +25334,7 @@ def start_web_server(args_param):
                 try:
                     old_sessions, cleanup_message = (
                         auth_system.check_single_session_enforcement(
-                            auth_username, session_id
+                            normalized_auth_username, session_id
                         )
                     )
                     if old_sessions:
@@ -25125,7 +25353,7 @@ def start_web_server(args_param):
                             target=cleanup_old_sessions_async, daemon=True
                         )
                         cleanup_thread.start()
-                    auth_system.link_session_to_user(auth_username, session_id)
+                    auth_system.link_session_to_user(normalized_auth_username, session_id)
                     if session_id == "" or session_id is None or session_id == "null":
                         audit_details = f"登录成功"
                     else:
@@ -25134,7 +25362,7 @@ def start_web_server(args_param):
                         audit_details += f"; {cleanup_message}"
 
                     auth_system.log_audit(
-                        auth_username,
+                        normalized_auth_username,
                         "user_login",
                         audit_details,
                         ip_address,
@@ -25152,8 +25380,8 @@ def start_web_server(args_param):
         max_sessions = 1
         if not auth_result.get("is_guest", False):
             try:
-                user_sessions = auth_system.get_user_sessions(auth_username)
-                user_details = auth_system.get_user_details(auth_username)
+                user_sessions = auth_system.get_user_sessions(normalized_auth_username)
+                user_details = auth_system.get_user_details(normalized_auth_username)
                 if user_details:
                     max_sessions = user_details.get("max_sessions", 1)
             except Exception as e:
@@ -25169,20 +25397,23 @@ def start_web_server(args_param):
             session_limit_info = f"您的账号最多可以同时保持{max_sessions}个活跃会话，超出时将自动清理最旧的会话"
         token = None
         kicked_sessions = []
-        if auth_username is None or auth_username in ["", "null", "NULL", "undefined"]:
-            auth_username = auth_result.get("auth_username", "unknown_user")
+        if (
+            normalized_auth_username is None
+            or normalized_auth_username in ["", "null", "NULL", "undefined"]
+        ):
+            normalized_auth_username = auth_result.get("auth_username", "unknown_user")
         if not auth_result.get("is_guest", False) and session_id:
             try:
-                token = token_manager.create_token(auth_username, session_id)
+                token = token_manager.create_token(normalized_auth_username, session_id)
                 kicked_sessions = token_manager.detect_multi_device_login(
-                    auth_username, session_id
+                    normalized_auth_username, session_id
                 )
-                token_manager.cleanup_expired_tokens(auth_username)
+                token_manager.cleanup_expired_tokens(normalized_auth_username)
                 if kicked_sessions:
                     for old_sid in kicked_sessions:
-                        token_manager.invalidate_token(auth_username, old_sid)
+                        token_manager.invalidate_token(normalized_auth_username, old_sid)
                     logging.info(
-                        f"用户 {auth_username} 从新设备登录，检测到 {len(kicked_sessions)} 个其他活跃会话。"
+                        f"用户 {normalized_auth_username} 从新设备登录，检测到 {len(kicked_sessions)} 个其他活跃会话。"
                     )
             except Exception as e:
                 logging.error(f"Token管理过程出错，但继续登录流程: {e}")
@@ -25195,7 +25426,7 @@ def start_web_server(args_param):
             if not auth_result.get("is_guest", False):
                 try:
                     _cancellation_status = auth_system.get_account_cancellation_status(
-                        auth_result["auth_username"]
+                        normalized_auth_username
                     )
                     if _cancellation_status and _cancellation_status.get("status") != "pending":
                         _cancellation_status = None  # 仅在 pending 状态时通知前端
@@ -25204,7 +25435,7 @@ def start_web_server(args_param):
             response_data = {
                 "success": True,
                 "session_id": session_id,
-                "auth_username": auth_result["auth_username"],
+                "auth_username": normalized_auth_username,
                 "group": auth_result["group"],
                 "is_guest": auth_result.get("is_guest", False),
                 "user_sessions": user_sessions,
@@ -25218,7 +25449,7 @@ def start_web_server(args_param):
             }
             if cleanup_message:
                 response_data["cleanup_message"] = cleanup_message
-            if kicked_sessions:
+            if kicked_sessions and session_id not in kicked_sessions:
                 response_data["multi_device_warning"] = (
                     f"检测到该账号在其他 {len(kicked_sessions)} 个设备上登录，已自动登出旧设备"
                 )
@@ -25240,7 +25471,7 @@ def start_web_server(args_param):
                 {
                     "success": True,
                     "session_id": session_id,
-                    "auth_username": auth_result.get("auth_username", auth_username),
+                    "auth_username": auth_result.get("auth_username", normalized_auth_username),
                     "group": auth_result.get("group", "user"),
                     "is_guest": False,
                 }
@@ -29374,6 +29605,7 @@ def start_web_server(args_param):
                         code,
                         time.time() + code_expire_seconds,
                     )
+                    _reset_sms_extend_once_for_phone(phone)
                     cache[ip_limit_key] = ip_count + 1
                     cache[phone_limit_key] = phone_count + 1
                     cache[last_send_key] = current_time
@@ -31854,32 +32086,46 @@ def start_web_server(args_param):
             
             code, expire_time = sms_verification_codes[phone]
             current_time = time.time()
-            
+
             # 检查验证码是否已过期
             if current_time > expire_time:
                 del sms_verification_codes[phone]
+                _reset_sms_extend_once_for_phone(phone)
                 return jsonify({"success": False, "message": "验证码已过期"})
-            
+
+            if not _is_sms_extend_allowed_once(phone, code):
+                remaining_seconds = max(0, int(expire_time - current_time))
+                return jsonify(
+                    {
+                        "success": False,
+                        "error_code": "EXTEND_LIMIT_REACHED",
+                        "message": "该验证码已延期过一次，请直接完成注册",
+                        "expires_at": int(expire_time),
+                        "remaining_seconds": remaining_seconds,
+                    }
+                )
+
             # 延长验证码有效期（额外增加5分钟）
-            config = configparser.ConfigParser(strict=False)
-            config.optionxform = str
-            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            
-            extend_minutes = 5  # 延长5分钟
+            extend_minutes = 5
             extend_seconds = extend_minutes * 60
             new_expire_time = current_time + extend_seconds
-            
+
             sms_verification_codes[phone] = (code, new_expire_time)
-            
+            _mark_sms_extend_used_once(phone, code)
+
             app.logger.info(
                 f"[验证码延长] 手机号 {phone} 的验证码有效期已延长 {extend_minutes} 分钟"
             )
-            
-            return jsonify({
-                "success": True,
-                "message": f"验证码有效期已延长{extend_minutes}分钟",
-                "extend_minutes": extend_minutes
-            })
+
+            return jsonify(
+                {
+                    "success": True,
+                    "message": f"验证码有效期已延长{extend_minutes}分钟",
+                    "extend_minutes": extend_minutes,
+                    "expires_at": int(new_expire_time),
+                    "remaining_seconds": int(extend_seconds),
+                }
+            )
             
         except Exception as e:
             app.logger.error(f"[验证码延长] 延长失败：{str(e)}")
@@ -31918,6 +32164,7 @@ def start_web_server(args_param):
             code_expire_seconds = code_expire_minutes * 60
             expire_time = time.time() + code_expire_seconds
             sms_verification_codes[phone] = (code, expire_time)
+            _reset_sms_extend_once_for_phone(phone)
 
             app.logger.info(
                 f"[验证码管理] {g.user} 手动添加验证码: {phone} (有效期{code_expire_minutes}分钟)"
