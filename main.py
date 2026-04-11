@@ -6581,10 +6581,32 @@ class AuthSystem:
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def _resolve_default_theme_background_images(self, targets=None):
-        return self._peek_default_theme_background_images(targets)
+    def _resolve_default_theme_background_images(self, targets=None, session_uuid="", cache_dir=None):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        effective_cache_dir = cache_dir or os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        os.makedirs(effective_cache_dir, exist_ok=True)
 
-    def _inject_default_theme_background_image(self, merged_config, style_id, targets=None):
+        bound_images = _resolve_bound_theme_background_images(
+            effective_cache_dir,
+            session_uuid=session_uuid,
+            targets=targets,
+        )
+        random_images = self._peek_default_theme_background_images(targets)
+
+        resolved_images = dict(random_images) if isinstance(random_images, dict) else {}
+        for target, image_url in bound_images.items():
+            if image_url:
+                resolved_images[target] = image_url
+        return resolved_images
+
+    def _inject_default_theme_background_image(
+        self,
+        merged_config,
+        style_id,
+        targets=None,
+        session_uuid="",
+        cache_dir=None,
+    ):
         normalized_style = str(style_id or "default").strip() or "default"
         if normalized_style != "default":
             return merged_config
@@ -6595,7 +6617,11 @@ class AuthSystem:
             env = {}
             config["global_environment_variables"] = env
 
-        background_image_urls = self._resolve_default_theme_background_images(targets)
+        background_image_urls = self._resolve_default_theme_background_images(
+            targets,
+            session_uuid=session_uuid,
+            cache_dir=cache_dir,
+        )
         pc_background_image_url = background_image_urls.get("pc", "")
         mobile_background_image_url = background_image_urls.get("mobile", "")
         if not pc_background_image_url and not mobile_background_image_url:
@@ -6623,7 +6649,7 @@ class AuthSystem:
         env.setdefault("mobile_auth_login_card_shadow", "0 18px 48px rgba(15,23,42,0.12)")
         return config
 
-    def get_theme_config(self, style_id, targets=None):
+    def get_theme_config(self, style_id, targets=None, session_uuid="", cache_dir=None):
         """读取主题配置，默认先加载 default 再叠加目标主题"""
         default_config = self._read_theme_definition("default")
         normalized_style = str(style_id or "default").strip() or "default"
@@ -6654,7 +6680,11 @@ class AuthSystem:
             global_environment_variables = {}
         merged_config["global_environment_variables"] = global_environment_variables
         merged_config = self._inject_default_theme_background_image(
-            merged_config, normalized_style, targets
+            merged_config,
+            normalized_style,
+            targets,
+            session_uuid=session_uuid,
+            cache_dir=cache_dir,
         )
 
         return merged_config
@@ -8721,6 +8751,33 @@ def _resolve_theme_background_binding_decision(
         }
 
     return {"action": "noop", "selected_image_url": ""}
+
+
+def _resolve_bound_theme_background_images(cache_dir, session_uuid, targets=None):
+    normalized_session_uuid = _normalize_theme_background_session_uuid(session_uuid)
+    if not normalized_session_uuid:
+        return {}
+
+    normalized_targets = []
+    for target in (targets or ["pc", "mobile"]):
+        normalized_target = _normalize_theme_background_target(target)
+        if normalized_target not in normalized_targets:
+            normalized_targets.append(normalized_target)
+
+    if not normalized_targets:
+        normalized_targets = ["pc", "mobile"]
+
+    resolved = {}
+    for target in normalized_targets:
+        binding = _get_session_theme_background_binding(
+            cache_dir,
+            normalized_session_uuid,
+            target,
+        )
+        image_url = str(binding.get("image_url") or "") if isinstance(binding, dict) else ""
+        if image_url:
+            resolved[target] = image_url
+    return resolved
 
 
 def _parse_random_background_file_name(file_name):
@@ -11490,7 +11547,15 @@ class Api:
             logging.debug(f"【本地验证码】加载验证码设置: {captcha_settings}")
 
             current_theme = "light"
-            current_theme_config = auth_system.get_theme_config("default") if "auth_system" in globals() else {}
+            current_theme_style = "default"
+            current_theme_config = auth_system.get_theme_config(
+                "default",
+                session_uuid=session_uuid,
+                cache_dir=theme_background_cache_dir,
+            ) if "auth_system" in globals() else {}
+            session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            theme_background_cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
             if auth_username and not is_guest and "auth_system" in globals():
                 try:
                     theme_result = auth_system.get_user_theme(auth_username)
@@ -11501,10 +11566,18 @@ class Api:
 
                 current_theme_style = self.global_params.get("theme_style", "default")
                 try:
-                    current_theme_config = auth_system.get_theme_config(current_theme_style)
+                    current_theme_config = auth_system.get_theme_config(
+                        current_theme_style,
+                        session_uuid=session_uuid,
+                        cache_dir=theme_background_cache_dir,
+                    )
                 except Exception as e:
                     logging.warning(f"获取主题配置失败 {current_theme_style}: {e}")
-                    current_theme_config = auth_system.get_theme_config("default")
+                    current_theme_config = auth_system.get_theme_config(
+                        "default",
+                        session_uuid=session_uuid,
+                        cache_dir=theme_background_cache_dir,
+                    )
 
             cdn_cache_status = {}
             try:
@@ -14102,10 +14175,18 @@ class Api:
             target_list = ["mobile"]
         elif background_target == "pc":
             target_list = ["pc"]
+        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
         return {
             "success": True,
             "theme_styles": auth_system.get_available_theme_styles(),
-            "theme_config": auth_system.get_theme_config(current_theme_style, target_list or None),
+            "theme_config": auth_system.get_theme_config(
+                current_theme_style,
+                target_list or None,
+                session_uuid=session_uuid,
+                cache_dir=cache_dir,
+            ),
         }
 
     def get_public_theme_styles(self, style_id="default", background_target=None):
@@ -14116,10 +14197,18 @@ class Api:
             target_list = ["mobile"]
         elif background_target == "pc":
             target_list = ["pc"]
+        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
         return {
             "success": True,
             "theme_styles": auth_system.get_available_theme_styles(),
-            "theme_config": auth_system.get_theme_config(current_theme_style, target_list or None),
+            "theme_config": auth_system.get_theme_config(
+                current_theme_style,
+                target_list or None,
+                session_uuid=session_uuid,
+                cache_dir=cache_dir,
+            ),
         }
 
     def get_theme_styles(self, background_target=None):
@@ -14130,10 +14219,18 @@ class Api:
             target_list = ["mobile"]
         elif background_target == "pc":
             target_list = ["pc"]
+        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
         return {
             "success": True,
             "theme_styles": auth_system.get_available_theme_styles(),
-            "theme_config": auth_system.get_theme_config(current_theme_style, target_list or None),
+            "theme_config": auth_system.get_theme_config(
+                current_theme_style,
+                target_list or None,
+                session_uuid=session_uuid,
+                cache_dir=cache_dir,
+            ),
         }
 
     def get_public_theme_styles(self, style_id="default", background_target=None):
@@ -14144,10 +14241,18 @@ class Api:
             target_list = ["mobile"]
         elif background_target == "pc":
             target_list = ["pc"]
+        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
         return {
             "success": True,
             "theme_styles": auth_system.get_available_theme_styles(),
-            "theme_config": auth_system.get_theme_config(current_theme_style, target_list or None),
+            "theme_config": auth_system.get_theme_config(
+                current_theme_style,
+                target_list or None,
+                session_uuid=session_uuid,
+                cache_dir=cache_dir,
+            ),
         }
 
     def mark_theme_background_consumed(
@@ -14177,7 +14282,12 @@ class Api:
         if selected_image_url:
             _mark_random_background_file_expired(cache_dir, selected_image_url, expired=True)
 
-        next_theme_config = auth_system.get_theme_config("default", [normalized_target])
+        next_theme_config = auth_system.get_theme_config(
+            "default",
+            [normalized_target],
+            session_uuid=session_uuid,
+            cache_dir=cache_dir,
+        )
         next_env = (
             next_theme_config.get("global_environment_variables")
             if isinstance(next_theme_config, dict)
