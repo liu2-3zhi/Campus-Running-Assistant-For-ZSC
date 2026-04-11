@@ -11548,14 +11548,14 @@ class Api:
 
             current_theme = "light"
             current_theme_style = "default"
+            session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            theme_background_cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
             current_theme_config = auth_system.get_theme_config(
                 "default",
                 session_uuid=session_uuid,
                 cache_dir=theme_background_cache_dir,
             ) if "auth_system" in globals() else {}
-            session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            theme_background_cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
             if auth_username and not is_guest and "auth_system" in globals():
                 try:
                     theme_result = auth_system.get_user_theme(auth_username)
