@@ -10,6 +10,20 @@ _logging_exception_hooks_installed = False
 
 
 MAX_MEMORY_SESSIONS = 100
+
+# 支付订单状态常量（模块级，便于测试与工具函数复用）
+ORDER_STATUS_FAILED = "failed"
+ORDER_STATUS_PENDING = "pending"
+ORDER_STATUS_PAID = "paid"
+ORDER_STATUS_REFUNDED_PARTIAL = "refunded_partial"
+ORDER_STATUS_REFUNDED_FULL = "refunded_full"
+ORDER_STATUS_FROZEN = "frozen"
+ORDER_STATUS_PREAUTH = "preauth"
+ORDER_STATUS_TIMEOUT = "timeout"
+ORDER_STATUS_CLOSED = "closed"
+
+PAYMENT_ORDERS_DIR = "payment_orders"
+QR_CACHE_INDEX_FILE = "payment_orders/qr_cache_index.json"
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 AUTO_ATTENDANCE_MAX_MINUTES = 120  # 自动签到最长持续时间（分钟），超时后自动关闭
@@ -8778,6 +8792,166 @@ def _resolve_bound_theme_background_images(cache_dir, session_uuid, targets=None
         if image_url:
             resolved[target] = image_url
     return resolved
+
+
+def _is_order_terminal_for_repay(order_data):
+    status = str((order_data or {}).get("status", "")).strip()
+    return status in {"paid", "refunded_partial", "refunded_full"}
+
+
+def _advance_order_status_by_timeout(order_data, now_iso=None):
+    if not isinstance(order_data, dict):
+        return False
+
+    status = str(order_data.get("status", "")).strip()
+    if status not in {ORDER_STATUS_PENDING, ORDER_STATUS_TIMEOUT}:
+        return False
+
+    expires_at = str(order_data.get("expires_at") or "").strip()
+    if not expires_at:
+        return False
+
+    now_dt = (
+        datetime.datetime.fromisoformat(now_iso)
+        if now_iso
+        else datetime.datetime.now(datetime.timezone.utc)
+    )
+    expires_dt = datetime.datetime.fromisoformat(expires_at)
+    if expires_dt.tzinfo is None:
+        expires_dt = expires_dt.replace(tzinfo=datetime.timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=datetime.timezone.utc)
+
+    if now_dt <= expires_dt:
+        return False
+
+    order_data["status"] = ORDER_STATUS_CLOSED
+    order_data["closed_at"] = now_dt.isoformat()
+    return True
+
+
+def _build_billing_qr_cache_key(school_id, billing_id, pay_type):
+    return f"{str(school_id).strip()}:{str(billing_id).strip()}:{str(pay_type).strip()}"
+
+
+def _load_qr_cache_index():
+    if not os.path.exists(QR_CACHE_INDEX_FILE):
+        return {}
+    try:
+        with open(QR_CACHE_INDEX_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_qr_cache_index(index_data):
+    os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+    safe_data = index_data if isinstance(index_data, dict) else {}
+    with open(QR_CACHE_INDEX_FILE, "w", encoding="utf-8") as f:
+        json.dump(safe_data, f, ensure_ascii=False, indent=2)
+
+
+def _get_reusable_billing_qr(cache_key, now_iso=None):
+    index_data = _load_qr_cache_index()
+    item = index_data.get(str(cache_key or "").strip())
+    if not isinstance(item, dict):
+        return None
+
+    expires_at = str(item.get("expires_at") or "").strip()
+    if not expires_at:
+        return None
+
+    now_dt = (
+        datetime.datetime.fromisoformat(now_iso)
+        if now_iso
+        else datetime.datetime.now(datetime.timezone.utc)
+    )
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=datetime.timezone.utc)
+
+    try:
+        expires_dt = datetime.datetime.fromisoformat(expires_at)
+    except Exception:
+        return None
+    if expires_dt.tzinfo is None:
+        expires_dt = expires_dt.replace(tzinfo=datetime.timezone.utc)
+
+    if now_dt > expires_dt:
+        return None
+
+    return item
+
+
+def _invalidate_billing_qr_cache_by_order(order_id):
+    target_order_id = str(order_id or "").strip()
+    if not target_order_id:
+        return False
+
+    index_data = _load_qr_cache_index()
+    changed = False
+    for key, value in list(index_data.items()):
+        if isinstance(value, dict) and str(value.get("order_id") or "").strip() == target_order_id:
+            index_data.pop(key, None)
+            changed = True
+
+    if changed:
+        _save_qr_cache_index(index_data)
+    return changed
+
+
+def _resolve_billing_payment_entry(school_id, billing_id, pay_type, existing_order, now_iso=None):
+    normalized_order = existing_order if isinstance(existing_order, dict) else {}
+    _advance_order_status_by_timeout(normalized_order, now_iso=now_iso)
+    normalized_status = str(normalized_order.get("status") or "").strip()
+
+    if _is_order_terminal_for_repay(normalized_order):
+        return {
+            "decision": "reject_terminal",
+            "normalized_existing_status": normalized_status,
+            "cache_key": _build_billing_qr_cache_key(school_id, billing_id, pay_type),
+        }
+
+    cache_key = _build_billing_qr_cache_key(school_id, billing_id, pay_type)
+    reusable_item = _get_reusable_billing_qr(cache_key, now_iso=now_iso)
+    if isinstance(reusable_item, dict):
+        return {
+            "decision": "reuse_qr",
+            "normalized_existing_status": normalized_status,
+            "cache_key": cache_key,
+            "reusable_item": reusable_item,
+        }
+
+    return {
+        "decision": "create_new",
+        "normalized_existing_status": normalized_status,
+        "cache_key": cache_key,
+    }
+
+
+def _apply_payment_success_transition(order_data, paid_time=None):
+    if not isinstance(order_data, dict):
+        return order_data
+    order_data["status"] = ORDER_STATUS_PAID
+    order_data["paid_time"] = paid_time or datetime.datetime.now(datetime.timezone.utc).isoformat()
+    order_data["paid_at"] = order_data.get("paid_at") or time.time()
+    return order_data
+
+
+def _apply_refund_transition(order_data, refund_amount):
+    if not isinstance(order_data, dict):
+        return order_data
+    current_total = float(order_data.get("refund_total") or 0)
+    refund_value = float(refund_amount or 0)
+    new_total = round(current_total + refund_value, 2)
+    order_data["refund_total"] = new_total
+
+    total_amount = float(order_data.get("amount") or 0)
+    if total_amount > 0 and new_total >= total_amount:
+        order_data["status"] = ORDER_STATUS_REFUNDED_FULL
+    else:
+        order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
+    return order_data
 
 
 def _parse_random_background_file_name(file_name):
@@ -33790,12 +33964,8 @@ def start_web_server(args_param):
                         # ========== 首次处理支付通知 ==========
                         # 如果代码执行到这里，说明订单状态不是"paid"，这是首次处理
 
-                        # 更新订单状态为已支付
-                        order_data["status"] = ORDER_STATUS_PAID
+                        _apply_payment_success_transition(order_data)
                         order_data["trade_no"] = trade_no          # 保存易支付订单号
-                        order_data["paid_at"] = time.time()        # 支付时间（时间戳）
-                        order_data["paid_time"] = time.strftime(
-                            "%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
                         # 保存完整的回调参数（用于调试）
                         order_data["notify_params"] = params
 
@@ -33808,6 +33978,7 @@ def start_web_server(args_param):
                         # 保存更新后的订单数据（使用增量更新模式）
                         # 调用统一的订单文件保存函数
                         _save_order_file_incremental(out_trade_no, order_data)
+                        _invalidate_billing_qr_cache_by_order(out_trade_no)
 
                         # ========== 写入支付操作日志（支付成功通知） ==========
 
@@ -38624,6 +38795,7 @@ def start_web_server(args_param):
     ORDER_STATUS_FROZEN = "frozen"                    # 已冻结
     ORDER_STATUS_PREAUTH = "preauth"                  # 预授权
     ORDER_STATUS_TIMEOUT = "timeout"                  # 支付超时
+    ORDER_STATUS_CLOSED = "closed"                    # 已关闭（超时关闭）
 
     # 订单数据存储目录常量定义
     # 用于存储所有支付订单的JSON文件
@@ -38662,6 +38834,149 @@ def start_web_server(args_param):
                 "%Y-%m-%d %H:%M:%S", time.localtime(created_at)
             )
         return order_data
+
+    def _is_order_terminal_for_repay(order_data):
+        status = str((order_data or {}).get("status", "")).strip()
+        return status in {
+            ORDER_STATUS_PAID,
+            ORDER_STATUS_REFUNDED_PARTIAL,
+            ORDER_STATUS_REFUNDED_FULL,
+        }
+
+    def _advance_order_status_by_timeout(order_data, now_iso=None):
+        if not isinstance(order_data, dict):
+            return False
+
+        status = str(order_data.get("status", "")).strip()
+        if status not in {ORDER_STATUS_PENDING, ORDER_STATUS_TIMEOUT}:
+            return False
+
+        expires_at = str(order_data.get("expires_at") or "").strip()
+        if not expires_at:
+            return False
+
+        now_dt = (
+            datetime.datetime.fromisoformat(now_iso)
+            if now_iso
+            else datetime.datetime.now(datetime.timezone.utc)
+        )
+        expires_dt = datetime.datetime.fromisoformat(expires_at)
+        if expires_dt.tzinfo is None:
+            expires_dt = expires_dt.replace(tzinfo=datetime.timezone.utc)
+        if now_dt.tzinfo is None:
+            now_dt = now_dt.replace(tzinfo=datetime.timezone.utc)
+
+        if now_dt <= expires_dt:
+            return False
+
+        order_data["status"] = ORDER_STATUS_CLOSED
+        order_data["closed_at"] = now_dt.isoformat()
+        return True
+
+    def _get_payment_timeout_minutes(config_obj=None):
+        config = config_obj or _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+        value = config.get("Rainbow_YiPay", "payment_timeout_minutes", fallback="30")
+        try:
+            minutes = int(str(value).strip())
+        except Exception:
+            minutes = 30
+        if minutes <= 0:
+            minutes = 30
+        return minutes
+
+    def _build_order_expires_at_iso(created_dt=None, timeout_minutes=None):
+        base_dt = created_dt or datetime.datetime.now(datetime.timezone.utc)
+        if base_dt.tzinfo is None:
+            base_dt = base_dt.replace(tzinfo=datetime.timezone.utc)
+        timeout = int(timeout_minutes) if timeout_minutes is not None else _get_payment_timeout_minutes()
+        return (base_dt + datetime.timedelta(minutes=timeout)).isoformat()
+
+    def _ensure_order_timeout_fields(order_data, timeout_minutes=None):
+        if not isinstance(order_data, dict):
+            return order_data
+
+        timeout = int(timeout_minutes) if timeout_minutes is not None else _get_payment_timeout_minutes()
+        expires_at = str(order_data.get("expires_at") or "").strip()
+        if expires_at:
+            return order_data
+
+        created_at = order_data.get("created_at")
+        created_dt = None
+        if isinstance(created_at, str) and created_at.strip():
+            try:
+                created_dt = datetime.datetime.fromisoformat(created_at.strip())
+            except Exception:
+                try:
+                    created_dt = datetime.datetime.strptime(created_at.strip(), "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    created_dt = None
+        elif isinstance(created_at, (int, float)):
+            created_dt = datetime.datetime.fromtimestamp(created_at, tz=datetime.timezone.utc)
+
+        if created_dt is None:
+            created_dt = datetime.datetime.now(datetime.timezone.utc)
+
+        if created_dt.tzinfo is None:
+            created_dt = created_dt.replace(tzinfo=datetime.timezone.utc)
+
+        order_data["expires_at"] = (created_dt + datetime.timedelta(minutes=timeout)).isoformat()
+        return order_data
+
+    def _normalize_order_runtime_state(order_data, timeout_minutes=None, now_iso=None):
+        if not isinstance(order_data, dict):
+            return order_data, False
+
+        _ensure_order_timeout_fields(order_data, timeout_minutes=timeout_minutes)
+        changed = _advance_order_status_by_timeout(order_data, now_iso=now_iso)
+        return order_data, changed
+
+    def _normalize_order_status_alias(order_data):
+        if not isinstance(order_data, dict):
+            return order_data
+        status = str(order_data.get("status") or "").strip().lower()
+        if status == ORDER_STATUS_TIMEOUT:
+            order_data["status"] = ORDER_STATUS_CLOSED
+        return order_data
+
+    def _load_order_file_with_runtime_state(order_id, timeout_minutes=None, now_iso=None):
+        order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+        if not os.path.exists(order_file):
+            return None
+
+        with open(order_file, "r", encoding="utf-8") as f:
+            order_data = json.load(f)
+
+        _normalize_order_created_at(order_data)
+        _normalize_order_status_alias(order_data)
+        _, changed = _normalize_order_runtime_state(
+            order_data,
+            timeout_minutes=timeout_minutes,
+            now_iso=now_iso,
+        )
+        if changed:
+            _save_order_file_incremental(order_id, order_data)
+        return order_data
+
+    def _get_billing_scope_from_order_data(order_data):
+        if not isinstance(order_data, dict):
+            return "", ""
+
+        billing_scope = order_data.get("billing_scope")
+        if isinstance(billing_scope, dict):
+            school_id = str(billing_scope.get("school_id") or "").strip()
+            billing_id = str(billing_scope.get("billing_id") or "").strip()
+            if school_id and billing_id:
+                return school_id, billing_id
+
+        billing_items = order_data.get("billing_items")
+        if isinstance(billing_items, list) and len(billing_items) == 1:
+            item = billing_items[0] if isinstance(billing_items[0], dict) else {}
+            school_id = str(item.get("school_username") or item.get("school_id") or "").strip()
+            billing_id = str(item.get("billing_id") or "").strip()
+            if school_id and billing_id:
+                return school_id, billing_id
+
+        return "", ""
 
     def _save_order_file_incremental(order_id, order_data):
         """
@@ -40009,17 +40324,7 @@ def start_web_server(args_param):
                 # 重新计算已退款总额（包含本次退款）
                 total_refunded_new = total_refunded + refund_amount_float
 
-                # 更新订单状态
-                # 如果退款金额 >= 订单金额，则状态改为"已全额退款"
-                # 否则状态改为"已部分退款"
-                if total_refunded_new >= order_amount:
-                    # 已全额退款
-                    order_data["status"] = ORDER_STATUS_REFUNDED_FULL
-                    logging.info(f"[退款请求] 订单状态更新为：已全额退款")
-                else:
-                    # 已部分退款
-                    order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
-                    logging.info(f"[退款请求] 订单状态更新为：已部分退款")
+                _apply_refund_transition(order_data, refund_amount_float)
 
                 # ========== 新增：更新退款次数 ==========
                 # 将退款次数设置为 1，表示该订单已退款一次
@@ -40031,6 +40336,7 @@ def start_web_server(args_param):
                 # 保存更新后的订单数据到文件（使用增量更新模式）
                 # 调用统一的订单文件保存函数，确保不丢失其他字段
                 _save_order_file_incremental(trade_no, order_data)
+                _invalidate_billing_qr_cache_by_order(trade_no)
 
                 # ========== 记录退款日志 ==========
 
@@ -40486,9 +40792,15 @@ def start_web_server(args_param):
             if not os.path.exists(order_file):
                 return jsonify({"success": False, "message": "订单不存在"})
 
-            # 读取订单数据
-            with open(order_file, "r", encoding="utf-8") as f:
-                order_data = json.load(f)
+            timeout_minutes = _get_payment_timeout_minutes()
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            order_data = _load_order_file_with_runtime_state(
+                order_id,
+                timeout_minutes=timeout_minutes,
+                now_iso=now_iso,
+            )
+            if not isinstance(order_data, dict):
+                return jsonify({"success": False, "message": "订单不存在"})
 
             # 修正 created_at 字段格式（将时间戳转换为可读字符串）
             _normalize_order_created_at(order_data)
@@ -40506,7 +40818,7 @@ def start_web_server(args_param):
             # ========== 查询最新支付状态 ==========
 
             # 如果订单状态是待支付，调用易支付API查询最新状态
-            if order_data.get("status") == "pending":
+            if order_data.get("status") == ORDER_STATUS_PENDING:
                 # 创建彩虹易支付客户端
                 yipay_client = RainbowYiPayClient()
 
@@ -40622,12 +40934,17 @@ def start_web_server(args_param):
             if not os.path.exists(order_file):
                 return jsonify({"success": False, "message": "订单不存在"}), 404
 
-            with open(order_file, "r", encoding="utf-8") as f:
-                order_data = json.load(f)
+            timeout_minutes = _get_payment_timeout_minutes()
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            order_data = _load_order_file_with_runtime_state(
+                order_id,
+                timeout_minutes=timeout_minutes,
+                now_iso=now_iso,
+            )
+            if not isinstance(order_data, dict):
+                return jsonify({"success": False, "message": "订单不存在"}), 404
 
             _normalize_order_created_at(order_data)
-
-            # 订单归属权限校验：所有者或管理员
             if order_data.get("username") != g.user:
                 if not auth_system.check_permission(g.user, "manage_users"):
                     return jsonify({"success": False, "message": "无权查询此订单"}), 403
@@ -40659,12 +40976,12 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "主动查询令牌无效"}), 403
 
             # 复用支付查询逻辑：仅 pending 状态才向易支付查询
-            if order_data.get("status") == "pending":
+            if order_data.get("status") == ORDER_STATUS_PENDING:
                 query_result = _query_yipay_order(order_id)
                 if query_result["success"] and query_result.get("data", {}).get("status") == "TRADE_SUCCESS":
-                    order_data["status"] = ORDER_STATUS_PAID
-                    order_data["paid_at"] = time.time()
-                    order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    _apply_payment_success_transition(order_data, paid_time=time.strftime("%Y-%m-%d %H:%M:%S"))
+                    _save_order_file_incremental(order_id, order_data)
+                    _invalidate_billing_qr_cache_by_order(order_id)
                     logging.info(f"[账单主动查询] 订单状态更新为已支付: {order_id}")
 
             # 一次性令牌：无论查询结果如何，首次主动查询后即失效
@@ -40717,12 +41034,17 @@ def start_web_server(args_param):
             if not os.path.exists(order_file):
                 return jsonify({"success": False, "message": "订单不存在"}), 404
 
-            with open(order_file, "r", encoding="utf-8") as f:
-                order_data = json.load(f)
+            timeout_minutes = _get_payment_timeout_minutes()
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            order_data = _load_order_file_with_runtime_state(
+                order_id,
+                timeout_minutes=timeout_minutes,
+                now_iso=now_iso,
+            )
+            if not isinstance(order_data, dict):
+                return jsonify({"success": False, "message": "订单不存在"}), 404
 
             _normalize_order_created_at(order_data)
-
-            is_admin = auth_system.check_permission(g.user, "manage_users")
             if order_data.get("username") != g.user and not is_admin:
                 return jsonify({"success": False, "message": "无权查询此订单"}), 403
 
@@ -41415,6 +41737,8 @@ def start_web_server(args_param):
             if total_amount <= 0:
                 return jsonify({"success": False, "message": "订单金额无效"}), 400
 
+            amount_str = f"{round(total_amount, 2):.2f}"
+
             # 支付参数
             pay_type = str(data.get("pay_type", "alipay")).strip() or "alipay"
             payment_type = "web"
@@ -41432,6 +41756,97 @@ def start_web_server(args_param):
                 enabled_methods = ["alipay", "wxpay", "qqpay", "bank", "unionpay"]
             if pay_type not in enabled_methods:
                 pay_type = enabled_methods[0]
+
+            timeout_minutes = _get_payment_timeout_minutes(config)
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+            single_billing_item = valid_items[0] if len(valid_items) == 1 else None
+            if single_billing_item:
+                school_id = str(single_billing_item.get("school_username") or "").strip()
+                billing_id = str(single_billing_item.get("billing_id") or "").strip()
+                billing_file = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "User_Billing",
+                    "School_Bills",
+                    school_id,
+                    f"{billing_id}.json",
+                )
+                try:
+                    with open(billing_file, "r", encoding="utf-8") as f:
+                        billing_rec = json.load(f)
+                except Exception:
+                    billing_rec = {}
+
+                existing_order = None
+                existing_order_id = ""
+                for order_id in reversed(list(billing_rec.get("payment_orders", []))):
+                    order_id = str(order_id or "").strip()
+                    if not order_id:
+                        continue
+                    order_data = _load_order_file_with_runtime_state(
+                        order_id,
+                        timeout_minutes=timeout_minutes,
+                        now_iso=now_iso,
+                    )
+                    if not isinstance(order_data, dict):
+                        continue
+                    order_school_id, order_billing_id = _get_billing_scope_from_order_data(order_data)
+                    order_pay_type = str(order_data.get("pay_type") or "").strip()
+                    if order_school_id == school_id and order_billing_id == billing_id and order_pay_type == pay_type:
+                        existing_order = order_data
+                        existing_order_id = order_id
+                        break
+
+                decision = _resolve_billing_payment_entry(
+                    school_id=school_id,
+                    billing_id=billing_id,
+                    pay_type=pay_type,
+                    existing_order=existing_order,
+                    now_iso=now_iso,
+                )
+
+                if decision.get("decision") == "reject_terminal":
+                    return jsonify({
+                        "success": False,
+                        "message": "该账单已支付或已退款，不能重复支付",
+                    }), 400
+
+                if decision.get("decision") == "reuse_qr":
+                    reusable_item = decision.get("reusable_item") if isinstance(decision.get("reusable_item"), dict) else {}
+                    reusable_order_id = str(reusable_item.get("order_id") or existing_order_id).strip()
+                    reusable_order = _load_order_file_with_runtime_state(
+                        reusable_order_id,
+                        timeout_minutes=timeout_minutes,
+                        now_iso=now_iso,
+                    ) if reusable_order_id else None
+                    if isinstance(reusable_order, dict) and _is_order_terminal_for_repay(reusable_order):
+                        _invalidate_billing_qr_cache_by_order(reusable_order_id)
+                    else:
+                        active_query_token = hashlib.sha256(
+                            f"{reusable_order_id}:{g.user}:{time.time()}:{random.randint(100000, 999999)}".encode("utf-8")
+                        ).hexdigest()
+                        if isinstance(reusable_order, dict):
+                            reusable_order["active_query_token_hash"] = hashlib.sha256(active_query_token.encode("utf-8")).hexdigest()
+                            reusable_order["active_query_session_hash"] = hashlib.sha256(
+                                str(g.session_id or "").encode("utf-8")
+                            ).hexdigest()
+                            reusable_order["active_query_token_expire_at"] = int(time.time()) + 600
+                            reusable_order["active_query_token_used"] = False
+                            _save_order_file_incremental(reusable_order_id, reusable_order)
+
+                        reuse_pay_type = str(reusable_item.get("pay_type") or pay_type)
+                        return jsonify({
+                            "success": True,
+                            "message": "复用有效期内二维码",
+                            "order_id": reusable_order_id,
+                            "total_amount": amount_str,
+                            "total_count": len(valid_items),
+                            "pay_url": str(reusable_item.get("pay_url") or ""),
+                            "pay_info": str(reusable_item.get("pay_info") or ""),
+                            "pay_type": reuse_pay_type,
+                            "active_query_token": active_query_token,
+                            "reused_qr": True,
+                        })
 
             out_trade_no = f"{time.strftime('%Y%m%d')}{random.randint(100000000000000, 999999999999999)}"
             amount_str = f"{round(total_amount, 2):.2f}"
@@ -41462,6 +41877,7 @@ def start_web_server(args_param):
 
             pay_type = result.get("pay_type", pay_type)
 
+            expires_at_iso = _build_order_expires_at_iso(timeout_minutes=timeout_minutes)
             order_data = {
                 "order_id": out_trade_no,
                 "username": g.user,
@@ -41479,10 +41895,18 @@ def start_web_server(args_param):
                 "order_data": result.get("order_data", {}),
                 "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "expires_at": expires_at_iso,
+                "closed_at": None,
+                "refund_total": float(0),
                 "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
                 "user_agent": request.headers.get("User-Agent", ""),
                 "device": device,
             }
+            if len(valid_items) == 1:
+                order_data["billing_scope"] = {
+                    "school_id": valid_items[0].get("school_username"),
+                    "billing_id": valid_items[0].get("billing_id"),
+                }
             # 账单支付主动查询令牌（用于扫码后强鉴权主动查询）
             active_query_token = hashlib.sha256(
                 f"{out_trade_no}:{g.user}:{time.time()}:{random.randint(100000, 999999)}".encode("utf-8")
@@ -41498,6 +41922,27 @@ def start_web_server(args_param):
             order_data["active_query_token_expire_at"] = int(time.time()) + 600
             order_data["active_query_token_used"] = False
             _save_order_file_incremental(out_trade_no, order_data)
+
+            if len(valid_items) == 1:
+                cache_key = _build_billing_qr_cache_key(
+                    valid_items[0].get("school_username"),
+                    valid_items[0].get("billing_id"),
+                    pay_type,
+                )
+                cache_payload = {
+                    "order_id": out_trade_no,
+                    "pay_url": result.get("pay_url", ""),
+                    "pay_info": result.get("pay_info", ""),
+                    "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "expires_at": expires_at_iso,
+                    "status_snapshot": ORDER_STATUS_PENDING,
+                    "pay_type": pay_type,
+                }
+                index_data = _load_qr_cache_index()
+                index_data[cache_key] = cache_payload
+                _save_qr_cache_index(index_data)
+                order_data["last_qr_cache_key"] = cache_key
+                _save_order_file_incremental(out_trade_no, {"last_qr_cache_key": cache_key})
 
             # 关联订单号到账单 payment_orders
             for item in valid_items:
