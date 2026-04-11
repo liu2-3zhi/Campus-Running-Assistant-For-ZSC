@@ -16789,6 +16789,8 @@ let pendingThemeBackgroundFeedback = null;
 let themeBackgroundConsumeDebounceTimer = null;
 const THEME_BACKGROUND_CONSUME_DEBOUNCE_MS = 300;
 let initialConsumeCompleted = false;
+let themeBackgroundAuthStateResolved = false;
+let themeBackgroundAuthenticatedSession = false;
 const sessionBindEnsured = { pc: false, mobile: false };
 const anonConsumedBackgroundByTarget = { pc: "", mobile: "" };
 const preLoginBackgroundSnapshot = { pc: "", mobile: "" };
@@ -16856,6 +16858,34 @@ function capturePreLoginBackgroundSnapshot(preferredTarget = null) {
   if (imageUrl) {
     preLoginBackgroundSnapshot[normalizedTarget] = imageUrl;
   }
+}
+
+function getThemeBackgroundFeedbackMode(params) {
+  const normalizedParams = params && typeof params === "object" ? params : {};
+  const sessionId = Object.prototype.hasOwnProperty.call(normalizedParams, "sessionId")
+    ? normalizedParams.sessionId
+    : sessionUUID;
+  const authStateResolved = Object.prototype.hasOwnProperty.call(normalizedParams, "authStateResolved")
+    ? normalizedParams.authStateResolved
+    : themeBackgroundAuthStateResolved;
+  const isAuthenticated = Object.prototype.hasOwnProperty.call(normalizedParams, "isAuthenticated")
+    ? normalizedParams.isAuthenticated
+    : themeBackgroundAuthenticatedSession;
+  const isGuest = Object.prototype.hasOwnProperty.call(normalizedParams, "isGuest")
+    ? normalizedParams.isGuest
+    : currentUserIsGuest;
+  const normalizedSessionId = typeof sessionId === "string" ? sessionId.trim() : "";
+  const hasSessionId = !!(normalizedSessionId && normalizedSessionId !== "null");
+  if (!hasSessionId) {
+    return "public";
+  }
+  if (!authStateResolved) {
+    return "defer";
+  }
+  if (isAuthenticated && !isGuest) {
+    return "session";
+  }
+  return "defer";
 }
 
 function scheduleThemeBackgroundConsumed() {
@@ -16927,7 +16957,12 @@ async function notifyThemeBackgroundConsumed(target, imageUrlOverride = null) {
     return;
   }
 
-  const isLoggedIn = !!sessionUUID;
+  const feedbackMode = getThemeBackgroundFeedbackMode();
+  if (feedbackMode === "defer") {
+    return;
+  }
+
+  const isLoggedIn = feedbackMode === "session";
   const cacheKey = getThemeBackgroundRequestCacheKey(
     normalizedTarget,
     imageUrl,
@@ -16979,7 +17014,7 @@ async function notifyThemeBackgroundConsumed(target, imageUrlOverride = null) {
 
   try {
     let result = null;
-    if (sessionUUID) {
+    if (feedbackMode === "session") {
       const payload = {
         target: normalizedTarget,
         image_url: imageUrl,
@@ -17012,7 +17047,7 @@ async function notifyThemeBackgroundConsumed(target, imageUrlOverride = null) {
     if (result && result.success) {
       currentThemeBackgroundTarget = normalizedTarget;
       currentThemeBackgroundImageUrl = imageUrl;
-      if (sessionUUID) {
+      if (feedbackMode === "session") {
         sessionBindEnsured[normalizedTarget] = true;
         preLoginBackgroundSnapshot[normalizedTarget] = "";
       } else {
@@ -17478,6 +17513,8 @@ async function saveThemePreference(theme) {
 }
 
 async function syncThemeFromServer(themeFromResponse = null, themeStyleFromResponse = null) {
+  themeBackgroundAuthStateResolved = true;
+  themeBackgroundAuthenticatedSession = !!sessionUUID;
   const responseTheme =
     typeof themeFromResponse === "string" && themeFromResponse
       ? normalizeThemePreference(themeFromResponse)
@@ -32442,6 +32479,8 @@ async function initializeApp() {
     $("loading-overlay").classList.remove("hidden");
     ShowMobileLoadingOverlay();
     const isAuthenticated = await checkAuthStatus();
+    themeBackgroundAuthStateResolved = true;
+    themeBackgroundAuthenticatedSession = !!isAuthenticated;
     if (!isAuthenticated) {
       hideLoadingOverlays();
       HiddenMobileLoadingOverlay();
