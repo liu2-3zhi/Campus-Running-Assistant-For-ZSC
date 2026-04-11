@@ -60834,20 +60834,53 @@ function _fmtBillTime(v) {
   return String(v).replace("T", " ").replace("Z", "");
 }
 
+function getBillingStatusLabel(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  switch (normalized) {
+    case "pending":
+      return "待支付";
+    case "paid":
+      return "已支付";
+    case "closed":
+      return "已关闭";
+    case "refunded_partial":
+      return "部分退款";
+    case "refunded_full":
+      return "全额退款";
+    case "admin_cleared":
+      return "管理员清除";
+    default:
+      return "未知状态";
+  }
+}
+
+function isBillingStatusPayable(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  return normalized === "pending" || normalized === "closed";
+}
+
 function _billStatusBadge(status) {
-  if (status === "paid") {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "paid") {
     return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-green-500 text-[11px]">✓ 已支付</span>';
   }
-  if (status === "admin_cleared") {
+  if (normalized === "closed") {
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-slate-500 text-[11px]">⛔ 已关闭</span>';
+  }
+  if (normalized === "refunded_partial") {
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-orange-500 text-[11px]">↩ 部分退款</span>';
+  }
+  if (normalized === "refunded_full") {
+    return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-rose-500 text-[11px]">↩ 全额退款</span>';
+  }
+  if (normalized === "admin_cleared") {
     return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-sky-500 text-[11px]">✓ 管理员清除</span>';
   }
   return '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white bg-amber-500 text-[11px]">⏳ 待支付</span>';
 }
 
 function _billStatusText(status) {
-  if (status === "paid") return "已支付";
-  if (status === "admin_cleared") return "管理员清除";
-  return "待支付";
+  return getBillingStatusLabel(status);
 }
 
 function _collectSelectedBillingItems(containerId) {
@@ -60923,7 +60956,7 @@ function _renderMobileUserBillingCards(records, containerId) {
     const schoolName = _escapeAttr(r.school_name || r.school_username || "-");
     const reason = _escapeAttr(r.reason || "-");
     const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
-    const canPay = r.status === "pending";
+    const canPay = isBillingStatusPayable(r.status);
     html += `
       <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <!-- 顶栏：复选框在最左 + 状态徽章在最右 -->
@@ -60978,13 +61011,17 @@ function _renderMobileUserBillingCards(records, containerId) {
                   ? `支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}`
                   : r.status === "admin_cleared"
                     ? `清除时间：${_escapeAttr(_fmtBillTime(r.admin_cleared_at))}`
-                    : ""
+                    : r.status === "closed"
+                      ? "订单已关闭，可重新发起支付"
+                      : r.status === "refunded_partial" || r.status === "refunded_full"
+                        ? "该账单已退款，不能再次支付"
+                        : ""
               }
             </div>
             ${
               canPay
                 ? `<button class="flex-shrink-0 px-3 py-1 text-[11px] font-medium bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg border border-emerald-200 transition-colors" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`
-                : `<span class="flex-shrink-0 text-[11px] ${r.status === "admin_cleared" ? "text-sky-500" : "text-green-500"}">${r.status === "admin_cleared" ? "已清除" : "已支付"}</span>`
+                : `<span class="flex-shrink-0 text-[11px] ${r.status === "admin_cleared" ? "text-sky-500" : "text-slate-500"}">${_escapeAttr(getBillingStatusLabel(r.status))}</span>`
             }
           </div>
         </div>
@@ -61014,7 +61051,7 @@ function _renderBillingTableCommon(records, opts = {}) {
     const reason = _escapeAttr(r.reason || "-");
     const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
     const statusBadge = _billStatusBadge(r.status);
-    const canPay = r.status === "pending";
+    const canPay = isBillingStatusPayable(r.status);
     html += `<tr class="hover:bg-slate-50">`;
     html += `<td class="p-2 text-center"><input type="checkbox" data-billing-select="1" data-billing-id="${billingId}" data-school-username="${school}" data-school-name="${schoolName}" data-reason="${reason}" data-amount="${amount}" data-status="${_escapeAttr(r.status || "-")}" data-created-at="${_escapeAttr(r.created_at || "")}" ${canPay ? "" : "disabled"}></td>`;
     html += `<td class="p-2 text-slate-800">${school}</td>`;
@@ -61360,6 +61397,15 @@ async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
     throw new Error(orderResult.message || "创建订单失败");
   }
   const responsePayType = String(orderResult.pay_type || "").trim().toLowerCase();
+  if (orderResult.reused_qr === true) {
+    await Swal.fire({
+      title: "已复用二维码",
+      text: "已复用有效期内二维码",
+      icon: "info",
+      confirmButtonColor: "#3b82f6",
+      confirmButtonText: "知道了",
+    });
+  }
   const payInfo = orderResult.pay_info || orderResult.pay_url;
   if (!payInfo) {
     throw new Error("支付链接为空");
@@ -61430,6 +61476,20 @@ async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
                     statusEl.style.color = "#15803d";
                   }
                   Swal.close();
+                  return;
+                }
+                if (status === "closed") {
+                  if (statusEl) {
+                    statusEl.textContent = "订单已关闭，请重新发起支付";
+                    statusEl.style.color = "#475569";
+                  }
+                  return;
+                }
+                if (status === "refunded_partial" || status === "refunded_full") {
+                  if (statusEl) {
+                    statusEl.textContent = "订单已退款，不能重复支付";
+                    statusEl.style.color = "#b45309";
+                  }
                   return;
                 }
                 if (statusEl) {
@@ -61600,7 +61660,8 @@ function _getBillingPayPendingHint(orderResult) {
     .trim()
     .toLowerCase();
   if (resultPayType === "qrcode") {
-    return orderResult?.active_query_result?.status === "pending"
+    const activeStatus = String(orderResult?.active_query_result?.status || "").trim().toLowerCase();
+    return activeStatus === "pending"
       ? "已发起主动查询，系统仍将继续自动轮询支付状态"
       : "系统将持续轮询支付状态，请在支付应用内完成支付";
   }
@@ -61694,6 +61755,22 @@ async function _showBillingPaymentPollingModal(orderResult) {
             if (statusEl) {
               statusEl.textContent = "已检测到支付成功，正在完成收尾...";
               statusEl.style.color = "#15803d";
+            }
+            if (!isModalClosed) Swal.close();
+            return;
+          }
+          if (status === "closed") {
+            if (statusEl) {
+              statusEl.textContent = "订单已关闭，请重新发起支付";
+              statusEl.style.color = "#475569";
+            }
+            if (!isModalClosed) Swal.close();
+            return;
+          }
+          if (status === "refunded_partial" || status === "refunded_full") {
+            if (statusEl) {
+              statusEl.textContent = "订单已退款，不能重复支付";
+              statusEl.style.color = "#b45309";
             }
             if (!isModalClosed) Swal.close();
             return;
