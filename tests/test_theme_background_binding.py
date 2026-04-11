@@ -1,8 +1,12 @@
+import datetime
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from main import (
+    Api,
+    AuthSystem,
     _get_session_theme_background_binding,
     _load_random_background_index,
     _resolve_theme_background_binding_decision,
@@ -12,6 +16,94 @@ from main import (
 
 
 class TestThemeBackgroundBinding(unittest.TestCase):
+    def test_default_theme_prefers_unexpired_binding_for_pc_target(self):
+        with tempfile.TemporaryDirectory() as d:
+            cache_dir = Path(d)
+            _set_session_theme_background_binding(
+                str(cache_dir),
+                session_uuid="sid-bound",
+                target="pc",
+                image_url="/theme-assets/random_background_image/pc_bound.jpg",
+                ttl_seconds=1800,
+            )
+
+            auth_system = AuthSystem()
+            with patch.object(
+                auth_system,
+                "_peek_default_theme_background_images",
+                return_value={"pc": "/theme-assets/random_background_image/pc_random.jpg"},
+            ):
+                theme_config = auth_system.get_theme_config(
+                    "default",
+                    targets=["pc"],
+                    session_uuid="sid-bound",
+                    cache_dir=str(cache_dir),
+                )
+
+            env = theme_config["global_environment_variables"]
+            self.assertIn("pc_bound.jpg", env["auth_login_container_background"])
+            self.assertNotIn("pc_random.jpg", env["auth_login_container_background"])
+
+    def test_default_theme_falls_back_to_random_when_binding_expired(self):
+        with tempfile.TemporaryDirectory() as d:
+            cache_dir = Path(d)
+            _set_session_theme_background_binding(
+                str(cache_dir),
+                session_uuid="sid-expired",
+                target="pc",
+                image_url="/theme-assets/random_background_image/pc_old.jpg",
+                ttl_seconds=1,
+            )
+
+            auth_system = AuthSystem()
+            future_now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+                seconds=5
+            )
+            with patch("main.datetime.datetime") as mocked_datetime:
+                mocked_datetime.now.return_value = future_now
+                mocked_datetime.fromisoformat.side_effect = datetime.datetime.fromisoformat
+
+                with patch.object(
+                    auth_system,
+                    "_peek_default_theme_background_images",
+                    return_value={"pc": "/theme-assets/random_background_image/pc_random.jpg"},
+                ):
+                    theme_config = auth_system.get_theme_config(
+                        "default",
+                        targets=["pc"],
+                        session_uuid="sid-expired",
+                        cache_dir=str(cache_dir),
+                    )
+
+            env = theme_config["global_environment_variables"]
+            self.assertIn("pc_random.jpg", env["auth_login_container_background"])
+            self.assertNotIn("pc_old.jpg", env["auth_login_container_background"])
+
+    def test_public_theme_styles_uses_web_session_id_for_binding_resolution(self):
+        with tempfile.TemporaryDirectory() as d:
+            cache_dir = Path(d) / "random_background_image"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            _set_session_theme_background_binding(
+                str(cache_dir),
+                session_uuid="sid-api",
+                target="pc",
+                image_url="/theme-assets/random_background_image/pc_bound.jpg",
+                ttl_seconds=1800,
+            )
+
+            api = Api.__new__(Api)
+            api._web_session_id = "sid-api"
+            auth_system = AuthSystem()
+
+            with patch("main.auth_system", auth_system, create=True), patch(
+                "main.os.path.abspath", return_value=str(cache_dir.parent / "main.py")
+            ):
+                result = api.get_public_theme_styles("default", "pc")
+
+            self.assertTrue(result["success"])
+            env = result["theme_config"]["global_environment_variables"]
+            self.assertIn("pc_bound.jpg", env["auth_login_container_background"])
+
     def test_index_backward_compatible_with_session_bindings(self):
         with tempfile.TemporaryDirectory() as d:
             cache_dir = Path(d)
