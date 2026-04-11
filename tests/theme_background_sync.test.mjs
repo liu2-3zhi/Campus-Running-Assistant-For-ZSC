@@ -116,6 +116,45 @@ function shouldSkipThemeBackgroundConsumeDuringLogin({
   return Boolean(renderedImageUrl && imageUrl && renderedImageUrl === imageUrl);
 }
 
+test('uuid page defers initial theme config apply until uuid auth status resolves', () => {
+  const { shouldApplyThemeConfigImmediately } = loadFunctions(['shouldApplyThemeConfigImmediately']);
+
+  assert.equal(
+    shouldApplyThemeConfigImmediately({
+      sessionId: '',
+      pathname: '/uuid=bce408cc-94a7-42b7-afaa-6b19044a69ea',
+      authStateResolved: false,
+    }),
+    false,
+  );
+});
+
+test('uuid page applies theme config after uuid auth status resolves', () => {
+  const { shouldApplyThemeConfigImmediately } = loadFunctions(['shouldApplyThemeConfigImmediately']);
+
+  assert.equal(
+    shouldApplyThemeConfigImmediately({
+      sessionId: '',
+      pathname: '/uuid=bce408cc-94a7-42b7-afaa-6b19044a69ea',
+      authStateResolved: true,
+    }),
+    true,
+  );
+});
+
+test('plain public page still applies theme config immediately without uuid', () => {
+  const { shouldApplyThemeConfigImmediately } = loadFunctions(['shouldApplyThemeConfigImmediately']);
+
+  assert.equal(
+    shouldApplyThemeConfigImmediately({
+      sessionId: '',
+      pathname: '/',
+      authStateResolved: false,
+    }),
+    true,
+  );
+});
+
 test('uuid page defers background feedback until auth state is known', () => {
   const { getThemeBackgroundFeedbackMode } = loadFunctions(['getThemeBackgroundFeedbackMode']);
 
