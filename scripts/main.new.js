@@ -16751,7 +16751,7 @@ function safeResizeAndFitView() {
 
 
 
-function applyThemeGlobalEnvironmentVariables(themeConfig) {
+function applyThemeGlobalEnvironmentVariables(themeConfig, options = {}) {
   const config = themeConfig && typeof themeConfig === "object" ? themeConfig : {};
   const env =
     config.global_environment_variables &&
@@ -16776,12 +16776,13 @@ function applyThemeGlobalEnvironmentVariables(themeConfig) {
     window[`themeEnv_${key}`] = value;
   });
 
-  applyThemeLoginContainerStyle(config);
+  applyThemeLoginContainerStyle(config, options);
   scheduleThemeBackgroundConsumed();
 }
 
 let currentThemeBackgroundTarget = null;
 let currentThemeBackgroundImageUrl = "";
+let themeBackgroundLoginSyncInFlight = false;
 let themeBackgroundFeedbackInFlight = false;
 let activeThemeBackgroundFeedback = null;
 let pendingThemeBackgroundFeedback = null;
@@ -16865,6 +16866,10 @@ function scheduleThemeBackgroundConsumed() {
     return;
   }
 
+  if (shouldSkipThemeBackgroundConsumeDuringLogin(normalizedTarget, imageUrl)) {
+    return;
+  }
+
   if (!initialLoadBackgroundCandidateByTarget[normalizedTarget]) {
     initialLoadBackgroundCandidateByTarget[normalizedTarget] = imageUrl;
   }
@@ -16915,6 +16920,10 @@ async function notifyThemeBackgroundConsumed(target, imageUrlOverride = null) {
       : getThemeBackgroundImageUrlByTarget(normalizedTarget);
 
   if (!imageUrl) {
+    return;
+  }
+
+  if (shouldSkipThemeBackgroundConsumeDuringLogin(normalizedTarget, imageUrl)) {
     return;
   }
 
@@ -17013,7 +17022,9 @@ async function notifyThemeBackgroundConsumed(target, imageUrlOverride = null) {
       }
       if (result.theme_config && typeof result.theme_config === "object") {
         currentThemeConfig = result.theme_config;
-        applyThemeLoginContainerStyle(currentThemeConfig);
+        applyThemeLoginContainerStyle(currentThemeConfig, {
+          skipVisualRewrite: themeBackgroundLoginSyncInFlight,
+        });
       }
     }
   } catch (e) {
@@ -17042,7 +17053,33 @@ function syncThemeBackgroundTarget() {
 
 window.addEventListener("resize", syncThemeBackgroundTarget);
 
-function applyThemeLoginContainerStyle(themeConfig) {
+function shouldSkipThemeBackgroundVisualRewrite(target, nextBackgroundValue, options = {}) {
+  if (options.skipVisualRewrite !== true) {
+    return false;
+  }
+
+  const normalizedTarget = target === "mobile" ? "mobile" : "pc";
+  const renderedImageUrl = getRenderedThemeBackgroundImageUrlByTarget(normalizedTarget);
+  const incomingImageUrl = extractThemeBackgroundImageUrl(nextBackgroundValue || "");
+
+  return !!(renderedImageUrl && incomingImageUrl && renderedImageUrl === incomingImageUrl);
+}
+
+function shouldSkipThemeBackgroundConsumeDuringLogin(target, imageUrl) {
+  if (!themeBackgroundLoginSyncInFlight || !sessionUUID) {
+    return false;
+  }
+
+  const normalizedTarget = target === "mobile" ? "mobile" : "pc";
+  if (sessionBindEnsured[normalizedTarget]) {
+    return true;
+  }
+
+  const renderedImageUrl = getRenderedThemeBackgroundImageUrlByTarget(normalizedTarget);
+  return !!(renderedImageUrl && imageUrl && renderedImageUrl === imageUrl);
+}
+
+function applyThemeLoginContainerStyle(themeConfig, options = {}) {
   const config = themeConfig && typeof themeConfig === "object" ? themeConfig : {};
   const env =
     config.global_environment_variables &&
@@ -17065,7 +17102,9 @@ function applyThemeLoginContainerStyle(themeConfig) {
   const panelBorder = env.auth_login_panel_border || "";
 
   if (desktopContainer) {
-    desktopContainer.style.background = desktopBackground;
+    if (!shouldSkipThemeBackgroundVisualRewrite("pc", desktopBackground, options)) {
+      desktopContainer.style.background = desktopBackground;
+    }
   }
 
   if (desktopPanel) {
@@ -17472,6 +17511,11 @@ async function syncThemeFromServer(themeFromResponse = null, themeStyleFromRespo
     setThemeStyle(finalThemeStyle, false, false);
   } else {
     setThemeStyle(finalThemeStyle, false);
+  }
+  if (currentThemeConfig && typeof currentThemeConfig === "object") {
+    applyThemeLoginContainerStyle(currentThemeConfig, {
+      skipVisualRewrite: themeBackgroundLoginSyncInFlight,
+    });
   }
   logMessage_Info(`[主题] 已同步服务器主题: ${finalTheme}`);
   logMessage_Info(`[主题] 已同步服务器主题风格: ${finalThemeStyle}`);
@@ -18415,6 +18459,7 @@ async function handleAuthLogin(isMobile_use = false) {
         );
       }
 
+      themeBackgroundLoginSyncInFlight = true;
       await syncThemeFromServer(result.theme, result.theme_style);
 
       let successMessage = "登录成功！";
@@ -18635,6 +18680,8 @@ async function handleAuthLogin(isMobile_use = false) {
       "mobile-login-captcha",
     );
     if (mobileLoginCaptchaErr) mobileLoginCaptchaErr.value = "";
+  } finally {
+    themeBackgroundLoginSyncInFlight = false;
   }
 }
 
