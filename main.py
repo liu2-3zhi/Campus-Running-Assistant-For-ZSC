@@ -31262,7 +31262,11 @@ def start_web_server(args_param):
             requested_target = str(request.args.get("background_target") or "").strip().lower()
             if requested_target not in ("pc", "mobile"):
                 requested_target = None
+            requested_uuid = _normalize_theme_background_session_uuid(
+                request.args.get("uuid", "")
+            )
             public_api_instance = Api(args)
+            public_api_instance._web_session_id = requested_uuid
             return jsonify(public_api_instance.get_public_theme_styles(requested_style, requested_target))
         except Exception as e:
             logging.error(f"获取公开主题信息失败: {e}", exc_info=True)

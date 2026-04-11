@@ -17355,6 +17355,33 @@ function renderThemeStyleButtons(container, currentStyle = "default", options = 
   });
 }
 
+function resolveThemeRequestSessionUUID(sessionId = sessionUUID, pathname = window.location.pathname) {
+  if (typeof sessionId === "string" && sessionId.trim()) {
+    return sessionId.trim();
+  }
+
+  const normalizedPath = typeof pathname === "string" ? pathname : "";
+  const match = normalizedPath.match(
+    /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i,
+  );
+  return match && match[1] ? match[1] : "";
+}
+
+function buildPublicThemeStylesUrl(styleId, backgroundTarget, sessionId = sessionUUID, pathname = window.location.pathname) {
+  const resolvedUuid = resolveThemeRequestSessionUUID(sessionId, pathname);
+  const searchParams = new URLSearchParams({
+    style_id: encodeURIComponent(styleId),
+    background_target: encodeURIComponent(backgroundTarget),
+  });
+  if (resolvedUuid) {
+    searchParams.set("uuid", encodeURIComponent(resolvedUuid));
+  }
+  return `/api/public/theme_styles?${searchParams.toString()}`
+    .replace(/style_id=([^&]+)/, (_, value) => `style_id=${decodeURIComponent(value)}`)
+    .replace(/background_target=([^&]+)/, (_, value) => `background_target=${decodeURIComponent(value)}`)
+    .replace(/uuid=([^&]+)/, (_, value) => `uuid=${decodeURIComponent(value)}`);
+}
+
 async function ensureThemeStylesLoaded(force = false) {
   if (!force && Array.isArray(availableThemeStyles) && availableThemeStyles.length > 0) {
     return availableThemeStyles;
@@ -17365,20 +17392,17 @@ async function ensureThemeStylesLoaded(force = false) {
     const requestedTarget = getCurrentThemeBackgroundTarget();
     const result = sessionUUID
       ? await callPythonAPI("get_theme_styles", requestedTarget)
-      : await fetch(
-          `/api/public/theme_styles?style_id=${encodeURIComponent(requestedThemeStyle)}&background_target=${encodeURIComponent(requestedTarget)}`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
+      : await fetch(buildPublicThemeStylesUrl(requestedThemeStyle, requestedTarget), {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
           },
-        ).then((response) => {
-          if (!response.ok) {
-            throw new Error(`HTTP错误: ${response.status}`);
-          }
-          return response.json();
-        });
+        }).then((response) => {
+            if (!response.ok) {
+              throw new Error(`HTTP错误: ${response.status}`);
+            }
+            return response.json();
+          });
 
     if (result && result.success && Array.isArray(result.theme_styles)) {
       availableThemeStyles = result.theme_styles;
@@ -32451,6 +32475,17 @@ async function initializeApp() {
 
     // 使用统一的加载函数获取初始数据，并自动更新管理员任务列表
     const initialData = await loadInitialData();
+    const initialDataFailureNotice = getInitialDataFailureNotice(initialData);
+    if (initialDataFailureNotice) {
+      hideLoadingOverlays();
+      HiddenMobileLoadingOverlay();
+      showUserFriendlyError(
+        initialDataFailureNotice.title,
+        initialDataFailureNotice.text,
+        initialDataFailureNotice.icon === "warning",
+      );
+      return;
+    }
     availableThemeStyles = Array.isArray(initialData?.theme_styles)
       ? initialData.theme_styles
       : [];
@@ -55819,6 +55854,23 @@ let lastInitialDataRequest = 0; // 上次请求的时间戳（毫秒）
 let lastInitialDataResponse = null; // 缓存的上次响应数据
 const INITIAL_DATA_RATE_LIMIT = 500; // 限流时间：500毫秒（0.5秒）
 
+function getInitialDataFailureNotice(response) {
+  if (!response || response.success !== false) {
+    return null;
+  }
+
+  const message = String(response.message || "").trim();
+  if (!response.offline && !message) {
+    return null;
+  }
+
+  return {
+    title: response.offline ? "离线模式" : "初始化失败",
+    text: message || "初始化失败，请稍后重试。",
+    icon: response.offline ? "warning" : "error",
+  };
+}
+
 /**
  * 加载应用初始数据的统一函数（带限流机制）
  *
@@ -55910,8 +55962,16 @@ async function loadInitialData(options = {}) {
     // 步骤5：检查响应的有效性和成功状态
     // ====================================================================
 
-    // 双重检查：确保response不为null/undefined，且success字段为true
-    // 这是一个防御性检查，防止后端返回意外的数据结构
+    const notice = getInitialDataFailureNotice(response);
+    if (notice) {
+      Swal.fire({
+        title: notice.title,
+        text: notice.text,
+        icon: notice.icon,
+        confirmButtonText: "确定",
+      });
+    }
+
     if (response && response.success) {
       // response对象存在且表示操作成功
 
