@@ -17417,10 +17417,34 @@ function buildPublicThemeStylesUrl(styleId, backgroundTarget, sessionId = sessio
     .replace(/uuid=([^&]+)/, (_, value) => `uuid=${decodeURIComponent(value)}`);
 }
 
-async function ensureThemeStylesLoaded(force = false) {
+function shouldApplyThemeConfigImmediately(params) {
+  const normalizedParams = params && typeof params === "object" ? params : {};
+  const pathname = Object.prototype.hasOwnProperty.call(normalizedParams, "pathname")
+    ? normalizedParams.pathname
+    : window.location.pathname;
+  const authStateResolved = Object.prototype.hasOwnProperty.call(normalizedParams, "authStateResolved")
+    ? normalizedParams.authStateResolved
+    : themeBackgroundAuthStateResolved;
+  const normalizedPath = typeof pathname === "string" ? pathname : "";
+  const routeMatch = normalizedPath.match(
+    /\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i,
+  );
+  const routeUuid = routeMatch && routeMatch[1] ? routeMatch[1] : "";
+  if (!routeUuid) {
+    return true;
+  }
+  return authStateResolved === true;
+}
+
+async function ensureThemeStylesLoaded(force = false, options = {}) {
   if (!force && Array.isArray(availableThemeStyles) && availableThemeStyles.length > 0) {
     return availableThemeStyles;
   }
+
+  const normalizedOptions = options && typeof options === "object" ? options : {};
+  const applyThemeConfig = Object.prototype.hasOwnProperty.call(normalizedOptions, "applyThemeConfig")
+    ? normalizedOptions.applyThemeConfig
+    : shouldApplyThemeConfigImmediately();
 
   try {
     const requestedThemeStyle = normalizeThemeStyle(getCachedThemeStyle());
@@ -17443,7 +17467,9 @@ async function ensureThemeStylesLoaded(force = false) {
       availableThemeStyles = result.theme_styles;
       if (result.theme_config && typeof result.theme_config === "object") {
         currentThemeConfig = result.theme_config;
-        applyThemeGlobalEnvironmentVariables(currentThemeConfig);
+        if (applyThemeConfig) {
+          applyThemeGlobalEnvironmentVariables(currentThemeConfig);
+        }
       }
       return availableThemeStyles;
     }
@@ -32086,9 +32112,15 @@ async function initializeApp() {
   ShowMobileLoadingOverlay();
   applyTheme(getCachedThemePreference());
   const cachedThemeStyle = getCachedThemeStyle();
-  setThemeStyle(cachedThemeStyle, false);
-  await ensureThemeStylesLoaded();
-  setThemeStyle(cachedThemeStyle, false);
+  const initialUuidFromPath = resolveThemeRequestSessionUUID("", window.location.pathname);
+  const shouldDeferInitialThemeConfigApply = !!initialUuidFromPath;
+  setThemeStyle(cachedThemeStyle, false, false);
+  await ensureThemeStylesLoaded(false, {
+    applyThemeConfig: !shouldDeferInitialThemeConfigApply,
+  });
+  if (!shouldDeferInitialThemeConfigApply) {
+    setThemeStyle(cachedThemeStyle, false);
+  }
 
   try {
     function isValidUUID(uuid) {
@@ -32196,6 +32228,11 @@ async function initializeApp() {
             });
 
             return;
+          }
+
+          themeBackgroundAuthStateResolved = true;
+          if (currentThemeConfig && typeof currentThemeConfig === "object") {
+            applyThemeGlobalEnvironmentVariables(currentThemeConfig);
           }
         } catch (e) {
           logMessage_Error("检查UUID请求失败:", e);
