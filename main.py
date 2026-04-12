@@ -3148,12 +3148,12 @@ def _get_default_config():
         # 如需修改支付方式的名称、图标、描述等信息，请直接编辑 payment_methods.json 文件
         # 支付超时时间（秒）：订单创建后多长时间内未支付视为超时
         # 格式：整数，单位为秒
-        # 默认值：30（30秒）
+        # 默认值：900（15分钟）
         # 用途：用于标记超时未支付的订单，便于系统自动关闭或提醒用户
         # 注意：
         #   1. 此配置仅用于本地订单超时判断，不影响易支付平台的订单有效期
-        #   2. 建议设置为10-60秒之间
-        "payment_timeout_minutes": "300",
+        #   2. 建议设置为10-3600秒之间
+        "payment_timeout_minutes": "900",
     }
 
     # ============================================================
@@ -38875,13 +38875,13 @@ def start_web_server(args_param):
 
     def _get_payment_timeout_minutes(config_obj=None):
         config = config_obj or _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-        value = config.get("Rainbow_YiPay", "payment_timeout_minutes", fallback="30")
+        value = config.get("Rainbow_YiPay", "payment_timeout_minutes", fallback="900")
         try:
             minutes = int(str(value).strip())
         except Exception:
-            minutes = 30
+            minutes = 900
         if minutes <= 0:
-            minutes = 30
+            minutes = 900
         return minutes
 
     def _build_order_expires_at_iso(created_dt=None, timeout_minutes=None):
@@ -44169,7 +44169,7 @@ def start_web_server(args_param):
                 payment_timeout_minutes = config.get(
                     "Rainbow_YiPay",
                     "payment_timeout_minutes",
-                    fallback="30"  # 默认值：30秒
+                    fallback="900"  # 默认值：900秒（15分钟）
                 )
 
                 # 构造返回数据
@@ -44262,11 +44262,11 @@ def start_web_server(args_param):
 
                 # 获取新的 payment_timeout_minutes 值（支付超时时间）
                 # 单位：秒，表示订单创建后多长时间内未支付视为超时
-                # 从请求数据中获取，如果不存在则使用当前配置值，默认为30秒
+                # 从请求数据中获取，如果不存在则使用当前配置值，默认为900秒（15分钟）
                 new_payment_timeout_minutes = data.get(
                     "payment_timeout_minutes",
                     config.get("Rainbow_YiPay",
-                               "payment_timeout_minutes", fallback="30")
+                               "payment_timeout_minutes", fallback="900")
                 ).strip()
 
                 # ========== 验证参数的有效性 ==========
