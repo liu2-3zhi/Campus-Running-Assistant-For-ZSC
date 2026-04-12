@@ -15795,6 +15795,14 @@ let isRefreshingTasks = false;
 let IS_OFFLINE = false;
 let sessionUUID = null;
 
+function getServerConnectionGuidanceMessage() {
+  return `请检查您的设备是否成功连接互联网
+如果您位于中华人民共和国福建省、江苏省、贵州省或广西省，很可能是您的网络运营商干扰或者正在监听你传输的信息，请尝试：1. 更换网络访问 2. 使用加密 DNS：开启方法 3.使用国际联网工具访问
+请检查是否开启了广告拦截工具，这些工具能干扰您访问服务器
+也有可能是 Zelly 的服务器受到攻击，请尝试刷新您设备的 DNS 再访问
+刷新方法：手机请开启再关闭飞行模式并重启浏览器。电脑请参考：刷新DNS方法`;
+}
+
 function getUUIDFromURL() {
   const urlPath = window.location.pathname;
 
@@ -15911,11 +15919,11 @@ async function callPythonAPI(method, ...args) {
 
     Swal.fire({
       title: "网络错误",
-      text: "无法连接到服务器，请检查您的网络连接或稍后重试。",
-      icon: "error", // 建议添加图标，增强提示效果
+      html: String(getServerConnectionGuidanceMessage()).replace(/\n/g, "<br>"),
+      icon: "error",
       confirmButtonText: "确定",
-      allowOutsideClick: false, // 建议禁止点击背景关闭，强制用户确认
-      allowEscapeKey: false, // 建议禁止按ESC关闭
+      allowOutsideClick: false,
+      allowEscapeKey: false,
     }).then((result) => {
       if (result.isConfirmed) {
         // 原有的回调逻辑放在这里
