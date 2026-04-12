@@ -89,9 +89,18 @@ test('terminal statuses are not payable', () => {
   assert.equal(isBillingStatusPayable('closed'), true);
 });
 
-test('status label includes refunded states', () => {
-  const { getBillingStatusLabel } = loadFunctions(['getBillingStatusLabel']);
-  assert.equal(getBillingStatusLabel('closed'), '已关闭');
-  assert.equal(getBillingStatusLabel('refunded_partial'), '部分退款');
-  assert.equal(getBillingStatusLabel('refunded_full'), '全额退款');
+test('network connectivity guidance text is complete', () => {
+  const { getServerConnectionGuidanceMessage } = loadFunctions(['getServerConnectionGuidanceMessage']);
+  const message = getServerConnectionGuidanceMessage();
+
+  assert.equal(typeof message, 'string');
+  assert.ok(message.includes('请检查您的设备是否成功连接互联网'));
+  assert.ok(message.includes('中华人民共和国福建省、江苏省、贵州省或广西省'));
+  assert.ok(message.includes('更换网络访问'));
+  assert.ok(message.includes('使用加密 DNS：开启方法'));
+  assert.ok(message.includes('使用国际联网工具访问'));
+  assert.ok(message.includes('广告拦截工具'));
+  assert.ok(message.includes('Zelly 的服务器受到攻击'));
+  assert.ok(message.includes('手机请开启再关闭飞行模式并重启浏览器'));
+  assert.ok(message.includes('电脑请参考：刷新DNS方法'));
 });

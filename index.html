@@ -19049,27 +19049,27 @@
 
               <!-- 字段3.7：支付超时时间 (payment_timeout_minutes) -->
               <div>
-                <!-- 字段标签：支付超时时间，单位为分钟 -->
+                <!-- 字段标签：支付超时时间，单位为秒 -->
                 <label class="block text-sm font-semibold text-slate-700 mb-2">
-                  支付超时时间（分钟）
+                  支付超时时间（秒）
                 </label>
                 <!-- 数字输入框：用于输入支付超时时间 -->
                 <!-- type="number"：限制输入为数字 -->
-                <!-- min="1"：最小值为1分钟 -->
-                <!-- max="1440"：最大值为1440分钟（24小时） -->
-                <!-- step="1"：每次递增1分钟 -->
+                <!-- min="10"：最小值为10秒 -->
+                <!-- max="3600"：最大值为3600秒（1小时） -->
+                <!-- step="1"：每次递增1秒 -->
                 <input
                   type="number"
                   id="admin-yipay-timeout_modal"
-                  min="1"
-                  max="1440"
+                  min="10"
+                  max="3600"
                   step="1"
-                  placeholder="请输入支付超时时间（分钟）"
+                  placeholder="请输入支付超时时间（秒）"
                   class="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-shadow"
                 />
                 <!-- 字段提示：说明超时时间的含义和建议值 -->
                 <p class="mt-1 text-xs text-slate-500">
-                  订单创建后超时分钟数（同时用于二维码缓存复用时长），建议 5-30 分钟
+                  订单创建后多长时间内未支付视为超时，建议10-60秒
                 </p>
               </div>
 
