@@ -80,40 +80,46 @@ function loadFunctions(functionNames) {
   return Function(`${functionSources.join('\n\n')} return { ${functionNames.join(', ')} };`)();
 }
 
-test('terminal statuses are not payable', () => {
-  const { isBillingStatusPayable } = loadFunctions(['isBillingStatusPayable']);
-  assert.equal(isBillingStatusPayable('paid'), false);
-  assert.equal(isBillingStatusPayable('refunded_partial'), false);
-  assert.equal(isBillingStatusPayable('refunded_full'), false);
-  assert.equal(isBillingStatusPayable('pending'), true);
-  assert.equal(isBillingStatusPayable('closed'), true);
+test('health status presentation supports ok degraded error and unknown', () => {
+  const { getHealthStatusPresentation } = loadFunctions(['getHealthStatusPresentation']);
+
+  assert.deepEqual(getHealthStatusPresentation('ok'), {
+    color: 'green',
+    text: '运行正常',
+  });
+
+  assert.deepEqual(getHealthStatusPresentation('degraded'), {
+    color: 'yellow',
+    text: '部分异常',
+  });
+
+  assert.deepEqual(getHealthStatusPresentation('error'), {
+    color: 'red',
+    text: '核心异常',
+  });
+
+  assert.deepEqual(getHealthStatusPresentation('unknown'), {
+    color: 'red',
+    text: '状态未知',
+  });
 });
 
-test('network connectivity guidance text is complete', () => {
-  const { getServerConnectionGuidanceMessage } = loadFunctions(['getServerConnectionGuidanceMessage']);
-  const message = getServerConnectionGuidanceMessage();
-
-  assert.equal(typeof message, 'string');
-  assert.ok(message.includes('请确认您的设备已正常连接到互联网'));
-  assert.ok(message.includes('当前网络环境可能存在运营商干扰或流量审查'));
-  assert.ok(message.includes('更换网络后再次访问'));
-  assert.ok(message.includes('启用加密 DNS 后重试'));
-  assert.ok(message.includes('使用国际联网工具访问'));
-  assert.ok(message.includes('广告拦截工具'));
-  assert.ok(message.includes('服务器正在遭受攻击'));
-  assert.ok(message.includes('刷新设备的 DNS 缓存'));
-  assert.ok(message.includes('手机：开启后关闭飞行模式，并重启浏览器'));
-  assert.ok(message.includes('电脑：请参考“刷新 DNS 方法”'));
-});
-
-test('network connectivity guidance text uses structured popup html', () => {
+test('health detail rendering uses dedicated HTML sections and keeps JSON raw block', () => {
   const source = readFileSync(resolve('scripts/main.new.js'), 'utf8');
-  const guidanceSource = extractFunctionSource(source, 'getServerConnectionGuidanceMessage');
+  const loadHealthStatusSource = extractFunctionSource(source, 'loadHealthStatus');
+  const loadMobileHealthStatusSource = extractFunctionSource(source, 'loadMobileMultiHealthStatus');
 
-  assert.ok(guidanceSource.includes('<div class="text-left '));
-  assert.ok(guidanceSource.includes('<ul'));
-  assert.ok(guidanceSource.includes('<li>'));
-  assert.ok(guidanceSource.includes('当前网络环境可能存在运营商干扰或流量审查'));
-  assert.ok(guidanceSource.includes('广告拦截工具'));
-  assert.ok(guidanceSource.includes('刷新设备的 DNS 缓存'));
+  assert.ok(loadHealthStatusSource.includes('querySelector("pre")'));
+  assert.ok(loadHealthStatusSource.includes('textContent = JSON.stringify(result, null, 2)'));
+  assert.ok(loadHealthStatusSource.includes('运行时长'));
+  assert.ok(loadHealthStatusSource.includes('result.summary'));
+  assert.ok(loadHealthStatusSource.includes('result.components'));
+  assert.ok(loadHealthStatusSource.includes('JSON 原文'));
+
+  assert.ok(loadMobileHealthStatusSource.includes('querySelector("pre")'));
+  assert.ok(loadMobileHealthStatusSource.includes('textContent = JSON.stringify(result, null, 2)'));
+  assert.ok(loadMobileHealthStatusSource.includes('运行时长'));
+  assert.ok(loadMobileHealthStatusSource.includes('result.summary'));
+  assert.ok(loadMobileHealthStatusSource.includes('result.components'));
+  assert.ok(loadMobileHealthStatusSource.includes('JSON 原文'));
 });
