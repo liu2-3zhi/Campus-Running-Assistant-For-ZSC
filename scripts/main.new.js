@@ -15796,11 +15796,38 @@ let IS_OFFLINE = false;
 let sessionUUID = null;
 
 function getServerConnectionGuidanceMessage() {
-  return `请检查您的设备是否成功连接互联网
-如果您位于中华人民共和国福建省、江苏省、贵州省或广西省，很可能是您的网络运营商干扰或者正在监听你传输的信息，请尝试：1. 更换网络访问 2. 使用加密 DNS：开启方法 3.使用国际联网工具访问
-请检查是否开启了广告拦截工具，这些工具能干扰您访问服务器
-也有可能是 Zelly 的服务器受到攻击，请尝试刷新您设备的 DNS 再访问
-刷新方法：手机请开启再关闭飞行模式并重启浏览器。电脑请参考：刷新DNS方法`;
+  return `
+    <div class="text-left space-y-4 text-slate-700 leading-6">
+      <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+        <div class="font-semibold text-slate-900 mb-2">连接检查</div>
+        <p>请确认您的设备已正常连接到互联网。</p>
+      </div>
+
+      <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+        <div class="font-semibold text-amber-900 mb-2">可能的网络干扰</div>
+        <p class="mb-2">如果您位于中华人民共和国福建省、江苏省、贵州省或广西省，当前网络环境可能存在运营商干扰或流量审查，建议您尝试以下方式：</p>
+        <ul class="list-disc pl-5 space-y-1">
+          <li>更换网络后再次访问</li>
+          <li>启用加密 DNS 后重试</li>
+          <li>使用国际联网工具访问</li>
+        </ul>
+      </div>
+
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div class="font-semibold text-blue-900 mb-2">本地环境排查</div>
+        <p>同时，请检查您的设备是否启用了广告拦截工具。这类工具可能会影响您与服务器之间的正常连接。</p>
+      </div>
+
+      <div class="bg-rose-50 border border-rose-200 rounded-lg p-4">
+        <div class="font-semibold text-rose-900 mb-2">DNS 刷新建议</div>
+        <p class="mb-2">另外，也不排除 Zelly 的服务器正在遭受攻击。您可以尝试刷新设备的 DNS 缓存后再访问：</p>
+        <ul class="list-disc pl-5 space-y-1">
+          <li>手机：开启后关闭飞行模式，并重启浏览器</li>
+          <li>电脑：请参考“刷新 DNS 方法”</li>
+        </ul>
+      </div>
+    </div>
+  `;
 }
 
 function getUUIDFromURL() {
@@ -22660,6 +22687,19 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function getHealthStatusPresentation(status) {
+  switch (String(status || "").toLowerCase()) {
+    case "ok":
+      return { color: "green", text: "运行正常" };
+    case "degraded":
+      return { color: "yellow", text: "部分异常" };
+    case "error":
+      return { color: "red", text: "核心异常" };
+    default:
+      return { color: "red", text: "状态未知" };
+  }
+}
+
 // ====================
 // 健康状态检测
 // ====================
@@ -22680,11 +22720,78 @@ async function loadHealthStatus() {
     const responseTime = Date.now() - startTime;
     const result = await response.json();
 
-    const statusColor = result.status === "ok" ? "green" : "red";
-    const statusText = result.status === "ok" ? "运行正常" : "出现错误";
+    const presentation = getHealthStatusPresentation(result.status);
+    const statusColor = presentation.color;
+    const statusText = presentation.text;
+
+    const summary =
+      result.summary && typeof result.summary === "object" ? result.summary : null;
+    const components =
+      result.components && typeof result.components === "object"
+        ? Object.values(result.components)
+        : [];
+    const uptimeText = escapeHtml(result.uptime_formatted || "-");
+    const componentNameMap = {
+      running_core: "跑步执行主链路",
+      payment_system: "支付系统",
+      sms_system: "短信系统",
+    };
+
+    const summaryHtml = summary
+      ? `
+          <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-rose-50 border border-rose-200 rounded-lg p-4">
+              <h5 class="font-semibold text-rose-800 mb-2">核心异常数</h5>
+              <p class="text-2xl font-bold text-rose-600">${summary.critical_failed_count || 0}</p>
+            </div>
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <h5 class="font-semibold text-amber-800 mb-2">非核心异常数</h5>
+              <p class="text-2xl font-bold text-amber-600">${summary.non_critical_failed_count || 0}</p>
+            </div>
+          </div>
+        `
+      : "";
+
+    const componentsHtml = components.length
+      ? `
+          <div class="mt-4 bg-white border border-slate-200 rounded-lg p-4">
+            <h5 class="font-semibold text-slate-800 mb-3">组件详情</h5>
+            <div class="space-y-3">
+              ${components
+                .map((component) => {
+                  const componentPresentation = getHealthStatusPresentation(
+                    component.status,
+                  );
+                  const componentColor = componentPresentation.color;
+                  const componentText = componentPresentation.text;
+                  const componentName = escapeHtml(
+                    componentNameMap[component.name] || component.name || "未知组件",
+                  );
+                  const componentMessage = escapeHtml(component.message || "-");
+                  const checksCount =
+                    component.checks && typeof component.checks === "object"
+                      ? Object.keys(component.checks).length
+                      : 0;
+                  const criticalText = component.critical ? "核心组件" : "非核心组件";
+                  return `
+                    <div class="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                      <div class="flex items-center justify-between gap-3 mb-2">
+                        <div class="font-semibold text-slate-800">${componentName}</div>
+                        <span class="px-2 py-1 rounded text-xs bg-${componentColor}-100 text-${componentColor}-700">${componentText}</span>
+                      </div>
+                      <div class="text-sm text-slate-600 mb-2">${componentMessage}</div>
+                      <div class="text-xs text-slate-500">${criticalText} · 检查项 ${checksCount} 个</div>
+                    </div>
+                  `;
+                })
+                .join("")}
+            </div>
+          </div>
+        `
+      : "";
 
     contentEl.innerHTML = `
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="bg-${statusColor}-50 border border-${statusColor}-200 rounded-lg p-4">
               <h5 class="font-semibold text-${statusColor}-800 mb-2">服务器状态</h5>
               <p class="text-2xl font-bold text-${statusColor}-600">${statusText}</p>
@@ -22693,16 +22800,22 @@ async function loadHealthStatus() {
               <h5 class="font-semibold text-blue-800 mb-2">响应时间</h5>
               <p class="text-2xl font-bold text-blue-600">${responseTime}ms</p>
             </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <h5 class="font-semibold text-slate-800 mb-2">运行时长</h5>
+              <p class="text-2xl font-bold text-slate-700">${uptimeText}</p>
+            </div>
           </div>
+          ${summaryHtml}
+          ${componentsHtml}
           <div class="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
-            <h5 class="font-semibold text-slate-800 mb-2">系统信息</h5>
-            <pre class="text-xs text-slate-600 whitespace-pre-wrap">${JSON.stringify(
-              result,
-              null,
-              2,
-            )}</pre>
+            <h5 class="font-semibold text-slate-800 mb-2">JSON 原文</h5>
+            <pre class="text-xs text-slate-600 whitespace-pre-wrap"></pre>
           </div>
         `;
+    const detailPre = contentEl.querySelector("pre");
+    if (detailPre) {
+      detailPre.textContent = JSON.stringify(result, null, 2);
+    }
   } catch (e) {
     logMessage_Error("加载健康状态失败:", e);
     contentEl.innerHTML = `<p class="text-red-500 text-center py-10">加载失败: ${e.message}</p>`;
@@ -48164,11 +48277,72 @@ async function loadMobileMultiHealthStatus() {
     const responseTime = Date.now() - startTime;
     const result = await response.json();
 
-    const statusColor = result.status === "ok" ? "green" : "red";
-    const statusText = result.status === "ok" ? "运行正常" : "出现错误";
+    const presentation = getHealthStatusPresentation(result.status);
+    const statusColor = presentation.color;
+    const statusText = presentation.text;
+
+    const summary =
+      result.summary && typeof result.summary === "object" ? result.summary : null;
+    const components =
+      result.components && typeof result.components === "object"
+        ? Object.values(result.components)
+        : [];
+    const uptimeText = escapeHtml(result.uptime_formatted || "-");
+    const componentNameMap = {
+      running_core: "跑步执行主链路",
+      payment_system: "支付系统",
+      sms_system: "短信系统",
+    };
+
+    const summaryHtml = summary
+      ? `
+          <div class="grid grid-cols-2 gap-2 mb-3">
+            <div class="bg-rose-50 border border-rose-200 rounded-lg p-3">
+              <h5 class="font-semibold text-rose-800 text-xs mb-1">核心异常数</h5>
+              <p class="text-lg font-bold text-rose-600">${summary.critical_failed_count || 0}</p>
+            </div>
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <h5 class="font-semibold text-amber-800 text-xs mb-1">非核心异常数</h5>
+              <p class="text-lg font-bold text-amber-600">${summary.non_critical_failed_count || 0}</p>
+            </div>
+          </div>
+        `
+      : "";
+
+    const componentsHtml = components.length
+      ? `
+          <div class="bg-white border border-slate-200 rounded-lg p-3 mb-3">
+            <h5 class="font-semibold text-slate-800 text-xs mb-2">组件详情</h5>
+            <div class="space-y-2">
+              ${components
+                .map((component) => {
+                  const componentPresentation = getHealthStatusPresentation(
+                    component.status,
+                  );
+                  const componentColor = componentPresentation.color;
+                  const componentText = componentPresentation.text;
+                  const componentName = escapeHtml(
+                    componentNameMap[component.name] || component.name || "未知组件",
+                  );
+                  const componentMessage = escapeHtml(component.message || "-");
+                  return `
+                    <div class="border border-slate-200 rounded-lg p-2 bg-slate-50">
+                      <div class="flex items-center justify-between gap-2 mb-1">
+                        <div class="font-semibold text-slate-800 text-xs">${componentName}</div>
+                        <span class="px-2 py-0.5 rounded text-[10px] bg-${componentColor}-100 text-${componentColor}-700">${componentText}</span>
+                      </div>
+                      <div class="text-[10px] text-slate-600">${componentMessage}</div>
+                    </div>
+                  `;
+                })
+                .join("")}
+            </div>
+          </div>
+        `
+      : "";
 
     contentEl.innerHTML = `
-      <div class="grid grid-cols-2 gap-2 mb-3">
+      <div class="grid grid-cols-3 gap-2 mb-3">
         <div class="bg-${statusColor}-50 border border-${statusColor}-200 rounded-lg p-3">
           <h5 class="font-semibold text-${statusColor}-800 text-xs mb-1">服务器状态</h5>
           <p class="text-lg font-bold text-${statusColor}-600">${statusText}</p>
@@ -48177,16 +48351,22 @@ async function loadMobileMultiHealthStatus() {
           <h5 class="font-semibold text-blue-800 text-xs mb-1">响应时间</h5>
           <p class="text-lg font-bold text-blue-600">${responseTime}ms</p>
         </div>
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+          <h5 class="font-semibold text-slate-800 text-xs mb-1">运行时长</h5>
+          <p class="text-sm font-bold text-slate-700">${uptimeText}</p>
+        </div>
       </div>
+      ${summaryHtml}
+      ${componentsHtml}
       <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
-        <h5 class="font-semibold text-slate-800 text-xs mb-2">系统信息</h5>
-        <pre class="text-[10px] text-slate-600 whitespace-pre-wrap font-mono overflow-x-auto">${JSON.stringify(
-          result,
-          null,
-          2,
-        )}</pre>
+        <h5 class="font-semibold text-slate-800 text-xs mb-2">JSON 原文</h5>
+        <pre class="text-[10px] text-slate-600 whitespace-pre-wrap font-mono overflow-x-auto"></pre>
       </div>
     `;
+    const detailPre = contentEl.querySelector("pre");
+    if (detailPre) {
+      detailPre.textContent = JSON.stringify(result, null, 2);
+    }
   } catch (e) {
     console.error("[移动端健康状态] 加载失败:", e);
     contentEl.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">检测失败: ${e.message}</p>`;
