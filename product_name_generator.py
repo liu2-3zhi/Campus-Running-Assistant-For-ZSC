@@ -22,7 +22,7 @@ import random  # nosec B311 - 仅用于生成展示型商品名的随机文案�
 # - 只能填写 PRODUCT_NAME_GENERATOR_MODE_CONFIGS 中已注册的模式值。
 # - 若要新增行业，请先补充模式配置，再修改本常量。
 # ==============================
-PRODUCT_NAME_GENERATOR_MODE = "lomei"
+PRODUCT_NAME_GENERATOR_MODE = "travel_service"
 
 PRODUCT_NAME_GENERATOR_MODE_CONFIGS = {
     "lomei": {
