@@ -8,6 +8,12 @@ _import_failures = []
 _log_buffer = []
 _logging_exception_hooks_installed = False
 
+# 运行时在 main() 中从 product_name_generator.py 导入。
+# 这里先定义占位全局变量，便于启动校验测试对其进行 mock。
+LoMeiGenerator = None
+PRODUCT_NAME_GENERATOR_MODE = None
+validate_product_name_generator_mode = None
+
 
 MAX_MEMORY_SESSIONS = 100
 
@@ -49494,6 +49500,21 @@ def start_web_server(args_param):
         pass
 
 
+def _validate_product_name_generator_startup_config():
+    """在服务启动前校验商品名生成器行业模式配置。"""
+    try:
+        validate_product_name_generator_mode(PRODUCT_NAME_GENERATOR_MODE)
+        logging.info(
+            "[启动校验] 商品名生成器行业模式配置有效: %s",
+            PRODUCT_NAME_GENERATOR_MODE,
+        )
+    except ValueError as exc:
+        message = f"[启动校验] 商品名生成器行业模式配置无效: {exc}"
+        print(message)
+        logging.error(message)
+        raise SystemExit(1) from exc
+
+
 def main():
     """主函数，启动Web服务器模式（已弃用桌面模式）"""
     # ========== 第1步：导入内置模块 ==========
@@ -49511,9 +49532,14 @@ def main():
     import_standard_libraries()
     import_core_third_party()
     check_and_import_dependencies()
-    global LoMeiGenerator
+    global LoMeiGenerator, PRODUCT_NAME_GENERATOR_MODE, validate_product_name_generator_mode
     if os.path.exists("product_name_generator.py"):
-        from product_name_generator import LoMeiGenerator
+        from product_name_generator import (
+            LoMeiGenerator,
+            PRODUCT_NAME_GENERATOR_MODE,
+            validate_product_name_generator_mode,
+        )
+        _validate_product_name_generator_startup_config()
     else:
         raise ImportError("缺少 product_name_generator.py 文件，无法继续运行。")
 
