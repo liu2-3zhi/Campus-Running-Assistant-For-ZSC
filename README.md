@@ -1,7 +1,7 @@
 # 跑步助手
 
 基于 Python Flask实现的校园跑模拟跑并提交任务
-> 体验地址：http://run.zelly.cn
+> 体验地址：http://campus.zelly.cn/
 
 # 兼容性声明
 
