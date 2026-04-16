@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import main as main_module
 from main import (
     Api,
     AuthSystem,
@@ -267,6 +268,53 @@ class TestThemeBackgroundBinding(unittest.TestCase):
             session_uuid="sid-init",
             cache_dir=str(Path(tempfile.gettempdir()) / "random_background_image"),
         )
+
+    def test_get_initial_data_reads_cdn_cache_from_module_globals(self):
+        api = Api.__new__(Api)
+        api._web_session_id = "sid-cdn"
+        api.user_dir = tempfile.gettempdir()
+        api.config_path = str(Path(tempfile.gettempdir()) / "config.ini")
+        api.global_params = {"theme_style": "default", "amap_js_key": ""}
+        api._load_global_config = Mock()
+        api.is_authenticated = False
+        api.is_guest = True
+        api.login_success = False
+
+        cfg = configparser.ConfigParser()
+        cfg.add_section("Captcha")
+
+        auth_system = Mock()
+        auth_system.get_theme_config.return_value = {
+            "global_environment_variables": {}
+        }
+        auth_system.get_available_theme_styles.return_value = ["default"]
+
+        with patch("main._read_config_ini", return_value=cfg), patch(
+            "main.auth_system", auth_system, create=True
+        ), patch("main.os.listdir", return_value=[]), patch(
+            "main.os.path.abspath", return_value=str(Path(tempfile.gettempdir()) / "main.py")
+        ), patch.object(
+            main_module,
+            "CDN_FILES",
+            {"demo": {"type": "js"}},
+        ), patch.object(
+            main_module,
+            "js_cache_storage",
+            {"demo": "console.log('ok')"},
+        ), patch.object(
+            main_module,
+            "js_cache_last_update",
+            {"demo": 1},
+        ), patch.object(
+            main_module,
+            "js_cache_lock",
+            main_module.threading.Lock(),
+        ):
+            result = api.get_initial_data()
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["cdn_cache"]["demo"]["type"], "js")
+        self.assertTrue(result["cdn_cache"]["demo"]["cached"])
 
 
 if __name__ == "__main__":
