@@ -15,6 +15,16 @@ PRODUCT_NAME_GENERATOR_MODE = None
 validate_product_name_generator_mode = None
 
 
+class _NoopLock:
+    """模块级占位锁：在完整初始化前避免 NameError。"""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
 MAX_MEMORY_SESSIONS = 100
 
 # 支付订单状态常量（模块级，便于测试与工具函数复用）
@@ -30,6 +40,21 @@ ORDER_STATUS_CLOSED = "closed"
 
 PAYMENT_ORDERS_DIR = "payment_orders"
 QR_CACHE_INDEX_FILE = "payment_orders/qr_cache_index.json"
+payment_verify_probes = {}
+payment_verify_probes_lock = _NoopLock()
+
+# 运行时全局状态的安全默认值。
+# 这些对象会在启动流程中被重新初始化；这里提供兜底，避免在初始化前访问时报 NameError。
+browsing_activity = {}
+browsing_activity_lock = _NoopLock()
+CDN_FILES = {}
+js_cache_storage = {}
+js_cache_lock = _NoopLock()
+js_cache_last_update = {}
+font_cache_storage = {}
+font_cache_lock = _NoopLock()
+source_map_storage = {}
+source_map_lock = _NoopLock()
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 AUTO_ATTENDANCE_MAX_MINUTES = 120  # 自动签到最长持续时间（分钟），超时后自动关闭
@@ -73,6 +98,153 @@ def _buffer_log(level, message):
     _log_buffer.append((level, message))
 
 
+def _cleanup_expired_payment_verify_probes(now_ts=None):
+    current_ts = float(now_ts if now_ts is not None else time.time())
+    with payment_verify_probes_lock:
+        expired_tokens = [
+            token
+            for token, probe in payment_verify_probes.items()
+            if float((probe or {}).get("expires_at", 0) or 0) <= current_ts
+        ]
+        for token in expired_tokens:
+            payment_verify_probes.pop(token, None)
+
+
+def _create_payment_verify_probe(ttl_seconds=15):
+    _cleanup_expired_payment_verify_probes()
+    token = secrets.token_urlsafe(24)
+    challenge = secrets.token_urlsafe(32)
+    now_ts = time.time()
+    with payment_verify_probes_lock:
+        payment_verify_probes[token] = {
+            "token": token,
+            "challenge": challenge,
+            "created_at": now_ts,
+            "expires_at": now_ts + float(ttl_seconds),
+            "consumed": False,
+        }
+    return token, challenge
+
+
+def _consume_payment_verify_probe(token, challenge, now_ts=None):
+    _cleanup_expired_payment_verify_probes(now_ts=now_ts)
+    with payment_verify_probes_lock:
+        probe = payment_verify_probes.get(str(token or ""))
+        if not isinstance(probe, dict):
+            return False
+        if probe.get("consumed"):
+            return False
+        if str(probe.get("challenge") or "") != str(challenge or ""):
+            return False
+        probe["consumed"] = True
+        return True
+
+
+def _is_payment_verify_probe_consumed(token):
+    with payment_verify_probes_lock:
+        probe = payment_verify_probes.get(str(token or ""))
+        return bool(isinstance(probe, dict) and probe.get("consumed"))
+
+
+def _build_payment_verify_probe_url(base_url, token):
+    normalized_base = str(base_url or "").rstrip("/")
+    return f"{normalized_base}/api/payment/verify_probe/{token}"
+
+
+def _apply_no_cache_headers(response):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+def _is_same_origin_url(candidate_url, base_url):
+    try:
+        candidate = urllib.parse.urlparse(str(candidate_url or "").strip())
+        base = urllib.parse.urlparse(str(base_url or "").strip())
+    except Exception:
+        return False
+    if not candidate.scheme or not candidate.netloc:
+        return False
+    candidate_port = candidate.port or (443 if candidate.scheme.lower() == "https" else 80)
+    base_port = base.port or (443 if base.scheme.lower() == "https" else 80)
+    return (
+        candidate.scheme.lower(),
+        candidate.hostname.lower() if candidate.hostname else "",
+        candidate_port,
+    ) == (
+        base.scheme.lower(),
+        base.hostname.lower() if base.hostname else "",
+        base_port,
+    )
+
+
+def _normalize_payment_return_url(return_url, app_host, notify_url):
+    normalized_return_url = str(return_url or "").strip()
+    if not normalized_return_url or normalized_return_url in {
+        "null",
+        "NULL",
+        "None",
+        "none",
+        "undefined",
+        "undefind",
+    }:
+        return None
+    if not _is_same_origin_url(normalized_return_url, app_host):
+        logging.warning(
+            f"[支付验证] 拒绝跨站 return_url: {normalized_return_url} (app_host={app_host})"
+        )
+        return None
+    return normalized_return_url
+
+
+def _register_payment_verify_probe_route(app):
+    @app.route("/api/payment/verify_probe/<token>", methods=["POST"])
+    def payment_verify_probe(token):
+        data = request.get_json(silent=True) or {}
+        challenge = data.get("challenge", "")
+        if not _consume_payment_verify_probe(token, challenge):
+            response = jsonify({"success": False})
+            return _apply_no_cache_headers(response), 404
+        response = jsonify({"success": True})
+        return _apply_no_cache_headers(response)
+
+
+def _register_payment_verify_host_route_for_tests(app, login_required, verifier_factory=None):
+    verifier_factory = verifier_factory or IPVerifier
+
+    @app.route("/api/payment/verify_host", methods=["POST"])
+    @login_required
+    def payment_verify_host():
+        data = request.get_json(silent=True) or {}
+        app_host = str(data.get("app_host", "")).strip()
+        if not app_host:
+            return jsonify({
+                "success": False,
+                "message": "app_host参数不能为空",
+                "verified": False,
+            })
+        if not (app_host.startswith("http://") or app_host.startswith("https://")):
+            return jsonify({
+                "success": False,
+                "message": "app_host格式不正确，必须以http://或https://开头",
+                "verified": False,
+            })
+
+        verified = verifier_factory().check_app_host(app_host.rstrip("/"))
+        if verified:
+            return jsonify({
+                "success": True,
+                "message": "验证通过，这是本服务器",
+                "verified": True,
+            })
+        return jsonify({
+            "success": False,
+            "message": "验证失败：目标地址未命中本机随机探针",
+            "verified": False,
+        })
+
+
 def _try_import_builtin(module_name, display_name=None, use_print=False):
     """
     尝试导入内置模块，失败时记录但不立即退出。
@@ -103,9 +275,12 @@ hashlib = _try_import_builtin("hashlib")
 json = _try_import_builtin("json")
 configparser = _try_import_builtin("configparser")
 datetime = _try_import_builtin("datetime")
+urllib = _try_import_builtin("urllib")
 traceback = _try_import_builtin("traceback")
 zipfile = _try_import_builtin("zipfile")
 random = _try_import_builtin("random")
+secrets = _try_import_builtin("secrets")
+string = _try_import_builtin("string")
 argparse = _try_import_builtin("argparse")
 gc = _try_import_builtin("gc")
 heapq = _try_import_builtin("heapq")
@@ -133,6 +308,7 @@ if _import_failures:
 
 _buffer_log("INFO", "[导入检查] ✓ 所有内置模块导入成功\n")
 _import_failures.clear()
+payment_verify_probes_lock = threading.Lock()
 
 if sys and sys.platform.startswith("win"):
     try:
@@ -491,12 +667,6 @@ def initialize_global_variables():
     global browsing_activity, browsing_activity_lock
     browsing_activity = {}
     browsing_activity_lock = threading.Lock()
-
-    # 全局变量：用于存储从 verify_challenge 接口接收到的验证码
-    # 这个变量在 payment_verify_challenge() 函数中被赋值
-    # 在 create_order() 方法中被读取用于验证
-    global payment_verify_challenge_get
-    payment_verify_challenge_get = ""
 
     # 全局变量：缓存服务器的公网IP地址（IPv4 和 IPv6）
     # 用于 is_allowed_ip() 函数中判断请求是否来自服务器本身
@@ -1050,161 +1220,75 @@ class IPVerifier:
     def check_app_host(self, client_app_host: str) -> bool:
         """
         验证 client_app_host 是否真的是本服务器。
-        
-        【IPv6 完全支持】
-        本方法全面支持 IPv6 地址验证：
-        - 自动处理 IPv6 地址的方括号：用户输入 ::1 会被自动转换为 http://[::1]
-        - 支持 IPv6 地址的多种表示形式（会被自动标准化）
-        - 支持 IPv4-mapped IPv6 地址：::ffff:192.168.1.1
 
-        支持多种输入格式：
-        - 纯IP: 127.0.0.1（将使用默认http协议和默认端口）
-        - 带协议: http://127.0.0.1, https://127.0.0.1
-        - 带端口: 127.0.0.1:8080（将使用默认http协议）
-        - 带协议和端口: https://127.0.0.1:8080
-        - 特殊格式: https:127.0.0.1:8080（无双斜杠）
-        - IPv6: http://[::1]:8080, [::1]:8080, ::1
-        - IPv4-mapped IPv6: http://[::ffff:127.0.0.1]:8080
-
-        Args:
-            client_app_host: 用户输入的host字符串
-
-        Returns:
-            bool: 验证成功返回True，否则返回False
+        只接受成功命中当前进程的一次性随机 probe：
+        - 路径固定为 `/api/payment/verify_probe/<token>` 模式；
+        - 请求体携带一次性随机 challenge；
+        - 远端返回 success 仍不足以判定成功，必须同时确认本机 probe 已被消费。
         """
-        # 解析输入（parse_host_input 会自动处理 IPv6 地址的标准化）
         parsed = self.parse_host_input(client_app_host)
 
         if not parsed['ip']:
             logging.warning(f"[本机验证] 无法解析host: {client_app_host}")
             return False
 
-        # 获取用于发起请求的完整 URL
-        # build_full_url 会自动为 IPv6 地址添加方括号
         base_url = parsed['full_url']
 
         if not base_url:
             logging.warning(f"[本机验证] 无法构建请求URL: {client_app_host}")
             return False
 
-        # 记录解析结果，便于调试
-        # 对于 IPv6 地址，会显示标准化后的形式
         logging.info(
             f"[本机验证] 解析结果 - IP: {parsed['ip']}, 端口: {parsed['port']}, 协议: {parsed['scheme']}, URL: {base_url}")
 
-        # 生成一个长度为2048位的随机验证码（challenge）
-        # 用于验证 client_app_host 是否真的是本服务器
-        # 随机字符包括大小写字母和数字，确保足够的随机性和安全性
-        challenge = "".join(random.choices(
-            string.ascii_letters + string.digits, k=2048))
-
-        # 记录日志：开始验证app_host
-        # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
-        challenge_preview = (
-            f"{challenge[:32]}... {challenge[-32:]}" if len(
-                challenge) > 64 else challenge
-        )
-        logging.info(
-            f"开始验证 {client_app_host} 是否是本服务器，生成的验证码长度:  {len(challenge)}位, 预览: {challenge_preview}"
-        )
-
-        # 构造验证接口的完整URL
-        # 格式：{base_url}/api/payment/verify_challenge
-        verify_url = f"{base_url}/api/payment/verify_challenge"
+        token, challenge = _create_payment_verify_probe(ttl_seconds=15)
+        verify_url = _build_payment_verify_probe_url(base_url, token)
+        token_preview = f"{token[:8]}..." if len(token) > 8 else token
 
         try:
-
-            # 向verify_challenge接口发送POST请求
-            # json参数：以JSON格式发送验证码
-            # timeout参数：设置5秒超时，避免长时间等待
-            # 5秒对于本地服务器已经足够，如果5秒内无响应说明可能不是本服务器
             response = requests.post(
-                verify_url, json={"challenge":  challenge}, timeout=5)
+                verify_url,
+                json={"challenge": challenge},
+                timeout=5,
+            )
 
-            # 检查HTTP响应状态码
-            # 200表示请求成功
-            if response. status_code != 200:
-
-                # HTTP状态码不是200
+            if response.status_code != 200:
                 logging.warning(
-                    f"[本机验证] HTTP请求失败 - 状态码: {response.status_code}")
+                    f"[本机验证] probe 请求失败 - 状态码: {response.status_code}, token: {token_preview}"
+                )
                 return False
 
-            # HTTP状态码为200，开始处理响应
-            # 尝试解析响应的JSON数据
             try:
-                # 解析响应体中的JSON数据
-                # 新的验证机制期望格式：{"success": True}
-                # 不再从响应中获取 challenge，而是从全局变量中获取
                 response_data = response.json()
-
-                # 检查响应中的 success 字段
-                # 如果 success 不为 True，说明验证接口拒绝了请求
-                if not response_data.get("success"):
-                    # 验证接口返回失败
-                    message = response_data.get("message", "验证接口返回失败")
-                    logging.warning(f"[本机验证] 验证接口返回失败: {message}")
-                    return False
-
-                # 声明使用全局变量 payment_verify_challenge_get
-                # 这个变量在 verify_challenge 接口中被赋值
-                global payment_verify_challenge_get
-
-                # 从全局变量中获取服务器存储的 challenge
-                # 这是新的验证机制：challenge 不通过HTTP响应传递，而是通过全局变量传递
-                returned_challenge = payment_verify_challenge_get
-
-                # 记录日志：成功从全局变量获取验证码
-                # 只记录前32位和后32位，避免日志过长
-                returned_preview = (
-                    f"{returned_challenge[:32]}...{returned_challenge[-32:]}"
-                    if len(returned_challenge) > 64
-                    else returned_challenge
-                )
-                logging.info(
-                    f"[本机验证] 从全局变量获取验证码，长度: {len(returned_challenge)}位, 预览: {returned_preview}"
-                )
-
             except ValueError as e:
-                # JSON解析失败
-                # 这说明返回的响应不是有效的JSON格式，可能不是本服务器
-                logging.warning(f"[本机验证] 响应JSON解析失败: {str(e)}")
+                logging.warning(f"[本机验证] probe 响应JSON解析失败: {str(e)}")
                 return False
 
-            except Exception as e:
-                # 其他解析异常
-                logging.error(f"[本机验证] 响应处理异常: {str(e)}")
+            if not response_data.get("success"):
+                logging.warning(f"[本机验证] probe 接口返回失败: {token_preview}")
                 return False
+
+            if not _is_payment_verify_probe_consumed(token):
+                logging.warning(f"[本机验证] probe 未在本机消费成功: {token_preview}")
+                return False
+
+            logging.info(f"[本机验证] app_host probe 验证通过: {base_url}")
+            return True
 
         except requests.exceptions.Timeout:
-            # 请求超时
             logging.warning(f"[本机验证] 请求超时 - {verify_url}")
             return False
 
         except requests.exceptions.ConnectionError:
-            # 连接错误（网络不通或域名无法解析）
-            logging. warning(f"[本机验证] 连接失败 - {verify_url}")
+            logging.warning(f"[本机验证] 连接失败 - {verify_url}")
             return False
 
         except Exception as e:
-            # 其他异常
             logging.error(f"[本机验证] 验证过程异常: {str(e)}")
             return False
 
-        # 比对发送的 challenge 和从全局变量获取的 challenge
-        # 如果两者完全一致，说明这确实是本服务器
-        # 如果不一致，说明 app_host 指向的不是本服务器，验证失败
-        if challenge != returned_challenge:
-            # 验证失败：全局变量中的 challenge 与发送的不一致
-            # 这说明 app_host 指向的服务器不是本服务器
-            logging.warning(f"[本机验证] 验证码不匹配 - 验证失败")
-            logging.warning(
-                f"[本机验证] 发送的验证码长度: {len(challenge)}位，全局变量中的长度:  {len(returned_challenge)}位"
-            )
-            logging.warning(f"[本机验证] {client_app_host} 可能不是本服务器")
-            return False
-
-        return True
+        finally:
+            _cleanup_expired_payment_verify_probes()
 
     def check_host_has_scheme(self, client_app_host: str) -> bool:
         """
@@ -5812,7 +5896,7 @@ class RainbowYiPayClient:
 
         # 声明使用全局 requests 变量
         # requests 已在 check_and_import_dependencies() 中导入
-        global requests, payment_verify_challenge_get
+        global requests
 
         # 兜底客户端IP，避免易支付拒绝“clientip不能为空”
         clientip = str(clientip or "").strip()
@@ -5927,28 +6011,14 @@ class RainbowYiPayClient:
         notify_url = f"{app_host}/api/payment/yipay_notify"
 
         # 确定同步返回URL（return_url）
-        # 优先使用传入的 return_url 参数（如果提供）
-        # 如果没有传入，则使用配置文件中的 return_url（向后兼容）
-        # 用户支付完成后，浏览器会跳转到这个URL
+        # 仅允许与当前 app_host 同源的完整 URL；不允许跨站地址。
+        return_url = _normalize_payment_return_url(
+            return_url,
+            app_host=app_host,
+            notify_url=notify_url,
+        )
         if return_url is None:
             return_url = notify_url
-
-        def is_yipay_notify(url):
-            # 1. 预处理：如果 URL 不包含协议头（://），临时加上 http:// 以便解析
-            if "://" not in url:
-                url = "http://" + url
-
-            # 2. 解析 URL
-            parsed_url = urllib.parse.urlparse(url)
-
-            # 3. 获取路径部分 (path) 并进行比对
-            # parsed_url.path 会自动去除 ? 后面的参数
-            return parsed_url.path == "/api/payment/yipay_notify"
-
-        if not is_yipay_notify(return_url):
-            logging.info(
-                "[彩虹易支付] return_url 不是 /api/payment/yipay_notify，正在尝试修正...")
-            return_url = f"{app_host}/api/payment/yipay_notify?jump=" + return_url
 
         device = _normalize_yipay_device(device_get)
 
@@ -23850,12 +23920,19 @@ def _register_health_route(app):
         return jsonify(payload), http_status
 
 
+def _register_payment_routes(app, login_required):
+    _register_payment_verify_probe_route(app)
+    _register_payment_verify_host_route_for_tests(app, login_required)
+
+
 
 def start_web_server(args_param):
     """
     启动Flask Web服务器主函数，集成SocketIO实时通信和Chrome浏览器自动化。
     """
     global chrome_pool, background_task_manager, web_sessions, web_sessions_lock, session_file_locks, session_file_locks_lock, session_activity, session_activity_lock, args
+    global CDN_FILES, js_cache_storage, js_cache_lock, js_cache_last_update
+    global font_cache_storage, font_cache_lock, source_map_storage, source_map_lock
     global server_start_time
     server_start_time = time.time()
     logging.info(
@@ -41068,9 +41145,6 @@ def start_web_server(args_param):
             # 使用 strip() 去除空白字符，空字符串会被转为 None
             return_url = data.get("return_url", "").strip() or None
 
-            if (not return_url) or return_url.strip() == '' or return_url.strip() == "null" or return_url.strip() == "undefind" or IPVerifier().is_allowed_ip(return_url):
-                return_url = None
-
             # 提取设备类型参数（web接口根据设备自动判断拉起方式）
             # device: 设备类型（pc/mobile/qq/wechat/alipay）
             device = _normalize_yipay_device(data.get("device", ""))
@@ -43355,276 +43429,7 @@ def start_web_server(args_param):
     # 支付验证接口 - 用于验证app_host的安全性
     # ==============================================================================
 
-    @app.route("/api/payment/verify_host", methods=["POST"])
-    @login_required
-    def payment_verify_host():
-        """
-        验证app_host是否为本服务器的安全接口
-
-        请求方法：POST
-        权限要求：需要登录（仅管理员应使用）
-
-        请求参数（JSON格式）：
-            - app_host (str): 需要验证的应用域名（例如："https://example.com"）
-
-        返回数据（JSON格式）：
-            - success (bool): 验证是否通过
-            - message (str): 验证结果信息
-            - verified (bool): 是否验证通过
-
-        功能说明：
-        这个接口使用随机验证码机制来验证传入的app_host是否确实是本服务器。
-        验证流程：
-        1. 生成一个6位随机字符串作为验证码（challenge）
-        2. 向 {app_host}/api/payment/verify_challenge 发送POST请求，携带验证码
-        3. 检查响应中返回的验证码是否与发送的一致
-        4. 如果一致，说明app_host指向的就是本服务器
-
-        安全意义：
-        - 防止攻击者配置错误的app_host导致支付回调被劫持
-        - 确保支付异步通知URL指向正确的服务器
-        - 使用随机验证码，每次验证都不同，防止重放攻击
-
-        使用场景：
-        - 管理员在配置彩虹易支付时，验证app_host配置是否正确
-        - 前端动态传入app_host前，先进行验证
-        """
-        # 声明使用全局 requests 变量
-        # requests 已在 check_and_import_dependencies() 中导入
-        global requests
-
-        try:
-            # 从请求体中获取JSON数据
-            data = request.get_json() or {}
-
-            # 提取需要验证的app_host参数
-            # strip() 去除首尾空白字符
-            app_host = data.get("app_host", "").strip()
-
-            # ========== 参数验证 ==========
-
-            # 验证app_host是否为空
-            if not app_host:
-                return jsonify({
-                    "success": False,
-                    "message": "app_host参数不能为空",
-                    "verified": False
-                })
-
-            # 验证app_host格式：必须以http://或https://开头
-            # 这确保了URL的基本格式正确
-            if not (app_host.startswith("http://") or app_host.startswith("https://")):
-                return jsonify({
-                    "success": False,
-                    "message": "app_host格式不正确，必须以http://或https://开头",
-                    "verified": False
-                })
-
-            # 移除app_host末尾的斜杠（如果存在）
-            # 这样可以统一URL格式，避免出现双斜杠的情况
-            # 例如：https://example.com/ -> https://example.com
-            app_host = app_host.rstrip('/')
-
-            # ========== 生成随机验证码 ==========
-
-            # 生成一个2048位的随机字符串作为验证码（challenge）
-            # 使用大小写字母和数字的组合，确保极高的安全性和随机性
-            # string.ascii_letters 包含所有大小写字母（a-z, A-Z，共52个字符）
-            # string.digits 包含所有数字（0-9，共10个字符）
-            # 总共62个字符的字符集，2048位随机字符串的组合数为 62^2048
-            # import string
-            # random.choices() 从给定字符集中随机选择k个字符
-            # k=2048 表示生成2048位验证码，提供极高的安全强度
-            # ''.join() 将字符列表拼接成字符串
-            challenge = ''.join(random.choices(
-                string.ascii_letters + string.digits, k=2048))
-
-            # 记录日志：开始验证app_host
-            # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
-            challenge_preview = f"{challenge[:32]}...{challenge[-32:]}" if len(
-                challenge) > 64 else challenge
-            logging.info(
-                f"[支付验证] 开始验证app_host: {app_host}, 验证码长度: {len(challenge)}位, 预览: {challenge_preview}")
-
-            # ========== 发送验证请求 ==========
-
-            # 构造验证接口的完整URL
-            # 格式：{app_host}/api/payment/verify_challenge
-            verify_url = f"{app_host}/api/payment/verify_challenge"
-
-            try:
-                # 向verify_challenge接口发送POST请求
-                # json参数：以JSON格式发送验证码
-                # timeout参数：设置5秒超时，避免长时间等待
-                # 5秒对于本地服务器已经足够，如果5秒内无响应说明可能不是本服务器
-                response = requests.post(
-                    verify_url,
-                    json={"challenge": challenge},
-                    timeout=5
-                )
-
-                # 检查HTTP响应状态码
-                # 200表示请求成功
-                if response.status_code == 200:
-                    # 尝试解析响应JSON
-                    try:
-                        result = response.json()
-
-                        # 从响应中提取返回的验证码
-                        returned_challenge = result.get("challenge", "")
-
-                        # 对比发送的验证码和返回的验证码
-                        # 如果完全一致，说明确实是本服务器
-                        if returned_challenge == challenge:
-                            # 验证通过
-                            logging.info(f"[支付验证] app_host验证通过: {app_host}")
-                            return jsonify({
-                                "success": True,
-                                "message": "验证通过，这是本服务器",
-                                "verified": True
-                            })
-                        else:
-                            # 验证码不匹配，验证失败
-                            logging.warning(
-                                f"[支付验证] 验证码不匹配 - 发送: {challenge}, 返回: {returned_challenge}"
-                            )
-                            return jsonify({
-                                "success": False,
-                                "message": "验证失败：返回的验证码不匹配",
-                                "verified": False
-                            })
-
-                    except json.JSONDecodeError:
-                        # 响应不是有效的JSON格式
-                        logging.warning(f"[支付验证] 响应不是有效的JSON格式")
-                        return jsonify({
-                            "success": False,
-                            "message": "验证失败：响应格式不正确",
-                            "verified": False
-                        })
-
-                else:
-                    # HTTP状态码不是200
-                    logging.warning(
-                        f"[支付验证] HTTP请求失败 - 状态码: {response.status_code}"
-                    )
-                    return jsonify({
-                        "success": False,
-                        "message": f"验证失败：HTTP状态码 {response.status_code}",
-                        "verified": False
-                    })
-
-            except requests.exceptions.Timeout:
-                # 请求超时
-                logging.warning(f"[支付验证] 请求超时 - {verify_url}")
-                return jsonify({
-                    "success": False,
-                    "message": "验证失败：请求超时（5秒）",
-                    "verified": False
-                })
-
-            except requests.exceptions.ConnectionError:
-                # 连接错误（网络不通或域名无法解析）
-                logging.warning(f"[支付验证] 连接失败 - {verify_url}")
-                return jsonify({
-                    "success": False,
-                    "message": "验证失败：无法连接到目标服务器",
-                    "verified": False
-                })
-
-            except Exception as e:
-                # 其他异常
-                logging.error(f"[支付验证] 验证过程异常: {str(e)}")
-                return jsonify({
-                    "success": False,
-                    "message": f"验证失败：{str(e)}",
-                    "verified": False
-                })
-
-        except Exception as e:
-            # 捕获最外层的所有异常
-            logging.error(f"[支付验证] verify_host接口异常: {str(e)}")
-            logging.error(traceback.format_exc())
-            return jsonify({
-                "success": False,
-                "message": f"验证失败：{str(e)}",
-                "verified": False
-            }), 500
-
-    @app.route("/api/payment/verify_challenge", methods=["POST"])
-    def payment_verify_challenge():
-        """
-        验证挑战响应接口（用于配合verify_host验证）
-
-        本接口的作用：
-        1. 接收客户端发送的 challenge（验证码）
-        2. 验证请求来源IP是否为内网或服务器自己的公网IP
-        3. 如果验证通过，将 challenge 存储到全局变量中
-        4. 返回验证成功的响应（不包含challenge，由全局变量存储）
-
-        新的验证机制：
-        - 不再在响应中返回 challenge
-        - 而是存储到全局变量 payment_verify_challenge_get 中
-        - create_order 方法会从全局变量中读取进行比对
-        """
-        try:
-            # 从请求体中获取JSON数据
-            # 使用 request.get_json() 解析请求体中的 JSON 数据
-            # 如果解析失败或请求体为空，则返回空字典
-            data = request.get_json() or {}
-
-            # 提取验证码参数
-            # 使用.get()方法安全地获取，如果不存在返回空字符串
-            # 这样可以避免 KeyError 异常
-            challenge = data.get("challenge", "")
-
-            # 记录日志：收到验证请求
-            # 记录请求来源IP，用于安全审计
-            client_ip = request.environ.get(
-                "REMOTE_ADDR") or request.remote_addr
-            logging.info(
-                f"[支付验证] 收到验证请求 - 来源IP: {client_ip}, 验证码长度: {len(challenge)}位")
-
-            # 验证请求来源IP是否被允许
-            # 使用新的 IPVerifier.is_allowed_ip() 函数，支持 IPv4/IPv6 和公网IP验证
-            if not IPVerifier().is_allowed_ip(client_ip):
-                # IP验证失败：不是内网IP，也不是服务器的公网IP
-                # 返回403 Forbidden状态码，拒绝访问
-                logging.warning(f"[支付验证] IP验证失败 - 拒绝访问: {client_ip}")
-                return jsonify({
-                    "success": False,
-                    "message": "仅允许内网IP或服务器本机IP访问此接口",
-                }), 403
-
-            # IP验证通过，将接收到的 challenge 存储到全局变量
-            # 声明使用全局变量 payment_verify_challenge_get
-            global payment_verify_challenge_get
-
-            # 将 challenge 赋值给全局变量
-            # 这个值将在 create_order 方法中被读取用于验证
-            payment_verify_challenge_get = challenge
-
-            # 记录日志：成功存储验证码
-            # 只记录验证码的长度，不记录完整内容（太长）
-            logging.info(f"[支付验证] 验证码已存储到全局变量，长度: {len(challenge)}位")
-
-            # 返回验证成功响应
-            # 注意：新的机制中不再返回 challenge
-            # 只返回 success: True，表示验证码已成功接收和存储
-            return jsonify({
-                "success": True
-            })
-
-        except Exception as e:
-            # 捕获所有异常
-            # 即使出现异常，也返回错误信息而不是让请求失败
-            # 这样可以让调用方知道发生了什么错误
-            logging.error(f"[支付验证] verify_challenge接口异常: {str(e)}")
-            logging.error(traceback.format_exc())
-            return jsonify({
-                "success": False,
-                "message": f"处理失败：{str(e)}"
-            }), 500
+    _register_payment_verify_host_route_for_tests(app, login_required)
 
     # ==============================================================================
     # 支付管理接口 - 管理员配置支付方式
@@ -48055,6 +47860,7 @@ def start_web_server(args_param):
     # ==============================================================================
 
     _register_health_route(app)
+    _register_payment_routes(app, login_required)
 
     @app.route("/api/billing/list", methods=["GET"])
     @login_required
