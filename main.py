@@ -24649,6 +24649,12 @@ def start_web_server(args_param):
     "filename": "flowchart.js",
     "type": "js",
 },
+# jQuery UI widget factory（jquery.flowchart 依赖）
+"jquery-ui-js": {
+    "url": "https://cdn.jsdelivr.net/npm/jquery-ui-dist/jquery-ui.min.js",
+    "filename": "jquery-ui.min.js",
+    "type": "js",
+},
 # jQuery 流程图扩展
 "jquery-flowchart-js": {
     "url": "https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.js",
