@@ -45856,7 +45856,8 @@ async function checkAndShowReminders() {
 
     // Helper: 将 Markdown 转为 HTML（仅使用 editormd.markdownToHTML，若不可用则回退为转义文本）
     const renderMarkdownToHtml = async (md) => {
-      if (!md) {
+      const normalizedMd = typeof md === "string" ? md : md == null ? "" : String(md);
+      if (!normalizedMd) {
         console.log("[定时提醒] 提醒内容为空，跳过渲染");
         return "";
       }
@@ -45939,12 +45940,12 @@ async function checkAndShowReminders() {
             '<link rel="stylesheet" href="/editor.md/css/editormd.css" /> <link rel="stylesheet" href="/editor.md/css/editormd.preview.css" />';
           console.log(
             "[定时提醒] 使用 editormd.renderMarkdownToHtml 渲染内容: ",
-            md,
+            normalizedMd,
           );
           document.body.appendChild(tmp);
           try {
             editormd.markdownToHTML(tmpId, {
-              markdown: md,
+              markdown: normalizedMd,
               htmlDecode: true, // 开启 HTML 标签解析，为了安全性，默认不开启
               // htmlDecode: "style,iframe,image,div,p,br,hr,strong,em,span,blockquote,q,cite,code,pre",  // 允许解析的 HTML 标签
               htmlDecode: "style,iframe,image",
@@ -46009,7 +46010,7 @@ async function checkAndShowReminders() {
       }
 
       // 回退：转义后换行
-      return escapeHtml(md).replace(/\n/g, "<br>");
+      return escapeHtml(normalizedMd).replace(/\n/g, "<br>");
     };
 
     // 根据新提醒的数量，选择不同的显示方式
