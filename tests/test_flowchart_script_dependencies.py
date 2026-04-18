@@ -1,9 +1,18 @@
+import re
 import unittest
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML_PATH = PROJECT_ROOT / "index.html"
+MAIN_PY_PATH = PROJECT_ROOT / "main.py"
+SERVICE_WORKER_PATH = PROJECT_ROOT / "PWA" / "sw.js"
+
+
+def _extract_section(source: str, start_marker: str, end_marker: str) -> str:
+    start = source.index(start_marker)
+    end = source.index(end_marker, start)
+    return source[start:end]
 
 
 class TestFlowchartScriptDependencies(unittest.TestCase):
@@ -27,6 +36,37 @@ class TestFlowchartScriptDependencies(unittest.TestCase):
         jquery_flowchart_index = source.index(jquery_flowchart_anchor)
         jquery_ui_index = min(source.index(anchor) for anchor in present_anchors)
         self.assertLess(jquery_ui_index, jquery_flowchart_index)
+    def test_index_route_reads_index_html_per_request_instead_of_startup_snapshot(self):
+        source = MAIN_PY_PATH.read_text(encoding="utf-8")
+        index_route_source = _extract_section(
+            source,
+            "    @app.route(\"/\")",
+            "    # @app.route(\"/\")",
+        )
+
+        self.assertIn('with open("index.html", "r", encoding="utf-8") as file:', index_route_source)
+        self.assertIn("current_html_content = file.read()", index_route_source)
+        self.assertIn("return render_template_string(current_html_content)", index_route_source)
+        self.assertNotIn("render_template_string(html_content)", index_route_source)
+
+    def test_service_worker_uses_network_first_for_navigation_requests(self):
+        source = SERVICE_WORKER_PATH.read_text(encoding="utf-8")
+
+        self.assertRegex(
+            source,
+            re.compile(r"event\.request\.mode\s*===?\s*['\"]navigate['\"]"),
+        )
+        self.assertRegex(
+            source,
+            re.compile(r"if\s*\([^\)]*event\.request\.mode\s*===?\s*['\"]navigate['\"][^\)]*\)\s*\{[\s\S]*?fetch\(event\.request\)[\s\S]*?caches\.match\('/'\)", re.MULTILINE),
+        )
+        navigate_guard_index = source.index("if (event.request.mode === 'navigate')")
+        static_cache_first_index = source.index("caches.match(event.request)")
+        self.assertLess(
+            navigate_guard_index,
+            static_cache_first_index,
+            "navigation handling must happen before generic static asset cache-first logic",
+        )
 
 
 if __name__ == "__main__":

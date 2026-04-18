@@ -35460,8 +35460,15 @@ def start_web_server(args_param):
                 logging.warning(f"无效的UUID格式: {uuid[:40]}... 重定向到首页")
                 return redirect(url_for("index"))
 
-        # 直接返回静态HTML，具体的配置和会话逻辑由 frontend_config.js 接口处理
-        return render_template_string(html_content)
+        # 每次请求都重新读取入口HTML，避免服务进程继续提供启动时的旧快照
+        try:
+            with open("index.html", "r", encoding="utf-8") as file:
+                current_html_content = file.read()
+        except Exception as e:
+            logging.error(f"读取 index.html 失败: {e}", exc_info=True)
+            current_html_content = html_content
+
+        return render_template_string(current_html_content)
 
     # @app.route("/")
     # def index():
