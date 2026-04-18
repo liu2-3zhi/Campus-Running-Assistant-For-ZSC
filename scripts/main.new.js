@@ -17484,7 +17484,11 @@ async function ensureThemeStylesLoaded(force = false, options = {}) {
   try {
     const requestedThemeStyle = normalizeThemeStyle(getCachedThemeStyle());
     const requestedTarget = getCurrentThemeBackgroundTarget();
-    const result = sessionUUID
+    const shouldUseSessionThemeApi =
+      themeBackgroundAuthStateResolved === true &&
+      themeBackgroundAuthenticatedSession === true &&
+      !!sessionUUID;
+    const result = shouldUseSessionThemeApi
       ? await callPythonAPI("get_theme_styles", requestedTarget)
       : await fetch(buildPublicThemeStylesUrl(requestedThemeStyle, requestedTarget), {
           method: "GET",
