@@ -41735,6 +41735,7 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "订单不存在"}), 404
 
             _normalize_order_created_at(order_data)
+            is_admin = auth_system.check_permission(g.user, "manage_users")
             if order_data.get("username") != g.user and not is_admin:
                 return jsonify({"success": False, "message": "无权查询此订单"}), 403
 

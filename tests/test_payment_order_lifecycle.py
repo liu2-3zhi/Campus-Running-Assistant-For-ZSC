@@ -4,7 +4,7 @@ import time
 import unittest
 from unittest import mock
 
-from flask import Flask, jsonify, request as flask_request
+from flask import Flask, jsonify, g as flask_g, request as flask_request
 
 import main as main_module
 from main import (
@@ -283,6 +283,23 @@ class TestPaymentRouteRegistration(unittest.TestCase):
         self.assertEqual(
             source.count("_register_payment_verify_host_route_for_tests(app, login_required)"),
             1,
+        )
+
+
+class TestBillingLocalQueryAdminGuard(unittest.TestCase):
+    def test_billing_local_query_defines_is_admin_before_permission_check(self):
+        with open(main_module.__file__, "r", encoding="utf-8") as fp:
+            source = fp.read()
+
+        route_anchor = '@app.route("/api/payment/query_billing_local", methods=["POST"])'
+        start = source.index(route_anchor)
+        end = source.index('@app.route("/api/payment/create_order_for_overdue", methods=["POST"])', start)
+        route_source = source[start:end]
+
+        self.assertIn('is_admin = auth_system.check_permission(g.user, "manage_users")', route_source)
+        self.assertLess(
+            route_source.index('is_admin = auth_system.check_permission(g.user, "manage_users")'),
+            route_source.index('if order_data.get("username") != g.user and not is_admin:'),
         )
 
 
