@@ -275,6 +275,17 @@ class TestPaymentReturnUrlValidation(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestPaymentRouteRegistration(unittest.TestCase):
+    def test_verify_host_route_is_registered_from_single_location(self):
+        with open(main_module.__file__, "r", encoding="utf-8") as fp:
+            source = fp.read()
+
+        self.assertEqual(
+            source.count("_register_payment_verify_host_route_for_tests(app, login_required)"),
+            1,
+        )
+
+
 class TestLegacyPaymentChallengeRemoval(unittest.TestCase):
     def test_legacy_payment_challenge_globals_are_not_required(self):
         self.assertFalse(hasattr(main_module, "payment_verify_challenge_get"))
