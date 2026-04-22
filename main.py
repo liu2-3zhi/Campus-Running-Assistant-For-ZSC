@@ -14676,6 +14676,10 @@ class Api:
             _mark_random_background_file_expired(cache_dir, extracted_next_image_url, expired=True)
         if selected_image_url and selected_image_url != extracted_next_image_url:
             _reset_random_background_file_expired(cache_dir, selected_image_url)
+
+        image_type = "mb" if normalized_target == "mobile" else "pc"
+        self._refresh_default_theme_background_cache_async([image_type])
+
         return {
             "success": True,
             "theme_config": next_theme_config,
@@ -19290,6 +19294,9 @@ def cleanup_inactive_session(session_id):
         with browsing_activity_lock:
             if session_id in browsing_activity:
                 del browsing_activity[session_id]
+        with session_file_locks_lock:
+            if session_hash in session_file_locks:
+                del session_file_locks[session_hash]
         index = _load_session_index()
         if session_id in index:
             del index[session_id]
@@ -49082,6 +49089,13 @@ def start_web_server(args_param):
                             with session_activity_lock:
                                 if session_id in session_activity:
                                     del session_activity[session_id]
+                            with browsing_activity_lock:
+                                if session_id in browsing_activity:
+                                    del browsing_activity[session_id]
+                            session_hash = hashlib.sha256(session_id.encode()).hexdigest()
+                            with session_file_locks_lock:
+                                if session_hash in session_file_locks:
+                                    del session_file_locks[session_hash]
                             logging.info(f"[会话清理] 已清理会话: {session_id[:8]}...")
                         except Exception as e:
                             logging.error(
