@@ -55,6 +55,7 @@ font_cache_storage = {}
 font_cache_lock = _NoopLock()
 source_map_storage = {}
 source_map_lock = _NoopLock()
+_midnight_runtime_reload_hook = None
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 AUTO_ATTENDANCE_MAX_MINUTES = 120  # 自动签到最长持续时间（分钟），超时后自动关闭
@@ -156,6 +157,128 @@ def _apply_no_cache_headers(response):
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
+
+
+def _should_run_midnight_runtime_maintenance(current_dt=None):
+    now_dt = current_dt or datetime.datetime.now()
+    return now_dt.hour == 0 and now_dt.minute == 0
+
+
+def _run_midnight_runtime_maintenance():
+    global web_sessions, session_activity, browsing_activity, session_file_locks
+    global payment_verify_probes, public_ip_cache, public_ip_cache_time
+    global js_cache_storage, js_cache_last_update, font_cache_storage, source_map_storage
+    global sms_verification_codes, sms_extended_once_keys, cache
+    global user_ban_cache, ip_ban_list_cache, ip_ban_cache_timestamp
+
+    logging.info("[午夜维护] 开始执行运行时内存重置")
+
+    with web_sessions_lock:
+        sessions_snapshot = list(web_sessions.items())
+
+    for session_id, api_instance in sessions_snapshot:
+        try:
+            if chrome_pool:
+                chrome_pool.cleanup_context(session_id)
+        except Exception as e:
+            logging.error(f"[午夜维护] 清理浏览器上下文失败 {session_id[:8]}...: {e}")
+
+        try:
+            stop_run_flag = getattr(api_instance, "stop_run_flag", None)
+            if hasattr(stop_run_flag, "set"):
+                stop_run_flag.set()
+            multi_run_stop_flag = getattr(api_instance, "multi_run_stop_flag", None)
+            if hasattr(multi_run_stop_flag, "set"):
+                multi_run_stop_flag.set()
+            stop_auto_refresh = getattr(api_instance, "stop_auto_refresh", None)
+            if hasattr(stop_auto_refresh, "set"):
+                stop_auto_refresh.set()
+            stop_multi_auto_refresh = getattr(api_instance, "stop_multi_auto_refresh", None)
+            if hasattr(stop_multi_auto_refresh, "set"):
+                stop_multi_auto_refresh.set()
+        except Exception as e:
+            logging.error(f"[午夜维护] 停止会话后台任务失败 {session_id[:8]}...: {e}")
+
+    with web_sessions_lock:
+        web_sessions.clear()
+    with session_activity_lock:
+        session_activity.clear()
+    with browsing_activity_lock:
+        browsing_activity.clear()
+    with session_file_locks_lock:
+        session_file_locks.clear()
+    with payment_verify_probes_lock:
+        payment_verify_probes.clear()
+    with js_cache_lock:
+        js_cache_storage.clear()
+        js_cache_last_update.clear()
+    with font_cache_lock:
+        font_cache_storage.clear()
+    with source_map_lock:
+        source_map_storage.clear()
+
+    public_ip_cache = {"ipv4": None, "ipv6": None}
+    public_ip_cache_time = 0
+    sms_verification_codes.clear()
+    sms_extended_once_keys.clear()
+    cache.clear()
+    user_ban_cache.clear()
+    ip_ban_list_cache = None
+    ip_ban_cache_timestamp = 0
+
+    manager = globals().get("background_task_manager")
+    if manager and hasattr(manager, "lock") and hasattr(manager, "tasks"):
+        with manager.lock:
+            manager.tasks.clear()
+
+    brute_force = globals().get("brute_force_manager")
+    if brute_force and hasattr(brute_force, "tasks"):
+        tasks = getattr(brute_force, "tasks")
+        if isinstance(tasks, dict):
+            tasks.clear()
+
+    _load_ip_cache()
+    _load_phone_cache()
+
+    reload_hook = globals().get("_midnight_runtime_reload_hook")
+    if callable(reload_hook):
+        try:
+            reload_hook()
+        except Exception as e:
+            logging.error(f"[午夜维护] 执行重载钩子失败: {e}", exc_info=True)
+
+    gc.collect()
+    logging.info("[午夜维护] 运行时内存重置完成")
+
+
+def start_midnight_runtime_maintenance_worker():
+    def midnight_runtime_maintenance_worker():
+        current_thread = threading.current_thread()
+        logging.info(
+            f"[午夜维护 Worker] 已在线程中启动: Thread[{current_thread.name}, id={current_thread.ident}]"
+        )
+        last_run_date = None
+        while True:
+            try:
+                now_dt = datetime.datetime.now()
+                if _should_run_midnight_runtime_maintenance(now_dt):
+                    current_date = now_dt.date()
+                    if current_date != last_run_date:
+                        _run_midnight_runtime_maintenance()
+                        last_run_date = current_date
+                time.sleep(30)
+            except Exception as e:
+                logging.error(f"[午夜维护] 后台维护线程异常: {e}", exc_info=True)
+                time.sleep(30)
+
+    maintenance_thread = threading.Thread(
+        target=midnight_runtime_maintenance_worker,
+        daemon=True,
+        name="Midnight_Runtime_Maintenance_Worker",
+    )
+    maintenance_thread.start()
+    logging.info(f"[线程创建] 午夜维护线程已启动: {maintenance_thread.name} (id={maintenance_thread.ident})")
+    return maintenance_thread
 
 
 def _is_same_origin_url(candidate_url, base_url):
@@ -25446,6 +25569,9 @@ def start_web_server(args_param):
             f"{len(source_map_storage)} 个source map文件, {len(font_cache_storage)} 个字体文件"
         )
 
+    global _midnight_runtime_reload_hook
+    _midnight_runtime_reload_hook = init_cdn_cache
+
     def cdn_cache_update_worker():
         """
         CDN缓存定时更新工作线程（每小时检查一次）
@@ -48981,6 +49107,7 @@ def start_web_server(args_param):
     logging.warning("[Eventlet 警告] 会话清理线程在 eventlet.monkey_patch 之后创建 - 可能导致 greenlet 冲突")
     cleanup_thread.start()
     logging.info(f"[线程创建] 会话清理线程已启动: {cleanup_thread.name} (id={cleanup_thread.ident})")
+    start_midnight_runtime_maintenance_worker()
     logging.info("正在加载持久化会话...")
     load_all_sessions(args)
     logging.info("正在启动会话监控...")
