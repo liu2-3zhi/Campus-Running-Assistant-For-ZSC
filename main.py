@@ -14676,6 +14676,10 @@ class Api:
             _mark_random_background_file_expired(cache_dir, extracted_next_image_url, expired=True)
         if selected_image_url and selected_image_url != extracted_next_image_url:
             _reset_random_background_file_expired(cache_dir, selected_image_url)
+
+        image_type = "mb" if normalized_target == "mobile" else "pc"
+        self._refresh_default_theme_background_cache_async([image_type])
+
         return {
             "success": True,
             "theme_config": next_theme_config,
