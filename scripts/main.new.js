@@ -14655,18 +14655,30 @@ function initializeMobileUI() {
             .classList.remove("hidden");
         }
 
+        const pcUsernameBtn = document.getElementById("auth-login-username-btn");
+        const pcPhoneBtn = document.getElementById("auth-login-phone-btn");
         if (
           !document
             .getElementById("mobile-login-phone-btn")
             .classList.contains("text-slate-600")
         ) {
-          document
-            .getElementById("auth-login-phone-btn")
-            .classList.add("font-semibold");
+          if (pcPhoneBtn) {
+            pcPhoneBtn.className =
+              "px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm";
+          }
+          if (pcUsernameBtn) {
+            pcUsernameBtn.className =
+              "px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm";
+          }
         } else {
-          document
-            .getElementById("auth-login-phone-btn")
-            .classList.remove("font-semibold");
+          if (pcUsernameBtn) {
+            pcUsernameBtn.className =
+              "px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm";
+          }
+          if (pcPhoneBtn) {
+            pcPhoneBtn.className =
+              "px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm";
+          }
         }
 
         await handleAuthLogin(true);
@@ -18403,6 +18415,14 @@ async function handleAuthLogin(isMobile_use = false) {
       title: "登录失败",
       text: "请输入图形验证码",
     });
+    if (isMobile_use === false) {
+      refreshCaptcha("login");
+    } else {
+      refreshCaptcha("mobile-login");
+    }
+    $("auth-login-captcha").value = "";
+    const mobileLoginCaptcha = document.getElementById("mobile-login-captcha");
+    if (mobileLoginCaptcha) mobileLoginCaptcha.value = "";
     return;
   }
   if (!login_id) {
@@ -18412,6 +18432,14 @@ async function handleAuthLogin(isMobile_use = false) {
       title: "登录失败",
       text: "请输入用户名或手机号",
     });
+    if (isMobile_use === false) {
+      refreshCaptcha("login");
+    } else {
+      refreshCaptcha("mobile-login");
+    }
+    $("auth-login-captcha").value = "";
+    const mobileLoginCaptcha = document.getElementById("mobile-login-captcha");
+    if (mobileLoginCaptcha) mobileLoginCaptcha.value = "";
     return;
   }
 
@@ -18423,6 +18451,14 @@ async function handleAuthLogin(isMobile_use = false) {
         title: "登录失败",
         text: "请输入密码",
       });
+      if (isMobile_use === false) {
+        refreshCaptcha("login");
+      } else {
+        refreshCaptcha("mobile-login");
+      }
+      $("auth-login-captcha").value = "";
+      const mobileLoginCaptcha = document.getElementById("mobile-login-captcha");
+      if (mobileLoginCaptcha) mobileLoginCaptcha.value = "";
       return;
     }
     if (password.length < 6 && login_id !== "admin") {
@@ -18432,6 +18468,14 @@ async function handleAuthLogin(isMobile_use = false) {
         title: "登录失败",
         text: "密码长度至少6个字符",
       });
+      if (isMobile_use === false) {
+        refreshCaptcha("login");
+      } else {
+        refreshCaptcha("mobile-login");
+      }
+      $("auth-login-captcha").value = "";
+      const mobileLoginCaptcha = document.getElementById("mobile-login-captcha");
+      if (mobileLoginCaptcha) mobileLoginCaptcha.value = "";
       return;
     }
   } else if (login_mode === "phone") {
@@ -18453,6 +18497,14 @@ async function handleAuthLogin(isMobile_use = false) {
           title: "登录失败",
           text: "请输入密码",
         });
+        if (isMobile_use === false) {
+          refreshCaptcha("login");
+        } else {
+          refreshCaptcha("mobile-login");
+        }
+        $("auth-login-captcha").value = "";
+        const mobileLoginCaptcha = document.getElementById("mobile-login-captcha");
+        if (mobileLoginCaptcha) mobileLoginCaptcha.value = "";
         return;
       }
       if (password.length < 6) {
@@ -18462,6 +18514,14 @@ async function handleAuthLogin(isMobile_use = false) {
           title: "登录失败",
           text: "密码长度至少6个字符",
         });
+        if (isMobile_use === false) {
+          refreshCaptcha("login");
+        } else {
+          refreshCaptcha("mobile-login");
+        }
+        $("auth-login-captcha").value = "";
+        const mobileLoginCaptcha = document.getElementById("mobile-login-captcha");
+        if (mobileLoginCaptcha) mobileLoginCaptcha.value = "";
         return;
       }
     } else if (login_verification_method === "sms") {
@@ -19287,8 +19347,7 @@ async function handleAuthRegister(isMobile_use = false) {
         document.getElementById("auth-reg-password").value = "";
         document.getElementById("auth-reg-password-confirm").value = "";
         document.getElementById("auth-register-captcha").value = "";
-        document.getElementById("auth-reg-avatar-preview").src =
-          "/static/images/default_avatar.png";
+        setRegistrationAvatarPreview("auth-reg-avatar-preview", null);
 
         // 切换回登录 Tab，并预填注册时使用的用户名 / 密码
         switchAuthTab("login");
@@ -19300,8 +19359,7 @@ async function handleAuthRegister(isMobile_use = false) {
         document.getElementById("mobile-reg-phone").value = "";
         document.getElementById("mobile-reg-sms-code").value = "";
         document.getElementById("mobile-reg-nickname").value = "";
-        document.getElementById("mobile-reg-avatar-preview").src =
-          "/static/images/default_avatar.png";
+        setRegistrationAvatarPreview("mobile-reg-avatar-preview", null);
         document.getElementById("mobile-reg-password").value = "";
         document.getElementById("mobile-reg-password-confirm").value = "";
         document.getElementById("mobile-register-captcha").value = "";
@@ -22917,7 +22975,9 @@ async function loadPersonalInfo() {
       currentAuthUsername = user.auth_username;
     }
     const nicknameInput = $("profile-nickname");
+    const authUsernameInput = $("profile-auth-username");
     const phoneInput = $("profile-phone");
+    if (authUsernameInput) authUsernameInput.value = user.auth_username || currentAuthUsername || "";
     if (nicknameInput) nicknameInput.value = user.nickname || "";
     if (phoneInput) phoneInput.value = user.phone || "未绑定";
     _showPhoneLocationNearInput(phoneInput, user.phone);
@@ -23279,6 +23339,50 @@ function closeCropModal() {
   isRegistrationCrop = false;
   hideModal("avatar-crop-modal");
 }
+function revokeRegistrationAvatarPreview(previewImg) {
+  if (!previewImg) return;
+  if (!previewImg.dataset) previewImg.dataset = {};
+  const currentObjectUrl = previewImg.dataset.objectUrl;
+  if (currentObjectUrl) {
+    URL.revokeObjectURL(currentObjectUrl);
+    delete previewImg.dataset.objectUrl;
+  }
+  previewImg.onload = null;
+  previewImg.onerror = null;
+}
+function setRegistrationAvatarPreview(previewId, file) {
+  const previewImg = $(previewId);
+  if (!previewImg) return;
+  if (!previewImg.dataset) previewImg.dataset = {};
+  revokeRegistrationAvatarPreview(previewImg);
+  if (!file) {
+    previewImg.src = "/static/images/default_avatar.png";
+    return;
+  }
+  const objectUrl = URL.createObjectURL(file);
+  previewImg.dataset.objectUrl = objectUrl;
+  previewImg.onload = () => {
+    if (previewImg.dataset && previewImg.dataset.objectUrl === objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+      delete previewImg.dataset.objectUrl;
+    }
+    previewImg.onload = null;
+    previewImg.onerror = null;
+  };
+  previewImg.onerror = () => {
+    if (previewImg.dataset && previewImg.dataset.objectUrl === objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+      delete previewImg.dataset.objectUrl;
+    }
+    previewImg.onload = null;
+    previewImg.onerror = null;
+  };
+  previewImg.src = objectUrl;
+}
+function resetRegistrationAvatarPreviews() {
+  setRegistrationAvatarPreview("auth-reg-avatar-preview", null);
+  setRegistrationAvatarPreview("mobile-reg-avatar-preview", null);
+}
 async function confirmCropForRegistration() {
   if (!avatarCropper) {
     // showModalAlert("裁剪器未初始化", "错误");
@@ -23308,16 +23412,14 @@ async function confirmCropForRegistration() {
       registrationCroppedAvatarBlob = new File([blob], "avatar.jpg", {
         type: "image/jpeg",
       });
-      const previewImg = $("auth-reg-avatar-preview");
-      if (previewImg) {
-        previewImg.src = URL.createObjectURL(registrationCroppedAvatarBlob);
-      }
-      const mobilePreviewImg = $("mobile-reg-avatar-preview");
-      if (mobilePreviewImg) {
-        mobilePreviewImg.src = URL.createObjectURL(
-          registrationCroppedAvatarBlob,
-        );
-      }
+      setRegistrationAvatarPreview(
+        "auth-reg-avatar-preview",
+        registrationCroppedAvatarBlob,
+      );
+      setRegistrationAvatarPreview(
+        "mobile-reg-avatar-preview",
+        registrationCroppedAvatarBlob,
+      );
       closeCropModal();
     },
     "image/jpeg",
@@ -50742,6 +50844,14 @@ async function loadMobileUnifiedProfile() {
         // 添加时间戳防止缓存
         const finalSeparator = avatarUrl.includes("?") ? "&" : "?";
         avatarDisplay.src = avatarUrl + finalSeparator + "t=" + Date.now();
+      }
+
+      // 更新昵称
+      const authUsernameInput = document.getElementById(
+        "mobile-unified-profile-auth-username",
+      );
+      if (authUsernameInput) {
+        authUsernameInput.value = data.auth_username || currentAuthUsername || "";
       }
 
       // 更新昵称
