@@ -14687,8 +14687,9 @@ class Api:
         }
 
     def _refresh_default_theme_background_cache_async(self, image_types=None):
-        if getattr(self, "api_client", None) is not None:
-            self.api_client._refresh_default_theme_background_cache_async(image_types)
+        refresher = getattr(globals().get("auth_system"), "_refresh_default_theme_background_cache_async", None)
+        if callable(refresher):
+            refresher(image_types)
 
     def get_params(self):
         """
