@@ -441,6 +441,23 @@
   src="/api/cdn/jquery-ui-js"
   onerror="this.src='https://cdn.jsdelivr.net/npm/jquery-ui-dist/jquery-ui.min.js'"
 ></script>
+<script>
+  // 某些镜像/CDN 回源异常会导致 jquery-ui 主包加载“看似成功”但 $.widget 不可用。
+  // 在加载 jquery-flowchart 前补上 widget factory，避免运行时报错：$.widget is not a function。
+  if (
+    window.jQuery &&
+    typeof window.jQuery.widget !== "function" &&
+    !document.querySelector('script[data-widget-factory-fallback="1"]')
+  ) {
+    const widgetFactoryScript = document.createElement("script");
+    widgetFactoryScript.src = "/api/cdn/jquery-ui-widget-js";
+    widgetFactoryScript.onerror = function () {
+      this.src = "https://cdn.jsdelivr.net/npm/jquery-ui/ui/widget.js";
+    };
+    widgetFactoryScript.setAttribute("data-widget-factory-fallback", "1");
+    document.head.appendChild(widgetFactoryScript);
+  }
+</script>
 <!-- jQuery 流程图扩展 -->
 <script
   src="/api/cdn/jquery-flowchart-js"

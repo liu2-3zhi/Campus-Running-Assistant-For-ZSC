@@ -24790,6 +24790,11 @@ def start_web_server(args_param):
     "filename": "jquery-ui.min.js",
     "type": "js",
 },
+"jquery-ui-widget-js": {
+    "url": "https://cdn.jsdelivr.net/npm/jquery-ui/ui/widget.js",
+    "filename": "jquery-ui-widget.js",
+    "type": "js",
+},
 # jQuery 流程图扩展
 "jquery-flowchart-js": {
     "url": "https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.js",
