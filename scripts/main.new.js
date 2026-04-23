@@ -17135,6 +17135,166 @@ function syncThemeBackgroundTarget() {
 
 window.addEventListener("resize", syncThemeBackgroundTarget);
 
+let pcThemeBackgroundContextMenuInitialized = false;
+let pcThemeBackgroundContextMenuElement = null;
+
+function shouldEnablePcThemeBackgroundContextMenu(params) {
+  const normalizedParams = params && typeof params === "object" ? params : {};
+  const target = normalizedParams.target;
+  const imageUrl = normalizedParams.imageUrl;
+  const normalizedTarget = target === "mobile" ? "mobile" : "pc";
+  const normalizedImageUrl = typeof imageUrl === "string" ? imageUrl.trim() : "";
+  return normalizedTarget === "pc" && !!normalizedImageUrl;
+}
+
+function buildThemeBackgroundDownloadFilename(imageUrl) {
+  const now = new Date();
+  const pad2 = (value) => String(value).padStart(2, "0");
+  const timestamp = `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`;
+  const normalizedImageUrl = typeof imageUrl === "string" ? imageUrl.trim() : "";
+  const withoutQuery = normalizedImageUrl.split("?")[0].split("#")[0];
+  const extensionMatch = withoutQuery.match(/\.(jpg|jpeg|png|webp|gif|bmp|svg)$/i);
+  const extension = extensionMatch ? `.${extensionMatch[1].toLowerCase()}` : ".jpg";
+  return `pc-theme-background-${timestamp}${extension}`;
+}
+
+function hidePcThemeBackgroundContextMenu() {
+  if (pcThemeBackgroundContextMenuElement) {
+    pcThemeBackgroundContextMenuElement.style.display = "none";
+    pcThemeBackgroundContextMenuElement.dataset.imageUrl = "";
+  }
+}
+
+function triggerPcThemeBackgroundDownload(imageUrl) {
+  const normalizedImageUrl = typeof imageUrl === "string" ? imageUrl.trim() : "";
+  if (!normalizedImageUrl) {
+    return;
+  }
+  const normalizedHref = /^https?:\/\//i.test(normalizedImageUrl)
+    ? normalizedImageUrl
+    : `${window.location.origin}${normalizedImageUrl.startsWith("/") ? "" : "/"}${normalizedImageUrl}`;
+  const link = document.createElement("a");
+  link.href = normalizedHref;
+  link.download = buildThemeBackgroundDownloadFilename(normalizedImageUrl);
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function ensurePcThemeBackgroundContextMenuElement() {
+  if (pcThemeBackgroundContextMenuElement) {
+    return pcThemeBackgroundContextMenuElement;
+  }
+  const menu = document.createElement("div");
+  menu.id = "pc-theme-background-context-menu";
+  menu.style.position = "fixed";
+  menu.style.display = "none";
+  menu.style.minWidth = "150px";
+  menu.style.padding = "6px";
+  menu.style.borderRadius = "10px";
+  menu.style.border = "1px solid rgba(15, 23, 42, 0.12)";
+  menu.style.background = "rgba(255, 255, 255, 0.98)";
+  menu.style.backdropFilter = "blur(4px)";
+  menu.style.boxShadow = "0 12px 24px rgba(2, 6, 23, 0.18)";
+  menu.style.zIndex = "2147483000";
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "button";
+  saveButton.textContent = "保存背景图";
+  saveButton.style.width = "100%";
+  saveButton.style.border = "none";
+  saveButton.style.background = "transparent";
+  saveButton.style.textAlign = "left";
+  saveButton.style.padding = "8px 10px";
+  saveButton.style.borderRadius = "8px";
+  saveButton.style.fontSize = "14px";
+  saveButton.style.color = "#0f172a";
+  saveButton.style.cursor = "pointer";
+
+  saveButton.addEventListener("mouseenter", () => {
+    saveButton.style.background = "rgba(37, 99, 235, 0.10)";
+  });
+  saveButton.addEventListener("mouseleave", () => {
+    saveButton.style.background = "transparent";
+  });
+  saveButton.addEventListener("click", () => {
+    const currentImageUrl = menu.dataset.imageUrl || "";
+    hidePcThemeBackgroundContextMenu();
+    triggerPcThemeBackgroundDownload(currentImageUrl);
+  });
+
+  menu.appendChild(saveButton);
+  document.body.appendChild(menu);
+  pcThemeBackgroundContextMenuElement = menu;
+  return menu;
+}
+
+function setupPcThemeBackgroundContextMenu() {
+  if (pcThemeBackgroundContextMenuInitialized) {
+    return;
+  }
+  pcThemeBackgroundContextMenuInitialized = true;
+
+  const desktopContainer = document.getElementById("auth-login-container");
+  if (!desktopContainer) {
+    return;
+  }
+
+  const menu = ensurePcThemeBackgroundContextMenuElement();
+  const contextMenuHandler = (event) => {
+    const currentTarget = getCurrentThemeBackgroundTarget();
+    const renderedImageUrl = getRenderedThemeBackgroundImageUrlByTarget("pc");
+    const imageUrl = renderedImageUrl || getThemeBackgroundImageUrlByTarget("pc");
+
+    if (!shouldEnablePcThemeBackgroundContextMenu({ target: currentTarget, imageUrl })) {
+      hidePcThemeBackgroundContextMenu();
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    menu.dataset.imageUrl = imageUrl;
+    menu.style.display = "block";
+
+    const offsetX = 6;
+    const offsetY = 6;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const rect = menu.getBoundingClientRect();
+    const maxLeft = Math.max(viewportWidth - rect.width - 8, 0);
+    const maxTop = Math.max(viewportHeight - rect.height - 8, 0);
+    const left = Math.min(event.clientX + offsetX, maxLeft);
+    const top = Math.min(event.clientY + offsetY, maxTop);
+    menu.style.left = `${Math.max(left, 0)}px`;
+    menu.style.top = `${Math.max(top, 0)}px`;
+  };
+
+  desktopContainer.addEventListener("contextmenu", contextMenuHandler);
+
+  document.addEventListener("click", (event) => {
+    if (!menu || menu.style.display !== "block") {
+      return;
+    }
+    if (menu.contains(event.target)) {
+      return;
+    }
+    hidePcThemeBackgroundContextMenu();
+  });
+  window.addEventListener("blur", hidePcThemeBackgroundContextMenu);
+  window.addEventListener("resize", hidePcThemeBackgroundContextMenu);
+  document.addEventListener("scroll", hidePcThemeBackgroundContextMenu, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      hidePcThemeBackgroundContextMenu();
+    }
+  });
+}
+
+setupPcThemeBackgroundContextMenu();
+
 function shouldSkipThemeBackgroundVisualRewrite(target, nextBackgroundValue, options = {}) {
   if (options.skipVisualRewrite !== true) {
     return false;
