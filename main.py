@@ -14678,7 +14678,7 @@ class Api:
             _reset_random_background_file_expired(cache_dir, selected_image_url)
 
         image_type = "mb" if normalized_target == "mobile" else "pc"
-        self._refresh_default_theme_background_cache_async([image_type])
+        self.api_client._refresh_default_theme_background_cache_async([image_type])
 
         return {
             "success": True,
