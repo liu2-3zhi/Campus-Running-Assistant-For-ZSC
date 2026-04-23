@@ -106,6 +106,36 @@ class TestThemeBackgroundBinding(unittest.TestCase):
             env = result["theme_config"]["global_environment_variables"]
             self.assertIn("pc_bound.jpg", env["auth_login_container_background"])
 
+    def test_mark_theme_background_consumed_refreshes_cache_via_api_client(self):
+        api = Api.__new__(Api)
+        api._web_session_id = "sid-refresh"
+        api.api_client = Mock()
+
+        with patch(
+            "main.os.path.abspath", return_value=str(Path(tempfile.gettempdir()) / "main.py")
+        ), patch(
+            "main._resolve_theme_background_binding_decision",
+            return_value={
+                "selected_image_url": "/theme-assets/random_background_image/pc_a.jpg",
+                "action": "bind_new",
+            },
+        ), patch(
+            "main._mark_random_background_file_expired"
+        ), patch(
+            "main._reset_random_background_file_expired"
+        ), patch(
+            "main._extract_background_image_url_from_value", return_value=""
+        ), patch.object(
+            main_module,
+            "auth_system",
+            Mock(get_theme_config=Mock(return_value={"global_environment_variables": {}})),
+            create=True,
+        ):
+            result = api.mark_theme_background_consumed(target="pc", image_url="")
+
+        self.assertTrue(result["success"])
+        api.api_client._refresh_default_theme_background_cache_async.assert_called_once_with(["pc"])
+
     def test_index_backward_compatible_with_session_bindings(self):
         with tempfile.TemporaryDirectory() as d:
             cache_dir = Path(d)
