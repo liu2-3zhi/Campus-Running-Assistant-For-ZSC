@@ -109,7 +109,9 @@ class TestThemeBackgroundBinding(unittest.TestCase):
     def test_mark_theme_background_consumed_refreshes_cache_via_api_client(self):
         api = Api.__new__(Api)
         api._web_session_id = "sid-refresh"
-        api.api_client = Mock()
+        refreshed_auth_system = Mock()
+        refreshed_auth_system.get_theme_config = Mock(return_value={"global_environment_variables": {}})
+        refreshed_auth_system._refresh_default_theme_background_cache_async = Mock()
 
         with patch(
             "main.os.path.abspath", return_value=str(Path(tempfile.gettempdir()) / "main.py")
@@ -128,13 +130,13 @@ class TestThemeBackgroundBinding(unittest.TestCase):
         ), patch.object(
             main_module,
             "auth_system",
-            Mock(get_theme_config=Mock(return_value={"global_environment_variables": {}})),
+            refreshed_auth_system,
             create=True,
         ):
             result = api.mark_theme_background_consumed(target="pc", image_url="")
 
         self.assertTrue(result["success"])
-        api.api_client._refresh_default_theme_background_cache_async.assert_called_once_with(["pc"])
+        refreshed_auth_system._refresh_default_theme_background_cache_async.assert_called_once_with(["pc"])
 
     def test_index_backward_compatible_with_session_bindings(self):
         with tempfile.TemporaryDirectory() as d:
