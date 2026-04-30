@@ -22835,6 +22835,23 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function normalizeMarkdownText(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch (e) {
+    return String(value);
+  }
+}
+
 function highlightCustomKeyword(text, keyword) {
   if (!keyword) {
     return text;
@@ -29159,6 +29176,7 @@ async function loadMessages() {
         const id = `message-md-${m.id}`;
         const container = document.getElementById(id);
         if (!container) return;
+        const markdownText = normalizeMarkdownText(m.content);
 
         // 优先使用 editormd.markdownToHTML（如果已加载 editormd）
         if (window.editormd && typeof editormd.markdownToHTML === "function") {
@@ -29168,7 +29186,7 @@ async function loadMessages() {
             // editormd.markdownToHTML 会替换指定容器内容
             // 我们传入 markdown 字符串并禁止 htmlDecode 以防注入
             editormd.markdownToHTML(id, {
-              markdown: m.content || "",
+              markdown: markdownText,
               htmlDecode: true, // 开启 HTML 标签解析，为了安全性，默认不开启
               // htmlDecode: "style,iframe,image,div,p,br,hr,strong,em,span,blockquote,q,cite,code,pre",  // 允许解析的 HTML 标签
               htmlDecode: "style,iframe,image",
@@ -29190,7 +29208,7 @@ async function loadMessages() {
         }
 
         // 最后回退：以转义文本并保留换行展示
-        container.innerHTML = escapeHtml(m.content || "").replace(
+        container.innerHTML = escapeHtml(markdownText).replace(
           /\n/g,
           "<br>",
         );
@@ -45327,13 +45345,14 @@ async function loadReminders() {
         const messageContainerId = `pc-reminder-message-${reminder.id}-${index}`;
         const container = document.getElementById(messageContainerId);
         if (!container) return;
+        const markdownText = normalizeMarkdownText(reminder.message);
 
         // 优先使用 editormd.markdownToHTML（如果已加载 editormd）
         if (window.editormd && typeof editormd.markdownToHTML === "function") {
           try {
             // editormd.markdownToHTML 会替换指定容器内容
             editormd.markdownToHTML(messageContainerId, {
-              markdown: reminder.message || "",
+              markdown: markdownText,
               htmlDecode: "style,iframe,image",
               toc: false,
               tocContainer: "",
@@ -45353,7 +45372,7 @@ async function loadReminders() {
         }
 
         // 最后回退：以转义文本并保留换行展示
-        container.innerHTML = escapeHtml(reminder.message || "").replace(
+        container.innerHTML = escapeHtml(markdownText).replace(
           /\n/g,
           "<br>",
         );
@@ -48781,12 +48800,13 @@ async function loadMobileMultiMessages() {
         const id = `mobile-message-md-${m.id}`;
         const container = document.getElementById(id);
         if (!container) return;
+        const markdownText = normalizeMarkdownText(m.content);
 
         if (window.editormd && typeof editormd.markdownToHTML === "function") {
           try {
             console.log(`[移动端留言板] 渲染 Markdown 留言 ID: ${m.id}`);
             editormd.markdownToHTML(id, {
-              markdown: m.content || "",
+              markdown: markdownText,
               htmlDecode: true,
               htmlDecode: "style,iframe,image",
               toc: false,
@@ -48809,8 +48829,7 @@ async function loadMobileMultiMessages() {
             `[移动端留言板] editormd 未加载，无法渲染 Markdown 留言 ID: ${m.id}`,
           );
         }
-
-        container.innerHTML = escapeHtml(m.content || "").replace(
+        container.innerHTML = escapeHtml(markdownText).replace(
           /\n/g,
           "<br>",
         );
@@ -55431,13 +55450,14 @@ async function mobileRefreshReminders() {
         const messageContainerId = `mobile-reminder-message-${reminder.id}-${index}`;
         const container = document.getElementById(messageContainerId);
         if (!container) return;
+        const markdownText = normalizeMarkdownText(reminder.message);
 
         // 优先使用 editormd.markdownToHTML（如果已加载 editormd）
         if (window.editormd && typeof editormd.markdownToHTML === "function") {
           try {
             // editormd.markdownToHTML 会替换指定容器内容
             editormd.markdownToHTML(messageContainerId, {
-              markdown: reminder.message || "",
+              markdown: markdownText,
               htmlDecode: "style,iframe,image",
               toc: false,
               tocContainer: "",
@@ -55457,7 +55477,7 @@ async function mobileRefreshReminders() {
         }
 
         // 最后回退：以转义文本并保留换行展示
-        container.innerHTML = escapeHtml(reminder.message || "").replace(
+        container.innerHTML = escapeHtml(markdownText).replace(
           /\n/g,
           "<br>",
         );
@@ -58983,7 +59003,7 @@ async function showOverduePaymentModal(overdueAccounts) {
 
       <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
         <div class="text-slate-500 leading-none mb-0.5 text-[10px]">创建时间</div>
-        <div class="text-slate-700 break-all text-[10px]">${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
+        <div class="text-slate-700 break-all text-[10px]">${escapeHtml(_fmtBillTime(_getBillingTime(r, "created_at")) || "-")}</div>
       </div>
     </div>
 
@@ -59020,7 +59040,7 @@ async function showOverduePaymentModal(overdueAccounts) {
         const safeReason = escapeHtml(r.reason || "-");
         const amount = r.amount != null ? parseFloat(r.amount) : 0;
         const fmtAmount = "¥" + amount.toFixed(2);
-        const fmtTime = escapeHtml(_fmtBillTime(r.created_at) || "-");
+        const fmtTime = escapeHtml(_fmtBillTime(_getBillingTime(r, "created_at")) || "-");
         return `
         <tr class="border-b border-slate-100 hover:bg-blue-50/40 cursor-pointer transition-colors"
             onclick="const cb=document.getElementById('ob-${idx}');cb.checked=!cb.checked;${updateTotal}">
@@ -60431,7 +60451,7 @@ async function View_details_of_users_with_outstanding_payments(
             <div class="flex items-center justify-between mb-2">
               <div>
                 <div class="text-[10px] text-slate-400">创建时间</div>
-                <div class="text-xs text-slate-700">${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
+                <div class="text-xs text-slate-700">${escapeHtml(_fmtBillTime(_getBillingTime(r, "created_at")) || "-")}</div>
               </div>
               ${statusLabel(r.status)}
             </div>
@@ -60709,7 +60729,7 @@ async function View_details_of_users_with_outstanding_payments(
               (r) => `
           <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm mb-2">
             <div class="flex items-center justify-between mb-2">
-              <div class="text-xs text-slate-600">${escapeHtml(_fmtBillTime(r.created_at) || "-")}</div>
+              <div class="text-xs text-slate-600">${escapeHtml(_fmtBillTime(_getBillingTime(r, "created_at")) || "-")}</div>
               ${statusLabelFb(r.status)}
             </div>
             <div class="text-[11px] text-slate-400 mb-0.5">描述</div>
@@ -60829,7 +60849,7 @@ async function adminClearOverdue(
     const billRows = pendingBills.map((r, i) => {
       const amount = r.amount != null ? "¥" + r.amount : "-";
       const reason = (r.reason || "-").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      const created = r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-";
+      const created = _getBillingTime(r, "created_at");
       return `
         <tr style="border-bottom:1px solid #e2e8f0;">
           <td style="padding:6px 8px;text-align:center;">
@@ -61294,7 +61314,24 @@ function _escapeAttr(v) {
 
 function _fmtBillTime(v) {
   if (!v) return "-";
-  return String(v).replace("T", " ").replace("Z", "");
+  const raw = String(v).trim();
+  if (!raw) return "-";
+  const legacyUtcMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/);
+  if (legacyUtcMatch) {
+    const [, y, mo, d, h, mi, s] = legacyUtcMatch;
+    const beijingDate = new Date(
+      Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)) +
+        8 * 60 * 60 * 1000,
+    );
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${beijingDate.getUTCFullYear()}-${pad(beijingDate.getUTCMonth() + 1)}-${pad(beijingDate.getUTCDate())} ${pad(beijingDate.getUTCHours())}:${pad(beijingDate.getUTCMinutes())}:${pad(beijingDate.getUTCSeconds())}`;
+  }
+  return raw.replace("T", " ").replace(/(?:Z|\+08:00)$/, "");
+}
+
+function _getBillingTime(record, key) {
+  if (!record) return "-";
+  return record[`${key}_beijing`] || _fmtBillTime(record[key]);
 }
 
 function getBillingStatusLabel(status) {
@@ -61458,7 +61495,7 @@ function _renderMobileUserBillingCards(records, containerId) {
             </div>
             <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2">
               <div class="text-slate-500 leading-none mb-0.5">创建时间</div>
-              <div class="text-slate-700 break-all">${_escapeAttr(_fmtBillTime(r.created_at))}</div>
+              <div class="text-slate-700 break-all">${_escapeAttr(_fmtBillTime(_getBillingTime(r, "created_at")))}</div>
             </div>
           </div>
           <!-- 原因 -->
@@ -61471,9 +61508,9 @@ function _renderMobileUserBillingCards(records, containerId) {
             <div class="text-[11px] text-slate-400 truncate">
               ${
                 r.status === "paid"
-                  ? `支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}`
+                  ? `支付时间：${_escapeAttr(_fmtBillTime(_getBillingTime(r, "paid_at")))}`
                   : r.status === "admin_cleared"
-                    ? `清除时间：${_escapeAttr(_fmtBillTime(r.admin_cleared_at))}`
+                    ? `清除时间：${_escapeAttr(_fmtBillTime(_getBillingTime(r, "admin_cleared_at")))}`
                     : r.status === "closed"
                       ? "订单已关闭，可重新发起支付"
                       : r.status === "refunded_partial" || r.status === "refunded_full"
@@ -61522,8 +61559,8 @@ function _renderBillingTableCommon(records, opts = {}) {
     html += `<td class="p-2">${reason}</td>`;
     html += `<td class="p-2">${amount}</td>`;
     html += `<td class="p-2 whitespace-nowrap">${statusBadge}</td>`;
-    html += `<td class="p-2">${_escapeAttr(_fmtBillTime(r.created_at))}</td>`;
-    html += `<td class="p-2">${r.status === "admin_cleared" ? _escapeAttr(_fmtBillTime(r.admin_cleared_at)) : _escapeAttr(_fmtBillTime(r.paid_at))}</td>`;
+    html += `<td class="p-2">${_escapeAttr(_fmtBillTime(_getBillingTime(r, "created_at")))}</td>`;
+    html += `<td class="p-2">${r.status === "admin_cleared" ? _escapeAttr(_fmtBillTime(_getBillingTime(r, "admin_cleared_at"))) : _escapeAttr(_fmtBillTime(_getBillingTime(r, "paid_at")))}</td>`;
     html += `<td class="p-2 whitespace-nowrap">`;
     if (canPay) {
       html += `<button class="btn btn-ghost border border-emerald-300 !py-0.5 !px-2 ${isMobile ? "text-[11px]" : "text-xs"} text-emerald-700" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`;
@@ -62497,8 +62534,8 @@ async function loadAdminBillingList(usernameOverride = null) {
         <td class="px-3 py-2.5 text-slate-600">${_escapeAttr(r.reason || "-")}</td>
         <td class="px-3 py-2.5 text-right font-semibold ${r.status === "paid" ? "text-green-600" : "text-amber-600"}">${r.amount != null ? "¥" + _escapeAttr(r.amount) : "-"}</td>
         <td class="px-3 py-2.5 text-center admin-status-td whitespace-nowrap">${statusBadge}</td>
-        <td class="px-3 py-2.5 text-slate-500">${r.created_at ? r.created_at.replace("T", " ").replace("Z", "") : "-"}</td>
-        <td class="px-3 py-2.5 text-slate-500">${r.paid_at ? r.paid_at.replace("T", " ").replace("Z", "") : "-"}</td>
+        <td class="px-3 py-2.5 text-slate-500">${_fmtBillTime(_getBillingTime(r, "created_at"))}</td>
+        <td class="px-3 py-2.5 text-slate-500">${_fmtBillTime(_getBillingTime(r, "paid_at"))}</td>
         <td class="px-3 py-2.5 text-center">
           <div class="flex items-center justify-center gap-1.5">
             <button onclick='View_details_of_users_with_outstanding_payments(${JSON.stringify(r.school_username || "")})'
@@ -63049,9 +63086,9 @@ async function loadMobileMultiAdminBillingList() {
       const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
       const timeRow =
         r.status === "paid"
-          ? `<div class="text-[11px] text-slate-400">支付时间：${_escapeAttr(_fmtBillTime(r.paid_at))}</div>`
+          ? `<div class="text-[11px] text-slate-400">支付时间：${_escapeAttr(_fmtBillTime(_getBillingTime(r, "paid_at")))}</div>`
           : r.status === "admin_cleared"
-            ? `<div class="text-[11px] text-slate-400">清除时间：${_escapeAttr(_fmtBillTime(r.admin_cleared_at))}</div>`
+            ? `<div class="text-[11px] text-slate-400">清除时间：${_escapeAttr(_fmtBillTime(_getBillingTime(r, "admin_cleared_at")))}</div>`
             : `<div class="text-[11px] text-slate-400">等待支付中…</div>`;
       html += `
         <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
@@ -63078,7 +63115,7 @@ async function loadMobileMultiAdminBillingList() {
               </div>
               <div class="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2">
                 <div class="text-slate-500 leading-none mb-0.5">创建时间</div>
-                <div class="text-slate-700 break-all">${_escapeAttr(_fmtBillTime(r.created_at))}</div>
+                <div class="text-slate-700 break-all">${_escapeAttr(_fmtBillTime(_getBillingTime(r, "created_at")))}</div>
               </div>
             </div>
             <!-- 原因 -->

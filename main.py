@@ -23233,6 +23233,50 @@ def _send_startup_notification_to_log_forwarder(host, port):
         logging.error(f"[UDP通知] UDP通知线程发生异常: {e}", exc_info=True)
 
 
+def _billing_now_utc_string():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _billing_now_beijing_string():
+    return datetime.datetime.now(datetime.timezone.utc).astimezone(
+        datetime.timezone(datetime.timedelta(hours=8))
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _billing_utc_to_beijing_string(value):
+    if not value:
+        return ""
+    raw = str(value).strip()
+    if not raw:
+        return ""
+    try:
+        normalized = raw.replace("Z", "+00:00")
+        dt = datetime.datetime.fromisoformat(normalized)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt.astimezone(datetime.timezone(datetime.timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return raw.replace("T", " ").replace("Z", "")
+
+
+def _migrate_billing_record_beijing_times(record):
+    changed = False
+    for key in ("created_at", "paid_at", "admin_cleared_at", "reason_updated_at", "updated_at"):
+        beijing_key = f"{key}_beijing"
+        if record.get(key) and not record.get(beijing_key):
+            record[beijing_key] = _billing_utc_to_beijing_string(record.get(key))
+            changed = True
+    return changed
+
+
+def _migrate_billing_file_beijing_times(filepath, record):
+    if not _migrate_billing_record_beijing_times(record):
+        return False
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(record, f, indent=2, ensure_ascii=False)
+    return True
+
+
 def _create_user_billing_record(auth_username, school_username, reason, amount):
     """
     为学校账号创建账单记录。
@@ -23263,7 +23307,8 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
             billing_id = str(uuid.uuid4())
         
         # 获取当前时间戳（ISO格式）
-        created_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        created_at = _billing_now_utc_string()
+        created_at_beijing = _billing_now_beijing_string()
         
         # 构建账单数据
         billing_data = {
@@ -23273,6 +23318,7 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
             "reason": reason,
             "amount": round(float(amount), 2),
             "created_at": created_at,
+            "created_at_beijing": created_at_beijing,
             "status": "pending",
             "payment_orders": [],
             "final_payment_order": None,
@@ -24989,7 +25035,8 @@ def start_web_server(args_param):
         # 扫描该用户的账单目录，找到payment_orders中包含本订单号的记录，更新为已支付
         try:
             _billing_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
-            _paid_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            _paid_at = _billing_now_utc_string()
+            _paid_at_beijing = _billing_now_beijing_string()
             _order_unit_amount = None
             try:
                 _order_path = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
@@ -25021,6 +25068,7 @@ def start_web_server(args_param):
                             _brec["status"] = "paid"
                             _brec["final_payment_order"] = out_trade_no
                             _brec["paid_at"] = _paid_at
+                            _brec["paid_at_beijing"] = _paid_at_beijing
                             with open(_bpath, "w", encoding="utf-8") as _f:
                                 json.dump(_brec, _f, indent=2, ensure_ascii=False)
                             logging.info(f"[账单] 账单 {_brec.get('billing_id')} 已标记为已支付")
@@ -25038,7 +25086,8 @@ def start_web_server(args_param):
         if not isinstance(billing_items, list) or not billing_items:
             return
         try:
-            _paid_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            _paid_at = _billing_now_utc_string()
+            _paid_at_beijing = _billing_now_beijing_string()
             for item in billing_items:
                 school_username = str(item.get("school_username", "")).strip()
                 billing_id = str(item.get("billing_id", "")).strip()
@@ -25063,6 +25112,7 @@ def start_web_server(args_param):
                     _brec["status"] = "paid"
                     _brec["final_payment_order"] = out_trade_no
                     _brec["paid_at"] = _paid_at
+                    _brec["paid_at_beijing"] = _paid_at_beijing
                     with open(billing_file, "w", encoding="utf-8") as _f:
                         json.dump(_brec, _f, indent=2, ensure_ascii=False)
                     logging.info(f"[账单支付] 账单 {billing_id} 已标记为已支付")
@@ -47440,9 +47490,8 @@ def start_web_server(args_param):
                                         break
                                     rec["status"] = "admin_cleared"
                                     rec["admin_cleared_by"] = admin_username
-                                    rec["admin_cleared_at"] = datetime.datetime.now(datetime.timezone.utc).strftime(
-                                        "%Y-%m-%dT%H:%M:%SZ"
-                                    )
+                                    rec["admin_cleared_at"] = _billing_now_utc_string()
+                                    rec["admin_cleared_at_beijing"] = _billing_now_beijing_string()
                                     try:
                                         with open(fpath, "w", encoding="utf-8") as _f:
                                             json.dump(rec, _f, indent=2, ensure_ascii=False)
@@ -48088,6 +48137,10 @@ def start_web_server(args_param):
                     try:
                         with open(filepath, "r", encoding="utf-8") as f:
                             record = json.load(f)
+                        try:
+                            _migrate_billing_file_beijing_times(filepath, record)
+                        except Exception as _migration_err:
+                            logging.warning(f"[账单列表] 迁移账单时间字段失败 {filename}: {_migration_err}")
                         record["school_name"] = school_name_map.get(
                             school, school
                         )
@@ -48179,6 +48232,10 @@ def start_web_server(args_param):
                     try:
                         with open(filepath, "r", encoding="utf-8") as f:
                             record = json.load(f)
+                        try:
+                            _migrate_billing_file_beijing_times(filepath, record)
+                        except Exception as _migration_err:
+                            logging.warning(f"[管理员账单] 迁移账单时间字段失败 {filename}: {_migration_err}")
                         record["school_name"] = school_name_map.get(school, school)
                         records.append(record)
                     except Exception as e:
@@ -48239,13 +48296,15 @@ def start_web_server(args_param):
                 record = json.load(f)
 
             changed_fields = []
-            now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            now_utc = _billing_now_utc_string()
+            now_beijing = _billing_now_beijing_string()
 
             if "reason" in data:
                 new_reason = str(data.get("reason", "")).strip()
                 if new_reason != str(record.get("reason", "")):
                     record["reason"] = new_reason
                     record["reason_updated_at"] = now_utc
+                    record["reason_updated_at_beijing"] = now_beijing
                     record["reason_updated_by"] = g.user
                     changed_fields.append("reason")
 
@@ -48274,22 +48333,27 @@ def start_web_server(args_param):
 
                     if new_status == "paid":
                         record["paid_at"] = now_utc
+                        record["paid_at_beijing"] = now_beijing
                         record["paid_by"] = g.user
                     elif old_status == "paid":
                         record.pop("paid_by", None)
+                        record.pop("paid_at_beijing", None)
                         record["paid_at"] = ""
 
                     if new_status == "admin_cleared":
                         record["admin_cleared_at"] = now_utc
+                        record["admin_cleared_at_beijing"] = now_beijing
                         record["admin_cleared_by"] = g.user
                     elif old_status == "admin_cleared":
                         record.pop("admin_cleared_at", None)
+                        record.pop("admin_cleared_at_beijing", None)
                         record.pop("admin_cleared_by", None)
 
             if not changed_fields:
                 return jsonify({"success": False, "message": "未检测到可更新内容"}), 400
 
             record["updated_at"] = now_utc
+            record["updated_at_beijing"] = now_beijing
             record["updated_by"] = g.user
 
             with open(billing_file, "w", encoding="utf-8") as f:
@@ -48908,6 +48972,12 @@ def start_web_server(args_param):
                                 bill = json.load(bf)
                             if not isinstance(bill, dict):
                                 continue
+                            try:
+                                _migrate_billing_file_beijing_times(bill_path, bill)
+                            except Exception as _migration_err:
+                                logging.warning(
+                                    f"[已删除账号] 迁移账单时间字段失败（忽略）: {bill_path}, 错误: {_migration_err}"
+                                )
                             amount = bill.get("amount")
                             try:
                                 amount = round(float(amount), 2)
@@ -48921,7 +48991,9 @@ def start_web_server(args_param):
                                     "amount": amount,
                                     "status": bill.get("status", "pending"),
                                     "created_at": bill.get("created_at"),
+                                    "created_at_beijing": bill.get("created_at_beijing"),
                                     "paid_at": bill.get("paid_at"),
+                                    "paid_at_beijing": bill.get("paid_at_beijing"),
                                     "payment_orders_count": len(bill.get("payment_orders", []) or []),
                                 }
                             )
