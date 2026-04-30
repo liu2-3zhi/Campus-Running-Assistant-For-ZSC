@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import time
@@ -137,6 +138,69 @@ class TestPaymentOrderLifecycle(unittest.TestCase):
         self.assertEqual(order["status"], "refunded_partial")
         _apply_refund_transition(order, refund_amount=7.5)
         self.assertEqual(order["status"], "refunded_full")
+
+    def test_billing_record_time_migration_adds_beijing_keys(self):
+        record = {
+            "created_at": "2026-04-30T00:30:00Z",
+            "paid_at": "2026-04-30T01:30:00Z",
+            "admin_cleared_at": "2026-04-30T02:30:00Z",
+            "reason_updated_at": "2026-04-30T03:30:00Z",
+            "updated_at": "2026-04-30T04:30:00Z",
+        }
+
+        changed = main_module._migrate_billing_record_beijing_times(record)
+
+        self.assertTrue(changed)
+        self.assertEqual(record["created_at_beijing"], "2026-04-30 08:30:00")
+        self.assertEqual(record["paid_at_beijing"], "2026-04-30 09:30:00")
+        self.assertEqual(record["admin_cleared_at_beijing"], "2026-04-30 10:30:00")
+        self.assertEqual(record["reason_updated_at_beijing"], "2026-04-30 11:30:00")
+        self.assertEqual(record["updated_at_beijing"], "2026-04-30 12:30:00")
+
+    def test_billing_record_time_migration_preserves_existing_beijing_key(self):
+        record = {
+            "created_at": "2026-04-30T00:30:00Z",
+            "created_at_beijing": "2026-04-30 09:00:00",
+        }
+
+        changed = main_module._migrate_billing_record_beijing_times(record)
+
+        self.assertFalse(changed)
+        self.assertEqual(record["created_at_beijing"], "2026-04-30 09:00:00")
+
+    def test_created_billing_record_writes_beijing_time_key(self):
+        fixed_utc = main_module.datetime.datetime(2026, 4, 30, 0, 30, tzinfo=main_module.datetime.timezone.utc)
+
+        class FixedDateTime(main_module.datetime.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                if tz is None:
+                    return fixed_utc.replace(tzinfo=None)
+                return fixed_utc.astimezone(tz)
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.object(main_module.os.path, "abspath", return_value=os.path.join(tmpdir, "main.py")), \
+             mock.patch.object(main_module, "uuid", mock.Mock(uuid4=mock.Mock(return_value="billing-1")), create=True), \
+             mock.patch.object(main_module.datetime, "datetime", FixedDateTime):
+            billing_id = main_module._create_user_billing_record(
+                "admin",
+                "school_user",
+                "测试账单",
+                1.23,
+            )
+
+            billing_file = os.path.join(
+                tmpdir,
+                "User_Billing",
+                "School_Bills",
+                "school_user",
+                f"{billing_id}.json",
+            )
+            with open(billing_file, "r", encoding="utf-8") as f:
+                record = json.load(f)
+
+        self.assertEqual(record["created_at"], "2026-04-30T00:30:00Z")
+        self.assertEqual(record["created_at_beijing"], "2026-04-30 08:30:00")
 
 
 class TestPaymentVerifyProbeLifecycle(unittest.TestCase):
