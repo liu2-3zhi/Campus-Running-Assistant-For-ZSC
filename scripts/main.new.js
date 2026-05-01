@@ -15809,35 +15809,45 @@ let sessionUUID = null;
 
 function getServerConnectionGuidanceMessage() {
   return `
-    <div class="text-left space-y-4 text-slate-700 leading-6">
-      <div class="bg-slate-50 border border-slate-200 rounded-lg p-4">
-        <div class="font-semibold text-slate-900 mb-2">连接检查</div>
-        <p>请确认您的设备已正常连接到互联网。</p>
+    <div style="font-size:12px;color:#334155;line-height:1.2;">
+
+      <div style="margin:0 0 4px 0;">
+        <span style="font-weight:600;color:#0f172a;">连接检查：</span>请确认设备已正常联网。
       </div>
 
-      <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
-        <div class="font-semibold text-amber-900 mb-2">可能的网络干扰</div>
-        <p class="mb-2">如果您位于中华人民共和国福建省、江苏省、贵州省或广西省，当前网络环境可能存在运营商干扰或流量审查，建议您尝试以下方式：</p>
-        <ul class="list-disc pl-5 space-y-1">
-          <li>更换网络后再次访问</li>
-          <li>启用加密 DNS 后重试</li>
-          <li>使用国际联网工具访问</li>
+      <div style="margin:0 0 4px 0;">
+        <span style="font-weight:600;color:#78350f;">可能的网络干扰：</span>
+        若您位于 <span style="font-weight:600;">福建 / 江苏 / 贵州 / 广西</span>，可能存在运营商干扰，可尝试：
+        <ul style="margin:2px 0 0 14px;padding:0;line-height:1.15;">
+          <li>切换网络</li>
+          <li>启用加密 DNS</li>
+          <li>使用国际联网工具</li>
         </ul>
       </div>
 
-      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div class="font-semibold text-blue-900 mb-2">本地环境排查</div>
-        <p>同时，请检查您的设备是否启用了广告拦截工具。这类工具可能会影响您与服务器之间的正常连接。</p>
+      <div style="margin:0 0 4px 0;">
+        <span style="font-weight:600;color:#1e3a8a;">本地环境排查：</span>请检查是否启用了广告拦截工具。
       </div>
 
-      <div class="bg-rose-50 border border-rose-200 rounded-lg p-4">
-        <div class="font-semibold text-rose-900 mb-2">DNS 刷新建议</div>
-        <p class="mb-2">另外，也不排除 Zelly 的服务器正在遭受攻击。您可以尝试刷新设备的 DNS 缓存后再访问：</p>
-        <ul class="list-disc pl-5 space-y-1">
-          <li>手机：开启后关闭飞行模式，并重启浏览器</li>
-          <li>电脑：请参考“刷新 DNS 方法”</li>
+      <div style="margin:0 0 4px 0;">
+        <span style="font-weight:600;color:#9f1239;">DNS 刷新建议：</span>
+        如服务器遭受攻击，可尝试刷新 DNS：
+        <ul style="margin:2px 0 0 14px;padding:0;line-height:1.15;">
+          <li>手机：开关飞行模式并重启浏览器</li>
+          <li>电脑：参考“刷新 DNS 方法”</li>
         </ul>
       </div>
+
+      <div style="margin:0;">
+        <span style="font-weight:600;color:#0f172a;">快速排查总结：</span>
+        <ul style="margin:2px 0 0 14px;padding:0;line-height:1.15;">
+          <li>确认联网</li>
+          <li>切换网络 / 加密 DNS / 关闭拦截</li>
+          <li>刷新 DNS 或稍后重试</li>
+        </ul>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;">若问题持续，请反馈给支持人员。</div>
+      </div>
+
     </div>
   `;
 }
@@ -21867,6 +21877,7 @@ function switchAdminTab(tab) {
                 })();
 
                 window._messageEditorInitialized = true;
+                loadMessages();
 
                 // 为 reminder-editor 也注册相同的对话框移动与遮罩可见性控制逻辑
                 (function ensureReminderDialogsOnBody() {
@@ -29181,7 +29192,7 @@ async function loadMessages() {
         // 优先使用 editormd.markdownToHTML（如果已加载 editormd）
         if (window.editormd && typeof editormd.markdownToHTML === "function") {
           try {
-            id.innerHTML =
+            container.innerHTML =
               '<link rel="stylesheet" href="/editor.md/css/editormd.css" /> <link rel="stylesheet" href="/editor.md/css/editormd.preview.css" />';
             // editormd.markdownToHTML 会替换指定容器内容
             // 我们传入 markdown 字符串并禁止 htmlDecode 以防注入

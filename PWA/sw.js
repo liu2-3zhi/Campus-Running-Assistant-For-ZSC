@@ -8,6 +8,7 @@ const STATIC_ASSETS = [
   '/icon-512x512.png',
   '/manifest.json'
 ];
+const NETWORK_FIRST_PATH_PREFIXES = ['/api/', '/auth/', '/upload', '/download', '/editor.md/'];
 
 // Install: pre-cache static assets
 self.addEventListener('install', (event) => {
@@ -65,10 +66,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Network-first strategy for API and dynamic routes
-  if (url.pathname.startsWith('/api/') ||
-      url.pathname.startsWith('/auth/') ||
-      url.pathname.startsWith('/upload') ||
-      url.pathname.startsWith('/download')) {
+  if (NETWORK_FIRST_PATH_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
     event.respondWith(
       fetch(event.request).catch(() => {
         return new Response(
