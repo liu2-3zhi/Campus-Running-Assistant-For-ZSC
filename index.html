@@ -215,10 +215,6 @@
       }
     </style>
 
-    <script
-      src="/api/cdn/jquery"
-      onerror="this.src = 'https://code.jquery.com/jquery-3.7.1.js'"
-    ></script>
     
 
     
@@ -436,19 +432,38 @@
   src="/api/cdn/flowchart-js"
   onerror="this.src='https://cdn.jsdelivr.net/npm/flowchart.js/release/flowchart.js'"
 ></script>
-<!-- jQuery UI widget factory（jquery.flowchart 依赖） -->
+<!-- jQuery 流程图扩展：依赖 jQuery UI widget 就绪后动态加载，避免 $.widget 未就绪时报错 -->
+<script>
+  window.__maybeLoadJqueryFlowchart = function () {
+    if (window.__jqueryFlowchartLoaded) return;
+    if (!window.jQuery || !(typeof jQuery.widget === "function")) return;
+    if (document.readyState !== "complete") {
+      if (!window.__jqueryFlowchartLoadBound) {
+        window.__jqueryFlowchartLoadBound = true;
+        window.addEventListener("load", window.__maybeLoadJqueryFlowchart, { once: true });
+      }
+      return;
+    }
+    window.__jqueryFlowchartLoaded = true;
+
+    var script = document.createElement("script");
+    script.src = "/api/cdn/jquery-flowchart-js";
+    script.onerror = function () {
+      this.onerror = null;
+      this.src = "https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.js";
+    };
+    document.head.appendChild(script);
+  };
+</script>
 <script
   src="/api/cdn/jquery-ui-js"
+  onload="window.__maybeLoadJqueryFlowchart()"
   onerror="this.src='https://cdn.jsdelivr.net/npm/jquery-ui-dist/jquery-ui.min.js'"
 ></script>
 <script
   src="/api/cdn/jquery-ui-widget-js"
+  onload="window.__maybeLoadJqueryFlowchart()"
   onerror="this.src='https://cdn.jsdelivr.net/npm/jquery-ui/ui/widget.js'"
-></script>
-<!-- jQuery 流程图扩展 -->
-<script
-  src="/api/cdn/jquery-flowchart-js"
-  onerror="this.src='https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.js'"
 ></script>
 <link
   rel="stylesheet"
@@ -481,7 +496,7 @@
   src="/api/cdn/prettify-js"
   onerror="this.src='https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js'"
 ></script>
-    
+
     <!-- Editor.md 核心 -->
     <script src="/editor.md/editormd.js"></script>
 

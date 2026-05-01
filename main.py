@@ -35373,7 +35373,11 @@ def start_web_server(args_param):
                     404,
                 )
 
-            return send_from_directory(ed_dir, filename)
+            response = send_from_directory(ed_dir, filename)
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            return response
         except Exception as e:
             logging.error(f"Serving editor.md error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404

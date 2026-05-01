@@ -4380,8 +4380,168 @@
         var editormdLogoReg = regexs.editormdLogo;
         var pageBreakReg    = regexs.pageBreak;
 
+        function isMarkedInlineTokens(tokens) {
+            if (!tokens || !tokens.length) {
+                return true;
+            }
+            for (var i = 0, len = tokens.length; i < len; i++) {
+                var tokenType = tokens[i] && tokens[i].type;
+                if (
+                    tokenType === "paragraph" ||
+                    tokenType === "heading" ||
+                    tokenType === "list" ||
+                    tokenType === "list_item" ||
+                    tokenType === "space" ||
+                    tokenType === "code" ||
+                    tokenType === "table" ||
+                    tokenType === "blockquote" ||
+                    tokenType === "hr"
+                ) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function getMarkedInlineParser() {
+            if (typeof marked !== "undefined" && marked && typeof marked.parseInline === "function") {
+                return marked;
+            }
+            if (typeof window !== "undefined" && window.marked && typeof window.marked.parseInline === "function") {
+                return window.marked;
+            }
+            return null;
+        }
+
+        function normalizeMarkedRendererInlineText(text) {
+            if (text == null) {
+                return "";
+            }
+            if (typeof text !== "string") {
+                text = String(text);
+            }
+
+            var inlineParser = getMarkedInlineParser();
+            if (inlineParser) {
+                var parsedText = inlineParser.parseInline(text);
+                var strongMatch = text.match(/^(\*\*|__)([\s\S]+?)\1([\s\S]*)$/);
+
+                if (
+                    typeof parsedText === "string" &&
+                    strongMatch &&
+                    /^(\*\*|__)/.test(parsedText)
+                ) {
+                    return "<strong>" + normalizeMarkedRendererInlineText(strongMatch[2]) + "</strong>" + normalizeMarkedRendererInlineText(strongMatch[3]);
+                }
+
+                return parsedText;
+            }
+            return text;
+        }
+
+        function normalizeMarkedRendererText(value, renderer) {
+            if (value == null) {
+                return "";
+            }
+            if (typeof value === "string") {
+                return normalizeMarkedRendererInlineText(value);
+            }
+            if (typeof value === "object") {
+                if (value.tokens && renderer && renderer.parser) {
+                    if (
+                        isMarkedInlineTokens(value.tokens) &&
+                        typeof renderer.parser.parseInline === "function"
+                    ) {
+                        var inlineText = renderer.parser.parseInline(value.tokens);
+
+                        if (
+                            typeof inlineText === "string" &&
+                            /^(\*\*|__)/.test(inlineText) &&
+                            typeof value.text === "string"
+                        ) {
+                            var fallbackText = normalizeMarkedRendererInlineText(value.text);
+
+                            if (fallbackText !== value.text) {
+                                return fallbackText;
+                            }
+                        }
+
+                        return inlineText;
+                    }
+                    if (typeof renderer.parser.parse === "function") {
+                        return renderer.parser.parse(value.tokens, value.loose);
+                    }
+                }
+                if (typeof value.text === "string") {
+                    return normalizeMarkedRendererInlineText(value.text);
+                }
+                if (typeof value.raw === "string") {
+                    return normalizeMarkedRendererInlineText(value.raw);
+                }
+            }
+            return String(value);
+        }
+
+        function normalizeMarkedRendererLinkArgs(href, title, text, renderer) {
+            if (href && typeof href === "object") {
+                return {
+                    href: href.href || "",
+                    title: href.title || null,
+                    text: normalizeMarkedRendererText(href, renderer)
+                };
+            }
+            return {
+                href: href || "",
+                title: title || null,
+                text: normalizeMarkedRendererText(text, renderer)
+            };
+        }
+
+        function normalizeMarkedRendererCodeArgs(code, lang) {
+            if (code && typeof code === "object") {
+                return {
+                    code: code.text || code.raw || "",
+                    lang: code.lang || code.language || ""
+                };
+            }
+            return {
+                code: code || "",
+                lang: lang || ""
+            };
+        }
+
+        function normalizeMarkedRendererTablecellArgs(content, flags, renderer) {
+            if (content && typeof content === "object") {
+                return {
+                    content: normalizeMarkedRendererText(content, renderer),
+                    flags: {
+                        header: !!content.header,
+                        align: content.align || null
+                    }
+                };
+            }
+            return {
+                content: normalizeMarkedRendererText(content, renderer),
+                flags: flags || {}
+            };
+        }
+
+        function normalizeMarkedRendererListitemArgs(text, task, renderer) {
+            if (text && typeof text === "object") {
+                return {
+                    text: normalizeMarkedRendererText(text, renderer),
+                    task: !!text.task
+                };
+            }
+            return {
+                text: normalizeMarkedRendererText(text, renderer),
+                task: !!task
+            };
+        }
+
         markedRenderer.emoji = function(text) {
 
+            text = normalizeMarkedRendererText(text, this);
             text = text.replace(editormd.regexs.emojiDatetime, function($1) {
                 return $1.replace(/:/g, "&#58;");
             });
@@ -4439,6 +4599,7 @@
 
         markedRenderer.atLink = function(text) {
 
+            text = normalizeMarkedRendererText(text, this);
             if (atLinkReg.test(text)) {
                 if (settings.atLink) {
                     text = text.replace(emailReg, function($1, $2, $3, $4) {
@@ -4464,6 +4625,10 @@
 
         markedRenderer.link = function (href, title, text) {
 
+            var linkArgs = normalizeMarkedRendererLinkArgs(href, title, text, this);
+            href = linkArgs.href;
+            title = linkArgs.title;
+            text = linkArgs.text;
             if (this.options.sanitize) {
                 try {
                     var prot = decodeURIComponent(unescape(href)).replace(/[^\w:]/g, "").toLowerCase();
@@ -4497,6 +4662,10 @@
 
         markedRenderer.heading = function(text, level) {
 
+            if (text && typeof text === "object") {
+                level = text.depth || level;
+            }
+            text = normalizeMarkedRendererText(text, this);
             var linkText       = text;
             var hasLinkReg     = /\s*\<a\s*href\=\"(.*)\"\s*([^\>]*)\>(.*)\<\/a\>\s*/;
             // var getLinkTextReg = /\s*\<a\s*([^\>]+)\>([^\>]*)\<\/a\>\s*/g;
@@ -4550,6 +4719,7 @@
         };
 
         markedRenderer.pageBreak = function(text) {
+            text = normalizeMarkedRendererText(text, this);
             if (pageBreakReg.test(text) && settings.pageBreak) {
                 text = "<hr style=\"page-break-after:always;\" class=\"page-break editormd-page-break\" />";
             }
@@ -4558,6 +4728,7 @@
         };
 
         markedRenderer.paragraph = function(text) {
+            text = normalizeMarkedRendererText(text, this);
             var isTeXInline     = /\$\$(.*)\$\$/g.test(text);
             var isTeXLine       = /^\$\$(.*)\$\$$/.test(text);
             var isTeXAddClass   = (isTeXLine)     ? " class=\"" + editormd.classNames.tex + "\"" : "";
@@ -4580,6 +4751,9 @@
 
         markedRenderer.code = function (code, lang) {
 
+            var codeArgs = normalizeMarkedRendererCodeArgs(code, lang);
+            code = codeArgs.code;
+            lang = codeArgs.lang;
             if (lang === "seq" || lang === "sequence") {
                 return "<div class=\"sequence-diagram\">" + code + "</div>";
             } else if ( lang === "flow") {
@@ -4592,6 +4766,9 @@
         };
 
         markedRenderer.tablecell = function(content, flags) {
+            var cellArgs = normalizeMarkedRendererTablecellArgs(content, flags, this);
+            content = cellArgs.content;
+            flags = cellArgs.flags;
             var type = (flags.header) ? "th" : "td";
             var tag  = (flags.align)  ? "<" + type +" style=\"text-align:" + flags.align + "\">" : "<" + type + ">";
 
@@ -4599,6 +4776,9 @@
         };
 
         markedRenderer.listitem = function(text, task) {
+            var itemArgs = normalizeMarkedRendererListitemArgs(text, task, this);
+            text = itemArgs.text;
+            task = itemArgs.task;
             if (settings.taskList && task) {
                 text = text.replace("<input ", "<input class='task-list-item-checkbox' ");
 
