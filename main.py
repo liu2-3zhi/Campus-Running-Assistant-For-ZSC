@@ -159,9 +159,53 @@ def _apply_no_cache_headers(response):
     return response
 
 
-def _should_run_midnight_runtime_maintenance(current_dt=None):
+def _parse_daily_restart_time_string(time_value):
+    normalized_time = str(time_value or "").strip()
+    parts = normalized_time.split(":")
+    if (
+        len(parts) != 2
+        or len(parts[0]) != 2
+        or len(parts[1]) != 2
+        or not parts[0].isdigit()
+        or not parts[1].isdigit()
+    ):
+        return None, None, False
+
+    hour = int(parts[0])
+    minute = int(parts[1])
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        return None, None, False
+
+    return hour, minute, True
+
+
+def _get_daily_restart_schedule_config(config=None):
+    runtime_config = config or _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+    enabled = runtime_config.getboolean(
+        "Daily_Restart", "enabled", fallback=False
+    )
+    time_value = str(
+        runtime_config.get("Daily_Restart", "time", fallback="00:00") or ""
+    ).strip()
+    hour, minute, valid = _parse_daily_restart_time_string(time_value)
+    return {
+        "enabled": enabled,
+        "time": time_value,
+        "hour": hour if valid else None,
+        "minute": minute if valid else None,
+        "valid": valid,
+    }
+
+
+def _should_run_midnight_runtime_maintenance(current_dt=None, config=None):
     now_dt = current_dt or datetime.datetime.now()
-    return now_dt.hour == 0 and now_dt.minute == 0
+    schedule_config = _get_daily_restart_schedule_config(config)
+    if not schedule_config["enabled"] or not schedule_config["valid"]:
+        return False
+    return (
+        now_dt.hour == schedule_config["hour"]
+        and now_dt.minute == schedule_config["minute"]
+    )
 
 
 def _get_daily_full_restart_marker_path():
@@ -442,9 +486,9 @@ def _trigger_daily_full_restart(now_dt=None, exit_func=None):
 
 
 
-def _handle_midnight_runtime_maintenance_tick(last_run_date, now_dt=None):
+def _handle_midnight_runtime_maintenance_tick(last_run_date, now_dt=None, config=None):
     current_dt = now_dt or datetime.datetime.now()
-    if not _should_run_midnight_runtime_maintenance(current_dt):
+    if not _should_run_midnight_runtime_maintenance(current_dt, config=config):
         return last_run_date, False
 
     current_date = current_dt.date()
@@ -590,6 +634,14 @@ def _get_sms_config_view_data(config):
     }
 
 
+def _get_daily_restart_config_view_data(config):
+    schedule_config = _get_daily_restart_schedule_config(config)
+    return {
+        "enabled": schedule_config["enabled"],
+        "time": schedule_config["time"] if schedule_config["time"] else "00:00",
+    }
+
+
 def _apply_sms_config_updates(config, data):
     if not config.has_section("Features"):
         config.add_section("Features")
@@ -648,6 +700,22 @@ def _apply_sms_config_updates(config, data):
         str(data.get("rate_limit_per_phone_day", 5)),
     )
     return config
+
+
+def _apply_daily_restart_config_updates(config, data):
+    enabled_value = str(data.get("enabled", False)).lower()
+    time_value = str(data.get("time", "00:00") or "").strip()
+    _, _, valid = _parse_daily_restart_time_string(time_value)
+    if not valid:
+        raise ValueError("每日自动重启时间必须是合法的 HH:MM 24 小时制")
+
+    if not config.has_section("Daily_Restart"):
+        config.add_section("Daily_Restart")
+    config.set("Daily_Restart", "enabled", enabled_value)
+    config.set("Daily_Restart", "time", time_value)
+    return config
+
+
 def _register_payment_verify_probe_route(app):
     @app.route("/api/payment/verify_probe/<token>", methods=["POST"])
     def payment_verify_probe(token):
@@ -3551,6 +3619,11 @@ def _get_default_config():
         "password_storage": "plaintext",
         "brute_force_protection": "true",
         "login_log_retention_days": "90",
+    }
+
+    config["Daily_Restart"] = {
+        "enabled": "false",
+        "time": "00:00",
     }
 
     config["Map"] = {
@@ -32009,6 +32082,8 @@ def start_web_server(args_param):
                     ),
                 },
                 # ==================== 账号功能配置加载结束 ====================
+
+                "Daily_Restart": _get_daily_restart_config_view_data(config),
             }
 
             return jsonify({"success": True, "config": config_data})
@@ -32254,6 +32329,12 @@ def start_web_server(args_param):
                     except (ValueError, TypeError):
                         wait_h = 24
                     config.set("Features", "account_cancellation_wait_hours", str(wait_h))
+
+            if "Daily_Restart" in data:
+                try:
+                    _apply_daily_restart_config_updates(config, data["Daily_Restart"])
+                except ValueError as e:
+                    return jsonify({"success": False, "message": str(e)}), 400
 
             _write_config_with_comments(config, CONFIG_FILE)
 

@@ -403,25 +403,65 @@ class TestMidnightRuntimeMaintenance(unittest.TestCase):
         main_module.background_task_manager = None
         main_module.brute_force_manager = None
 
-    def test_should_run_midnight_runtime_maintenance_only_at_midnight(self):
-        midnight = main_module.datetime.datetime(2026, 4, 23, 0, 0, 0)
-        before_midnight = main_module.datetime.datetime(2026, 4, 22, 23, 59, 59)
-        morning = main_module.datetime.datetime(2026, 4, 23, 6, 0, 0)
+    def test_should_run_midnight_runtime_maintenance_returns_false_when_disabled(self):
+        config = main_module._get_default_config()
+        config.set("Daily_Restart", "enabled", "false")
+        config.set("Daily_Restart", "time", "00:00")
+        target = main_module.datetime.datetime(2026, 4, 23, 0, 0, 0)
 
-        self.assertTrue(main_module._should_run_midnight_runtime_maintenance(midnight))
-        self.assertFalse(main_module._should_run_midnight_runtime_maintenance(before_midnight))
-        self.assertFalse(main_module._should_run_midnight_runtime_maintenance(morning))
+        self.assertFalse(
+            main_module._should_run_midnight_runtime_maintenance(target, config=config)
+        )
+
+    def test_should_run_midnight_runtime_maintenance_matches_configured_time(self):
+        config = main_module._get_default_config()
+        config.set("Daily_Restart", "enabled", "true")
+        config.set("Daily_Restart", "time", "23:45")
+
+        self.assertTrue(
+            main_module._should_run_midnight_runtime_maintenance(
+                main_module.datetime.datetime(2026, 4, 23, 23, 45, 0),
+                config=config,
+            )
+        )
+        self.assertFalse(
+            main_module._should_run_midnight_runtime_maintenance(
+                main_module.datetime.datetime(2026, 4, 23, 23, 44, 59),
+                config=config,
+            )
+        )
+        self.assertFalse(
+            main_module._should_run_midnight_runtime_maintenance(
+                main_module.datetime.datetime(2026, 4, 23, 0, 0, 0),
+                config=config,
+            )
+        )
+
+    def test_should_run_midnight_runtime_maintenance_skips_invalid_time(self):
+        config = main_module._get_default_config()
+        config.set("Daily_Restart", "enabled", "true")
+        config.set("Daily_Restart", "time", "7:5")
+
+        self.assertFalse(
+            main_module._should_run_midnight_runtime_maintenance(
+                main_module.datetime.datetime(2026, 4, 23, 7, 5, 0),
+                config=config,
+            )
+        )
 
     def test_midnight_runtime_maintenance_tick_triggers_restart_only_once_per_date(self):
         midnight = main_module.datetime.datetime(2026, 5, 7, 0, 0, 0)
+        config = main_module._get_default_config()
+        config.set("Daily_Restart", "enabled", "true")
+        config.set("Daily_Restart", "time", "00:00")
 
         with mock.patch.object(main_module, "_trigger_daily_full_restart") as trigger_restart:
             last_run_date, triggered = main_module._handle_midnight_runtime_maintenance_tick(
-                None, now_dt=midnight
+                None, now_dt=midnight, config=config
             )
             repeated_last_run_date, repeated_triggered = (
                 main_module._handle_midnight_runtime_maintenance_tick(
-                    last_run_date, now_dt=midnight
+                    last_run_date, now_dt=midnight, config=config
                 )
             )
 
