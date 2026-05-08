@@ -44379,6 +44379,23 @@ async function loadSystemConfig() {
       "会话无活动超过此时间将被清理。",
     );
     html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">每日自动重启</h5>';
+    html += createInput(
+      "Daily_Restart",
+      "enabled",
+      "启用每日自动重启",
+      "boolean",
+      "关闭时不会触发每日自动完全重启。",
+    );
+    html += createInput(
+      "Daily_Restart",
+      "time",
+      "触发时间 (HH:MM)",
+      "text",
+      "使用 24 小时制时间，例如 00:00 或 23:45。",
+      { placeholder: "00:00" },
+    );
+    html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">日志配置</h5>';
     html += createInput(
       "Logging",
@@ -47452,6 +47469,10 @@ async function saveSystemConfig() {
           $("config-System-session_inactivity_timeout").value,
           10,
         ),
+      },
+      Daily_Restart: {
+        enabled: $("config-Daily_Restart-enabled").value === "true",
+        time: ($("config-Daily_Restart-time").value || "").trim(),
       },
       Logging: {
         log_rotation_size_mb: parseInt(
