@@ -412,79 +412,24 @@ class TestMidnightRuntimeMaintenance(unittest.TestCase):
         self.assertFalse(main_module._should_run_midnight_runtime_maintenance(before_midnight))
         self.assertFalse(main_module._should_run_midnight_runtime_maintenance(morning))
 
-    def test_midnight_runtime_maintenance_clears_runtime_state_and_reloads_caches(self):
-        session_id = "session-1"
-        api_instance = type(
-            "ApiStub",
-            (),
-            {
-                "stop_run_flag": mock.Mock(set=mock.Mock()),
-                "multi_run_stop_flag": mock.Mock(set=mock.Mock()),
-                "stop_auto_refresh": mock.Mock(set=mock.Mock()),
-                "stop_multi_auto_refresh": mock.Mock(set=mock.Mock()),
-                "is_multi_account_mode": False,
-            },
-        )()
-        chrome_pool = mock.Mock()
-        background_task_manager = mock.Mock()
-        background_task_manager.lock = main_module.threading.Lock()
-        background_task_manager.tasks = {"task-1": {"status": "running"}}
-        brute_force_manager = mock.Mock()
-        brute_force_manager.tasks = {"bf-1": {"status": "running"}}
+    def test_midnight_runtime_maintenance_tick_triggers_restart_only_once_per_date(self):
+        midnight = main_module.datetime.datetime(2026, 5, 7, 0, 0, 0)
 
-        main_module.web_sessions = {session_id: api_instance}
-        main_module.session_activity = {session_id: 123}
-        main_module.browsing_activity = {session_id: 456}
-        main_module.session_file_locks = {session_id: object()}
-        main_module.payment_verify_probes = {"probe-1": {"consumed": False}}
-        main_module.public_ip_cache = {"ipv4": "1.1.1.1", "ipv6": "::1"}
-        main_module.public_ip_cache_time = 999
-        main_module.js_cache_storage = {"main": "js"}
-        main_module.js_cache_last_update = {"main": 1.23}
-        main_module.font_cache_storage = {"font": "data"}
-        main_module.source_map_storage = {"map": "data"}
-        main_module.sms_verification_codes = {"13800138000": {"code": "123456"}}
-        main_module.sms_extended_once_keys = {"13800138000:123456"}
-        main_module.cache = {"answer": 42}
-        main_module.user_ban_cache = {"demo": {"banned": True}}
-        main_module.ip_ban_list_cache = ["127.0.0.1"]
-        main_module.ip_ban_cache_timestamp = 321
-        main_module.chrome_pool = chrome_pool
-        main_module.background_task_manager = background_task_manager
-        main_module.brute_force_manager = brute_force_manager
+        with mock.patch.object(main_module, "_trigger_daily_full_restart") as trigger_restart:
+            last_run_date, triggered = main_module._handle_midnight_runtime_maintenance_tick(
+                None, now_dt=midnight
+            )
+            repeated_last_run_date, repeated_triggered = (
+                main_module._handle_midnight_runtime_maintenance_tick(
+                    last_run_date, now_dt=midnight
+                )
+            )
 
-        with mock.patch.object(main_module, "_load_ip_cache") as load_ip_cache, \
-             mock.patch.object(main_module, "_load_phone_cache") as load_phone_cache, \
-             mock.patch.object(main_module, "gc") as gc_module:
-            main_module._run_midnight_runtime_maintenance()
-
-        chrome_pool.cleanup_context.assert_called_once_with(session_id)
-        api_instance.stop_run_flag.set.assert_called_once_with()
-        api_instance.multi_run_stop_flag.set.assert_called_once_with()
-        api_instance.stop_auto_refresh.set.assert_called_once_with()
-        api_instance.stop_multi_auto_refresh.set.assert_called_once_with()
-        self.assertEqual(main_module.web_sessions, {})
-        self.assertEqual(main_module.session_activity, {})
-        self.assertEqual(main_module.browsing_activity, {})
-        self.assertEqual(main_module.session_file_locks, {})
-        self.assertEqual(main_module.payment_verify_probes, {})
-        self.assertEqual(main_module.public_ip_cache, {"ipv4": None, "ipv6": None})
-        self.assertEqual(main_module.public_ip_cache_time, 0)
-        self.assertEqual(main_module.js_cache_storage, {})
-        self.assertEqual(main_module.js_cache_last_update, {})
-        self.assertEqual(main_module.font_cache_storage, {})
-        self.assertEqual(main_module.source_map_storage, {})
-        self.assertEqual(main_module.sms_verification_codes, {})
-        self.assertEqual(main_module.sms_extended_once_keys, set())
-        self.assertEqual(main_module.cache, {})
-        self.assertEqual(main_module.user_ban_cache, {})
-        self.assertIsNone(main_module.ip_ban_list_cache)
-        self.assertEqual(main_module.ip_ban_cache_timestamp, 0)
-        self.assertEqual(background_task_manager.tasks, {})
-        self.assertEqual(brute_force_manager.tasks, {})
-        load_ip_cache.assert_called_once_with()
-        load_phone_cache.assert_called_once_with()
-        gc_module.collect.assert_called_once_with()
+        trigger_restart.assert_called_once_with(now_dt=midnight)
+        self.assertEqual(last_run_date, midnight.date())
+        self.assertTrue(triggered)
+        self.assertEqual(repeated_last_run_date, midnight.date())
+        self.assertFalse(repeated_triggered)
 
 
 if __name__ == "__main__":

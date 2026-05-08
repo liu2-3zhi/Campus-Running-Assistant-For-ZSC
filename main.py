@@ -164,91 +164,302 @@ def _should_run_midnight_runtime_maintenance(current_dt=None):
     return now_dt.hour == 0 and now_dt.minute == 0
 
 
+def _get_daily_full_restart_marker_path():
+    return os.path.join(LOGIN_LOGS_DIR, "daily_restart_marker.json")
+
+
+
+def _get_daily_full_restart_log_path():
+    return os.path.join(LOGIN_LOGS_DIR, "daily_restart.log")
+
+
+
+def _append_daily_full_restart_log(message, now_dt=None, log_path=None):
+    timestamp = (now_dt or datetime.datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
+    target_path = log_path or _get_daily_full_restart_log_path()
+    parent_dir = os.path.dirname(target_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+    with open(target_path, "a", encoding="utf-8") as f:
+        f.write(f"{timestamp} {message}\n")
+
+
+
+def _read_daily_full_restart_marker(marker_path=None):
+    target_path = marker_path or _get_daily_full_restart_marker_path()
+    if not os.path.exists(target_path):
+        return None
+    try:
+        with open(target_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+
+def _write_daily_full_restart_marker(marker_path=None, now_dt=None):
+    target_path = marker_path or _get_daily_full_restart_marker_path()
+    current_dt = now_dt or datetime.datetime.now()
+    parent_dir = os.path.dirname(target_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+    with open(target_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {"last_restart_date": current_dt.date().isoformat()},
+            f,
+            ensure_ascii=False,
+        )
+
+
+
+def _has_daily_full_restart_marker_for_date(target_date, marker_path=None):
+    marker_payload = _read_daily_full_restart_marker(marker_path)
+    if not marker_payload:
+        return False
+    return marker_payload.get("last_restart_date") == target_date.isoformat()
+
+
+
+def _build_daily_restart_helper_command(
+    old_pid,
+    python_executable,
+    main_script_path,
+    cwd,
+    restart_log_path,
+    restart_marker_path,
+    forwarded_argv,
+):
+    return [
+        python_executable,
+        main_script_path,
+        "--daily-restart-helper",
+        "--daily-restart-parent-pid",
+        str(old_pid),
+        "--daily-restart-python-executable",
+        python_executable,
+        "--daily-restart-main-script-path",
+        main_script_path,
+        "--daily-restart-cwd",
+        cwd,
+        "--daily-restart-log-path",
+        restart_log_path,
+        "--daily-restart-marker-path",
+        restart_marker_path,
+        "--daily-restart-forward-args-json",
+        json.dumps(list(forwarded_argv or []), ensure_ascii=False),
+    ]
+
+
+
+def _strip_daily_restart_helper_args(argv):
+    helper_value_flags = {
+        "--daily-restart-parent-pid",
+        "--daily-restart-python-executable",
+        "--daily-restart-main-script-path",
+        "--daily-restart-cwd",
+        "--daily-restart-log-path",
+        "--daily-restart-marker-path",
+        "--daily-restart-forward-args-json",
+    }
+    filtered_args = []
+    args_list = list(argv or [])
+    index = 0
+
+    while index < len(args_list):
+        current_arg = args_list[index]
+        if current_arg == "--daily-restart-helper":
+            index += 1
+            continue
+        if current_arg in helper_value_flags:
+            index += 2
+            continue
+        if any(
+            current_arg.startswith(f"{helper_flag}=")
+            for helper_flag in helper_value_flags
+        ):
+            index += 1
+            continue
+        filtered_args.append(current_arg)
+        index += 1
+
+    return filtered_args
+
+
+
+def _flush_all_log_handlers():
+    root_logger = logging.getLogger()
+    for handler in list(getattr(root_logger, "handlers", [])):
+        try:
+            handler.flush()
+        except Exception:
+            continue
+
+
+
+def _is_process_running(pid):
+    try:
+        target_pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+
+    if target_pid <= 0:
+        return False
+
+    try:
+        os.kill(target_pid, 0)
+    except OSError:
+        return False
+    except Exception:
+        return False
+    return True
+
+
+
+def _wait_for_process_exit(
+    pid,
+    timeout_seconds=60,
+    poll_interval=0.5,
+    is_running_func=None,
+    sleep_func=None,
+    monotonic_func=None,
+):
+    check_running = is_running_func or _is_process_running
+    do_sleep = sleep_func or time.sleep
+    now_monotonic = monotonic_func or time.monotonic
+    deadline = now_monotonic() + max(float(timeout_seconds or 0), 0)
+
+    while True:
+        if not check_running(pid):
+            return True
+        if now_monotonic() >= deadline:
+            return False
+        do_sleep(poll_interval)
+
+
+
+def _run_daily_restart_helper(args):
+    restart_log_path = getattr(args, "daily_restart_log_path", None)
+    parent_pid = getattr(args, "daily_restart_parent_pid", None)
+    python_executable = getattr(args, "daily_restart_python_executable", None)
+    main_script_path = getattr(args, "daily_restart_main_script_path", None)
+    restart_cwd = getattr(args, "daily_restart_cwd", None) or os.getcwd()
+    forwarded_args_json = getattr(args, "daily_restart_forward_args_json", "[]")
+
+    if not python_executable or not main_script_path or not parent_pid:
+        _append_daily_full_restart_log(
+            "[每日完全重启 helper] 缺少必要启动参数，放弃接棒重启",
+            log_path=restart_log_path,
+        )
+        return False
+
+    _append_daily_full_restart_log(
+        f"[每日完全重启 helper] 已启动，等待旧进程退出 pid={parent_pid}",
+        log_path=restart_log_path,
+    )
+
+    if not _wait_for_process_exit(parent_pid):
+        _append_daily_full_restart_log(
+            f"[每日完全重启 helper] 等待旧进程退出超时 pid={parent_pid}",
+            log_path=restart_log_path,
+        )
+        return False
+
+    try:
+        forwarded_args = json.loads(forwarded_args_json)
+        if not isinstance(forwarded_args, list):
+            forwarded_args = []
+    except (TypeError, ValueError, json.JSONDecodeError):
+        forwarded_args = []
+
+    forwarded_args = _strip_daily_restart_helper_args(forwarded_args)
+    command = [python_executable, main_script_path, *forwarded_args]
+    _append_daily_full_restart_log(
+        f"[每日完全重启 helper] 旧进程已退出，准备拉起新进程，cwd={restart_cwd} args={forwarded_args}",
+        log_path=restart_log_path,
+    )
+
+    try:
+        new_process = subprocess.Popen(command, cwd=restart_cwd)
+    except Exception as exc:
+        _append_daily_full_restart_log(
+            f"[每日完全重启 helper] 拉起新进程失败: {exc}",
+            log_path=restart_log_path,
+        )
+        return False
+
+    _append_daily_full_restart_log(
+        f"[每日完全重启 helper] 已拉起新进程 pid={getattr(new_process, 'pid', 'unknown')}",
+        log_path=restart_log_path,
+    )
+    _flush_all_log_handlers()
+    return True
+
+
+
+def _trigger_daily_full_restart(now_dt=None, exit_func=None):
+    current_dt = now_dt or datetime.datetime.now()
+    current_date = current_dt.date()
+    marker_path = _get_daily_full_restart_marker_path()
+    restart_log_path = _get_daily_full_restart_log_path()
+
+    if _has_daily_full_restart_marker_for_date(current_date, marker_path):
+        _append_daily_full_restart_log(
+            f"[每日完全重启] {current_date.isoformat()} 已执行过，跳过重复触发",
+            current_dt,
+            log_path=restart_log_path,
+        )
+        return False
+
+    command = _build_daily_restart_helper_command(
+        old_pid=os.getpid(),
+        python_executable=sys.executable,
+        main_script_path=os.path.abspath(__file__),
+        cwd=os.getcwd(),
+        restart_log_path=restart_log_path,
+        restart_marker_path=marker_path,
+        forwarded_argv=sys.argv[1:],
+    )
+
+    try:
+        helper_process = subprocess.Popen(command, cwd=os.getcwd())
+    except Exception as exc:
+        _append_daily_full_restart_log(
+            f"[每日完全重启] helper 启动失败，取消本次重启: {exc}",
+            current_dt,
+            log_path=restart_log_path,
+        )
+        return False
+
+    _write_daily_full_restart_marker(marker_path, current_dt)
+    _append_daily_full_restart_log(
+        f"[每日完全重启] helper 已启动 pid={getattr(helper_process, 'pid', 'unknown')}，主进程准备退出",
+        current_dt,
+        log_path=restart_log_path,
+    )
+    _flush_all_log_handlers()
+    (exit_func or os._exit)(0)
+    return True
+
+
+
+def _handle_midnight_runtime_maintenance_tick(last_run_date, now_dt=None):
+    current_dt = now_dt or datetime.datetime.now()
+    if not _should_run_midnight_runtime_maintenance(current_dt):
+        return last_run_date, False
+
+    current_date = current_dt.date()
+    if current_date == last_run_date:
+        return last_run_date, False
+
+    _trigger_daily_full_restart(now_dt=current_dt)
+    return current_date, True
+
+
+
 def _run_midnight_runtime_maintenance():
-    global web_sessions, session_activity, browsing_activity, session_file_locks
-    global payment_verify_probes, public_ip_cache, public_ip_cache_time
-    global js_cache_storage, js_cache_last_update, font_cache_storage, source_map_storage
-    global sms_verification_codes, sms_extended_once_keys, cache
-    global user_ban_cache, ip_ban_list_cache, ip_ban_cache_timestamp
+    logging.info("[午夜维护] 已切换为每日完全重启编排模式")
+    return _trigger_daily_full_restart()
 
-    logging.info("[午夜维护] 开始执行运行时内存重置")
-
-    with web_sessions_lock:
-        sessions_snapshot = list(web_sessions.items())
-
-    for session_id, api_instance in sessions_snapshot:
-        try:
-            if chrome_pool:
-                chrome_pool.cleanup_context(session_id)
-        except Exception as e:
-            logging.error(f"[午夜维护] 清理浏览器上下文失败 {session_id[:8]}...: {e}")
-
-        try:
-            stop_run_flag = getattr(api_instance, "stop_run_flag", None)
-            if hasattr(stop_run_flag, "set"):
-                stop_run_flag.set()
-            multi_run_stop_flag = getattr(api_instance, "multi_run_stop_flag", None)
-            if hasattr(multi_run_stop_flag, "set"):
-                multi_run_stop_flag.set()
-            stop_auto_refresh = getattr(api_instance, "stop_auto_refresh", None)
-            if hasattr(stop_auto_refresh, "set"):
-                stop_auto_refresh.set()
-            stop_multi_auto_refresh = getattr(api_instance, "stop_multi_auto_refresh", None)
-            if hasattr(stop_multi_auto_refresh, "set"):
-                stop_multi_auto_refresh.set()
-        except Exception as e:
-            logging.error(f"[午夜维护] 停止会话后台任务失败 {session_id[:8]}...: {e}")
-
-    with web_sessions_lock:
-        web_sessions.clear()
-    with session_activity_lock:
-        session_activity.clear()
-    with browsing_activity_lock:
-        browsing_activity.clear()
-    with session_file_locks_lock:
-        session_file_locks.clear()
-    with payment_verify_probes_lock:
-        payment_verify_probes.clear()
-    with js_cache_lock:
-        js_cache_storage.clear()
-        js_cache_last_update.clear()
-    with font_cache_lock:
-        font_cache_storage.clear()
-    with source_map_lock:
-        source_map_storage.clear()
-
-    public_ip_cache = {"ipv4": None, "ipv6": None}
-    public_ip_cache_time = 0
-    sms_verification_codes.clear()
-    sms_extended_once_keys.clear()
-    cache.clear()
-    user_ban_cache.clear()
-    ip_ban_list_cache = None
-    ip_ban_cache_timestamp = 0
-
-    manager = globals().get("background_task_manager")
-    if manager and hasattr(manager, "lock") and hasattr(manager, "tasks"):
-        with manager.lock:
-            manager.tasks.clear()
-
-    brute_force = globals().get("brute_force_manager")
-    if brute_force and hasattr(brute_force, "tasks"):
-        tasks = getattr(brute_force, "tasks")
-        if isinstance(tasks, dict):
-            tasks.clear()
-
-    _load_ip_cache()
-    _load_phone_cache()
-
-    reload_hook = globals().get("_midnight_runtime_reload_hook")
-    if callable(reload_hook):
-        try:
-            reload_hook()
-        except Exception as e:
-            logging.error(f"[午夜维护] 执行重载钩子失败: {e}", exc_info=True)
-
-    gc.collect()
-    logging.info("[午夜维护] 运行时内存重置完成")
 
 
 def start_midnight_runtime_maintenance_worker():
@@ -261,11 +472,10 @@ def start_midnight_runtime_maintenance_worker():
         while True:
             try:
                 now_dt = datetime.datetime.now()
-                if _should_run_midnight_runtime_maintenance(now_dt):
-                    current_date = now_dt.date()
-                    if current_date != last_run_date:
-                        _run_midnight_runtime_maintenance()
-                        last_run_date = current_date
+                last_run_date, _ = _handle_midnight_runtime_maintenance_tick(
+                    last_run_date,
+                    now_dt=now_dt,
+                )
                 time.sleep(30)
             except Exception as e:
                 logging.error(f"[午夜维护] 后台维护线程异常: {e}", exc_info=True)
@@ -321,6 +531,123 @@ def _normalize_payment_return_url(return_url, app_host, notify_url):
     return normalized_return_url
 
 
+def _normalize_sms_signature(signature):
+    normalized_signature = str(signature or "").strip()
+    if not normalized_signature:
+        return ""
+    while (
+        normalized_signature.startswith("【")
+        and normalized_signature.endswith("】")
+        and len(normalized_signature) >= 2
+    ):
+        normalized_signature = normalized_signature[1:-1].strip()
+    return f"【{normalized_signature}】" if normalized_signature else ""
+
+
+def _build_sms_verification_content(signature, template, code, code_expire_minutes):
+    normalized_signature = _normalize_sms_signature(signature)
+    rendered_template = str(template or "")
+    rendered_template = rendered_template.replace("{code}", str(code)).replace(
+        "{minutes}", str(code_expire_minutes)
+    )
+    return f"{normalized_signature}{rendered_template}"
+
+
+def _get_sms_config_view_data(config):
+    return {
+        "enable_sms_service": config.getboolean(
+            "Features", "enable_sms_service", fallback=False
+        ),
+        "enable_phone_modification": config.getboolean(
+            "Features", "enable_phone_modification", fallback=False
+        ),
+        "enable_phone_login": config.getboolean(
+            "Features", "enable_phone_login", fallback=False
+        ),
+        "enable_phone_registration_verify": config.getboolean(
+            "Features", "enable_phone_registration_verify", fallback=False
+        ),
+        "username": config.get("SMS_Service_SMSBao", "username", fallback=""),
+        "api_key": config.get("SMS_Service_SMSBao", "api_key", fallback=""),
+        "signature": _normalize_sms_signature(
+            config.get("SMS_Service_SMSBao", "signature", fallback="")
+        ),
+        "template_register": config.get(
+            "SMS_Service_SMSBao", "template_register", fallback=""
+        ),
+        "code_expire_minutes": config.getint(
+            "SMS_Service_SMSBao", "code_expire_minutes", fallback=5
+        ),
+        "rate_limit_per_account_day": config.getint(
+            "SMS_Service_SMSBao", "rate_limit_per_account_day", fallback=10
+        ),
+        "rate_limit_per_ip_day": config.getint(
+            "SMS_Service_SMSBao", "rate_limit_per_ip_day", fallback=20
+        ),
+        "rate_limit_per_phone_day": config.getint(
+            "SMS_Service_SMSBao", "rate_limit_per_phone_day", fallback=5
+        ),
+    }
+
+
+def _apply_sms_config_updates(config, data):
+    if not config.has_section("Features"):
+        config.add_section("Features")
+    config.set(
+        "Features",
+        "enable_sms_service",
+        str(data.get("enable_sms_service", False)).lower(),
+    )
+    config.set(
+        "Features",
+        "enable_phone_modification",
+        str(data.get("enable_phone_modification", False)).lower(),
+    )
+    config.set(
+        "Features",
+        "enable_phone_login",
+        str(data.get("enable_phone_login", False)).lower(),
+    )
+    config.set(
+        "Features",
+        "enable_phone_registration_verify",
+        str(data.get("enable_phone_registration_verify", False)).lower(),
+    )
+    if not config.has_section("SMS_Service_SMSBao"):
+        config.add_section("SMS_Service_SMSBao")
+    config.set("SMS_Service_SMSBao", "username", data.get("username", ""))
+    config.set("SMS_Service_SMSBao", "api_key", data.get("api_key", ""))
+    config.set(
+        "SMS_Service_SMSBao",
+        "signature",
+        _normalize_sms_signature(data.get("signature", "")),
+    )
+    config.set(
+        "SMS_Service_SMSBao",
+        "template_register",
+        data.get("template_register", ""),
+    )
+    config.set(
+        "SMS_Service_SMSBao",
+        "code_expire_minutes",
+        str(data.get("code_expire_minutes", 5)),
+    )
+    config.set(
+        "SMS_Service_SMSBao",
+        "rate_limit_per_account_day",
+        str(data.get("rate_limit_per_account_day", 10)),
+    )
+    config.set(
+        "SMS_Service_SMSBao",
+        "rate_limit_per_ip_day",
+        str(data.get("rate_limit_per_ip_day", 20)),
+    )
+    config.set(
+        "SMS_Service_SMSBao",
+        "rate_limit_per_phone_day",
+        str(data.get("rate_limit_per_phone_day", 5)),
+    )
+    return config
 def _register_payment_verify_probe_route(app):
     @app.route("/api/payment/verify_probe/<token>", methods=["POST"])
     def payment_verify_probe(token):
@@ -405,6 +732,7 @@ random = _try_import_builtin("random")
 secrets = _try_import_builtin("secrets")
 string = _try_import_builtin("string")
 argparse = _try_import_builtin("argparse")
+subprocess = _try_import_builtin("subprocess")
 gc = _try_import_builtin("gc")
 heapq = _try_import_builtin("heapq")
 ipaddress = _try_import_builtin("ipaddress")
@@ -476,6 +804,7 @@ def import_standard_libraries():
         ("time", "import time"),
         ("traceback", "import traceback"),
         ("urllib", "import urllib"),
+        ("urllib.request", "import urllib.request"),
         ("uuid", "import uuid"),
         ("warnings", "import warnings"),
         ("atexit", "import atexit"),
@@ -24107,6 +24436,258 @@ def _register_payment_routes(app, login_required):
 
 
 
+def _register_sms_routes(app, login_required):
+    from flask import g, jsonify, request
+
+    @app.route("/api/sms/send_code", methods=["POST"])
+    def sms_send_code():
+        try:
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            if (
+                config.get("Features", "enable_sms_service", fallback="false").lower()
+                != "true"
+            ):
+                return jsonify({"success": False, "message": "短信服务未启用"})
+
+            data = request.get_json() or {}
+            phone = data.get("phone", "").strip()
+            scene = data.get("scene", "register").strip()
+            captcha_input = data.get("captcha", "").strip()
+            captcha_id = data.get("captcha_id", "").strip()
+
+            is_captcha_valid, captcha_error_msg = verify_captcha(
+                captcha_id, captcha_input
+            )
+            if not is_captcha_valid:
+                return jsonify({"success": False, "message": captcha_error_msg})
+            if not phone or not re.match(r"^1[3-9]\d{9}$", phone):
+                return jsonify({"success": False, "message": "手机号格式不正确"})
+
+            sms_interval_seconds = int(
+                config.get("SMS_Service_SMSBao", "send_interval_seconds", fallback="180")
+            )
+            last_send_key = f"sms_last_send_{phone}"
+            last_send_time = cache.get(last_send_key, 0)
+            current_time = time.time()
+
+            if last_send_time and (current_time - last_send_time) < sms_interval_seconds:
+                remaining_seconds = int(
+                    sms_interval_seconds - (current_time - last_send_time)
+                )
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": f"发送过于频繁，请{remaining_seconds}秒后再试",
+                        "retry_after": remaining_seconds,
+                    }
+                )
+
+            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            current_date = time.strftime("%Y-%m-%d")
+            ip_limit_key = f"sms_ip_{client_ip}_{current_date}"
+            ip_count = cache.get(ip_limit_key, 0)
+            ip_limit = int(
+                config.get("SMS_Service_SMSBao", "rate_limit_per_ip_day", fallback="20")
+            )
+            if ip_count >= ip_limit:
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": f"IP每日发送次数已达上限({ip_limit}次)",
+                    }
+                )
+
+            phone_limit_key = f"sms_phone_{phone}_{current_date}"
+            phone_count = cache.get(phone_limit_key, 0)
+            phone_limit = int(
+                config.get(
+                    "SMS_Service_SMSBao", "rate_limit_per_phone_day", fallback="5"
+                )
+            )
+            if phone_count >= phone_limit:
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": f"该手机号每日发送次数已达上限({phone_limit}次)",
+                    }
+                )
+
+            code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+            username = config.get("SMS_Service_SMSBao", "username", fallback="")
+            api_key = config.get("SMS_Service_SMSBao", "api_key", fallback="")
+            signature = config.get(
+                "SMS_Service_SMSBao", "signature", fallback="【电科大跑步助手】"
+            )
+            code_expire_minutes = int(
+                config.get("SMS_Service_SMSBao", "code_expire_minutes", fallback="5")
+            )
+            template = config.get(
+                "SMS_Service_SMSBao",
+                "template_register",
+                fallback=f"您的验证码是：{{code}}，{code_expire_minutes}分钟内有效。",
+            )
+            if not username or not api_key:
+                return jsonify(
+                    {"success": False, "message": "短信服务配置不完整，请联系管理员"}
+                )
+
+            content = _build_sms_verification_content(
+                signature, template, code, code_expire_minutes
+            )
+            url = f"http://api.smsbao.com/sms?u={username}&p={api_key}&m={phone}&c={urllib.parse.quote(content)}"
+            response = urllib.request.urlopen(url, timeout=10)
+            result = response.read().decode("utf-8").strip()
+            if result == "0":
+                code_expire_seconds = code_expire_minutes * 60
+                sms_verification_codes[phone] = (code, time.time() + code_expire_seconds)
+                _reset_sms_extend_once_for_phone(phone)
+                cache[ip_limit_key] = ip_count + 1
+                cache[phone_limit_key] = phone_count + 1
+                cache[last_send_key] = current_time
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": f"验证码已发送，{code_expire_minutes}分钟内有效",
+                        "expire_minutes": code_expire_minutes,
+                        "retry_after": sms_interval_seconds,
+                    }
+                )
+            return jsonify({"success": False, "message": "验证码发送失败，请稍后重试"})
+        except Exception:
+            return jsonify({"success": False, "message": "验证码发送失败，请稍后重试"})
+
+    @app.route("/api/sms/test_send", methods=["POST"])
+    @login_required
+    def sms_test_send():
+        try:
+            current_user = g.user
+            user_group = auth_system.get_user_group(current_user)
+            if user_group not in ["admin", "super_admin"]:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": "权限不足，仅管理员可使用测试功能",
+                        }
+                    ),
+                    403,
+                )
+
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            if (
+                config.get("Features", "enable_sms_service", fallback="false").lower()
+                != "true"
+            ):
+                return jsonify({"success": False, "message": "短信服务未启用，请先在配置中启用"})
+
+            data = request.get_json() or {}
+            phone = data.get("phone", "").strip()
+            custom_code = data.get("code", "").strip()
+            if not phone or not re.match(r"^1[3-9]\d{9}$", phone):
+                return jsonify({"success": False, "message": "手机号格式不正确"})
+            if custom_code:
+                if not re.match(r"^\d{4,8}$", custom_code):
+                    return jsonify(
+                        {
+                            "success": False,
+                            "message": "自定义验证码格式不正确，仅支持4-8位数字",
+                        }
+                    )
+                code = custom_code
+            else:
+                code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+
+            username = config.get("SMS_Service_SMSBao", "username", fallback="")
+            api_key = config.get("SMS_Service_SMSBao", "api_key", fallback="")
+            signature = config.get(
+                "SMS_Service_SMSBao", "signature", fallback="【电科大跑步助手】"
+            )
+            code_expire_minutes = int(
+                config.get("SMS_Service_SMSBao", "code_expire_minutes", fallback="5")
+            )
+            template = config.get(
+                "SMS_Service_SMSBao",
+                "template_register",
+                fallback=f"您的验证码是：{{code}}，{code_expire_minutes}分钟内有效。",
+            )
+            if not username or not api_key:
+                return jsonify(
+                    {"success": False, "message": "短信服务配置不完整，请联系管理员"}
+                )
+
+            content = _build_sms_verification_content(
+                signature, template, code, code_expire_minutes
+            )
+            url = f"http://api.smsbao.com/sms?u={username}&p={api_key}&m={phone}&c={urllib.parse.quote(content)}"
+            response = urllib.request.urlopen(url, timeout=10)
+            result = response.read().decode("utf-8").strip()
+            if result == "0":
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": f"测试短信发送成功！验证码：{code}",
+                        "code": code,
+                        "phone": phone,
+                    }
+                )
+
+            error_map = {
+                "30": "密码错误",
+                "40": "账号不存在",
+                "41": "余额不足",
+                "42": "账户已过期",
+                "43": "IP地址限制",
+                "50": "内容含有敏感词",
+            }
+            error_msg = error_map.get(result, f"未知错误(错误码:{result})")
+            return jsonify(
+                {
+                    "success": False,
+                    "message": f"发送失败：{error_msg}",
+                    "error_code": result,
+                }
+            )
+        except Exception as e:
+            return jsonify({"success": False, "message": f"网络错误：{str(e)}"})
+
+    @app.route("/api/admin/sms/config", methods=["GET"])
+    @login_required
+    def get_sms_config():
+        try:
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": "权限不足，需要配置修改权限（modify_config）",
+                    }
+                ), 403
+
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            return jsonify({"success": True, "config": _get_sms_config_view_data(config)})
+        except Exception:
+            return jsonify({"success": False, "message": "获取配置失败"}), 500
+
+    @app.route("/api/admin/sms/config", methods=["POST"])
+    @login_required
+    def save_sms_config():
+        try:
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": "权限不足，需要配置修改权限（modify_config）",
+                    }
+                ), 403
+
+            data = request.get_json() or {}
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            config = _apply_sms_config_updates(config, data)
+            _write_config_with_comments(config, CONFIG_JSON_FILE)
+            return jsonify({"success": True, "message": "配置已保存"})
+        except Exception:
+            return jsonify({"success": False, "message": "保存失败"}), 500
+
+
 def start_web_server(args_param):
     """
     启动Flask Web服务器主函数，集成SocketIO实时通信和Chrome浏览器自动化。
@@ -30654,243 +31235,6 @@ def start_web_server(args_param):
         logs = auth_system.get_audit_logs(username, action, limit)
         return jsonify({"success": True, "logs": logs})
 
-    @app.route("/api/sms/send_code", methods=["POST"])
-    def sms_send_code():
-        """
-        发送短信验证码API
-        """
-        try:
-            # [修正] 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
-            config = configparser.ConfigParser(strict=False)
-            config.optionxform = str
-            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            if (
-                config.get("Features", "enable_sms_service",
-                           fallback="false").lower()
-                != "true"
-            ):
-                return jsonify({"success": False, "message": "短信服务未启用"})
-            data = request.get_json() or {}
-            phone = data.get("phone", "").strip()
-            scene = data.get("scene", "register").strip()
-            captcha_input = data.get("captcha", "").strip()
-            captcha_id = data.get("captcha_id", "").strip()
-
-            is_captcha_valid, captcha_error_msg = verify_captcha(
-                captcha_id, captcha_input
-            )
-            if not is_captcha_valid:
-                return jsonify({"success": False, "message": captcha_error_msg})
-            if not phone or not re.match(r"^1[3-9]\d{9}$", phone):
-                return jsonify({"success": False, "message": "手机号格式不正确"})
-            sms_interval_seconds = int(
-                config.get(
-                    "SMS_Service_SMSBao", "send_interval_seconds", fallback="180"
-                )
-            )
-            last_send_key = f"sms_last_send_{phone}"
-            last_send_time = cache.get(last_send_key, 0)
-            current_time = time.time()
-
-            if (
-                last_send_time
-                and (current_time - last_send_time) < sms_interval_seconds
-            ):
-                remaining_seconds = int(
-                    sms_interval_seconds - (current_time - last_send_time)
-                )
-                return jsonify(
-                    {
-                        "success": False,
-                        "message": f"发送过于频繁，请{remaining_seconds}秒后再试",
-                        "retry_after": remaining_seconds,
-                    }
-                )
-            client_ip = request.environ.get(
-                "REMOTE_ADDR") or request.remote_addr
-            current_date = time.strftime("%Y-%m-%d")
-            ip_limit_key = f"sms_ip_{client_ip}_{current_date}"
-            ip_count = cache.get(ip_limit_key, 0)
-            ip_limit = int(
-                config.get("SMS_Service_SMSBao",
-                           "rate_limit_per_ip_day", fallback="20")
-            )
-            if ip_count >= ip_limit:
-                return jsonify(
-                    {
-                        "success": False,
-                        "message": f"IP每日发送次数已达上限({ip_limit}次)",
-                    }
-                )
-            phone_limit_key = f"sms_phone_{phone}_{current_date}"
-            phone_count = cache.get(phone_limit_key, 0)
-            phone_limit = int(
-                config.get(
-                    "SMS_Service_SMSBao", "rate_limit_per_phone_day", fallback="5"
-                )
-            )
-            if phone_count >= phone_limit:
-                return jsonify(
-                    {
-                        "success": False,
-                        "message": f"该手机号每日发送次数已达上限({phone_limit}次)",
-                    }
-                )
-            code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-            username = config.get("SMS_Service_SMSBao",
-                                  "username", fallback="")
-            api_key = config.get("SMS_Service_SMSBao", "api_key", fallback="")
-            signature = config.get(
-                "SMS_Service_SMSBao", "signature", fallback="【电科大跑步助手】"
-            )
-            code_expire_minutes = int(
-                config.get("SMS_Service_SMSBao",
-                           "code_expire_minutes", fallback="5")
-            )
-            template = config.get(
-                "SMS_Service_SMSBao",
-                "template_register",
-                fallback=f"您的验证码是：{{code}}，{code_expire_minutes}分钟内有效。",
-            )
-
-            if not username or not api_key:
-                return jsonify(
-                    {"success": False, "message": "短信服务配置不完整，请联系管理员"}
-                )
-            content = signature + template.replace("{code}", code).replace(
-                "{minutes}", str(code_expire_minutes)
-            )
-            # import urllib.parse
-            # import urllib.request
-
-            url = f"http://api.smsbao.com/sms?u={username}&p={api_key}&m={phone}&c={urllib.parse.quote(content)}"
-
-            logging.debug(f"[短信服务] 发送请求到短信宝API: {url}")
-
-            try:
-                response = urllib.request.urlopen(url, timeout=10)
-                result = response.read().decode("utf-8").strip()
-                if result == "0":
-                    code_expire_minutes = int(
-                        config.get(
-                            "SMS_Service_SMSBao", "code_expire_minutes", fallback="5"
-                        )
-                    )
-                    code_expire_seconds = code_expire_minutes * 60
-                    sms_verification_codes[phone] = (
-                        code,
-                        time.time() + code_expire_seconds,
-                    )
-                    _reset_sms_extend_once_for_phone(phone)
-                    cache[ip_limit_key] = ip_count + 1
-                    cache[phone_limit_key] = phone_count + 1
-                    cache[last_send_key] = current_time
-                    app.logger.info(
-                        f"[短信服务] 向 {phone} 发送验证码成功，场景：{scene}，有效期：{code_expire_minutes}分钟"
-                    )
-                    try:
-                        log_dir = LOGIN_LOGS_DIR
-                        os.makedirs(log_dir, exist_ok=True)
-                        session_id = request.headers.get("X-Session-ID", None)
-                        username = None
-                        if scene == "register":
-                            username = f"注册用户({phone})"
-                        elif scene == "modify":
-                            if g and hasattr(g, "user"):
-                                username = g.user
-                            else:
-                                username = "未知用户"
-                        elif scene == "admin_modify":
-                            username = data.get("target_username", "未知用户")
-                        else:
-                            if g and hasattr(g, "user"):
-                                username = g.user
-                            else:
-                                username = phone
-                        history_entry = {
-                            "username": username,
-                            "phone": phone,
-                            "scene": scene,
-                            "timestamp": time.time(),
-                            "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-                            "content": content,
-                            "ip": client_ip,
-                        }
-                        if (
-                            session_id is not None
-                            and session_id != ""
-                            and session_id != "null"
-                        ):
-                            history_entry["session_id"] = session_id
-                        history_file = os.path.join(
-                            log_dir, "sms_history.jsonl")
-                        with open(history_file, "a", encoding="utf-8") as f:
-                            f.write(
-                                json.dumps(history_entry,
-                                           ensure_ascii=False) + "\n"
-                            )
-
-                        app.logger.debug(
-                            f"[短信历史] 已记录发送历史: {phone} -> {username}"
-                        )
-                        if scene in [
-                            "admin_modify",
-                            "register",
-                        ]:
-                            session_id = getattr(g, "api_instance", None)
-                            if session_id:
-                                session_id = getattr(
-                                    session_id, "_web_session_id", None
-                                )
-
-                            if session_id:
-                                pass
-                            else:
-                                logging.debug(
-                                    "[SocketIO] sms_send_code：无法获取 session_id，跳过推送"
-                                )
-
-                    except Exception as e:
-                        app.logger.error(f"[短信历史] 记录失败: {str(e)}")
-                    return jsonify(
-                        {
-                            "success": True,
-                            "message": f"验证码已发送，{code_expire_minutes}分钟内有效",
-                            "expire_minutes": code_expire_minutes,
-                            "retry_after": sms_interval_seconds,
-                        }
-                    )
-                else:
-                    error_map = {
-                        "30": "密码错误",
-                        "40": "账号不存在",
-                        "41": "余额不足",
-                        "42": "账户已过期",
-                        "43": "IP地址限制",
-                        "50": "内容含有敏感词",
-                    }
-                    detailed_error_msg = error_map.get(
-                        result, f"未知错误(错误码:{result})"
-                    )
-                    app.logger.error(
-                        f"[短信服务] 短信宝API返回错误码: {result}, 原因: {detailed_error_msg}, 手机号: {phone}"
-                    )
-                    return jsonify(
-                        {"success": False, "message": "验证码发送失败，请稍后重试"}
-                    )
-
-            except Exception as e:
-                app.logger.error(
-                    f"[短信服务] API调用异常：{str(e)}, 手机号: {phone}", exc_info=True
-                )
-                return jsonify(
-                    {"success": False, "message": "验证码发送失败，请稍后重试"}
-                )
-
-        except Exception as e:
-            app.logger.error(f"[短信服务] 处理请求异常：{str(e)}", exc_info=True)
-            return jsonify({"success": False, "message": "验证码发送失败，请稍后重试"})
-
     @app.route("/sms-reply-webhook", methods=["GET"])
     def sms_reply_webhook():
         """
@@ -31067,177 +31411,6 @@ def start_web_server(args_param):
             # - 对外：始终表现为"成功接收"，保持接口的稳定性
             # - 对内：通过日志记录错误，由开发人员后续修复
             return "0"
-
-    @app.route("/api/sms/test_send", methods=["POST"])
-    @login_required
-    def sms_test_send():
-        """
-        短信测试发送API
-        """
-        try:
-            # 获取当前登录的用户名
-            # g.user 由 @login_required 装饰器设置，包含已验证的用户身份
-            current_user = g.user
-
-            # 使用用户组别判断而非权限判断
-            #
-            # 修复原因：
-            # 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
-            # 例如：user组的用户可能被配置为拥有 manage_users 或 god_mode 权限
-            # 因此，不能通过检查权限来判断用户是否是真正的管理员
-            # 必须直接读取用户组别（group）来准确判断用户的管理员身份
-            #
-            # 技术实现：
-            # - 使用 get_user_group() 方法直接获取用户所属的组别
-            # - 只允许 "admin" 和 "super_admin" 组的用户访问此功能
-            # - 这样确保即使普通用户拥有管理员权限，也无法访问管理员专属功能
-            #
-            # 安全考虑：
-            # - 短信测试功能是管理员专属操作，不应对普通用户开放
-            # - 通过组别判断可以严格控制访问权限，避免权限滥用
-            user_group = auth_system.get_user_group(current_user)
-
-            # 检查用户组别：只允许管理员和超级管理员访问
-            if user_group not in ["admin", "super_admin"]:
-                # 权限不足时返回403禁止访问状态码
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": "权限不足，仅管理员可使用测试功能",
-                        }
-                    ),
-                    403,
-                )
-            # 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
-            config = configparser.ConfigParser(strict=False)
-            config.optionxform = str
-            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            if (
-                config.get("Features", "enable_sms_service",
-                           fallback="false").lower()
-                != "true"
-            ):
-                return jsonify(
-                    {"success": False, "message": "短信服务未启用，请先在配置中启用"}
-                )
-            data = request.get_json() or {}
-            phone = data.get("phone", "").strip()
-            custom_code = data.get("code", "").strip()
-            if not phone or not re.match(r"^1[3-9]\d{9}$", phone):
-                return jsonify({"success": False, "message": "手机号格式不正确"})
-            if custom_code:
-                if not re.match(r"^\d{4,8}$", custom_code):
-                    return jsonify(
-                        {
-                            "success": False,
-                            "message": "自定义验证码格式不正确，仅支持4-8位数字",
-                        }
-                    )
-                code = custom_code
-            else:
-                # import random
-
-                code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-            username = config.get("SMS_Service_SMSBao",
-                                  "username", fallback="")
-            api_key = config.get("SMS_Service_SMSBao", "api_key", fallback="")
-            signature = config.get(
-                "SMS_Service_SMSBao", "signature", fallback="【电科大跑步助手】"
-            )
-            code_expire_minutes = int(
-                config.get("SMS_Service_SMSBao",
-                           "code_expire_minutes", fallback="5")
-            )
-
-            if not username or not api_key:
-                return jsonify(
-                    {
-                        "success": False,
-                        "message": "短信服务配置不完整，请先完善短信宝用户名和API Key",
-                    }
-                )
-            content = (
-                signature
-                + f"【测试短信】您的验证码是：{code}，{code_expire_minutes}分钟内有效。这是一条测试短信。"
-            )
-            # import urllib.parse
-            # import urllib.request
-
-            url = f"http://api.smsbao.com/sms?u={username}&p={api_key}&m={phone}&c={urllib.parse.quote(content)}"
-
-            logging.info(f"[短信测试] 管理员 {current_user} 发送测试短信到 {phone}")
-
-            try:
-                response = urllib.request.urlopen(url, timeout=10)
-                result = response.read().decode("utf-8").strip()
-                if result == "0":
-                    try:
-                        log_dir = LOGIN_LOGS_DIR
-                        os.makedirs(log_dir, exist_ok=True)
-
-                        client_ip = request.environ.get(
-                            "REMOTE_ADDR") or request.remote_addr
-                        history_entry = {
-                            "username": f"{current_user}(测试)",
-                            "phone": phone,
-                            "scene": "admin_test",
-                            "timestamp": time.time(),
-                            "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-                            "content": content,
-                            "ip": client_ip,
-                            "test_code": code,
-                        }
-
-                        history_file = os.path.join(
-                            log_dir, "sms_history.jsonl")
-                        with open(history_file, "a", encoding="utf-8") as f:
-                            f.write(
-                                json.dumps(history_entry,
-                                           ensure_ascii=False) + "\n"
-                            )
-
-                        logging.info(
-                            f"[短信测试] 已记录测试短信历史: {phone} -> 验证码: {code}"
-                        )
-                    except Exception as e:
-                        logging.error(f"[短信测试] 记录历史失败: {str(e)}")
-                    return jsonify(
-                        {
-                            "success": True,
-                            "message": f"测试短信发送成功！验证码：{code}",
-                            "code": code,
-                            "phone": phone,
-                        }
-                    )
-                else:
-                    error_map = {
-                        "30": "密码错误",
-                        "40": "账号不存在",
-                        "41": "余额不足",
-                        "42": "账户已过期",
-                        "43": "IP地址限制",
-                        "50": "内容含有敏感词",
-                    }
-                    error_msg = error_map.get(result, f"未知错误(错误码:{result})")
-                    logging.error(
-                        f"[短信测试] 短信宝API返回错误: {result} - {error_msg}"
-                    )
-                    return jsonify(
-                        {
-                            "success": False,
-                            "message": f"发送失败：{error_msg}",
-                            "error_code": result,
-                        }
-                    )
-
-            except Exception as e:
-                logging.error(f"[短信测试] API调用异常: {str(e)}", exc_info=True)
-                return jsonify({"success": False, "message": f"网络错误：{str(e)}"})
-
-        except Exception as e:
-            logging.error(f"[短信测试] 处理请求异常: {str(e)}", exc_info=True)
-            return jsonify({"success": False, "message": f"处理失败：{str(e)}"})
 
     @app.route("/api/sms/reply-logs", methods=["GET"])
     @login_required
@@ -32881,149 +33054,6 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[IP封禁] 检查失败：{str(e)}")
             return False
-
-    # ====================
-    # 短信服务配置API
-    # ====================
-
-    @app.route("/api/admin/sms/config", methods=["GET"])
-    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
-    def get_sms_config():
-        """
-        获取短信服务配置
-        """
-        try:
-            # 细粒度权限检查：需要 'modify_config' 权限
-            # modify_config 权限允许查看短信服务配置
-            # 短信配置包含API密钥等敏感信息，需要严格控制访问
-            if not auth_system.check_permission(g.user, "modify_config"):
-                return jsonify({
-                    "success": False,
-                    "message": "权限不足，需要配置修改权限（modify_config）"
-                }), 403
-
-            # 读取配置文件
-            config = configparser.ConfigParser(strict=False)
-            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            sms_config = {
-                "enable_sms_service": config.getboolean(
-                    "Features", "enable_sms_service", fallback=False
-                ),
-                "enable_phone_modification": config.getboolean(
-                    "Features", "enable_phone_modification", fallback=False
-                ),
-                "enable_phone_login": config.getboolean(
-                    "Features", "enable_phone_login", fallback=False
-                ),
-                "enable_phone_registration_verify": config.getboolean(
-                    "Features", "enable_phone_registration_verify", fallback=False
-                ),
-                "username": config.get("SMS_Service_SMSBao", "username", fallback=""),
-                "api_key": config.get("SMS_Service_SMSBao", "api_key", fallback=""),
-                "signature": config.get("SMS_Service_SMSBao", "signature", fallback=""),
-                "template_register": config.get(
-                    "SMS_Service_SMSBao", "template_register", fallback=""
-                ),
-                "code_expire_minutes": config.getint(
-                    "SMS_Service_SMSBao", "code_expire_minutes", fallback=5
-                ),
-                "rate_limit_per_account_day": config.getint(
-                    "SMS_Service_SMSBao", "rate_limit_per_account_day", fallback=10
-                ),
-                "rate_limit_per_ip_day": config.getint(
-                    "SMS_Service_SMSBao", "rate_limit_per_ip_day", fallback=20
-                ),
-                "rate_limit_per_phone_day": config.getint(
-                    "SMS_Service_SMSBao", "rate_limit_per_phone_day", fallback=5
-                ),
-            }
-
-            return jsonify({"success": True, "config": sms_config})
-        except Exception as e:
-            app.logger.error(f"[短信配置] 获取配置失败：{str(e)}")
-            return jsonify({"success": False, "message": "获取配置失败"}), 500
-
-    @app.route("/api/admin/sms/config", methods=["POST"])
-    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
-    def save_sms_config():
-        """
-        保存短信服务配置
-        """
-        try:
-            # 细粒度权限检查：需要 'modify_config' 权限
-            # modify_config 权限允许修改短信服务配置
-            # 修改配置会影响短信发送功能，包括API密钥等敏感信息
-            if not auth_system.check_permission(g.user, "modify_config"):
-                return jsonify({
-                    "success": False,
-                    "message": "权限不足，需要配置修改权限（modify_config）"
-                }), 403
-
-            # 获取请求数据
-            data = request.get_json() or {}
-            config = configparser.ConfigParser(strict=False)
-            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            if not config.has_section("Features"):
-                config.add_section("Features")
-            config.set(
-                "Features",
-                "enable_sms_service",
-                str(data.get("enable_sms_service", False)).lower(),
-            )
-            config.set(
-                "Features",
-                "enable_phone_modification",
-                str(data.get("enable_phone_modification", False)).lower(),
-            )
-            config.set(
-                "Features",
-                "enable_phone_login",
-                str(data.get("enable_phone_login", False)).lower(),
-            )
-            config.set(
-                "Features",
-                "enable_phone_registration_verify",
-                str(data.get("enable_phone_registration_verify", False)).lower(),
-            )
-            if not config.has_section("SMS_Service_SMSBao"):
-                config.add_section("SMS_Service_SMSBao")
-            config.set("SMS_Service_SMSBao", "username",
-                       data.get("username", ""))
-            config.set("SMS_Service_SMSBao", "api_key",
-                       data.get("api_key", ""))
-            config.set("SMS_Service_SMSBao", "signature",
-                       data.get("signature", ""))
-            config.set(
-                "SMS_Service_SMSBao",
-                "template_register",
-                data.get("template_register", ""),
-            )
-            config.set(
-                "SMS_Service_SMSBao",
-                "code_expire_minutes",
-                str(data.get("code_expire_minutes", 5)),
-            )
-            config.set(
-                "SMS_Service_SMSBao",
-                "rate_limit_per_account_day",
-                str(data.get("rate_limit_per_account_day", 10)),
-            )
-            config.set(
-                "SMS_Service_SMSBao",
-                "rate_limit_per_ip_day",
-                str(data.get("rate_limit_per_ip_day", 20)),
-            )
-            config.set(
-                "SMS_Service_SMSBao",
-                "rate_limit_per_phone_day",
-                str(data.get("rate_limit_per_phone_day", 5)),
-            )
-            _write_config_with_comments(config, CONFIG_JSON_FILE)
-            app.logger.info(f"[短信配置] {g.user} 更新了短信服务配置")
-            return jsonify({"success": True, "message": "配置已保存"})
-        except Exception as e:
-            app.logger.error(f"[短信配置] 保存配置失败：{str(e)}")
-            return jsonify({"success": False, "message": "保存失败"}), 500
 
     @app.route("/api/admin/sms/check_balance", methods=["GET"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
@@ -48069,6 +48099,7 @@ def start_web_server(args_param):
 
     _register_health_route(app)
     _register_payment_routes(app, login_required)
+    _register_sms_routes(app, login_required)
 
     @app.route("/api/billing/list", methods=["GET"])
     @login_required
@@ -49560,8 +49591,56 @@ def _validate_product_name_generator_startup_config():
         raise SystemExit(1) from exc
 
 
+def _build_main_arg_parser():
+    parser = argparse.ArgumentParser(description="跑步助手 - Web服务器模式")
+    parser.add_argument(
+        "--port", type=int, default=5000, help="Web服务器端口（默认5000）"
+    )
+    parser.add_argument(
+        "--host", type=str, default="127.0.0.1", help="Web服务器地址（默认127.0.0.1）"
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        default=True,
+        help="使用无头Chrome模式（默认启用）",
+    )
+    parser.add_argument(
+        "--log-level",
+        choices=["debug", "info", "warning", "error", "critical"],
+        default="debug",
+        help="设置日志级别（默认 debug）",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="启用调试日志（兼容旧参数，等同于 --log-level debug）",
+    )
+    parser.add_argument("--daily-restart-helper", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-parent-pid", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-python-executable", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-main-script-path", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-cwd", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-log-path", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-marker-path", type=str, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--daily-restart-forward-args-json",
+        type=str,
+        default="[]",
+        help=argparse.SUPPRESS,
+    )
+    return parser
+
+
+
 def main():
     """主函数，启动Web服务器模式（已弃用桌面模式）"""
+    parser = _build_main_arg_parser()
+    args = parser.parse_args()
+
+    if getattr(args, "daily_restart_helper", False):
+        return _run_daily_restart_helper(args)
+
     # ========== 第1步：导入内置模块 ==========
     # ========== 第2步：初始化日志系统 ==========
     try:
@@ -49592,31 +49671,6 @@ def main():
     auto_init_system()
     initialize_global_variables()
     # ========== 第5步：解析命令行参数 ==========
-    parser = argparse.ArgumentParser(description="跑步助手 - Web服务器模式")
-    parser.add_argument(
-        "--port", type=int, default=5000, help="Web服务器端口（默认5000）"
-    )
-    parser.add_argument(
-        "--host", type=str, default="127.0.0.1", help="Web服务器地址（默认127.0.0.1）"
-    )
-    parser.add_argument(
-        "--headless",
-        action="store_true",
-        default=True,
-        help="使用无头Chrome模式（默认启用）",
-    )
-    parser.add_argument(
-        "--log-level",
-        choices=["debug", "info", "warning", "error", "critical"],
-        default="debug",
-        help="设置日志级别（默认 debug）",
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="启用调试日志（兼容旧参数，等同于 --log-level debug）",
-    )
-    args = parser.parse_args()
     # ========== 第6步：配置日志级别 ==========
     selected_level_name = "debug" if args.debug else args.log_level
     log_level = getattr(logging, selected_level_name.upper(), logging.DEBUG)

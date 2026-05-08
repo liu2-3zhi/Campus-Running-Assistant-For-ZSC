@@ -16028,13 +16028,17 @@
                         ✍️ 短信签名
                       </span>
                     </label>
-                    <input
-                      type="text"
-                      id="sms-signature"
-                      class="w-full border-2 border-blue-200 rounded-lg px-3 py-2 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 transition-all"
-                      placeholder="【您的签名】"
-                      maxlength="12"
-                    />
+                    <div class="flex items-center gap-2">
+                      <span class="text-slate-500">【</span>
+                      <input
+                        type="text"
+                        id="sms-signature"
+                        class="w-full border-2 border-blue-200 rounded-lg px-3 py-2 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 transition-all"
+                        placeholder="您的签名"
+                        maxlength="10"
+                      />
+                      <span class="text-slate-500">】</span>
+                    </div>
                     <p class="text-xs text-slate-500 mt-1">
                       签名长度3-12字，需在短信宝后台审核通过
                     </p>

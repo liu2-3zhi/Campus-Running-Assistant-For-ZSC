@@ -29966,6 +29966,65 @@ async function removeIPBan(banId) {
 // ====================
 // 短信服务配置函数
 // ====================
+function normalizeSmsSignature(signature) {
+  const normalizedSignature = String(signature || "").trim();
+  if (!normalizedSignature) {
+    return "";
+  }
+
+  let unwrappedSignature = normalizedSignature;
+  while (
+    unwrappedSignature.startsWith("【") &&
+    unwrappedSignature.endsWith("】") &&
+    unwrappedSignature.length >= 2
+  ) {
+    unwrappedSignature = unwrappedSignature.slice(1, -1).trim();
+  }
+
+  return unwrappedSignature ? `【${unwrappedSignature}】` : "";
+}
+
+function getSmsSignatureInnerValue(signature) {
+  const normalizedSignature = normalizeSmsSignature(signature);
+  if (!normalizedSignature) {
+    return "";
+  }
+
+  return normalizedSignature.slice(1, -1);
+}
+
+function stripSmsSignatureFixedBrackets(value) {
+  return String(value || "").replace(/[【】]/g, "");
+}
+
+function sanitizeSmsSignatureInputValue(input) {
+  if (!input) {
+    return;
+  }
+
+  const sanitizedValue = stripSmsSignatureFixedBrackets(input.value);
+  if (input.value !== sanitizedValue) {
+    input.value = sanitizedValue;
+  }
+}
+
+function bindSmsSignatureInputSanitization(input) {
+  if (!input) {
+    return;
+  }
+
+  if (input.dataset.smsSignatureSanitizationBound === "true") {
+    sanitizeSmsSignatureInputValue(input);
+    return;
+  }
+
+  input.addEventListener("input", () => {
+    sanitizeSmsSignatureInputValue(input);
+  });
+  input.dataset.smsSignatureSanitizationBound = "true";
+  sanitizeSmsSignatureInputValue(input);
+}
+
 async function loadSMSConfig() {
   configLoadState.sms = false;
   try {
@@ -29983,7 +30042,8 @@ async function loadSMSConfig() {
         result.config.enable_phone_registration_verify || false;
       $("sms-username").value = result.config.username || "";
       $("sms-apikey").value = result.config.api_key || "";
-      $("sms-signature").value = result.config.signature || "";
+      $("sms-signature").value = getSmsSignatureInnerValue(result.config.signature || "");
+      bindSmsSignatureInputSanitization($("sms-signature"));
       $("sms-template").value = result.config.template_register || "";
       $("sms-code-expire").value = result.config.code_expire_minutes || 5;
       $("sms-limit-account").value =
@@ -30023,7 +30083,7 @@ async function saveSMSConfig() {
       .checked,
     username: $("sms-username").value.trim(),
     api_key: $("sms-apikey").value.trim(),
-    signature: $("sms-signature").value.trim(),
+    signature: normalizeSmsSignature($("sms-signature").value),
     template_register: $("sms-template").value.trim(),
     code_expire_minutes: parseInt($("sms-code-expire").value) || 5,
     rate_limit_per_account_day: parseInt($("sms-limit-account").value) || 10,
@@ -54405,9 +54465,11 @@ async function mobileLoadSMSConfig() {
           
           <div>
             <label class="block text-xs text-slate-600 mb-1">签名</label>
-            <input type="text" id="mobile-sms-signature" value="${
-              config.signature || ""
-            }" class="input-field text-xs w-full" placeholder="短信签名">
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-slate-500">【</span>
+              <input type="text" id="mobile-sms-signature" value="${getSmsSignatureInnerValue(config.signature || "")}" class="input-field text-xs w-full" placeholder="短信签名主体">
+              <span class="text-sm text-slate-500">】</span>
+            </div>
           </div>
           
           <div>
@@ -54476,6 +54538,7 @@ async function mobileLoadSMSConfig() {
         </div>
       `;
 
+      bindSmsSignatureInputSanitization(document.getElementById("mobile-sms-signature"));
       console.log("[移动端短信配置] 配置已加载");
     } else {
       contentEl.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">加载失败: ${
@@ -54532,8 +54595,9 @@ async function mobileSaveSMSConfig() {
     username:
       document.getElementById("mobile-sms-username")?.value.trim() || "",
     api_key: document.getElementById("mobile-sms-apikey")?.value.trim() || "",
-    signature:
-      document.getElementById("mobile-sms-signature")?.value.trim() || "",
+    signature: normalizeSmsSignature(
+      document.getElementById("mobile-sms-signature")?.value,
+    ),
     template_register:
       document.getElementById("mobile-sms-template")?.value.trim() || "",
     code_expire_minutes:
