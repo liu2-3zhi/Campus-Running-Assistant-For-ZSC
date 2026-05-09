@@ -78,6 +78,9 @@ class TestSmsTemplateSignatureRegressions(unittest.TestCase):
         self.assertEqual(_normalize_sms_signature("【跑步助手】"), "【跑步助手】")
         self.assertEqual(_normalize_sms_signature("  【跑步助手】  "), "【跑步助手】")
 
+    def test_smsbao_error_message_includes_phone_format_failure_code(self):
+        self.assertEqual(main_module._get_smsbao_error_message("51"), "手机号码不正确")
+
     def test_send_code_route_uses_template_with_normalized_signature(self):
         config = self._make_sms_config(signature="跑步助手")
         captured_urls = []
@@ -146,6 +149,38 @@ class TestSmsTemplateSignatureRegressions(unittest.TestCase):
         self.assertFalse(payload["success"])
         self.assertEqual(payload["message"], "发送失败：IP地址限制")
         self.assertEqual(payload["error_code"], "43")
+
+    def test_send_code_route_hides_internal_exception_details(self):
+        config = self._make_sms_config(signature="跑步助手")
+        app, _ = self._build_test_app()
+
+        def fake_urlopen(url, timeout=10):
+            raise RuntimeError("socket timeout")
+
+        with tempfile.TemporaryDirectory() as temp_log_dir, \
+             mock.patch.object(main_module, "_read_config_ini", return_value=config), \
+             mock.patch.object(main_module, "verify_captcha", return_value=(True, ""), create=True), \
+             mock.patch.object(main_module.urllib, "request", SimpleNamespace(urlopen=fake_urlopen), create=True), \
+             mock.patch.object(main_module, "LOGIN_LOGS_DIR", temp_log_dir), \
+             mock.patch.object(main_module, "cache", {}, create=True), \
+             mock.patch.object(main_module, "sms_verification_codes", {}, create=True), \
+             mock.patch.object(main_module, "sms_extended_once_keys", set(), create=True):
+            with app.test_client() as client:
+                response = client.post(
+                    "/api/sms/send_code",
+                    json={
+                        "phone": "13800000001",
+                        "scene": "register",
+                        "captcha": "123456",
+                        "captcha_id": "captcha-login",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertFalse(payload["success"])
+        self.assertEqual(payload["message"], "短信服务暂时不可用，请稍后重试")
+        self.assertNotIn("socket timeout", payload["message"])
 
     def test_send_code_route_logs_smsbao_error_details(self):
         config = self._make_sms_config(signature="跑步助手")
@@ -274,6 +309,34 @@ class TestSmsTemplateSignatureRegressions(unittest.TestCase):
         self.assertFalse(payload["success"])
         self.assertEqual(payload["message"], "发送失败：IP地址限制")
         self.assertEqual(payload["error_code"], "43")
+
+    def test_test_send_route_hides_internal_exception_details(self):
+        config = self._make_sms_config(signature="跑步助手")
+        app, session_store = self._build_test_app()
+        session_id = self._register_authenticated_session(session_store)
+        fake_auth_system = mock.Mock()
+        fake_auth_system.get_user_group.return_value = "admin"
+
+        def fake_urlopen(url, timeout=10):
+            raise RuntimeError("socket timeout")
+
+        with tempfile.TemporaryDirectory() as temp_log_dir, \
+             mock.patch.object(main_module, "_read_config_ini", return_value=config), \
+             mock.patch.object(main_module, "auth_system", fake_auth_system, create=True), \
+             mock.patch.object(main_module.urllib, "request", SimpleNamespace(urlopen=fake_urlopen), create=True), \
+             mock.patch.object(main_module, "LOGIN_LOGS_DIR", temp_log_dir):
+            with app.test_client() as client:
+                response = client.post(
+                    "/api/sms/test_send",
+                    headers={"X-Session-ID": session_id},
+                    json={"phone": "13800000002", "code": "551143"},
+                )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertFalse(payload["success"])
+        self.assertEqual(payload["message"], "短信服务暂时不可用，请稍后重试")
+        self.assertNotIn("socket timeout", payload["message"])
 
     def test_get_sms_config_normalizes_signature_in_response(self):
         config = self._make_sms_config(signature="跑步助手")

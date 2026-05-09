@@ -716,16 +716,20 @@ def _apply_daily_restart_config_updates(config, data):
     return config
 
 
+SMSBAO_ERROR_MESSAGES = {
+    "30": "密码错误",
+    "40": "账号不存在",
+    "41": "余额不足",
+    "42": "账户已过期",
+    "43": "IP地址限制",
+    "50": "内容含有敏感词",
+    "51": "手机号码不正确",
+}
+
+
+
 def _get_smsbao_error_message(result_code):
-    error_map = {
-        "30": "密码错误",
-        "40": "账号不存在",
-        "41": "余额不足",
-        "42": "账户已过期",
-        "43": "IP地址限制",
-        "50": "内容含有敏感词",
-    }
-    return error_map.get(result_code, f"未知错误(错误码:{result_code})")
+    return SMSBAO_ERROR_MESSAGES.get(result_code, f"未知错误(错误码:{result_code})")
 
 
 def _register_payment_verify_probe_route(app):
@@ -24654,7 +24658,7 @@ def _register_sms_routes(app, login_required):
                 f"[SMS] 验证码发送异常: phone={phone}, scene={scene}, error={e}",
                 exc_info=True,
             )
-            return jsonify({"success": False, "message": f"网络错误：{str(e)}"})
+            return jsonify({"success": False, "message": "短信服务暂时不可用，请稍后重试"})
 
     @app.route("/api/sms/test_send", methods=["POST"])
     @login_required
@@ -24740,7 +24744,11 @@ def _register_sms_routes(app, login_required):
                 }
             )
         except Exception as e:
-            return jsonify({"success": False, "message": f"网络错误：{str(e)}"})
+            logging.error(
+                f"[SMS] 测试短信发送异常: phone={phone}, error={e}",
+                exc_info=True,
+            )
+            return jsonify({"success": False, "message": "短信服务暂时不可用，请稍后重试"})
 
     @app.route("/api/admin/sms/config", methods=["GET"])
     @login_required
@@ -33245,16 +33253,7 @@ def start_web_server(args_param):
                     )
             else:
                 status_code = lines[0] if lines else response_text
-                error_codes = {
-                    "30": "密码错误",
-                    "40": "账号不存在",
-                    "41": "余额不足",
-                    "43": "IP地址限制",
-                    "50": "内容含有敏感词",
-                    "51": "手机号码不正确",
-                }
-                error_msg = error_codes.get(
-                    status_code, f"未知错误码: {status_code}")
+                error_msg = _get_smsbao_error_message(status_code)
                 return jsonify({"success": False, "message": f"查询失败：{error_msg}"})
         except Exception as e:
             app.logger.error(f"[短信配置] 查询余额失败：{str(e)}")
