@@ -45580,7 +45580,7 @@ def start_web_server(args_param):
             user_filter = request.args.get("user_id", "").strip()
 
             # 操作类型筛选（可选）
-            action_filter = request.args.get("action", "").strip()
+            action_filter = request.args.get("action_type", request.args.get("action", "")).strip()
 
             # 日期范围筛选（可选）
             start_date_str = request.args.get("start_date", "").strip()

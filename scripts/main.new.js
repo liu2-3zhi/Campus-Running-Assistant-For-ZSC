@@ -63163,6 +63163,28 @@ async function loadMobileMultiAdminBillingList() {
       return;
     }
     const records = data.records || [];
+    const billingStats = records.reduce(
+      (stats, record) => {
+        const amount = Number(record.amount || 0);
+        stats.total += 1;
+        stats.total_amount += Number.isFinite(amount) ? amount : 0;
+        if (record.status === "pending") {
+          stats.pending += 1;
+        } else if (record.status === "paid") {
+          stats.paid += 1;
+        } else if (record.status === "admin_cleared") {
+          stats.admin_cleared += 1;
+        }
+        return stats;
+      },
+      {
+        total: 0,
+        pending: 0,
+        paid: 0,
+        admin_cleared: 0,
+        total_amount: 0,
+      },
+    );
     if (!records.length) {
       container.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无账单记录</p></div>`;
       return;
@@ -63171,6 +63193,13 @@ async function loadMobileMultiAdminBillingList() {
       ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}`
       : "当前范围：所有学校账号的全部账单";
     let html = `<div class="mb-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">${scopeTip}</div>`;
+    html += `<div class="grid grid-cols-2 gap-2 mb-2">
+      <div class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700">总账单：${_escapeAttr(String(billingStats.total))}</div>
+      <div class="bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 text-amber-700">待支付：${_escapeAttr(String(billingStats.pending))}</div>
+      <div class="bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1.5 text-emerald-700">已支付：${_escapeAttr(String(billingStats.paid))}</div>
+      <div class="bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-slate-700">已清除：${_escapeAttr(String(billingStats.admin_cleared))}</div>
+      <div class="col-span-2 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1.5 text-indigo-700">总金额：¥${_escapeAttr(String(Number(billingStats.total_amount).toFixed(2)))}</div>
+    </div>`;
     html += `<div class="mb-2 flex items-center gap-1 justify-end">
       <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="loadMobileMultiAdminBillingList()">刷新</button>
     </div>`;
