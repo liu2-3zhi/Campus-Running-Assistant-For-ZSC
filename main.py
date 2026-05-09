@@ -716,6 +716,18 @@ def _apply_daily_restart_config_updates(config, data):
     return config
 
 
+def _get_smsbao_error_message(result_code):
+    error_map = {
+        "30": "密码错误",
+        "40": "账号不存在",
+        "41": "余额不足",
+        "42": "账户已过期",
+        "43": "IP地址限制",
+        "50": "内容含有敏感词",
+    }
+    return error_map.get(result_code, f"未知错误(错误码:{result_code})")
+
+
 def _register_payment_verify_probe_route(app):
     @app.route("/api/payment/verify_probe/<token>", methods=["POST"])
     def payment_verify_probe(token):
@@ -24625,9 +24637,24 @@ def _register_sms_routes(app, login_required):
                         "retry_after": sms_interval_seconds,
                     }
                 )
-            return jsonify({"success": False, "message": "验证码发送失败，请稍后重试"})
-        except Exception:
-            return jsonify({"success": False, "message": "验证码发送失败，请稍后重试"})
+
+            error_msg = _get_smsbao_error_message(result)
+            logging.error(
+                f"[SMS] 验证码发送失败: phone={phone}, scene={scene}, smsbao_result={result}, error={error_msg}"
+            )
+            return jsonify(
+                {
+                    "success": False,
+                    "message": f"发送失败：{error_msg}",
+                    "error_code": result,
+                }
+            )
+        except Exception as e:
+            logging.error(
+                f"[SMS] 验证码发送异常: phone={phone}, scene={scene}, error={e}",
+                exc_info=True,
+            )
+            return jsonify({"success": False, "message": f"网络错误：{str(e)}"})
 
     @app.route("/api/sms/test_send", methods=["POST"])
     @login_required
@@ -24704,15 +24731,7 @@ def _register_sms_routes(app, login_required):
                     }
                 )
 
-            error_map = {
-                "30": "密码错误",
-                "40": "账号不存在",
-                "41": "余额不足",
-                "42": "账户已过期",
-                "43": "IP地址限制",
-                "50": "内容含有敏感词",
-            }
-            error_msg = error_map.get(result, f"未知错误(错误码:{result})")
+            error_msg = _get_smsbao_error_message(result)
             return jsonify(
                 {
                     "success": False,

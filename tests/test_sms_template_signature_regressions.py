@@ -115,6 +115,69 @@ class TestSmsTemplateSignatureRegressions(unittest.TestCase):
         self.assertEqual(content, "【跑步助手】您的验证码是：551143，5分钟内有效。")
         self.assertNotIn("测试短信", content)
 
+    def test_send_code_route_preserves_smsbao_error_details(self):
+        config = self._make_sms_config(signature="跑步助手")
+        app, _ = self._build_test_app()
+
+        def fake_urlopen(url, timeout=10):
+            return mock.Mock(read=mock.Mock(return_value=b"43"))
+
+        with tempfile.TemporaryDirectory() as temp_log_dir, \
+             mock.patch.object(main_module, "_read_config_ini", return_value=config), \
+             mock.patch.object(main_module, "verify_captcha", return_value=(True, ""), create=True), \
+             mock.patch.object(main_module.urllib, "request", SimpleNamespace(urlopen=fake_urlopen), create=True), \
+             mock.patch.object(main_module, "LOGIN_LOGS_DIR", temp_log_dir), \
+             mock.patch.object(main_module, "cache", {}, create=True), \
+             mock.patch.object(main_module, "sms_verification_codes", {}, create=True), \
+             mock.patch.object(main_module, "sms_extended_once_keys", set(), create=True):
+            with app.test_client() as client:
+                response = client.post(
+                    "/api/sms/send_code",
+                    json={
+                        "phone": "13800000001",
+                        "scene": "register",
+                        "captcha": "123456",
+                        "captcha_id": "captcha-login",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertFalse(payload["success"])
+        self.assertEqual(payload["message"], "发送失败：IP地址限制")
+        self.assertEqual(payload["error_code"], "43")
+
+    def test_send_code_route_logs_smsbao_error_details(self):
+        config = self._make_sms_config(signature="跑步助手")
+        app, _ = self._build_test_app()
+
+        def fake_urlopen(url, timeout=10):
+            return mock.Mock(read=mock.Mock(return_value=b"43"))
+
+        with tempfile.TemporaryDirectory() as temp_log_dir, \
+             mock.patch.object(main_module, "_read_config_ini", return_value=config), \
+             mock.patch.object(main_module, "verify_captcha", return_value=(True, ""), create=True), \
+             mock.patch.object(main_module.urllib, "request", SimpleNamespace(urlopen=fake_urlopen), create=True), \
+             mock.patch.object(main_module, "LOGIN_LOGS_DIR", temp_log_dir), \
+             mock.patch.object(main_module, "cache", {}, create=True), \
+             mock.patch.object(main_module, "sms_verification_codes", {}, create=True), \
+             mock.patch.object(main_module, "sms_extended_once_keys", set(), create=True), \
+             mock.patch.object(main_module.logging, "error") as log_error:
+            with app.test_client() as client:
+                client.post(
+                    "/api/sms/send_code",
+                    json={
+                        "phone": "13800000001",
+                        "scene": "register",
+                        "captcha": "123456",
+                        "captcha_id": "captcha-login",
+                    },
+                )
+
+        log_error.assert_called_once()
+        self.assertIn("[SMS] 验证码发送失败", log_error.call_args.args[0])
+        self.assertIn("43", log_error.call_args.args[0])
+
     def test_send_code_route_enforces_send_interval_from_config(self):
         config = self._make_sms_config(signature="跑步助手")
         config.set("SMS_Service_SMSBao", "send_interval_seconds", "180")
