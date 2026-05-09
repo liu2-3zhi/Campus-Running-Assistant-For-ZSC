@@ -78,6 +78,9 @@ class TestSmsTemplateSignatureRegressions(unittest.TestCase):
         self.assertEqual(_normalize_sms_signature("【跑步助手】"), "【跑步助手】")
         self.assertEqual(_normalize_sms_signature("  【跑步助手】  "), "【跑步助手】")
 
+    def test_verify_captcha_is_available_at_module_scope(self):
+        self.assertTrue(callable(getattr(main_module, "verify_captcha", None)))
+
     def test_smsbao_error_message_includes_phone_format_failure_code(self):
         self.assertEqual(main_module._get_smsbao_error_message("51"), "手机号码不正确")
 
@@ -117,6 +120,34 @@ class TestSmsTemplateSignatureRegressions(unittest.TestCase):
         content = urllib.parse.parse_qs(urllib.parse.urlparse(captured_urls[0]).query)["c"][0]
         self.assertEqual(content, "【跑步助手】您的验证码是：551143，5分钟内有效。")
         self.assertNotIn("测试短信", content)
+
+    def test_send_code_route_uses_module_scope_verify_captcha(self):
+        config = self._make_sms_config(signature="跑步助手")
+        app, _ = self._build_test_app()
+
+        with tempfile.TemporaryDirectory() as temp_log_dir, \
+             mock.patch.object(main_module, "_read_config_ini", return_value=config), \
+             mock.patch.object(main_module, "LOGIN_LOGS_DIR", temp_log_dir), \
+             mock.patch.object(main_module, "cache", {}, create=True), \
+             mock.patch.object(main_module, "sms_verification_codes", {}, create=True), \
+             mock.patch.object(main_module, "sms_extended_once_keys", set(), create=True), \
+             mock.patch.object(main_module, "verify_captcha", return_value=(False, "图形验证码错误")) as verify_mock:
+            with app.test_client() as client:
+                response = client.post(
+                    "/api/sms/send_code",
+                    json={
+                        "phone": "13800000001",
+                        "scene": "login",
+                        "captcha": "bad-code",
+                        "captcha_id": "captcha-login",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertFalse(payload["success"])
+        self.assertEqual(payload["message"], "图形验证码错误")
+        verify_mock.assert_called_once_with("captcha-login", "bad-code")
 
     def test_send_code_route_preserves_smsbao_error_details(self):
         config = self._make_sms_config(signature="跑步助手")

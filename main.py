@@ -732,6 +732,111 @@ def _get_smsbao_error_message(result_code):
     return SMSBAO_ERROR_MESSAGES.get(result_code, f"未知错误(错误码:{result_code})")
 
 
+
+def verify_captcha(captcha_id, user_input):
+    """
+    验证验证码辅助函数
+    """
+    logging.debug(f"[验证码] 开始验证: ID={captcha_id}..., 用户输入='{user_input}'")
+    if not captcha_id or not captcha_id.strip():
+        return False, "验证码ID不能为空"
+    if not user_input or not user_input.strip():
+        return False, "人机验证码不能为空"
+    captchas_dir = os.path.join("logs", "captchas")
+    captcha_file = os.path.join(captchas_dir, f"{captcha_id}.json")
+    if not os.path.exists(captcha_file):
+        logging.warning(f"[验证码] 验证码文件不存在: ID={captcha_id}...")
+        return False, "人机验证码不存在或已失效"
+
+    try:
+        with open(captcha_file, "r", encoding="utf-8") as f:
+            captcha_data = json.load(f)
+        current_time = time.time()
+        if captcha_data.get("expires_at", 0) < current_time:
+            try:
+                os.remove(captcha_file)
+            except Exception as e:
+                logging.warning(f"[验证码] 删除过期验证码文件失败: {e}")
+            return False, "人机验证码已过期"
+        stored_code = captcha_data.get("code", "")
+        user_input_upper = user_input.strip().upper()
+        is_correct = user_input_upper == stored_code
+
+        def update_captcha_history():
+            try:
+                history_dir = os.path.join("logs", "captcha_history")
+                date_str = datetime.datetime.now().strftime("%Y%m%d")
+                history_file = os.path.join(
+                    history_dir, f"captcha_history_{date_str}.jsonl"
+                )
+                if os.path.exists(history_file):
+                    lines = []
+                    with open(history_file, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    updated = False
+                    for i, line in enumerate(lines):
+                        try:
+                            record = json.loads(line.strip())
+                            if record.get("captcha_id") == captcha_id:
+                                record["status"] = (
+                                    "verified_success"
+                                    if is_correct
+                                    else "verified_failed"
+                                )
+                                record["verified_at"] = time.time()
+                                record["verified_at_readable"] = (
+                                    datetime.datetime.fromtimestamp(
+                                        time.time()
+                                    ).strftime("%Y-%m-%d %H:%M:%S")
+                                )
+                                record["verified_input"] = user_input_upper
+                                lines[i] = (
+                                    json.dumps(
+                                        record, ensure_ascii=False) + "\n"
+                                )
+                                updated = True
+                                break
+                        except:
+                            pass
+
+                    if updated:
+                        with open(history_file, "w", encoding="utf-8") as f:
+                            f.writelines(lines)
+
+                        logging.debug(
+                            f"[验证码历史] 已更新验证结果: ID={captcha_id[:8]}..., 结果={'成功' if is_correct else '失败'}"
+                        )
+            except Exception as e:
+                logging.error(f"[验证码历史] 更新验证结果失败: {e}", exc_info=True)
+
+        threading.Thread(target=update_captcha_history,
+                         daemon=True).start()
+        try:
+            os.remove(captcha_file)
+            logging.debug(f"[验证码] 已删除验证码文件: {captcha_id}")
+        except Exception as e:
+            logging.warning(f"[验证码] 删除验证码文件失败: {e}")
+        if is_correct:
+            logging.info(f"[验证码] 验证成功: ID={captcha_id[:8]}...")
+            return True, ""
+        else:
+            logging.warning(f"[验证码] 验证失败: ID={captcha_id[:8]}...")
+            return False, "人机验证码错误"
+
+    except json.JSONDecodeError as e:
+        logging.error(f"[验证码] JSON解析失败: {e}")
+        try:
+            os.remove(captcha_file)
+        except:
+            pass
+        return False, "人机验证码数据损坏"
+
+    except Exception as e:
+        logging.error(f"[验证码] 验证过程出错: {e}", exc_info=True)
+        return False, "人机验证码验证失败"
+
+
+
 def _register_payment_verify_probe_route(app):
     @app.route("/api/payment/verify_probe/<token>", methods=["POST"])
     def payment_verify_probe(token):
@@ -39049,110 +39154,6 @@ def start_web_server(args_param):
                 '<html><body><p style="color: red; text-align: center; padding: 20px;">读取验证码时发生错误</p></body></html>',
                 500,
             )
-
-    def verify_captcha(captcha_id, user_input):
-        """
-        验证验证码辅助函数
-        """
-        logging.debug(f"[验证码] 开始验证: ID={captcha_id}..., 用户输入='{user_input}'")
-        if not captcha_id or not captcha_id.strip():
-            return False, "验证码ID不能为空"
-        if not user_input or not user_input.strip():
-            return False, "人机验证码不能为空"
-        captchas_dir = os.path.join("logs", "captchas")
-        captcha_file = os.path.join(captchas_dir, f"{captcha_id}.json")
-        if not os.path.exists(captcha_file):
-            logging.warning(f"[验证码] 验证码文件不存在: ID={captcha_id}...")
-            return False, "人机验证码不存在或已失效"
-
-        try:
-            with open(captcha_file, "r", encoding="utf-8") as f:
-                captcha_data = json.load(f)
-            current_time = time.time()
-            if captcha_data.get("expires_at", 0) < current_time:
-                try:
-                    os.remove(captcha_file)
-                except Exception as e:
-                    logging.warning(f"[验证码] 删除过期验证码文件失败: {e}")
-                return False, "人机验证码已过期"
-            stored_code = captcha_data.get("code", "")
-            user_input_upper = user_input.strip().upper()
-            is_correct = user_input_upper == stored_code
-
-            def update_captcha_history():
-                try:
-                    history_dir = os.path.join("logs", "captcha_history")
-                    date_str = datetime.datetime.now().strftime("%Y%m%d")
-                    history_file = os.path.join(
-                        history_dir, f"captcha_history_{date_str}.jsonl"
-                    )
-                    if os.path.exists(history_file):
-                        lines = []
-                        with open(history_file, "r", encoding="utf-8") as f:
-                            lines = f.readlines()
-                        updated = False
-                        for i, line in enumerate(lines):
-                            try:
-                                record = json.loads(line.strip())
-                                if record.get("captcha_id") == captcha_id:
-                                    record["status"] = (
-                                        "verified_success"
-                                        if is_correct
-                                        else "verified_failed"
-                                    )
-                                    record["verified_at"] = time.time()
-                                    record["verified_at_readable"] = (
-                                        datetime.datetime.fromtimestamp(
-                                            time.time()
-                                        ).strftime("%Y-%m-%d %H:%M:%S")
-                                    )
-                                    record["verified_input"] = user_input_upper
-                                    lines[i] = (
-                                        json.dumps(
-                                            record, ensure_ascii=False) + "\n"
-                                    )
-                                    updated = True
-                                    break
-                            except:
-                                pass
-
-                        if updated:
-                            with open(history_file, "w", encoding="utf-8") as f:
-                                f.writelines(lines)
-
-                            logging.debug(
-                                f"[验证码历史] 已更新验证结果: ID={captcha_id[:8]}..., 结果={'成功' if is_correct else '失败'}"
-                            )
-                except Exception as e:
-                    logging.error(f"[验证码历史] 更新验证结果失败: {e}", exc_info=True)
-
-            
-
-            threading.Thread(target=update_captcha_history,
-                             daemon=True).start()
-            try:
-                os.remove(captcha_file)
-                logging.debug(f"[验证码] 已删除验证码文件: {captcha_id}")
-            except Exception as e:
-                logging.warning(f"[验证码] 删除验证码文件失败: {e}")
-            if is_correct:
-                logging.info(f"[验证码] 验证成功: ID={captcha_id[:8]}...")
-                return True, ""
-            else:
-                logging.warning(f"[验证码] 验证失败: ID={captcha_id[:8]}...")
-                return False, "人机验证码错误"
-
-        except json.JSONDecodeError as e:
-            logging.error(f"[验证码] JSON解析失败: {e}")
-            try:
-                os.remove(captcha_file)
-            except:
-                pass
-            return False, "人机验证码数据损坏"
-
-        except Exception as e:
-            logging.error(f"[验证码] 验证过程出错: {e}", exc_info=True)
-            return False, "人机验证码验证失败"
 
     GLOBAL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=20)
 
