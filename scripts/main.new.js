@@ -16935,6 +16935,7 @@ let providerMapInstances = {};
 let providerMapInstanceProviders = {};
 let providerMapEventsBound = {};
 let providerMapOverlays = {};
+let providerMapLastFitCoords = {};
 
 let currentTasks = [];
 let selectedTaskIndex = -1;
@@ -34657,6 +34658,7 @@ function destroyProviderMapInstance(containerId) {
   delete providerMapInstances[containerId];
   delete providerMapInstanceProviders[containerId];
   delete providerMapEventsBound[containerId];
+  delete providerMapLastFitCoords[containerId];
 }
 
 function getProviderOverlayBucket(containerId) {
@@ -34686,6 +34688,7 @@ function clearProviderMapOverlays(containerId) {
     }
   });
   providerMapOverlays[containerId] = [];
+  providerMapLastFitCoords[containerId] = [];
 }
 
 function getProviderMapDefaultZoom(provider) {
@@ -35006,6 +35009,9 @@ function getProviderMapInstance(containerId) {
     if (containerId === "mobile-track-map-container") {
       return mobileTrackMapInstance;
     }
+    if (containerId === "multi-map-container") {
+      return multiAccountMap;
+    }
     return map;
   }
   return providerMapInstances[containerId];
@@ -35035,6 +35041,50 @@ function fitProviderMapToCoordinates(containerId, coords, overlay = null) {
   } catch (e) {
     logMessage_Warning(`[地图] 调整${containerId}视野失败:`, e);
   }
+}
+
+function zoomProviderMap(containerId, delta) {
+  const instance = getProviderMapInstance(containerId);
+  if (!instance) return false;
+  try {
+    if (typeof instance.zoomBy === "function") {
+      instance.zoomBy(delta);
+      return true;
+    }
+    if (delta > 0 && typeof instance.zoomIn === "function") {
+      instance.zoomIn();
+      return true;
+    }
+    if (delta < 0 && typeof instance.zoomOut === "function") {
+      instance.zoomOut();
+      return true;
+    }
+    if (typeof instance.getZoom === "function" && typeof instance.setZoom === "function") {
+      instance.setZoom(instance.getZoom() + delta);
+      return true;
+    }
+  } catch (e) {
+    logMessage_Warning(`[地图] 调整${containerId}缩放失败:`, e);
+  }
+  return false;
+}
+
+function fitProviderMapToLastRoute(containerId) {
+  const coords = providerMapLastFitCoords[containerId] || [];
+  if (coords.length > 0) {
+    fitProviderMapToCoordinates(containerId, coords);
+    return true;
+  }
+  const instance = getProviderMapInstance(containerId);
+  if (instance && typeof instance.setFitView === "function") {
+    try {
+      instance.setFitView();
+      return true;
+    } catch (e) {
+      logMessage_Warning(`[地图] 调整${containerId}视野失败:`, e);
+    }
+  }
+  return false;
 }
 
 function addProviderMarker(containerId, coord, options = {}) {
@@ -35093,6 +35143,7 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
     segment.map((coord) => convertGcj02ToProviderCoordinates(provider, coord)),
   );
   const providerCoords = providerSegments.flat();
+  providerMapLastFitCoords[containerId] = providerCoords;
   const bucket = getProviderOverlayBucket(containerId);
   let line = null;
   let fitOverlay = null;
@@ -35493,18 +35544,24 @@ function attachSingleControlHandlers() {
   const rv = document.getElementById("reset-view-btn");
   if (zi && !zi._bound) {
     zi.addEventListener("click", () => {
-      if (map) map.zoomIn();
+      zoomProviderMap("map-container", 1);
     });
     zi._bound = true;
   }
   if (zo && !zo._bound) {
     zo.addEventListener("click", () => {
-      if (map) map.zoomOut();
+      zoomProviderMap("map-container", -1);
     });
     zo._bound = true;
   }
   if (rv && !rv._bound) {
-    rv.addEventListener("click", resetMapView);
+    rv.addEventListener("click", () => {
+      if (getActiveMapProvider() !== "amap") {
+        fitProviderMapToLastRoute("map-container");
+        return;
+      }
+      resetMapView();
+    });
     rv._bound = true;
   }
 }
@@ -35543,18 +35600,24 @@ function attachMultiControlHandlers() {
 
   if (zi && !zi._bound) {
     zi.addEventListener("click", () => {
-      if (multiAccountMap) multiAccountMap.zoomIn();
+      zoomProviderMap("multi-map-container", 1);
     });
     zi._bound = true;
   }
   if (zo && !zo._bound) {
     zo.addEventListener("click", () => {
-      if (multiAccountMap) multiAccountMap.zoomOut();
+      zoomProviderMap("multi-map-container", -1);
     });
     zo._bound = true;
   }
   if (rv && !rv._bound) {
-    rv.addEventListener("click", multi_resetMapView);
+    rv.addEventListener("click", () => {
+      if (getActiveMapProvider() !== "amap") {
+        fitProviderMapToLastRoute("multi-map-container");
+        return;
+      }
+      multi_resetMapView();
+    });
     rv._bound = true;
   }
 }
@@ -35705,6 +35768,7 @@ function showMainApp() {
           ensureSingleControls();
         } else {
           initProviderMap("map-container", false);
+          ensureSingleControls();
           if (resolveMapReady) {
             resolveMapReady(null);
           }
@@ -37008,6 +37072,7 @@ async function switchToMultiMode() {
     ensureMultiControls();
   } else if (getActiveMapProvider() !== "amap") {
     initProviderMap("multi-map-container", true);
+    ensureMultiControls();
   }
 
   const configUsers = await callPythonAPI("multi_get_all_config_users");
@@ -45178,14 +45243,10 @@ async function openMobileAccountParams(username) {
 }
 // ==================== 移动端地图控制函数 ====================
 function mobileZoomIn() {
-  if (map) {
-    map.zoomIn();
-  }
+  zoomProviderMap("map-container", 1);
 }
 function mobileZoomOut() {
-  if (map) {
-    map.zoomOut();
-  }
+  zoomProviderMap("map-container", -1);
 }
 // function mobileFitView() {
 //   if (map && markers && markers.length > 0) {
@@ -45193,6 +45254,10 @@ function mobileZoomOut() {
 //   }
 // }
 function resetMobileMapView() {
+  if (getActiveMapProvider() !== "amap") {
+    fitProviderMapToLastRoute("map-container");
+    return;
+  }
   if (map) {
     if (markers && markers.length > 0) {
       map.setFitView(markers, false, [50, 50, 50, 50]);
@@ -45209,16 +45274,16 @@ function resetMobileMapView() {
   }
 }
 function mobileMultiZoomIn() {
-  if (multiAccountMap) {
-    multiAccountMap.zoomIn();
-  }
+  zoomProviderMap("multi-map-container", 1);
 }
 function mobileMultiZoomOut() {
-  if (multiAccountMap) {
-    multiAccountMap.zoomOut();
-  }
+  zoomProviderMap("multi-map-container", -1);
 }
 function mobileMultiFitView() {
+  if (getActiveMapProvider() !== "amap") {
+    fitProviderMapToLastRoute("multi-map-container");
+    return;
+  }
   if (multiAccountMap) {
     const allOverlays = multiAccountMap.getAllOverlays();
     if (allOverlays && allOverlays.length > 0) {
@@ -45227,6 +45292,10 @@ function mobileMultiFitView() {
   }
 }
 function resetMultiMapView() {
+  if (getActiveMapProvider() !== "amap") {
+    fitProviderMapToLastRoute("multi-map-container");
+    return;
+  }
   if (multiAccountMap) {
     const allOverlays = multiAccountMap.getAllOverlays();
     if (allOverlays && allOverlays.length > 0) {
@@ -55500,21 +55569,15 @@ function closeMobileTrackModal() {
   }
 }
 function mobileTrackZoomIn() {
-  if (mobileTrackMapInstance) {
-    mobileTrackMapInstance.zoomIn();
-  }
+  zoomProviderMap("mobile-track-map-container", 1);
 }
 
 function mobileTrackZoomOut() {
-  if (mobileTrackMapInstance) {
-    mobileTrackMapInstance.zoomOut();
-  }
+  zoomProviderMap("mobile-track-map-container", -1);
 }
 
 function mobileTrackFitView() {
-  if (mobileTrackMapInstance) {
-    mobileTrackMapInstance.setFitView();
-  }
+  fitProviderMapToLastRoute("mobile-track-map-container");
 }
 let mobileMapAttendanceInstance = null;
 let mobileMapAttendanceMarker = null;
