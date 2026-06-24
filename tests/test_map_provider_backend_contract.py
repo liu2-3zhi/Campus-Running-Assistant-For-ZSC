@@ -1,5 +1,7 @@
 import unittest
 from pathlib import Path
+import ast
+import subprocess
 import tempfile
 from unittest import mock
 
@@ -21,6 +23,23 @@ class TestMapProviderBackendContract(unittest.TestCase):
         runtime_config.set("Map", "provider", provider)
         runtime_config.set("Map", "providers", providers)
         return runtime_config
+
+    def _route_helper_execute_js_source(self, helper_name):
+        source = MAIN_PATH.read_text(encoding="utf-8")
+        module = ast.parse(source)
+        for node in ast.walk(module):
+            if isinstance(node, ast.FunctionDef) and node.name == helper_name:
+                for sub_node in ast.walk(node):
+                    if (
+                        isinstance(sub_node, ast.Call)
+                        and isinstance(sub_node.func, ast.Attribute)
+                        and sub_node.func.attr == "execute_js"
+                    ):
+                        js_arg = sub_node.args[1]
+                        self.assertIsInstance(js_arg, ast.Constant)
+                        self.assertIsInstance(js_arg.value, str)
+                        return js_arg.value
+        self.fail(f"{helper_name} execute_js source not found")
 
     def test_frontend_config_includes_map_provider_contract(self):
         source = MAIN_PATH.read_text(encoding="utf-8")
@@ -289,6 +308,57 @@ class TestMapProviderBackendContract(unittest.TestCase):
                 self.assertEqual(args[2], waypoints)
                 self.assertEqual(list(args[3:]), expected_tail)
                 self.assertEqual(result["path"], [{"lng": 113.39, "lat": 22.52}])
+
+    def test_provider_route_helper_js_payloads_are_syntax_valid(self):
+        expected_snippets = {
+            "_plan_route_path_with_amap_runtime": [
+                "https://webapi.amap.com/loader.js",
+                "AMapLoader.load",
+                "AMap.Walking",
+            ],
+            "_plan_route_path_with_tencent_runtime": [
+                "https://apis.map.qq.com/ws/direction/v1/",
+                "output=jsonp",
+                "${startCoord.lat},${startCoord.lng}",
+            ],
+            "_plan_route_path_with_tianditu_runtime": [
+                "https://api.tianditu.gov.cn/drive?postStr=",
+                "function gcj02ToTdtCoordinate(",
+                "function tdtCoordinateToGcj02(",
+            ],
+            "_plan_route_path_with_baidu_runtime": [
+                "https://api.map.baidu.com/api?v=3.0&ak=",
+                "function gcj02ToBd09(",
+                "function bd09ToGcj02(",
+            ],
+        }
+
+        for helper_name, snippets in expected_snippets.items():
+            with self.subTest(helper=helper_name):
+                js_source = self._route_helper_execute_js_source(helper_name).strip()
+                with tempfile.NamedTemporaryFile(
+                    "w", encoding="utf-8", suffix=".js", delete=False
+                ) as tmp:
+                    tmp.write(f"const routeHelper = {js_source};\n")
+                    tmp_path = Path(tmp.name)
+                try:
+                    result = subprocess.run(
+                        ["node", "--check", str(tmp_path)],
+                        cwd=PROJECT_ROOT,
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                finally:
+                    tmp_path.unlink(missing_ok=True)
+
+                if result.returncode != 0:
+                    self.fail(
+                        f"{helper_name} execute_js payload syntax check failed\n"
+                        f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+                    )
+                for snippet in snippets:
+                    self.assertIn(snippet, js_source)
 
 
 if __name__ == "__main__":
