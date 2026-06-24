@@ -710,12 +710,28 @@
                 const endCoord = normalizeCoordinateForMap(endInput, '终点坐标');
 
                 log(`正在以${COORDINATE_MODE_LABELS[currentCoordinateMode]}请求驾车路线规划...`, 'info');
-                const response = await fetch(buildDrivingRouteUrl(startCoord, endCoord));
+                const controller = new AbortController();
+                const timeoutId = window.setTimeout(() => {
+                    controller.abort();
+                }, 15000);
+
+                let response;
+                try {
+                    response = await fetch(buildDrivingRouteUrl(startCoord, endCoord), {
+                        signal: controller.signal
+                    });
+                } catch (error) {
+                    if (error && error.name === 'AbortError') {
+                        throw new Error('地图路线服务请求超时');
+                    }
+                    throw error;
+                } finally {
+                    window.clearTimeout(timeoutId);
+                }
 
                 if (!response.ok) {
                     throw new Error(`路线服务请求失败：HTTP ${response.status}`);
                 }
-
                 const xmlText = await response.text();
                 const pathPoints = extractRoutePathPoints(xmlText);
 

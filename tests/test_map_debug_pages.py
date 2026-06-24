@@ -61,6 +61,9 @@ class TestMapDebugPages(unittest.TestCase):
         self.assertIn("https://api.tianditu.gov.cn/drive?postStr=", tianditu)
         self.assertIn("routelatlon", tianditu)
         self.assertIn("new T.Polyline(pathPoints", tianditu)
+        self.assertIn("AbortController", tianditu)
+        self.assertIn("地图路线服务请求超时", tianditu)
+        self.assertIn("signal: controller.signal", tianditu)
 
         self.assertIn("https://map.qq.com/api/gljs?v=1.exp&key=", tencent)
         self.assertIn("https://apis.map.qq.com/ws/direction/v1/", tencent)
