@@ -301,7 +301,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
                         python_params={"api_retries": 0},
                     )
 
-                page.goto.assert_called_once_with("about:blank")
+                page.goto.assert_not_called()
                 chrome_pool_mock.execute_js.assert_called_once()
                 args = chrome_pool_mock.execute_js.call_args.args
                 self.assertEqual(args[0], "session-1")
