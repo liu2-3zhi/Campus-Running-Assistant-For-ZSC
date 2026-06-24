@@ -327,6 +327,33 @@ def _install_map_runtime_guard(page, provider="amap", guard_label="MapRuntime"):
         _install_amap_dialog_guard(page, guard_label=guard_label)
 
 
+def _build_map_backend_session_url(app_base_url, session_id):
+    normalized_base = str(app_base_url or "").strip()
+    if not normalized_base:
+        return None
+    parsed = urllib.parse.urlparse(normalized_base)
+    if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
+        return None
+    return urllib.parse.urljoin(
+        normalized_base.rstrip("/") + "/",
+        f"uuid={urllib.parse.quote(str(session_id or ''), safe='')}",
+    )
+
+
+def _ensure_map_backend_page_origin(page, session_id, app_base_url, guard_label="MapRoutePlanning"):
+    session_url = _build_map_backend_session_url(app_base_url, session_id)
+    if not session_url:
+        return False
+    try:
+        page.goto(session_url, wait_until="domcontentloaded", timeout=15000)
+        return True
+    except Exception as e:
+        logging.warning(
+            f"[{guard_label}] 后端地图页面来源初始化失败: {e}"
+        )
+        return False
+
+
 
 def _plan_route_with_map_provider(waypoints, provider=None, route_mode="walking", runtime_config=None):
     runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
@@ -1066,7 +1093,15 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
 
 
 
-def _plan_route_path_with_provider_runtime(session_id, waypoints, python_params=None, provider=None, runtime_config=None, guard_label="MapRoutePlanning"):
+def _plan_route_path_with_provider_runtime(
+    session_id,
+    waypoints,
+    python_params=None,
+    provider=None,
+    runtime_config=None,
+    guard_label="MapRoutePlanning",
+    app_base_url=None,
+):
     runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
     provider_plan = _plan_route_with_map_provider(
         waypoints,
@@ -1087,6 +1122,12 @@ def _plan_route_path_with_provider_runtime(session_id, waypoints, python_params=
     ctx = chrome_pool.get_context(session_id)
     page = ctx["page"]
     _install_map_runtime_guard(page, provider=provider, guard_label=guard_label)
+    _ensure_map_backend_page_origin(
+        page,
+        session_id,
+        app_base_url,
+        guard_label=guard_label,
+    )
 
     if provider == "amap":
         result = _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_plan, python_params)
@@ -15684,6 +15725,7 @@ class Api:
             run.target_points,
             python_params=self.params,
             guard_label="SingleManualPathPlanning",
+            app_base_url=getattr(self, "_web_app_base_url", None),
         )
         notices = path_result.get("notices", [])
         for notice in notices:
@@ -15872,6 +15914,7 @@ class Api:
                         waypoints,
                         python_params=self.params,
                         guard_label="SingleRunPathPlanning",
+                        app_base_url=getattr(self, "_web_app_base_url", None),
                     )
                     for notice in path_result.get("notices", []):
                         self.log(notice)
@@ -18994,6 +19037,7 @@ class Api:
                         waypoints,
                         python_params=acc.params,
                         guard_label="MultiAccountPathPlanning",
+                        app_base_url=getattr(self, "_web_app_base_url", None),
                     )
                     for notice in path_coords.get("notices", []):
                         acc.log(notice)
@@ -22283,6 +22327,7 @@ class BackgroundTaskManager:
                                 waypoints,
                                 python_params=api_instance.params,
                                 guard_label="BackgroundTaskPathPlanning",
+                                app_base_url=getattr(api_instance, "_web_app_base_url", None),
                             )
                             for notice in path_coords.get("notices", []):
                                 logging.info(notice)
@@ -37445,6 +37490,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "未指定任务"}), 400
 
         api_instance = web_sessions[session_id]
+        api_instance._web_app_base_url = request.url_root
 
         # 接口级欠费校验（防止前端绕过）
         # - 单账号模式：优先检查请求中的 school_username；未传则检查当前账号
@@ -37815,6 +37861,8 @@ def start_web_server(args_param):
                     )
             elif session_id:
                 api_instance = web_sessions[session_id]
+        if api_instance is not None:
+            api_instance._web_app_base_url = request.url_root
         if request.method == "POST":
             params = request.get_json() or {}
         else:
