@@ -317,7 +317,7 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         ]
 
         self.assertIn('await ensureActiveMapProviderRuntimeIfNeeded("保存 Key 后刷新")', key_source)
-        self.assertIn("ensureSingleMap();", key_source)
+        self.assertIn("await ensureSingleMap();", key_source)
         self.assertNotIn('if (getActiveMapProvider() === "amap") {\n          ensureSingleMap();\n        }', key_source)
 
     def test_tianditu_frontend_map_uses_tokenized_tile_layers(self):
@@ -331,6 +331,29 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("function applyTianDiTuDefaultMapType(", source)
         self.assertIn("applyTianDiTuDefaultMapType(instance);", init_provider_source)
         self.assertIn("tk=${token}", source)
+
+    def test_direct_provider_map_initializers_load_runtime_before_creating_maps(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+
+        def extract_function(name, end_marker):
+            async_marker = f"async function {name}("
+            sync_marker = f"function {name}("
+            start = source.find(async_marker)
+            if start == -1:
+                start = source.find(sync_marker)
+            self.assertNotEqual(start, -1, f"{name} should exist")
+            end = source.index(end_marker, start)
+            return source[start:end]
+
+        ensure_single_source = extract_function("ensureSingleMap", "function forceProjectionRefresh(")
+        init_map_source = extract_function("initMap", "function showMainApp(")
+        mobile_map_source = extract_function("initMobileMap", "async function loadMobileTaskHistoryPanel")
+
+        for block in [ensure_single_source, init_map_source, mobile_map_source]:
+            non_amap_index = block.index('if (getActiveMapProvider() !== "amap")')
+            runtime_index = block.index("await ensureActiveMapProviderRuntimeIfNeeded(", non_amap_index)
+            init_index = block.index("initProviderMap(", non_amap_index)
+            self.assertLess(runtime_index, init_index)
 
 
 if __name__ == "__main__":

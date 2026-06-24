@@ -35231,9 +35231,16 @@ function loadAMapOnce() {
 
   return amapLoadingPromise;
 }
-function ensureSingleMap() {
+async function ensureSingleMap() {
   if (getActiveMapProvider() !== "amap") {
-    initProviderMap("map-container", false);
+    try {
+      const isReady = await ensureActiveMapProviderRuntimeIfNeeded("单账号地图初始化");
+      if (isReady) {
+        initProviderMap("map-container", false);
+      }
+    } catch (e) {
+      logMessage_Error("单账号地图供应商运行时加载失败:", e);
+    }
     return;
   }
   if (map || !AMapReady || !AMapInstance) return;
@@ -35552,7 +35559,7 @@ function attachMultiControlHandlers() {
   }
 }
 
-function initMap(AMap) {
+async function initMap(AMap) {
   if (getActiveMapProvider() !== "amap") {
     if (map && typeof map.destroy === "function") {
       try {
@@ -35562,10 +35569,17 @@ function initMap(AMap) {
       }
     }
     map = null;
-    initProviderMap("map-container", false);
-    logMessage_Info(
-      `当前地图提供方为${getMapProviderDisplayName()}，已使用对应前端地图初始化。`,
-    );
+    try {
+      const isReady = await ensureActiveMapProviderRuntimeIfNeeded("主地图初始化");
+      if (isReady) {
+        initProviderMap("map-container", false);
+        logMessage_Info(
+          `当前地图提供方为${getMapProviderDisplayName()}，已使用对应前端地图初始化。`,
+        );
+      }
+    } catch (e) {
+      logMessage_Error("主地图供应商运行时加载失败:", e);
+    }
     return;
   }
   if (map) {
@@ -35943,7 +35957,7 @@ async function onConfirmAmapKey() {
       logMessage_Info(`${requirement.displayName} API Key已更新，正在尝试重新加载地图...`);
       try {
         await ensureActiveMapProviderRuntimeIfNeeded("保存 Key 后刷新");
-        ensureSingleMap();
+        await ensureSingleMap();
       } catch (e) {
         logMessage_Error("保存Key后加载地图失败", e);
         logMessage_Info(
@@ -44235,10 +44249,17 @@ async function initMobileMap(
     return false;
   }
   if (getActiveMapProvider() !== "amap") {
-    initProviderMap(containerId, isMultiAccount);
-    logMessage_Info(
-      `[移动端地图] 当前提供方为${getMapProviderDisplayName()}，已使用对应前端地图初始化`,
-    );
+    try {
+      const isReady = await ensureActiveMapProviderRuntimeIfNeeded("移动端地图初始化");
+      if (isReady) {
+        initProviderMap(containerId, isMultiAccount);
+        logMessage_Info(
+          `[移动端地图] 当前提供方为${getMapProviderDisplayName()}，已使用对应前端地图初始化`,
+        );
+      }
+    } catch (e) {
+      logMessage_Error("[移动端地图] 地图供应商运行时加载失败:", e);
+    }
     return true;
   }
   if (typeof AMapInstance === "undefined") {
