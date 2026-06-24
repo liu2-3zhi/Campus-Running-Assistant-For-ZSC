@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>百度地图调试工具</title>
+    <style>
+        :root {
+            --primary-color: #3b82f6;
+            --hover-color: #2563eb;
+            --bg-panel: #f8fafc;
+            --border-color: #cbd5e1;
+            --text-color: #334155;
+            --muted-color: #64748b;
+            --success-color: #10b981;
+            --warn-color: #f59e0b;
+            --error-color: #ef4444;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+            background: #e2e8f0;
+        }
+
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        #controls {
+            padding: 12px 20px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid #e2e8f0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 15px;
+            z-index: 10;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-group.with-divider {
+            border-left: 1px solid var(--border-color);
+            padding-left: 15px;
+        }
+
+        label,
+        .control-label {
+            font-weight: 600;
+            color: var(--text-color);
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        input[type="text"] {
+            padding: 6px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            width: 280px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        button {
+            padding: 6px 14px;
+            background-color: var(--primary-color);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background-color 0.2s, transform 0.1s, border-color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        button:hover {
+            background-color: var(--hover-color);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        button.secondary {
+            background-color: #fff;
+            color: #475569;
+            border: 1px solid var(--border-color);
+        }
+
+        button.secondary:hover {
+            background-color: #f1f5f9;
+            border-color: #94a3b8;
+        }
+
+        #zoom-level {
+            min-width: 24px;
+            color: var(--primary-color);
+            font-weight: 700;
+        }
+
+        #map-container {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            background-color: #dbeafe;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        #map-placeholder,
+        #loading-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #map-placeholder {
+            color: var(--muted-color);
+            background: linear-gradient(135deg, rgba(219, 234, 254, 0.95), rgba(241, 245, 249, 0.95));
+            z-index: 4;
+            pointer-events: none;
+        }
+
+        #loading-overlay {
+            background: rgba(255, 255, 255, 0.85);
+            z-index: 6;
+            color: #475569;
+            display: none;
+        }
+
+        #log-area {
+            height: 160px;
+            background: #0f172a;
+            color: #d1d5db;
+            overflow-y: auto;
+            padding: 10px 15px;
+            font-family: "Consolas", "Monaco", monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            border-top: 1px solid #334155;
+            position: relative;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            border-bottom: 1px solid #1e293b;
+            padding-bottom: 2px;
+            word-break: break-all;
+        }
+
+        .log-time {
+            color: #64748b;
+            margin-right: 8px;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .log-info { color: #60a5fa; }
+        .log-warn { color: #fbbf24; }
+        .log-error { color: #f87171; }
+        .log-success { color: #34d399; }
+
+        #clear-log-btn {
+            position: absolute;
+            right: 20px;
+            top: 10px;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="controls">
+            <div class="control-group">
+                <label for="ak-input">AK:</label>
+                <input type="text" id="ak-input" placeholder="请输入百度地图 AK，然后点击初始化地图">
+                <button type="button" id="init-btn" onclick="initMap()">🚀 初始化地图</button>
+            </div>
+
+            <div class="control-group with-divider">
+                <span class="control-label">坐标模式:</span>
+                <button type="button" id="btn-mode-bd09" class="secondary" onclick="setCoordinateMode('bd09')">百度坐标</button>
+                <button type="button" id="btn-mode-gcj02" class="secondary" onclick="setCoordinateMode('gcj02')">高德坐标</button>
+            </div>
+
+            <div class="control-group with-divider">
+                <button type="button" id="btn-in" class="secondary" disabled onclick="mapAction('in')">放大</button>
+                <button type="button" id="btn-out" class="secondary" disabled onclick="mapAction('out')">缩小</button>
+                <button type="button" id="btn-reset" class="secondary" disabled onclick="mapAction('reset')">复位视角</button>
+                <button type="button" id="btn-clear-marker" class="secondary" disabled onclick="clearCurrentMarker()">清除标记</button>
+            </div>
+
+            <div class="control-group with-divider route-group">
+                <label for="route-start-input">起点:</label>
+                <input type="text" id="route-start-input" placeholder="lng,lat 例如 116.404,39.915">
+                <label for="route-end-input">终点:</label>
+                <input type="text" id="route-end-input" placeholder="lng,lat 例如 116.414,39.925">
+                <button type="button" id="btn-plan-walking" class="secondary" disabled onclick="planRoute('walking')">步行规划</button>
+                <button type="button" id="btn-plan-driving" class="secondary" disabled onclick="planRoute('driving')">驾车规划</button>
+                <button type="button" id="btn-clear-route" class="secondary" disabled onclick="clearRouteLine()">清除路线</button>
+            </div>
+
+            <div class="control-group with-divider locate-group">
+                <label for="locate-coord-input">定位:</label>
+                <input type="text" id="locate-coord-input" placeholder="lng,lat 例如 116.404,39.915">
+                <button type="button" id="btn-locate-coord" class="secondary" disabled onclick="locateByCoordinateInput()">按坐标定位</button>
+            </div>
+
+            <div class="control-group with-divider">
+                <span class="control-label">缩放级别:</span>
+                <span id="zoom-level">-</span>
+            </div>
+        </div>
+
+        <div id="map-container">
+            <div id="map"></div>
+            <div id="map-placeholder">准备就绪，请输入百度地图 AK 后点击“初始化地图”。</div>
+            <div id="loading-overlay">正在加载百度地图资源...</div>
+        </div>
+
+        <div id="log-area">
+            <button type="button" id="clear-log-btn" class="secondary" onclick="clearLogs()">清空日志</button>
+        </div>
+    </div>
+
+    <script>
+        let map = null;
+        let currentClickMarker = null;
+        let currentLocateMarker = null;
+        let currentRouteLine = null;
+        let currentRouteType = null;
+        let currentAk = '';
+        let isInitializing = false;
+        let mapEventsBound = false;
+        let baiduMapScriptPromise = null;
+        let currentRouteSearch = null;
+        let routeSearchInFlight = false;
+        let currentCoordinateMode = 'bd09';
+
+        const DEFAULT_CENTER = { lng: 113.387733, lat: 22.525330 };
+        const DEFAULT_ZOOM = 15;
+        const COORDINATE_MODE_LABELS = {
+            bd09: '百度坐标',
+            gcj02: '高德坐标'
+        };
+        const ROUTE_TYPE_LABELS = {
+            walking: '步行',
+            driving: '驾车'
+        };
+
+        function log(message, type = 'info') {
+            const logArea = document.getElementById('log-area');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+
+            const time = document.createElement('span');
+            time.className = 'log-time';
+            time.textContent = `[${new Date().toLocaleTimeString()}]`;
+
+            entry.appendChild(time);
+            entry.appendChild(document.createTextNode(message));
+            logArea.appendChild(entry);
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        function clearLogs() {
+            const logArea = document.getElementById('log-area');
+            logArea.querySelectorAll('.log-entry').forEach(node => node.remove());
+            log('日志已清空。', 'info');
+        }
+
+        function setLoading(visible, text = '正在加载百度地图资源...') {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.textContent = text;
+            overlay.style.display = visible ? 'flex' : 'none';
+        }
+
+        function setMapPlaceholderVisible(visible, text = '准备就绪，请输入百度地图 AK 后点击“初始化地图”。') {
+            const placeholder = document.getElementById('map-placeholder');
+            placeholder.textContent = text;
+            placeholder.style.display = visible ? 'flex' : 'none';
+        }
+
+        function setMapActionButtonsEnabled(enabled) {
+            ['btn-in', 'btn-out', 'btn-reset', 'btn-clear-marker', 'btn-plan-walking', 'btn-plan-driving', 'btn-clear-route', 'btn-locate-coord']
+                .forEach(id => {
+                    const button = document.getElementById(id);
+                    if (button) {
+                        button.disabled = !enabled;
+                    }
+                });
+        }
+
+        function updateZoomDisplay() {
+            document.getElementById('zoom-level').textContent = map ? String(map.getZoom()) : '-';
+        }
+
+        function getCurrentCoordinateModeLabel() {
+            return COORDINATE_MODE_LABELS[currentCoordinateMode] || currentCoordinateMode;
+        }
+
+        function refreshCoordinateModeButtons() {
+            const bd09Btn = document.getElementById('btn-mode-bd09');
+            const gcj02Btn = document.getElementById('btn-mode-gcj02');
+
+            [bd09Btn, gcj02Btn].forEach(button => {
+                if (!button) {
+                    return;
+                }
+                button.classList.add('secondary');
+            });
+
+            const activeBtn = currentCoordinateMode === 'gcj02' ? gcj02Btn : bd09Btn;
+            if (activeBtn) {
+                activeBtn.classList.remove('secondary');
+            }
+        }
+
+        function refreshCoordinatePlaceholders() {
+            const locateInput = document.getElementById('locate-coord-input');
+            const routeStartInput = document.getElementById('route-start-input');
+            const routeEndInput = document.getElementById('route-end-input');
+
+            const sample = currentCoordinateMode === 'gcj02'
+                ? '113.387000,22.525000'
+                : '113.387733,22.525330';
+
+            if (locateInput) {
+                locateInput.placeholder = `请输入${getCurrentCoordinateModeLabel()} lng,lat 例如 ${sample}`;
+            }
+            if (routeStartInput) {
+                routeStartInput.placeholder = `起点 ${getCurrentCoordinateModeLabel()} lng,lat 例如 ${sample}`;
+            }
+            if (routeEndInput) {
+                routeEndInput.placeholder = `终点 ${getCurrentCoordinateModeLabel()} lng,lat 例如 ${sample}`;
+            }
+        }
+
+        function setCoordinateMode(mode) {
+            if (!COORDINATE_MODE_LABELS[mode]) {
+                log(`未知坐标模式：${mode}`, 'warn');
+                return;
+            }
+
+            currentCoordinateMode = mode;
+            refreshCoordinateModeButtons();
+            refreshCoordinatePlaceholders();
+            log(`已切换坐标模式：${getCurrentCoordinateModeLabel()}`, 'info');
+        }
+
+        function gcj02ToBd09(lng, lat) {
+            const xPi = Math.PI * 3000.0 / 180.0;
+            const z = Math.sqrt(lng * lng + lat * lat) + 0.00002 * Math.sin(lat * xPi);
+            const theta = Math.atan2(lat, lng) + 0.000003 * Math.cos(lng * xPi);
+            return {
+                lng: z * Math.cos(theta) + 0.0065,
+                lat: z * Math.sin(theta) + 0.006
+            };
+        }
+
+        function bd09ToGcj02(lng, lat) {
+            const xPi = Math.PI * 3000.0 / 180.0;
+            const x = lng - 0.0065;
+            const y = lat - 0.006;
+            const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * xPi);
+            const theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * xPi);
+            return {
+                lng: z * Math.cos(theta),
+                lat: z * Math.sin(theta)
+            };
+        }
+
+        function formatCoordinateText(lng, lat) {
+            return `${Number(lng).toFixed(6)}, ${Number(lat).toFixed(6)}`;
+        }
+
+        function normalizeCoordinateForMap(coord) {
+            if (currentCoordinateMode === 'gcj02') {
+                const converted = gcj02ToBd09(coord.lng, coord.lat);
+                return buildCoordinateResult(converted.lng, converted.lat);
+            }
+            return buildCoordinateResult(coord.lng, coord.lat);
+        }
+
+        function formatMapCoordinateForDisplay(mapCoord) {
+            if (currentCoordinateMode === 'gcj02') {
+                const converted = bd09ToGcj02(mapCoord.lng, mapCoord.lat);
+                return {
+                    lng: converted.lng,
+                    lat: converted.lat,
+                    text: formatCoordinateText(converted.lng, converted.lat)
+                };
+            }
+            return {
+                lng: mapCoord.lng,
+                lat: mapCoord.lat,
+                text: formatCoordinateText(mapCoord.lng, mapCoord.lat)
+            };
+        }
+
+        function loadBaiduMapScript(ak) {
+            if (window.BMap && typeof window.BMap.Map === 'function') {
+                return Promise.resolve();
+            }
+
+            if (baiduMapScriptPromise) {
+                return baiduMapScriptPromise;
+            }
+
+            baiduMapScriptPromise = new Promise((resolve, reject) => {
+                const existingScript = document.querySelector('script[data-baidu-map-api="true"]');
+                if (existingScript) {
+                    existingScript.remove();
+                }
+
+                const script = document.createElement('script');
+                script.src = `https://api.map.baidu.com/api?v=3.0&ak=${encodeURIComponent(ak)}&callback=__onBaiduMapApiLoaded`;
+                script.async = true;
+                script.defer = true;
+                script.dataset.baiduMapApi = 'true';
+
+                window.__onBaiduMapApiLoaded = function () {
+                    delete window.__onBaiduMapApiLoaded;
+                    resolve();
+                };
+
+                script.onerror = () => {
+                    baiduMapScriptPromise = null;
+                    reject(new Error('百度地图脚本加载失败，请检查 AK 或网络连接。'));
+                };
+
+                document.head.appendChild(script);
+            });
+
+            return baiduMapScriptPromise;
+        }
+
+        function buildCoordinateResult(lng, lat) {
+            return {
+                lng,
+                lat,
+                point: new BMap.Point(lng, lat)
+            };
+        }
+
+        function buildRawCoordinateResult(lng, lat) {
+            return {
+                lng,
+                lat
+            };
+        }
+
+        function parseCoordinateText(text, fieldLabel = '坐标') {
+            const raw = String(text || '').trim();
+            if (!raw) {
+                throw new Error(`${fieldLabel}不能为空。`);
+            }
+
+            const match = raw.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+            if (!match) {
+                throw new Error(`${fieldLabel}格式无效，请使用 lng,lat。`);
+            }
+
+            const lng = Number(match[1]);
+            const lat = Number(match[2]);
+
+            if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                throw new Error(`${fieldLabel}包含非法数字。`);
+            }
+
+            if (lng < -180 || lng > 180) {
+                throw new Error(`${fieldLabel}经度超出范围。`);
+            }
+
+            if (lat < -90 || lat > 90) {
+                throw new Error(`${fieldLabel}纬度超出范围。`);
+            }
+
+            return buildRawCoordinateResult(lng, lat);
+        }
+
+        function clearCurrentMarker() {
+            if (!map || !currentClickMarker) {
+                log('当前没有可清除的标记。', 'warn');
+                return;
+            }
+
+            map.removeOverlay(currentClickMarker);
+            currentClickMarker = null;
+            log('已清除当前标记。', 'success');
+        }
+
+        function locateByCoordinateInput() {
+            if (!map) {
+                log('请先初始化地图。', 'warn');
+                return;
+            }
+
+            try {
+                const inputCoord = parseCoordinateText(
+                    document.getElementById('locate-coord-input').value,
+                    '定位坐标'
+                );
+                const mapCoord = normalizeCoordinateForMap(inputCoord);
+                const displayCoord = formatMapCoordinateForDisplay(mapCoord);
+
+                if (currentLocateMarker) {
+                    map.removeOverlay(currentLocateMarker);
+                }
+
+                currentLocateMarker = new BMap.Marker(mapCoord.point);
+                map.addOverlay(currentLocateMarker);
+                map.centerAndZoom(mapCoord.point, map.getZoom());
+                log(`已定位到${getCurrentCoordinateModeLabel()}：${displayCoord.text}`, 'success');
+            } catch (error) {
+                console.error(error);
+                log(error.message || String(error), 'error');
+            }
+        }
+
+        function mapAction(action) {
+            if (!map) {
+                log('请先初始化地图。', 'warn');
+                return;
+            }
+
+            switch (action) {
+                case 'in':
+                    map.zoomTo(map.getZoom() + 1);
+                    break;
+                case 'out':
+                    map.zoomTo(map.getZoom() - 1);
+                    break;
+                case 'reset':
+                    map.centerAndZoom(new BMap.Point(DEFAULT_CENTER.lng, DEFAULT_CENTER.lat), DEFAULT_ZOOM);
+                    updateZoomDisplay();
+                    log(`已复位到默认视角（${getCurrentCoordinateModeLabel()}显示模式）。`, 'success');
+                    break;
+                default:
+                    log(`未知地图操作：${action}`, 'warn');
+            }
+        }
+
+        function bindMapEvents() {
+            if (!map || mapEventsBound) {
+                return;
+            }
+
+            map.addEventListener('click', function (event) {
+                const point = event && event.point ? event.point : null;
+                if (!point) {
+                    log('点击事件未返回有效坐标。', 'warn');
+                    return;
+                }
+
+                const lng = Number(point.lng);
+                const lat = Number(point.lat);
+                if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                    log('坐标解析失败，未更新标记。', 'warn');
+                    return;
+                }
+
+                if (currentClickMarker) {
+                    map.removeOverlay(currentClickMarker);
+                }
+
+                currentClickMarker = new BMap.Marker(point);
+                map.addOverlay(currentClickMarker);
+
+                const mapCoord = buildCoordinateResult(lng, lat);
+                const displayCoord = formatMapCoordinateForDisplay(mapCoord);
+                log(`点击坐标（${getCurrentCoordinateModeLabel()}）：${displayCoord.text}`, 'info');
+            });
+
+            map.addEventListener('zoomend', function () {
+                updateZoomDisplay();
+                log(`当前缩放级别：${map.getZoom()}`, 'info');
+            });
+
+            mapEventsBound = true;
+        }
+
+        async function initMap() {
+            const ak = document.getElementById('ak-input').value.trim();
+
+            if (!ak) {
+                alert('请输入百度地图 AK');
+                log('初始化失败：AK 为空。', 'warn');
+                return;
+            }
+
+            if (isInitializing) {
+                log('地图正在初始化，请勿重复点击。', 'warn');
+                return;
+            }
+
+            isInitializing = true;
+            currentAk = ak;
+            document.getElementById('init-btn').disabled = true;
+            setLoading(true);
+            setMapPlaceholderVisible(true, '正在初始化百度地图，请稍候...');
+
+            try {
+                await loadBaiduMapScript(ak);
+
+                if (!map) {
+                    map = new BMap.Map('map');
+                    map.centerAndZoom(new BMap.Point(DEFAULT_CENTER.lng, DEFAULT_CENTER.lat), DEFAULT_ZOOM);
+                    map.enableScrollWheelZoom(true);
+                    bindMapEvents();
+                } else {
+                    map.centerAndZoom(new BMap.Point(DEFAULT_CENTER.lng, DEFAULT_CENTER.lat), DEFAULT_ZOOM);
+                }
+
+                updateZoomDisplay();
+                setMapActionButtonsEnabled(true);
+                setMapPlaceholderVisible(false);
+                log('百度地图初始化成功。', 'success');
+                log(`默认中心点（BD-09）：${DEFAULT_CENTER.lng}, ${DEFAULT_CENTER.lat}；缩放级别：${DEFAULT_ZOOM}`, 'info');
+                log(`当前坐标模式：${getCurrentCoordinateModeLabel()}`, 'info');
+            } catch (error) {
+                console.error(error);
+                setMapActionButtonsEnabled(false);
+                setMapPlaceholderVisible(true, '地图加载失败，请检查 AK 是否有效，或稍后重试。');
+                log(`初始化失败：${error.message || error}`, 'error');
+                alert(error.message || '地图初始化失败');
+            } finally {
+                isInitializing = false;
+                document.getElementById('init-btn').disabled = false;
+                setLoading(false);
+            }
+        }
+
+        function buildRouteSearchConfig(routeType) {
+            const commonOptions = {
+                renderOptions: {
+                    map,
+                    autoViewport: true,
+                    enableDragging: false
+                },
+                onSearchComplete(results) {
+                    if (!routeSearchInFlight) {
+                        return;
+                    }
+
+                    const searchInstance = currentRouteSearch;
+                    const status = searchInstance && typeof searchInstance.getStatus === 'function'
+                        ? searchInstance.getStatus()
+                        : null;
+                    routeSearchInFlight = false;
+
+                    try {
+                        const pathPoints = extractPlanPathPoints(results);
+                        currentRouteType = routeType;
+                        fitMapToPoints(pathPoints);
+
+                        if (status !== null && typeof BMAP_STATUS_SUCCESS !== 'undefined' && status !== BMAP_STATUS_SUCCESS) {
+                            log(`${ROUTE_TYPE_LABELS[routeType]}路线规划返回了路径，但状态码为：${status}`, 'warn');
+                        }
+
+                        log(`${ROUTE_TYPE_LABELS[routeType]}路线绘制成功，路径点数：${pathPoints.length}`, 'success');
+                    } catch (error) {
+                        if (status !== null && typeof BMAP_STATUS_SUCCESS !== 'undefined' && status !== BMAP_STATUS_SUCCESS) {
+                            log(`${ROUTE_TYPE_LABELS[routeType]}路线规划失败，状态码：${status}`, 'error');
+                            return;
+                        }
+
+                        console.error(error);
+                        log(error.message || String(error), 'error');
+                    }
+                }
+            };
+
+            if (routeType === 'walking') {
+                return new BMap.WalkingRoute(map, commonOptions);
+            }
+
+            if (routeType === 'driving') {
+                return new BMap.DrivingRoute(map, commonOptions);
+            }
+
+            throw new Error(`未知路线类型：${routeType}`);
+        }
+
+        function extractPlanPathPoints(results) {
+            const firstPlan = results && typeof results.getPlan === 'function' ? results.getPlan(0) : null;
+            if (!firstPlan || typeof firstPlan.getNumRoutes !== 'function') {
+                throw new Error('路线结果中未找到有效方案。');
+            }
+
+            const routeCount = firstPlan.getNumRoutes();
+            const points = [];
+            for (let i = 0; i < routeCount; i += 1) {
+                const route = firstPlan.getRoute(i);
+                if (!route || typeof route.getPath !== 'function') {
+                    continue;
+                }
+                const path = route.getPath();
+                if (Array.isArray(path)) {
+                    path.forEach(point => points.push(point));
+                }
+            }
+
+            if (points.length < 2) {
+                throw new Error('路线结果未返回可绘制的有效路径点。');
+            }
+
+            return points;
+        }
+
+        function fitMapToPoints(points) {
+            if (!map || !Array.isArray(points) || points.length === 0) {
+                return;
+            }
+            map.setViewport(points);
+        }
+
+        function clearRouteLine(logWhenEmpty = true) {
+            if (!map || !currentRouteSearch) {
+                if (logWhenEmpty) {
+                    log('当前没有可清除的路线。', 'warn');
+                }
+                return;
+            }
+
+            if (typeof currentRouteSearch.clearResults === 'function') {
+                currentRouteSearch.clearResults();
+            }
+            currentRouteSearch = null;
+            currentRouteType = null;
+            routeSearchInFlight = false;
+            currentRouteLine = null;
+            log('已清除当前路线。', 'success');
+        }
+
+        function planRoute(routeType) {
+            if (!map) {
+                log('请先初始化地图。', 'warn');
+                return;
+            }
+
+            if (!ROUTE_TYPE_LABELS[routeType]) {
+                log(`未知路线类型：${routeType}`, 'warn');
+                return;
+            }
+
+            try {
+                const startInputCoord = parseCoordinateText(
+                    document.getElementById('route-start-input').value,
+                    '起点坐标'
+                );
+                const endInputCoord = parseCoordinateText(
+                    document.getElementById('route-end-input').value,
+                    '终点坐标'
+                );
+
+                const startCoord = normalizeCoordinateForMap(startInputCoord);
+                const endCoord = normalizeCoordinateForMap(endInputCoord);
+
+                clearRouteLine(false);
+                currentRouteSearch = buildRouteSearchConfig(routeType);
+                routeSearchInFlight = true;
+                log(`正在请求${ROUTE_TYPE_LABELS[routeType]}路线规划（${getCurrentCoordinateModeLabel()}输入模式）...`, 'info');
+                currentRouteSearch.search(startCoord.point, endCoord.point);
+            } catch (error) {
+                routeSearchInFlight = false;
+                console.error(error);
+                log(error.message || String(error), 'error');
+            }
+        }
+
+        window.onload = function () {
+            setMapActionButtonsEnabled(false);
+            updateZoomDisplay();
+            refreshCoordinateModeButtons();
+            refreshCoordinatePlaceholders();
+            log('准备就绪，请输入百度地图 AK 后点击“初始化地图”。', 'info');
+            log('当前默认坐标模式：百度坐标（BD-09）。', 'info');
+            log(`默认中心点（BD-09）：${DEFAULT_CENTER.lng}, ${DEFAULT_CENTER.lat}`, 'info');
+        };
+    </script>
+</body>
+</html>
