@@ -4,8 +4,12 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 function extractFunctionSource(source, functionName) {
-  const signature = `function ${functionName}`;
-  const start = source.indexOf(signature);
+  const asyncSignature = `async function ${functionName}`;
+  const syncSignature = `function ${functionName}`;
+  let start = source.indexOf(asyncSignature);
+  if (start === -1) {
+    start = source.indexOf(syncSignature);
+  }
   assert.notEqual(start, -1, `${functionName} should exist in scripts/main.new.js`);
 
   const paramsEnd = source.indexOf(')', start);
@@ -73,6 +77,7 @@ function extractFunctionSource(source, functionName) {
 
 function createDocument() {
   const elements = new Map();
+  const appendedScripts = [];
   const createElementObject = (id = '') => ({
     id,
     children: [],
@@ -82,6 +87,9 @@ function createDocument() {
     appendChild(child) {
       child.parentNode = this;
       this.children.push(child);
+      if (child.tagName === 'script') {
+        appendedScripts.push(child);
+      }
     },
     removeChild(child) {
       this.children = this.children.filter((item) => item !== child);
@@ -116,6 +124,7 @@ function createDocument() {
     },
     head: createElementObject('head'),
     body: createElementObject('body'),
+    appendedScripts,
   };
 }
 
@@ -305,13 +314,20 @@ function createBaiduSdk() {
   return { Map: BaiduMap, Point, Marker, Polyline };
 }
 
-function createRuntime(provider) {
+function createRuntime(provider, options = {}) {
   const source = readFileSync(resolve('scripts/main.new.js'), 'utf8');
   const functionNames = [
     'getActiveMapProvider',
     'getMapProviderDisplayName',
     'getMapProviderConfig',
     'getMapProviderKeyRequirement',
+    'showMissingMapProviderKeyModal',
+    'ensureActiveMapProviderRuntimeIfNeeded',
+    'loadScriptOnce',
+    'loadTencentMapOnce',
+    'loadTianDiTuMapOnce',
+    'loadBaiduMapOnce',
+    'loadActiveMapProviderRuntime',
     'getTianDiTuToken',
     'createTianDiTuTileLayer',
     'applyTianDiTuDefaultMapType',
@@ -337,6 +353,7 @@ function createRuntime(provider) {
     'fitProviderMapToLastRoute',
     'addProviderMarker',
     'drawProviderRouteOnMap',
+    'installGenericMapRuntimeGuards',
   ];
   const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
   const document = createDocument();
@@ -351,9 +368,11 @@ function createRuntime(provider) {
       },
     },
   };
-  window.TMap = createTencentSdk();
-  window.T = createTianDiTuSdk();
-  window.BMap = createBaiduSdk();
+  if (options.preloadSdks !== false) {
+    window.TMap = createTencentSdk();
+    window.T = createTianDiTuSdk();
+    window.BMap = createBaiduSdk();
+  }
 
   const factory = Function('window', 'document', `
     const TMap = window.TMap;
@@ -364,6 +383,9 @@ function createRuntime(provider) {
     let map = null;
     let multiAccountMap = null;
     let mobileTrackMapInstance = null;
+    let tencentMapLoadingPromise = null;
+    let tiandituMapLoadingPromise = null;
+    let baiduMapLoadingPromise = null;
     let providerMapInstances = {};
     let providerMapInstanceProviders = {};
     let providerMapEventsBound = {};
@@ -381,6 +403,8 @@ function createRuntime(provider) {
       initProviderMap,
       addProviderMarker,
       drawProviderRouteOnMap,
+      ensureActiveMapProviderRuntimeIfNeeded,
+      loadActiveMapProviderRuntime,
       zoomProviderMap,
       fitProviderMapToLastRoute,
       getProviderMapInstance,
@@ -389,6 +413,8 @@ function createRuntime(provider) {
         providerMapOverlays,
         providerMapLastFitCoords,
       }),
+      getDocument: () => document,
+      getWindow: () => window,
     };
   `);
 
@@ -440,4 +466,63 @@ test('provider route drawing stores fit coordinates for subsequent viewport cont
   const instance = runtime.getProviderMapInstance('map-container');
   assert.equal(instance.fitBoundsCalls.length, 2);
   assert.equal(instance.fitBoundsCalls[1].bounds.points.length >= 2, true);
+});
+
+test('provider runtime loaders inject the active provider sdk script and resolve from callbacks', async () => {
+  const cases = [
+    {
+      provider: 'tencent',
+      expectedSrc: 'https://map.qq.com/api/gljs?v=1.exp&key=tencent-key',
+      datasetKey: 'qqMapApi',
+      installSdk(window) {
+        window.TMap = createTencentSdk();
+      },
+      finish(window, script) {
+        script.onload();
+        return window.TMap;
+      },
+    },
+    {
+      provider: 'tianditu',
+      expectedSrc: 'https://api.tianditu.gov.cn/api?v=4.0&tk=tianditu-token',
+      datasetKey: 'tiandituApi',
+      installSdk(window) {
+        window.T = createTianDiTuSdk();
+      },
+      finish(window, script) {
+        script.onload();
+        return window.T;
+      },
+    },
+    {
+      provider: 'baidu',
+      expectedSrc: 'https://api.map.baidu.com/api?v=3.0&ak=baidu-ak&callback=__onBaiduMapApiLoaded',
+      datasetKey: 'baiduMapApi',
+      installSdk(window) {
+        window.BMap = createBaiduSdk();
+      },
+      finish(window) {
+        window.__onBaiduMapApiLoaded();
+        return window.BMap;
+      },
+    },
+  ];
+
+  for (const item of cases) {
+    const runtime = createRuntime(item.provider, { preloadSdks: false });
+    const window = runtime.getWindow();
+    const document = runtime.getDocument();
+
+    const runtimePromise = runtime.ensureActiveMapProviderRuntimeIfNeeded('loader-test');
+    assert.equal(document.appendedScripts.length, 1, item.provider);
+    const script = document.appendedScripts[0];
+    assert.equal(script.src, item.expectedSrc, item.provider);
+    assert.equal(script.dataset[item.datasetKey], 'true', item.provider);
+    assert.equal(window.__genericMapRuntimeGuardsInstalled, true, item.provider);
+
+    item.installSdk(window);
+    const expectedRuntime = item.finish(window, script);
+    assert.equal(await runtimePromise, true, item.provider);
+    assert.equal(await runtime.loadActiveMapProviderRuntime(item.provider), expectedRuntime, item.provider);
+  }
 });
