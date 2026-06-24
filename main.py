@@ -358,7 +358,6 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
 
     plugins = provider_plan.get("plugins") or ["AMap.Walking"]
     actual_mode = str(provider_plan.get("actual_mode") or "walking").strip().lower() or "walking"
-    page.goto("about:blank")
     return chrome_pool.execute_js(
         session_id,
         """
@@ -501,7 +500,6 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
         return {"error": "未配置腾讯地图 Key"}
 
     actual_mode = str(provider_plan.get("actual_mode") or "walking").strip().lower() or "walking"
-    page.goto("about:blank")
     return chrome_pool.execute_js(
         session_id,
         """
@@ -677,7 +675,6 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
         return {"error": "未配置天地图 Token"}
 
     actual_mode = str(provider_plan.get("actual_mode") or "driving").strip().lower() or "driving"
-    page.goto("about:blank")
     return chrome_pool.execute_js(
         session_id,
         """
@@ -869,7 +866,6 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
         return {"error": "未配置百度地图 AK"}
 
     actual_mode = str(provider_plan.get("actual_mode") or "walking").strip().lower() or "walking"
-    page.goto("about:blank")
     return chrome_pool.execute_js(
         session_id,
         """
