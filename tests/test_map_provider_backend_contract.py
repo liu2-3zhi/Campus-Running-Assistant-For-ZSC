@@ -242,6 +242,54 @@ class TestMapProviderBackendContract(unittest.TestCase):
         chrome_pool_mock.execute_js.assert_not_called()
         page.goto.assert_not_called()
 
+    def test_provider_route_helpers_call_chrome_executor_with_provider_credentials(self):
+        waypoints = [[113.39, 22.52], [113.40, 22.53]]
+        expected_calls = [
+            (
+                main_module._plan_route_path_with_amap_runtime,
+                {"provider_config": {"js_key": "amap-key"}, "actual_mode": "walking", "plugins": ["AMap.Walking"]},
+                ["amap-key", {"api_retries": 0}, ["AMap.Walking"], "walking"],
+            ),
+            (
+                main_module._plan_route_path_with_tencent_runtime,
+                {"provider_config": {"map_key": "tencent-key"}, "actual_mode": "walking"},
+                ["tencent-key", {"api_retries": 0}, "walking"],
+            ),
+            (
+                main_module._plan_route_path_with_tianditu_runtime,
+                {"provider_config": {"token": "tianditu-token"}, "actual_mode": "driving"},
+                ["tianditu-token", {"api_retries": 0}, "driving"],
+            ),
+            (
+                main_module._plan_route_path_with_baidu_runtime,
+                {"provider_config": {"ak": "baidu-ak"}, "actual_mode": "walking"},
+                ["baidu-ak", {"api_retries": 0}, "walking"],
+            ),
+        ]
+
+        for helper, provider_plan, expected_tail in expected_calls:
+            with self.subTest(helper=helper.__name__):
+                page = mock.Mock(goto=mock.Mock())
+                chrome_pool_mock = mock.Mock(
+                    execute_js=mock.Mock(return_value={"path": [{"lng": 113.39, "lat": 22.52}]})
+                )
+                with mock.patch.object(main_module, "chrome_pool", chrome_pool_mock, create=True):
+                    result = helper(
+                        "session-1",
+                        page,
+                        waypoints,
+                        provider_plan,
+                        python_params={"api_retries": 0},
+                    )
+
+                page.goto.assert_called_once_with("about:blank")
+                chrome_pool_mock.execute_js.assert_called_once()
+                args = chrome_pool_mock.execute_js.call_args.args
+                self.assertEqual(args[0], "session-1")
+                self.assertEqual(args[2], waypoints)
+                self.assertEqual(list(args[3:]), expected_tail)
+                self.assertEqual(result["path"], [{"lng": 113.39, "lat": 22.52}])
+
 
 if __name__ == "__main__":
     unittest.main()

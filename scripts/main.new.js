@@ -35122,7 +35122,12 @@ function addProviderMarker(containerId, coord, options = {}) {
       marker = new BMap.Marker(new BMap.Point(providerCoord.lng, providerCoord.lat));
       instance.addOverlay(marker);
     }
-    if (marker) bucket.push(marker);
+    if (marker) {
+      bucket.push(marker);
+      const fitCoords = providerMapLastFitCoords[containerId] || [];
+      fitCoords.push(providerCoord);
+      providerMapLastFitCoords[containerId] = fitCoords;
+    }
     return marker;
   } catch (e) {
     logMessage_Warning(`[地图] 添加${containerId}标记失败:`, e);
