@@ -347,6 +347,9 @@ class TestMapProviderBackendContract(unittest.TestCase):
                 "https://webapi.amap.com/loader.js",
                 "AMapLoader.load",
                 "AMap.Walking",
+                "地图路线服务请求超时",
+                "window.setTimeout",
+                "window.clearTimeout",
             ],
             "_plan_route_path_with_tencent_runtime": [
                 "https://apis.map.qq.com/ws/direction/v1/",
@@ -363,6 +366,9 @@ class TestMapProviderBackendContract(unittest.TestCase):
                 "function gcj02ToBd09(",
                 "function bd09ToGcj02(",
                 "百度地图脚本加载完成但运行时不可用",
+                "地图路线服务请求超时",
+                "window.setTimeout",
+                "window.clearTimeout",
             ],
         }
 
