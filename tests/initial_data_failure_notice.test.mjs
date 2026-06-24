@@ -92,11 +92,28 @@ test('offline initial data failure produces a user-facing notice', () => {
     getInitialDataFailureNotice({
       success: false,
       offline: true,
-      message: '后端无法连接服务器，已切换到离线模式',
+      message: '暂时无法连接到后端服务器，请刷新重试。如果问题依旧，请联系管理员。',
     }),
     {
-      title: '离线模式',
-      text: '后端无法连接服务器，已切换到离线模式',
+      title: '后端连接异常',
+      text: '暂时无法连接到后端服务器，请刷新重试。如果问题依旧，请联系管理员。',
+      icon: 'warning',
+    },
+  );
+});
+
+test('offline initial data failure defaults to refresh-first guidance', () => {
+  const getInitialDataFailureNotice = loadFunction('getInitialDataFailureNotice');
+
+  assert.deepEqual(
+    getInitialDataFailureNotice({
+      success: false,
+      offline: true,
+      message: '',
+    }),
+    {
+      title: '后端连接异常',
+      text: '暂时无法连接到后端服务器，请刷新重试。如果问题依旧，请联系管理员。',
       icon: 'warning',
     },
   );
@@ -112,5 +129,67 @@ test('successful initial data does not produce a failure notice', () => {
       message: '',
     }),
     null,
+  );
+});
+
+test('suppressed stale auth responses do not produce an initial data notice', () => {
+  const getInitialDataFailureNotice = loadFunction('getInitialDataFailureNotice');
+
+  assert.equal(
+    getInitialDataFailureNotice({
+      success: false,
+      stale_auth_response: true,
+      suppressed: true,
+      message: '令牌验证失败，可能账号在其他设备登录',
+    }),
+    null,
+  );
+});
+
+test('stale logged-out-elsewhere API responses are suppressed after a fresh login starts', () => {
+  const shouldSuppressLoggedOutElsewhereNotice = loadFunction(
+    'shouldSuppressLoggedOutElsewhereNotice',
+  );
+
+  assert.equal(
+    shouldSuppressLoggedOutElsewhereNotice(
+      { logged_out_elsewhere: true },
+      { authGeneration: 1, sessionUUID: 'old-session' },
+      { authGeneration: 2, sessionUUID: 'new-session', authLoginInProgress: false },
+    ),
+    true,
+  );
+
+  assert.equal(
+    shouldSuppressLoggedOutElsewhereNotice(
+      { logged_out_elsewhere: true },
+      { authGeneration: 2, sessionUUID: 'new-session' },
+      { authGeneration: 2, sessionUUID: 'new-session', authLoginInProgress: false },
+    ),
+    false,
+  );
+});
+
+test('logged-out-elsewhere API responses are suppressed while login is in progress', () => {
+  const shouldSuppressLoggedOutElsewhereNotice = loadFunction(
+    'shouldSuppressLoggedOutElsewhereNotice',
+  );
+
+  assert.equal(
+    shouldSuppressLoggedOutElsewhereNotice(
+      { logged_out_elsewhere: true },
+      { authGeneration: 3, sessionUUID: 'same-session' },
+      { authGeneration: 3, sessionUUID: 'same-session', authLoginInProgress: true },
+    ),
+    true,
+  );
+
+  assert.equal(
+    shouldSuppressLoggedOutElsewhereNotice(
+      { logged_out_elsewhere: false },
+      { authGeneration: 3, sessionUUID: 'same-session' },
+      { authGeneration: 4, sessionUUID: 'other-session', authLoginInProgress: true },
+    ),
+    false,
   );
 });

@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import ast
+import tempfile
 _import_failures = []
 _log_buffer = []
 _logging_exception_hooks_installed = False
@@ -157,6 +159,958 @@ def _apply_no_cache_headers(response):
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
+
+
+def _install_amap_dialog_guard(page, guard_label="AMap"):
+    """在 AMap 相关加载阶段自动拦截原生对话框，避免浏览器执行被阻塞。"""
+    try:
+        def _handle_dialog(dialog):
+            try:
+                logging.warning(
+                    f"[{guard_label}] 拦截原生弹窗 type={getattr(dialog, 'type', 'unknown')} message={getattr(dialog, 'message', '')}"
+                )
+                dialog.dismiss()
+            except Exception as dialog_error:
+                logging.debug(f"[{guard_label}] dismiss dialog failed: {dialog_error}")
+
+        page.on("dialog", _handle_dialog)
+    except Exception as e:
+        logging.debug(f"[{guard_label}] install dialog guard failed: {e}")
+
+
+MAP_PROVIDER_DISPLAY_NAMES = {
+    "amap": "高德地图",
+    "tencent": "腾讯地图",
+    "tianditu": "天地图",
+    "baidu": "百度地图",
+}
+
+MAP_PROVIDER_KEY_FIELDS = {
+    "amap": "js_key",
+    "tencent": "map_key",
+    "tianditu": "token",
+    "baidu": "ak",
+}
+
+
+
+def _normalize_map_provider(provider):
+    normalized = str(provider or "").strip().lower()
+    if normalized in MAP_PROVIDER_DISPLAY_NAMES:
+        return normalized
+    return "amap"
+
+
+
+def _get_active_map_provider(config=None):
+    runtime_config = config or _read_config_ini(CONFIG_FILE)
+    configured_provider = runtime_config.get("Map", "provider", fallback="amap")
+    return _normalize_map_provider(configured_provider)
+
+
+
+def _get_map_provider_runtime_config(config=None, provider=None):
+    runtime_config = config or _read_config_ini(CONFIG_FILE)
+    provider = _normalize_map_provider(provider or _get_active_map_provider(runtime_config))
+    providers_config = runtime_config.get("Map", "providers", fallback=None)
+    if isinstance(providers_config, dict):
+        amap_provider = providers_config.get("amap") or {}
+        tencent_provider = providers_config.get("tencent") or {}
+        tianditu_provider = providers_config.get("tianditu") or {}
+        baidu_provider = providers_config.get("baidu") or {}
+    else:
+        amap_provider = {}
+        tencent_provider = {}
+        tianditu_provider = {}
+        baidu_provider = {}
+    provider_configs = {
+        "amap": {
+            "provider": "amap",
+            "display_name": MAP_PROVIDER_DISPLAY_NAMES["amap"],
+            "js_key": str(
+                amap_provider.get("js_key")
+                or runtime_config.get("Map", "amap_js_key", fallback="")
+            ).strip(),
+            "coordinate_system": "gcj02",
+            "business_coordinate_system": "gcj02",
+        },
+        "tencent": {
+            "provider": "tencent",
+            "display_name": MAP_PROVIDER_DISPLAY_NAMES["tencent"],
+            "map_key": str(
+                tencent_provider.get("map_key")
+                or runtime_config.get("Map", "tencent_map_key", fallback="")
+            ).strip(),
+            "coordinate_system": "gcj02",
+            "business_coordinate_system": "gcj02",
+        },
+        "tianditu": {
+            "provider": "tianditu",
+            "display_name": MAP_PROVIDER_DISPLAY_NAMES["tianditu"],
+            "token": str(
+                tianditu_provider.get("token")
+                or runtime_config.get("Map", "tianditu_token", fallback="")
+            ).strip(),
+            "coordinate_system": "wgs84",
+            "business_coordinate_system": "gcj02",
+        },
+        "baidu": {
+            "provider": "baidu",
+            "display_name": MAP_PROVIDER_DISPLAY_NAMES["baidu"],
+            "ak": str(
+                baidu_provider.get("ak")
+                or runtime_config.get("Map", "baidu_map_ak", fallback="")
+            ).strip(),
+            "coordinate_system": "bd09",
+            "business_coordinate_system": "gcj02",
+        },
+    }
+    return provider_configs[provider]
+
+
+def _get_map_provider_frontend_config(config=None):
+    runtime_config = config or _read_config_ini(CONFIG_FILE)
+    map_provider = _get_active_map_provider(runtime_config)
+    map_providers = {
+        "amap": _get_map_provider_runtime_config(runtime_config, provider="amap"),
+        "tencent": _get_map_provider_runtime_config(runtime_config, provider="tencent"),
+        "tianditu": _get_map_provider_runtime_config(runtime_config, provider="tianditu"),
+        "baidu": _get_map_provider_runtime_config(runtime_config, provider="baidu"),
+    }
+    return {
+        "map_provider": map_provider,
+        "map_providers": map_providers,
+    }
+
+
+def _resolve_amap_js_key(config=None):
+    if isinstance(config, (str, bytes, os.PathLike)):
+        runtime_config = _read_config_ini(config)
+    else:
+        runtime_config = config or _read_config_ini(CONFIG_FILE)
+    if runtime_config is None:
+        runtime_config = _get_default_config()
+    providers_config = runtime_config.get("Map", "providers", fallback=None)
+    if isinstance(providers_config, str):
+        providers_config = JsonConfigAdapter._coerce_map_providers(providers_config)
+    if isinstance(providers_config, dict):
+        amap_provider = providers_config.get("amap") or {}
+        amap_js_key = str(amap_provider.get("js_key", "")).strip()
+        if amap_js_key:
+            return amap_js_key
+    return str(runtime_config.get("Map", "amap_js_key", fallback="")).strip()
+
+
+
+def _get_map_provider_plugins(provider, route_mode="walking"):
+    provider = _normalize_map_provider(provider)
+    normalized_route_mode = str(route_mode or "walking").strip().lower() or "walking"
+    if provider == "amap":
+        if normalized_route_mode == "driving":
+            return ["AMap.Driving"]
+        return ["AMap.Walking"]
+    return []
+
+
+
+def _install_map_runtime_guard(page, provider="amap", guard_label="MapRuntime"):
+    provider = _normalize_map_provider(provider)
+    try:
+        def _handle_page_error(error):
+            logging.warning(f"[{guard_label}] pageerror: {error}")
+
+        page.on("pageerror", _handle_page_error)
+    except Exception as e:
+        logging.debug(f"[{guard_label}] install generic runtime guard failed: {e}")
+
+    if provider == "amap":
+        _install_amap_dialog_guard(page, guard_label=guard_label)
+
+
+
+def _plan_route_with_map_provider(waypoints, provider=None, route_mode="walking", runtime_config=None):
+    runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
+    provider = _normalize_map_provider(provider or _get_active_map_provider(runtime_config))
+    provider_config = _get_map_provider_runtime_config(runtime_config, provider=provider)
+    actual_mode = str(route_mode or "walking").strip().lower() or "walking"
+    notices = []
+    if provider == "tianditu" and route_mode == "walking":
+        actual_mode = "driving"
+        notices.append("当前地图供应商不支持步行规划，已自动使用驾车规划代替")
+    plugins = _get_map_provider_plugins(provider, actual_mode)
+    return {
+        "provider": provider,
+        "provider_config": provider_config,
+        "route_mode": route_mode,
+        "actual_mode": actual_mode,
+        "plugins": plugins,
+        "notices": notices,
+        "waypoints": waypoints,
+    }
+
+
+
+def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_plan, python_params=None):
+    provider_config = provider_plan.get("provider_config") or {}
+    api_key = str(provider_config.get("js_key", "")).strip()
+    if not api_key:
+        return {"error": "未配置高德地图 JS Key"}
+
+    plugins = provider_plan.get("plugins") or ["AMap.Walking"]
+    actual_mode = str(provider_plan.get("actual_mode") or "walking").strip().lower() or "walking"
+    page.goto("about:blank")
+    return chrome_pool.execute_js(
+        session_id,
+        """
+        (async (arg) => {
+            const waypointsPy = arg[0] || [];
+            const apiKey = arg[1];
+            const pythonParams = arg[2] || {};
+            const plugins = arg[3] || ["AMap.Walking"];
+            const actualMode = arg[4] || "walking";
+            const useFallback = pythonParams.api_fallback_line ?? false;
+            const maxRetries = pythonParams.api_retries ?? 2;
+            const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            async function ensureAmapLoader() {
+                if (typeof AMapLoader !== 'undefined') {
+                    return;
+                }
+                await new Promise((resolve, reject) => {
+                    const existingScript = document.querySelector('script[data-amap-loader="true"]');
+                    if (existingScript) {
+                        existingScript.remove();
+                    }
+                    const script = document.createElement('script');
+                    script.src = 'https://webapi.amap.com/loader.js';
+                    script.async = true;
+                    script.defer = true;
+                    script.dataset.amapLoader = 'true';
+                    script.onload = () => resolve();
+                    script.onerror = () => reject(new Error('高德地图加载器加载失败'));
+                    document.head.appendChild(script);
+                });
+            }
+
+            function buildLngLat(point) {
+                return new AMap.LngLat(Number(point[0]), Number(point[1]));
+            }
+
+            function extractSegmentPath(result) {
+                const firstRoute = result && result.routes && result.routes[0];
+                const steps = firstRoute && Array.isArray(firstRoute.steps) ? firstRoute.steps : [];
+                const path = [];
+                steps.forEach(step => {
+                    const stepPath = Array.isArray(step.path) ? step.path : [];
+                    stepPath.forEach(pt => path.push({ lng: Number(pt.lng), lat: Number(pt.lat) }));
+                });
+                return path;
+            }
+
+            async function planPath() {
+                if (!Array.isArray(waypointsPy) || waypointsPy.length < 2) {
+                    return { error: 'Waypoints must be at least 2.' };
+                }
+
+                await ensureAmapLoader();
+                try {
+                    await AMapLoader.load({ key: apiKey, version: '2.0', plugins });
+                } catch (error) {
+                    return { error: 'AMapLoader.load failed: ' + (error ? error.message : 'Unknown error') };
+                }
+
+                const serviceName = actualMode === 'driving' ? 'Driving' : 'Walking';
+                const ServiceCtor = actualMode === 'driving' ? AMap.Driving : AMap.Walking;
+                if (typeof ServiceCtor === 'undefined') {
+                    return { error: `AMap.${serviceName} plugin failed to load` };
+                }
+
+                const service = new ServiceCtor({ map: null, panel: '', hideMarkers: true });
+                const waypoints = waypointsPy.map(buildLngLat);
+                const allPath = [];
+
+                const searchSegment = (start, end) => new Promise((resolve) => {
+                    service.search(start, end, (status, result) => {
+                        if (status === 'complete') {
+                            const segmentPath = extractSegmentPath(result);
+                            if (segmentPath.length > 0) {
+                                resolve({ path: segmentPath });
+                                return;
+                            }
+                        }
+                        const errorInfo = result && result.info ? result.info : status || 'Unknown error';
+                        resolve({ error: 'Path planning failed: ' + errorInfo });
+                    });
+                });
+
+                for (let i = 0; i < waypoints.length - 1; i += 1) {
+                    const realStart = waypoints[i];
+                    const realEnd = waypoints[i + 1];
+                    let attempts = 0;
+                    let segmentResult = null;
+                    let segmentPath = null;
+
+                    while (attempts <= maxRetries) {
+                        if (attempts > 0) {
+                            await sleep(retryDelayMs);
+                        }
+                        segmentResult = await searchSegment(realStart, realEnd);
+                        if (segmentResult.path) {
+                            segmentPath = segmentResult.path;
+                            break;
+                        }
+                        attempts += 1;
+                    }
+
+                    if (segmentPath) {
+                        if (i > 0) {
+                            allPath.push(...segmentPath.slice(1));
+                        } else {
+                            allPath.push(...segmentPath);
+                        }
+                    } else if (useFallback) {
+                        if (allPath.length === 0) {
+                            allPath.push({ lng: Number(realStart.lng), lat: Number(realStart.lat) });
+                        }
+                        allPath.push({ lng: Number(realEnd.lng), lat: Number(realEnd.lat) });
+                    } else {
+                        return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                    }
+                }
+
+                return { path: allPath };
+            }
+
+            return await planPath();
+        })
+        """,
+        waypoints,
+        api_key,
+        python_params or {},
+        plugins,
+        actual_mode,
+    )
+
+
+
+def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_plan, python_params=None):
+    provider_config = provider_plan.get("provider_config") or {}
+    map_key = str(provider_config.get("map_key", "")).strip()
+    if not map_key:
+        return {"error": "未配置腾讯地图 Key"}
+
+    actual_mode = str(provider_plan.get("actual_mode") or "walking").strip().lower() or "walking"
+    page.goto("about:blank")
+    return chrome_pool.execute_js(
+        session_id,
+        """
+        (async (arg) => {
+            const waypointsPy = arg[0] || [];
+            const mapKey = arg[1];
+            const pythonParams = arg[2] || {};
+            const actualMode = arg[3] || 'walking';
+            const routeType = actualMode === 'driving' ? 'driving' : 'walking';
+            const useFallback = pythonParams.api_fallback_line ?? false;
+            const maxRetries = pythonParams.api_retries ?? 2;
+            const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+            let jsonpRequestId = 0;
+
+            function buildRouteUrl(startCoord, endCoord) {
+                return `https://apis.map.qq.com/ws/direction/v1/${encodeURIComponent(routeType)}/?from=${encodeURIComponent(`${startCoord.lat},${startCoord.lng}`)}&to=${encodeURIComponent(`${endCoord.lat},${endCoord.lng}`)}&output=jsonp&key=${encodeURIComponent(mapKey)}`;
+            }
+
+            function requestJsonp(url) {
+                return new Promise((resolve, reject) => {
+                    const callbackName = `__qqRouteCallback_${Date.now()}_${++jsonpRequestId}`;
+                    const requestUrl = url.includes('?') ? `${url}&callback=${encodeURIComponent(callbackName)}` : `${url}?callback=${encodeURIComponent(callbackName)}`;
+                    const script = document.createElement('script');
+                    let settled = false;
+                    let timeoutId = null;
+
+                    function cleanup() {
+                        if (timeoutId) {
+                            window.clearTimeout(timeoutId);
+                        }
+                        if (script.parentNode) {
+                            script.parentNode.removeChild(script);
+                        }
+                        try {
+                            delete window[callbackName];
+                        } catch (error) {
+                            window[callbackName] = undefined;
+                        }
+                    }
+
+                    window[callbackName] = function (data) {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        cleanup();
+                        resolve(data);
+                    };
+
+                    script.src = requestUrl;
+                    script.async = true;
+                    script.onerror = () => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        cleanup();
+                        reject(new Error('腾讯路线服务 JSONP 加载失败'));
+                    };
+
+                    timeoutId = window.setTimeout(() => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        cleanup();
+                        reject(new Error('腾讯路线服务 JSONP 请求超时'));
+                    }, 15000);
+
+                    document.head.appendChild(script);
+                });
+            }
+
+            function decodePolyline(polyline) {
+                if (!Array.isArray(polyline) || polyline.length < 2) {
+                    return [];
+                }
+                const coors = polyline.slice();
+                for (let i = 2; i < coors.length; i += 1) {
+                    coors[i] = Number(coors[i - 2]) + Number(coors[i]) / 1000000;
+                }
+                const points = [];
+                for (let i = 0; i < coors.length; i += 2) {
+                    const lat = Number(coors[i]);
+                    const lng = Number(coors[i + 1]);
+                    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                        points.push({ lng, lat });
+                    }
+                }
+                return points;
+            }
+
+            function extractRoutePathPoints(routeResponse) {
+                const routes = routeResponse && routeResponse.result && routeResponse.result.routes;
+                const firstRoute = Array.isArray(routes) ? routes[0] : null;
+                const polyline = firstRoute && Array.isArray(firstRoute.polyline) ? firstRoute.polyline : null;
+                return decodePolyline(polyline);
+            }
+
+            async function searchSegment(startCoord, endCoord) {
+                const data = await requestJsonp(buildRouteUrl(startCoord, endCoord));
+                if (!data || typeof data !== 'object') {
+                    return { error: '路线服务未返回有效数据。' };
+                }
+                if (data.status !== 0) {
+                    return { error: data.message || `路线服务返回状态异常：${data.status}` };
+                }
+                const pathPoints = extractRoutePathPoints(data);
+                if (pathPoints.length < 2) {
+                    return { error: '路线服务未返回可绘制的有效路径点。' };
+                }
+                return { path: pathPoints };
+            }
+
+            if (!Array.isArray(waypointsPy) || waypointsPy.length < 2) {
+                return { error: 'Waypoints must be at least 2.' };
+            }
+
+            const waypoints = waypointsPy.map(point => ({ lng: Number(point[0]), lat: Number(point[1]) }));
+            const allPath = [];
+
+            for (let i = 0; i < waypoints.length - 1; i += 1) {
+                const realStart = waypoints[i];
+                const realEnd = waypoints[i + 1];
+                let attempts = 0;
+                let segmentResult = null;
+                let segmentPath = null;
+
+                while (attempts <= maxRetries) {
+                    if (attempts > 0) {
+                        await sleep(retryDelayMs);
+                    }
+                    segmentResult = await searchSegment(realStart, realEnd);
+                    if (segmentResult.path) {
+                        segmentPath = segmentResult.path;
+                        break;
+                    }
+                    attempts += 1;
+                }
+
+                if (segmentPath) {
+                    if (i > 0) {
+                        allPath.push(...segmentPath.slice(1));
+                    } else {
+                        allPath.push(...segmentPath);
+                    }
+                } else if (useFallback) {
+                    if (allPath.length === 0) {
+                        allPath.push({ lng: realStart.lng, lat: realStart.lat });
+                    }
+                    allPath.push({ lng: realEnd.lng, lat: realEnd.lat });
+                } else {
+                    return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                }
+            }
+
+            return { path: allPath };
+        })
+        """,
+        waypoints,
+        map_key,
+        python_params or {},
+        actual_mode,
+    )
+
+
+
+def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider_plan, python_params=None):
+    provider_config = provider_plan.get("provider_config") or {}
+    token = str(provider_config.get("token", "")).strip()
+    if not token:
+        return {"error": "未配置天地图 Token"}
+
+    actual_mode = str(provider_plan.get("actual_mode") or "driving").strip().lower() or "driving"
+    page.goto("about:blank")
+    return chrome_pool.execute_js(
+        session_id,
+        """
+        (async (arg) => {
+            const waypointsPy = arg[0] || [];
+            const token = arg[1];
+            const pythonParams = arg[2] || {};
+            const actualMode = arg[3] || 'driving';
+            const useFallback = pythonParams.api_fallback_line ?? false;
+            const maxRetries = pythonParams.api_retries ?? 2;
+            const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+            const GCJ_PI = Math.PI;
+            const GCJ_A = 6378245.0;
+            const GCJ_EE = 0.00669342162296594323;
+
+            function isOutOfChina(lng, lat) {
+                return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
+            }
+
+            function transformLat(x, y) {
+                let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+                ret += (20.0 * Math.sin(6.0 * x * GCJ_PI) + 20.0 * Math.sin(2.0 * x * GCJ_PI)) * 2.0 / 3.0;
+                ret += (20.0 * Math.sin(y * GCJ_PI) + 40.0 * Math.sin(y / 3.0 * GCJ_PI)) * 2.0 / 3.0;
+                ret += (160.0 * Math.sin(y / 12.0 * GCJ_PI) + 320 * Math.sin(y * GCJ_PI / 30.0)) * 2.0 / 3.0;
+                return ret;
+            }
+
+            function transformLng(x, y) {
+                let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+                ret += (20.0 * Math.sin(6.0 * x * GCJ_PI) + 20.0 * Math.sin(2.0 * x * GCJ_PI)) * 2.0 / 3.0;
+                ret += (20.0 * Math.sin(x * GCJ_PI) + 40.0 * Math.sin(x / 3.0 * GCJ_PI)) * 2.0 / 3.0;
+                ret += (150.0 * Math.sin(x / 12.0 * GCJ_PI) + 300.0 * Math.sin(x / 30.0 * GCJ_PI)) * 2.0 / 3.0;
+                return ret;
+            }
+
+            function tdtCoordinateToGcj02(coord) {
+                const lng = Number(coord && coord.lng);
+                const lat = Number(coord && coord.lat);
+                if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                    throw new Error('地图工作坐标无效，无法转换为高德坐标。');
+                }
+                if (isOutOfChina(lng, lat)) {
+                    return { lng, lat };
+                }
+                let dLat = transformLat(lng - 105.0, lat - 35.0);
+                let dLng = transformLng(lng - 105.0, lat - 35.0);
+                const radLat = lat / 180.0 * GCJ_PI;
+                let magic = Math.sin(radLat);
+                magic = 1 - GCJ_EE * magic * magic;
+                const sqrtMagic = Math.sqrt(magic);
+                dLat = (dLat * 180.0) / ((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic) * GCJ_PI);
+                dLng = (dLng * 180.0) / (GCJ_A / sqrtMagic * Math.cos(radLat) * GCJ_PI);
+                return { lng: lng + dLng, lat: lat + dLat };
+            }
+
+            function gcj02ToTdtCoordinate(coord) {
+                const lng = Number(coord && coord.lng);
+                const lat = Number(coord && coord.lat);
+                if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                    throw new Error('高德坐标无效，无法转换为地图工作坐标。');
+                }
+                if (isOutOfChina(lng, lat)) {
+                    return { lng, lat };
+                }
+                const guessed = tdtCoordinateToGcj02({ lng, lat });
+                return { lng: lng * 2 - guessed.lng, lat: lat * 2 - guessed.lat };
+            }
+
+            function buildDrivingRouteUrl(startCoord, endCoord) {
+                const postStr = {
+                    orig: `${startCoord.lng},${startCoord.lat}`,
+                    dest: `${endCoord.lng},${endCoord.lat}`,
+                    style: '0'
+                };
+                return `https://api.tianditu.gov.cn/drive?postStr=${encodeURIComponent(JSON.stringify(postStr))}&type=search&tk=${encodeURIComponent(token)}`;
+            }
+
+            function extractRoutePathPoints(routeXmlText) {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(routeXmlText, 'text/xml');
+                const parserError = xmlDoc.querySelector('parsererror');
+                if (parserError) {
+                    throw new Error('路线服务返回了无法解析的 XML。');
+                }
+                const resultNode = xmlDoc.querySelector('result');
+                if (!resultNode) {
+                    throw new Error('路线服务未返回 result 节点。');
+                }
+                const routeLatLonNode = resultNode.querySelector('routelatlon');
+                const rawRoute = routeLatLonNode ? routeLatLonNode.textContent.trim() : '';
+                if (!rawRoute) {
+                    throw new Error('路线服务未返回可绘制的路径点。');
+                }
+                const points = rawRoute
+                    .split(';')
+                    .map(pair => pair.trim())
+                    .filter(Boolean)
+                    .map(pair => {
+                        const match = pair.match(/^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/);
+                        if (!match) {
+                            return null;
+                        }
+                        const lng = Number(match[1]);
+                        const lat = Number(match[2]);
+                        if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                            return null;
+                        }
+                        return tdtCoordinateToGcj02({ lng, lat });
+                    })
+                    .filter(Boolean);
+                if (points.length < 2) {
+                    throw new Error('路线服务未返回足够的有效路径点。');
+                }
+                return points;
+            }
+
+            async function searchSegment(startCoord, endCoord) {
+                const response = await fetch(buildDrivingRouteUrl(startCoord, endCoord));
+                if (!response.ok) {
+                    return { error: `路线服务请求失败：HTTP ${response.status}` };
+                }
+                const xmlText = await response.text();
+                return { path: extractRoutePathPoints(xmlText) };
+            }
+
+            if (actualMode !== 'driving') {
+                return { error: '当前天地图执行器仅支持驾车规划。' };
+            }
+            if (!Array.isArray(waypointsPy) || waypointsPy.length < 2) {
+                return { error: 'Waypoints must be at least 2.' };
+            }
+
+            const waypoints = waypointsPy.map(point => gcj02ToTdtCoordinate({ lng: Number(point[0]), lat: Number(point[1]) }));
+            const allPath = [];
+
+            for (let i = 0; i < waypoints.length - 1; i += 1) {
+                const realStart = waypoints[i];
+                const realEnd = waypoints[i + 1];
+                let attempts = 0;
+                let segmentResult = null;
+                let segmentPath = null;
+
+                while (attempts <= maxRetries) {
+                    if (attempts > 0) {
+                        await sleep(retryDelayMs);
+                    }
+                    segmentResult = await searchSegment(realStart, realEnd);
+                    if (segmentResult.path) {
+                        segmentPath = segmentResult.path;
+                        break;
+                    }
+                    attempts += 1;
+                }
+
+                if (segmentPath) {
+                    if (i > 0) {
+                        allPath.push(...segmentPath.slice(1));
+                    } else {
+                        allPath.push(...segmentPath);
+                    }
+                } else if (useFallback) {
+                    const startGcj = tdtCoordinateToGcj02(realStart);
+                    const endGcj = tdtCoordinateToGcj02(realEnd);
+                    if (allPath.length === 0) {
+                        allPath.push(startGcj);
+                    }
+                    allPath.push(endGcj);
+                } else {
+                    return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                }
+            }
+
+            return { path: allPath };
+        })
+        """,
+        waypoints,
+        token,
+        python_params or {},
+        actual_mode,
+    )
+
+
+
+def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_plan, python_params=None):
+    provider_config = provider_plan.get("provider_config") or {}
+    ak = str(provider_config.get("ak", "")).strip()
+    if not ak:
+        return {"error": "未配置百度地图 AK"}
+
+    actual_mode = str(provider_plan.get("actual_mode") or "walking").strip().lower() or "walking"
+    page.goto("about:blank")
+    return chrome_pool.execute_js(
+        session_id,
+        """
+        (async (arg) => {
+            const waypointsPy = arg[0] || [];
+            const ak = arg[1];
+            const pythonParams = arg[2] || {};
+            const actualMode = arg[3] || 'walking';
+            const useFallback = pythonParams.api_fallback_line ?? false;
+            const maxRetries = pythonParams.api_retries ?? 2;
+            const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            function gcj02ToBd09(lng, lat) {
+                const xPi = Math.PI * 3000.0 / 180.0;
+                const z = Math.sqrt(lng * lng + lat * lat) + 0.00002 * Math.sin(lat * xPi);
+                const theta = Math.atan2(lat, lng) + 0.000003 * Math.cos(lng * xPi);
+                return {
+                    lng: z * Math.cos(theta) + 0.0065,
+                    lat: z * Math.sin(theta) + 0.006
+                };
+            }
+
+            function bd09ToGcj02(lng, lat) {
+                const xPi = Math.PI * 3000.0 / 180.0;
+                const x = lng - 0.0065;
+                const y = lat - 0.006;
+                const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * xPi);
+                const theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * xPi);
+                return {
+                    lng: z * Math.cos(theta),
+                    lat: z * Math.sin(theta)
+                };
+            }
+
+            async function ensureBaiduMapScript() {
+                if (window.BMap && typeof window.BMap.Map === 'function') {
+                    return;
+                }
+                await new Promise((resolve, reject) => {
+                    const existingScript = document.querySelector('script[data-baidu-map-api="true"]');
+                    if (existingScript) {
+                        existingScript.remove();
+                    }
+                    const script = document.createElement('script');
+                    const callbackName = '__backendBaiduMapApiLoaded';
+                    script.src = `https://api.map.baidu.com/api?v=3.0&ak=${encodeURIComponent(ak)}&callback=${callbackName}`;
+                    script.async = true;
+                    script.defer = true;
+                    script.dataset.baiduMapApi = 'true';
+                    window[callbackName] = function () {
+                        try {
+                            delete window[callbackName];
+                        } catch (error) {
+                            window[callbackName] = undefined;
+                        }
+                        resolve();
+                    };
+                    script.onerror = () => reject(new Error('百度地图脚本加载失败，请检查 AK 或网络连接。'));
+                    document.head.appendChild(script);
+                });
+            }
+
+            function ensureMapInstance() {
+                let container = document.getElementById('__backend_baidu_route_map__');
+                if (!container) {
+                    container = document.createElement('div');
+                    container.id = '__backend_baidu_route_map__';
+                    container.style.cssText = 'width:1px;height:1px;position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none;';
+                    document.body.appendChild(container);
+                }
+                if (!window.__backendBaiduRouteMap) {
+                    window.__backendBaiduRouteMap = new BMap.Map(container);
+                    window.__backendBaiduRouteMap.centerAndZoom(new BMap.Point(116.404, 39.915), 12);
+                }
+                return window.__backendBaiduRouteMap;
+            }
+
+            function createRouteSearch(routeType, map, resolve) {
+                let searchInstance = null;
+                const commonOptions = {
+                    renderOptions: {
+                        map,
+                        autoViewport: false,
+                        enableDragging: false
+                    },
+                    onSearchComplete(results) {
+                        const status = searchInstance && typeof searchInstance.getStatus === 'function'
+                            ? searchInstance.getStatus()
+                            : null;
+                        try {
+                            const firstPlan = results && typeof results.getPlan === 'function' ? results.getPlan(0) : null;
+                            if (!firstPlan || typeof firstPlan.getNumRoutes !== 'function') {
+                                throw new Error('路线结果中未找到有效方案。');
+                            }
+                            const routeCount = firstPlan.getNumRoutes();
+                            const points = [];
+                            for (let i = 0; i < routeCount; i += 1) {
+                                const route = firstPlan.getRoute(i);
+                                if (!route || typeof route.getPath !== 'function') {
+                                    continue;
+                                }
+                                const path = route.getPath();
+                                if (Array.isArray(path)) {
+                                    path.forEach(point => {
+                                        const converted = bd09ToGcj02(Number(point.lng), Number(point.lat));
+                                        points.push({ lng: converted.lng, lat: converted.lat });
+                                    });
+                                }
+                            }
+                            if (points.length < 2) {
+                                throw new Error('路线结果未返回可绘制的有效路径点。');
+                            }
+                            resolve({ path: points });
+                        } catch (error) {
+                            if (status !== null && typeof BMAP_STATUS_SUCCESS !== 'undefined' && status !== BMAP_STATUS_SUCCESS) {
+                                resolve({ error: `路线规划失败，状态码：${status}` });
+                                return;
+                            }
+                            resolve({ error: error.message || String(error) });
+                        }
+                    }
+                };
+
+                if (routeType === 'walking') {
+                    searchInstance = new BMap.WalkingRoute(map, commonOptions);
+                } else {
+                    searchInstance = new BMap.DrivingRoute(map, commonOptions);
+                }
+                return searchInstance;
+            }
+
+            function searchSegment(startCoord, endCoord, routeType, map) {
+                return new Promise((resolve) => {
+                    const searchInstance = createRouteSearch(routeType, map, resolve);
+                    searchInstance.search(startCoord, endCoord);
+                });
+            }
+
+            if (!Array.isArray(waypointsPy) || waypointsPy.length < 2) {
+                return { error: 'Waypoints must be at least 2.' };
+            }
+
+            await ensureBaiduMapScript();
+            const map = ensureMapInstance();
+            const routeType = actualMode === 'driving' ? 'driving' : 'walking';
+            const waypoints = waypointsPy.map(point => {
+                const converted = gcj02ToBd09(Number(point[0]), Number(point[1]));
+                return new BMap.Point(converted.lng, converted.lat);
+            });
+            const allPath = [];
+
+            for (let i = 0; i < waypoints.length - 1; i += 1) {
+                const realStart = waypoints[i];
+                const realEnd = waypoints[i + 1];
+                let attempts = 0;
+                let segmentResult = null;
+                let segmentPath = null;
+
+                while (attempts <= maxRetries) {
+                    if (attempts > 0) {
+                        await sleep(retryDelayMs);
+                    }
+                    segmentResult = await searchSegment(realStart, realEnd, routeType, map);
+                    if (segmentResult.path) {
+                        segmentPath = segmentResult.path;
+                        break;
+                    }
+                    attempts += 1;
+                }
+
+                if (segmentPath) {
+                    if (i > 0) {
+                        allPath.push(...segmentPath.slice(1));
+                    } else {
+                        allPath.push(...segmentPath);
+                    }
+                } else if (useFallback) {
+                    const startGcj = bd09ToGcj02(Number(realStart.lng), Number(realStart.lat));
+                    const endGcj = bd09ToGcj02(Number(realEnd.lng), Number(realEnd.lat));
+                    if (allPath.length === 0) {
+                        allPath.push(startGcj);
+                    }
+                    allPath.push(endGcj);
+                } else {
+                    return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                }
+            }
+
+            return { path: allPath };
+        })
+        """,
+        waypoints,
+        ak,
+        python_params or {},
+        actual_mode,
+    )
+
+
+
+def _plan_route_path_with_provider_runtime(session_id, waypoints, python_params=None, provider=None, runtime_config=None, guard_label="MapRoutePlanning"):
+    runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
+    provider_plan = _plan_route_with_map_provider(
+        waypoints,
+        provider=provider,
+        route_mode="walking",
+        runtime_config=runtime_config,
+    )
+    provider = provider_plan["provider"]
+
+    global chrome_pool
+    if not chrome_pool:
+        return {
+            "error": "Chrome浏览器池不可用，无法进行路径规划。",
+            "provider": provider,
+            "notices": provider_plan.get("notices", []),
+        }
+
+    ctx = chrome_pool.get_context(session_id)
+    page = ctx["page"]
+    _install_map_runtime_guard(page, provider=provider, guard_label=guard_label)
+
+    if provider == "amap":
+        result = _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_plan, python_params)
+    elif provider == "tencent":
+        result = _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_plan, python_params)
+    elif provider == "tianditu":
+        result = _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider_plan, python_params)
+    elif provider == "baidu":
+        result = _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_plan, python_params)
+    else:
+        result = {"error": f"不支持的地图供应商: {provider}"}
+
+    if not isinstance(result, dict):
+        result = {"error": "路径规划执行器未返回有效结果。"}
+    result["provider"] = provider
+    result["provider_plan"] = provider_plan
+    result["notices"] = provider_plan.get("notices", [])
+    return result
+
+
 
 
 def _parse_daily_restart_time_string(time_value):
@@ -733,6 +1687,21 @@ def _get_smsbao_error_message(result_code):
 
 
 
+def _digits_only(value):
+    return re.sub(r"\D", "", str(value or "").strip())
+
+
+
+def _normalize_phone(value):
+    return _digits_only(value)[:11]
+
+
+
+def _normalize_sms_code(value):
+    return _digits_only(value)
+
+
+
 def verify_captcha(captcha_id, user_input):
     """
     验证验证码辅助函数
@@ -970,7 +1939,9 @@ def import_standard_libraries():
 
     std_libs = [
         ("ssl", "import ssl"),
-        ("eventlet", "import eventlet"),
+        # eventlet 属于第三方依赖，不应放在标准库检查里。
+        # 其缺失应由后续核心依赖检查统一报告为“依赖缺失”，而非 Python 环境损坏。
+        # eventlet 相关导入放在 import_core_third_party() 中处理。
         # ("eventlet.wsgi", "import eventlet.wsgi"),
         ("argparse", "import argparse"),
         ("base64", "import base64"),
@@ -3748,7 +4719,11 @@ def _get_default_config():
     }
 
     config["Map"] = {
+        "provider": "amap",
         "amap_js_key": "",
+        "tencent_map_key": "",
+        "tianditu_token": "",
+        "baidu_map_ak": "",
     }
 
     config["IP_Location"] = {
@@ -5077,9 +6052,42 @@ class JsonConfigAdapter:
         self._data: dict = {}
         for sec, opts in raw.items():
             if isinstance(opts, dict):
-                self._data[sec] = {k: str(v) for k, v in opts.items()}
+                self._data[sec] = {}
+                for k, v in opts.items():
+                    if sec == "Map" and k == "providers":
+                        self._data[sec][k] = self._coerce_map_providers(v)
+                    else:
+                        self._data[sec][k] = str(v)
             else:
                 self._data[sec] = {}
+
+    @staticmethod
+    def _coerce_map_providers(value):
+        if isinstance(value, dict):
+            source = value
+        elif isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return {}
+            source = {}
+            for parser in (json.loads, ast.literal_eval):
+                try:
+                    parsed = parser(text)
+                except Exception:
+                    continue
+                if isinstance(parsed, dict):
+                    source = parsed
+                    break
+        else:
+            return {}
+
+        normalized = {}
+        for provider_name, provider_values in source.items():
+            if isinstance(provider_values, dict):
+                normalized[str(provider_name)] = {
+                    key: str(value) for key, value in provider_values.items()
+                }
+        return normalized
 
     # ── 读取接口 ──────────────────────────────────────────────────────────
 
@@ -5146,7 +6154,10 @@ class JsonConfigAdapter:
     def set(self, section: str, option: str, value: str = None):
         if section not in self._data:
             self._data[section] = {}
-        self._data[section][option] = str(value) if value is not None else ""
+        if section == "Map" and option == "providers":
+            self._data[section][option] = self._coerce_map_providers(value)
+        else:
+            self._data[section][option] = str(value) if value is not None else ""
 
     def remove_option(self, section: str, option: str) -> bool:
         if section in self._data and option in self._data[section]:
@@ -5166,10 +6177,27 @@ class JsonConfigAdapter:
         parent_dir = os.path.dirname(abs_path)
         os.makedirs(parent_dir, exist_ok=True)
         with CONFIG_JSON_LOCK:
+            data = {}
+            for section, options in self._data.items():
+                if not isinstance(options, dict):
+                    data[section] = {}
+                    continue
+                section_data = {}
+                has_provider_map = section == "Map" and isinstance(options.get("providers"), dict)
+                for key, value in options.items():
+                    if has_provider_map and key in {
+                        "amap_js_key",
+                        "tencent_map_key",
+                        "tianditu_token",
+                        "baidu_map_ak",
+                    }:
+                        continue
+                    section_data[key] = value if isinstance(value, dict) else str(value)
+                data[section] = section_data
             with tempfile.NamedTemporaryFile(
                 "w", encoding="utf-8", delete=False, dir=parent_dir, suffix=".tmp"
             ) as tmpf:
-                json.dump(self._data, tmpf, indent=2, ensure_ascii=False)
+                json.dump(data, tmpf, indent=2, ensure_ascii=False)
                 tmp_path = tmpf.name
             os.replace(tmp_path, abs_path)
 
@@ -5184,7 +6212,17 @@ class JsonConfigAdapter:
         try:
             with open(filename, "r", encoding=encoding or "utf-8") as f:
                 raw = json.load(f)
-            self._data = {sec: {k: str(v) for k, v in opts.items()} for sec, opts in raw.items() if isinstance(opts, dict)}
+            self._data = {}
+            for sec, opts in raw.items():
+                if not isinstance(opts, dict):
+                    self._data[sec] = {}
+                    continue
+                self._data[sec] = {}
+                for k, v in opts.items():
+                    if sec == "Map" and k == "providers":
+                        self._data[sec][k] = self._coerce_map_providers(v)
+                    else:
+                        self._data[sec][k] = str(v)
             self._path = filename
         except Exception:
             pass
@@ -6145,6 +7183,31 @@ def get_session_file_path(session_id: str) -> str:
     """根据 session_id (UUID) 计算会话文件的完整路径"""
     session_hash = hashlib.sha256(session_id.encode()).hexdigest()
     return os.path.join(SESSION_STORAGE_DIR, f"{session_hash}.json")
+
+
+SESSION_UUID_V4_PATTERN = re.compile(
+    r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
+    re.IGNORECASE,
+)
+
+
+def normalize_session_uuid(session_id):
+    """返回有效 UUID v4 字符串；无效或空值返回空字符串。"""
+    normalized = str(session_id or "").strip()
+    if not normalized or normalized.lower() in {"null", "undefined", "none"}:
+        return ""
+    if not SESSION_UUID_V4_PATTERN.match(normalized):
+        return ""
+    return normalized
+
+
+AUTH_OPTIONAL_API_METHODS = {"get_initial_data"}
+
+
+def is_auth_optional_api_method(method):
+    """这些通用 API 可在尚未创建业务会话时用于只读初始化。"""
+    normalized = str(method or "").strip()
+    return normalized in AUTH_OPTIONAL_API_METHODS
 
 
 # ==============================================================================
@@ -8225,6 +9288,9 @@ class AuthSystem:
                         logging.warning(f"查询IP归属地失败 {last_ip}: {ip_e}")
                         last_city = "查询失败"
 
+                school_accounts_data = self._load_user_school_accounts(auth_username) or {}
+                school_accounts = list(school_accounts_data.keys())
+
                 users.append(
                     {
                         "auth_username": auth_username,
@@ -8238,6 +9304,7 @@ class AuthSystem:
                         "2fa_enabled": user_data.get("2fa_enabled", False),
                         "banned": user_data.get("banned", False),
                         "max_sessions": user_data.get("max_sessions", 1),
+                        "school_accounts": school_accounts,
                         # 添加可用执行次数字段：从用户数据中获取 available_runs，默认值为0
                         # -1 表示无限次数，0表示无剩余次数，正数表示剩余次数
                         "available_runs": user_data.get("available_runs", 0),
@@ -12078,23 +13145,10 @@ class Api:
         try:
             cfg = _read_config_ini(self.config_path) or _get_default_config()
 
-            amap_key = cfg.get("Map", "amap_js_key", fallback="")
+            amap_key = _resolve_amap_js_key(cfg)
 
             if not amap_key:
                 amap_key = cfg.get("System", "AmapJsKey", fallback="")
-                if amap_key:
-                    if not cfg.has_section("Map"):
-                        cfg.add_section("Map")
-                    cfg.set("Map", "amap_js_key", amap_key)
-                    # 将 AmapJsKey 从旧版 [System] 迁移到新版 [Map] 节（尽力写入）
-                    # 如果配置文件只读，写入失败不影响 amap_key 已加载到内存中的值
-                    try:
-                        _write_config_with_comments(cfg, self.config_path)
-                        logging.info("已将AmapJsKey从旧版[System]迁移到新版[Map]")
-                    except Exception as write_err:
-                        logging.warning(
-                            f"迁移AmapJsKey时写入配置文件失败（可忽略，键已加载到内存）: {write_err}"
-                        )
 
             self.global_params["amap_js_key"] = amap_key
 
@@ -12493,11 +13547,14 @@ class Api:
             except Exception as e:
                 logging.warning(f"[get_initial_data] 获取CDN缓存状态失败: {e}")
 
+            map_config = _get_map_provider_frontend_config(cfg)
             response_data = {
                 "success": True,
                 "users": users,
                 "lastUser": last_user,
-                "amap_key": self.global_params.get("amap_js_key", ""),
+                "amap_key": _resolve_amap_js_key(self.config_path),
+                "map_provider": map_config["map_provider"],
+                "map_providers": map_config["map_providers"],
                 "isLoggedIn": is_logged_in,
                 "userInfo": user_info,
                 "is_authenticated": is_authenticated,
@@ -12556,7 +13613,7 @@ class Api:
             return {
                 "success": False,
                 "offline": True,
-                "message": "后端无法连接服务器，已切换到离线模式",
+                "message": "暂时无法连接到后端服务器，请刷新重试。如果问题依旧，请联系管理员。",
             }
 
     def get_user_sessions(self):
@@ -12657,31 +13714,61 @@ class Api:
             logging.error(f"获取用户会话列表时发生错误: {e}", exc_info=True)
             return {"success": False, "message": f"服务器内部错误: {e}"}
 
-    def save_amap_key(self, api_key: str):
-        """由JS调用，保存高德地图API Key到主配置文件"""
+    def save_map_provider_key(self, provider, api_key):
+        """由JS调用，保存当前地图提供方对应的 API Key 到主配置文件。"""
         try:
-            self.global_params["amap_js_key"] = api_key
+            provider = _normalize_map_provider(provider)
+            key_field = MAP_PROVIDER_KEY_FIELDS[provider]
+            api_key = str(api_key or "").strip()
+            if not api_key:
+                return {"success": False, "message": "API Key不能为空"}
+
             cfg = _read_config_ini(self.config_path) or _get_default_config()
 
             if not cfg.has_section("Map"):
                 cfg.add_section("Map")
-            cfg.set("Map", "amap_js_key", api_key)
+            providers = cfg.get("Map", "providers", fallback={})
+            if isinstance(providers, str):
+                providers = JsonConfigAdapter._coerce_map_providers(providers)
+            if not isinstance(providers, dict):
+                providers = {}
+
+            provider_config = providers.get(provider) or {}
+            provider_config[key_field] = api_key
+            providers[provider] = provider_config
+            cfg.set("Map", "providers", providers)
+            legacy_keys = {
+                "amap": "amap_js_key",
+                "tencent": "tencent_map_key",
+                "tianditu": "tianditu_token",
+                "baidu": "baidu_map_ak",
+            }
+            legacy_key = legacy_keys.get(provider)
+            if legacy_key and cfg.has_option("Map", legacy_key):
+                cfg.remove_option("Map", legacy_key)
+            if provider == "amap":
+                self.global_params["amap_js_key"] = api_key
 
             _write_config_with_comments(cfg, self.config_path)
 
-            self.log("高德地图API Key已保存。")
-            logging.info("已成功保存新的高德地图JavaScript API密钥")
-            return {"success": True}
+            display_name = MAP_PROVIDER_DISPLAY_NAMES[provider]
+            self.log(f"{display_name} API Key已保存。")
+            logging.info(f"已成功保存新的{display_name} API Key")
+            map_config = _get_map_provider_frontend_config(cfg)
+            return {
+                "success": True,
+                "map_provider": map_config["map_provider"],
+                "map_providers": map_config["map_providers"],
+                "amap_key": _resolve_amap_js_key(cfg),
+            }
         except Exception as e:
-            self.log(f"保存高德地图API Key失败: {e}")
-            logging.error(f"保存高德地图JavaScript API密钥失败: {e}")
+            self.log(f"保存地图API Key失败: {e}")
+            logging.error(f"保存地图API Key失败: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
-        except Exception as e:
-            self.log(f"API Key保存失败: {e}")
-            logging.error(
-                f"保存高德地图JavaScript API密钥时发生异常: {e}", exc_info=True
-            )
-            return {"success": False, "message": str(e)}
+
+    def save_amap_key(self, api_key: str):
+        """由JS调用，保存高德地图API Key到主配置文件"""
+        return self.save_map_provider_key("amap", api_key)
 
     def on_user_selected(self, username):
         """
@@ -12966,11 +14053,16 @@ class Api:
         # auth_group = getattr(self, "auth_group", "guest")
         # auth_group = auth_system.get_user_group( )
 
+        login_map_config = _get_map_provider_frontend_config(
+            _read_config_ini(self.config_path) or _get_default_config()
+        )
         return {
             "success": True,
             "userInfo": user_info_dict,
             "ua": self.device_ua,
-            "amap_key": self.global_params.get("amap_js_key", ""),
+            "amap_key": _resolve_amap_js_key(self.config_path),
+            "map_provider": login_map_config["map_provider"],
+            "map_providers": login_map_config["map_providers"],
             # "auth_group": auth_group,
             "cached_notifications": cached_notifications,
         }
@@ -13618,7 +14710,8 @@ class Api:
         tar_lon, tar_lat = run_data.target_points[run_data.target_sequence]
 
         dist = self._calculate_distance_m(
-            current_lon, current_lat, tar_lon, tar_lat)
+            current_lon, current_lat, tar_lon, tar_lat
+        )
 
         is_in_zone = dist < self.target_range_m
 
@@ -14458,7 +15551,7 @@ class Api:
         return (s[0] + (e[0] - s[0]) * ratio, s[1] + (e[1] - s[1]) * ratio)
 
     def auto_generate_path_with_api(self, api_path_coords, min_t_m, max_t_m, min_d_m):
-        """接收由前端JS API规划好的路径点，并生成模拟数据"""
+        """接收地图供应商规划好的路径点，并生成模拟数据"""
         logging.info(
             f"API CALL: auto_generate_path_with_api with {len(api_path_coords)} points"
         )
@@ -14466,12 +15559,12 @@ class Api:
             return {"success": False, "message": "请先选择任务"}
         run = self.all_run_data[self.current_run_idx]
 
-        self.log("收到JS API路径，正在生成模拟数据...")
+        self.log("收到地图路径规划结果，正在生成模拟数据...")
         logging.info(
-            f"Auto-generating path from {len(api_path_coords)} Amap API points."
+            f"Auto-generating path from {len(api_path_coords)} map provider points."
         )
         if not api_path_coords or len(api_path_coords) < 2:
-            return {"success": False, "message": "高德API未能返回有效路径"}
+            return {"success": False, "message": "地图服务未能返回有效路径"}
 
         final_path_dedup = []
         last_coord = None
@@ -14574,6 +15667,52 @@ class Api:
             "total_dist": d_covered,
             "total_time": t_elapsed,
         }
+
+    def auto_generate_path_with_provider(self, min_t_m, max_t_m, min_d_m):
+        """按当前地图供应商规划路线，并生成模拟数据。"""
+        logging.info("API CALL: auto_generate_path_with_provider")
+        if self.current_run_idx == -1:
+            return {"success": False, "message": "请先选择任务"}
+
+        run = self.all_run_data[self.current_run_idx]
+        if not run.target_points or len(run.target_points) < 2:
+            return {"success": False, "message": "请先选择一个有至少两个打卡点的任务"}
+
+        session_id = getattr(self, "_web_session_id", None)
+        if not session_id:
+            return {"success": False, "message": "当前会话缺少浏览器会话ID，无法执行路径规划"}
+
+        self.log("正在按当前地图供应商进行路径规划...")
+        path_result = _plan_route_path_with_provider_runtime(
+            session_id,
+            run.target_points,
+            python_params=self.params,
+            guard_label="SingleManualPathPlanning",
+        )
+        notices = path_result.get("notices", [])
+        for notice in notices:
+            self.log(notice)
+
+        if "path" not in path_result:
+            return {
+                "success": False,
+                "message": path_result.get("error", "地图服务未能返回有效路径"),
+                "provider": path_result.get("provider"),
+                "notices": notices,
+            }
+
+        self.log(
+            f"路径规划成功，共 {len(path_result['path'])} 个坐标点。正在生成模拟数据..."
+        )
+        result = self.auto_generate_path_with_api(
+            path_result["path"],
+            min_t_m,
+            max_t_m,
+            min_d_m,
+        )
+        result["provider"] = path_result.get("provider")
+        result["notices"] = notices
+        return result
 
     def start_all_runs(self, ignore_completed, auto_generate):
         """开始执行所有符合条件的任务"""
@@ -14725,30 +15864,28 @@ class Api:
                     continue
 
                 try:
-                    self.log("调用高德API进行路径规划...")
-                    callback_key = f"single_{idx}_{int(time.time() * 1000)}"
-                    path_result: dict = {}
-                    completion_event = threading.Event()
-                    self.path_gen_callbacks[callback_key] = (
-                        path_result,
-                        completion_event,
-                    )
+                    self.log("正在按当前地图供应商进行路径规划...")
+                    session_id = getattr(self, "_web_session_id", None)
+                    if not session_id:
+                        self.log("错误: 当前会话缺少浏览器会话ID，无法执行路径规划。")
+                        continue
 
                     waypoints = run_data.target_points
-                    if self.window:
-                        self.window.evaluate_js(
-                            f'triggerPathGenerationForPy("{callback_key}", {json.dumps(waypoints)})'
-                        )
+                    path_result = _plan_route_path_with_provider_runtime(
+                        session_id,
+                        waypoints,
+                        python_params=self.params,
+                        guard_label="SingleRunPathPlanning",
+                    )
+                    for notice in path_result.get("notices", []):
+                        self.log(notice)
 
-                    path_received = completion_event.wait(timeout=120)
                     if "path" not in path_result:
                         error_msg = path_result.get("error", "超时或未知错误")
                         self.log(f"路径规划失败或超时：{error_msg}，跳过此任务。")
                         logging.warning(
                             f"Path planning failed for task {run_data.run_name}: {error_msg}"
                         )
-                        if callback_key in self.path_gen_callbacks:
-                            self.path_gen_callbacks.pop(callback_key, None)
                         continue
 
                     api_path_coords = path_result["path"]
@@ -17114,21 +18251,12 @@ class Api:
         random.shuffle(account_list)
 
         # 步骤6：启动所有账号的任务线程
-        started_threads = 0
-        for i, acc in enumerate(account_list):
-            if acc.worker_thread and acc.worker_thread.is_alive():
-                acc.log("已在运行，本次'全部开始'将跳过此账号。")
-                continue
-
-            delay = delays[i] if use_delay else 0
-            acc.stop_event.clear()
-            acc.worker_thread = threading.Thread(
-                target=self._multi_account_worker,
-                args=(acc, delay, run_only_incomplete),
-                daemon=True,
-            )
-            acc.worker_thread.start()
-            started_threads += 1
+        started_threads = self._start_multi_account_threads(
+            account_list,
+            delays,
+            use_delay,
+            run_only_incomplete,
+        )
 
         if started_threads == 0:
 
@@ -17853,7 +18981,7 @@ class Api:
                     continue
 
                 try:
-                    acc.log("正在调用高德地图API进行路径规划...")
+                    acc.log("正在按当前地图供应商进行路径规划...")
 
                     session_id = getattr(self, "_web_session_id", None)
                     if not session_id:
@@ -17865,170 +18993,15 @@ class Api:
                         )
                         continue
 
-                    if not hasattr(self, "_amap_key_cached"):
-                        config = configparser.ConfigParser(strict=False)
-                        config = _read_config_ini(CONFIG_FILE)
-                        self._amap_key_cached = config.get(
-                            "Map", "amap_js_key", fallback=""
-                        )
-                        logging.info(f"已加载高德地图API密钥配置（缓存至实例）")
-
-                    amap_key = self._amap_key_cached
-                    if not amap_key:
-                        acc.log("错误: 未配置高德地图API密钥，请在config.ini中设置。")
-                        continue
-
-                    ctx = chrome_pool.get_context(session_id)
-                    page = ctx["page"]
-
-                    amap_loaded = False
-                    try:
-                        amap_loaded = page.evaluate(
-                            "typeof AMapLoader !== 'undefined'")
-                    except Exception as e:
-                        logging.debug(f"检查AMap SDK时出错（可能尚未加载）: {e}")
-
-                    if not amap_loaded:
-                        page.goto("about:blank")
-                        page.set_content(
-                            """
-                        <!DOCTYPE html>
-                        <html>
-                        <head>
-                            <meta charset="utf-8">
-                            <script type="text/javascript" src="https://webapi.amap.com/loader.js"></script>
-                        </head>
-                        <body></body>
-                        </html>
-                        """
-                        )
-
-                        try:
-                            page.wait_for_function(
-                                "typeof AMapLoader !== 'undefined'", timeout=10000
-                            )
-                        except Exception as e:
-                            acc.log(f"错误: 加载高德地图SDK超时或失败: {str(e)}")
-                            continue
-
-                    path_coords = chrome_pool.execute_js(
+                    path_coords = _plan_route_path_with_provider_runtime(
                         session_id,
-                        """
-                        (async (arg) => {
-                            const waypointsPy = arg[0];
-                            const apiKey = arg[1];
-                            const pythonParams = arg[2];
-
-                            async function planPath(waypointsPy, apiKey, pythonParams) {
-                                if (typeof AMapLoader === 'undefined') {
-                                    return {error: 'AMapLoader not loaded'};
-                                }
-
-                                try {
-                                    await AMapLoader.load({
-                                        "key": apiKey,
-                                        "version": "2.0",
-                                        "plugins": ["AMap.Walking"]
-                                    });
-                                } catch (e) {
-                                    return {error: 'AMapLoader.load failed: ' + (e ? e.message : 'Unknown error')};
-                                }
-
-                                if (typeof AMap.Walking === 'undefined') {
-                                    return {error: 'AMap.Walking plugin failed to load'};
-                                }
-
-                                const useFallback = pythonParams.api_fallback_line ?? false;
-                                const maxRetries = pythonParams.api_retries ?? 2;
-                                const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
-                                const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-                                const searchSegment = (start, end, walkingInstance) => new Promise((resolve) => {
-                                    walkingInstance.search(start, end, (status, result) => {
-                                        if (status === 'complete' && result.routes?.length > 0) {
-                                            const p = []; 
-                                            result.routes[0].steps.forEach(s => s.path.forEach(pt => p.push({ lng: pt.lng, lat: pt.lat })));
-                                            resolve({ path: p });
-                                        } else {
-                                            let errorInfo = 'Unknown Error';
-                                            if (status === 'error') {
-                                                errorInfo = result?.info || status;
-                                            } else if (status === 'no_data') {
-                                                errorInfo = 'No path found (no_data)';
-                                            } else {
-                                                errorInfo = status;
-                                            }
-                                            resolve({ error: 'Path planning failed: ' + errorInfo });
-                                        }
-                                    });
-                                });
-
-                                const all_path = [];
-                                const waypoints = waypointsPy.map(p => new AMap.LngLat(p[0], p[1]));
-                                const walking = new AMap.Walking({ map: null, panel: "", hideMarkers: true });
-
-                                if (waypoints.length < 2) {
-                                    return {error: 'Waypoints must be at least 2.'};
-                                }
-
-                                for (let i = 0; i < waypoints.length - 1; i++) {
-                                    const realStart = waypoints[i];
-                                    const realEnd = waypoints[i + 1];
-                                    
-                                    let attempts = 0;
-                                    let segmentResult = null;
-                                    let segmentPath = null;
-
-                                    while (attempts <= maxRetries) {
-                                        if (attempts > 0) {
-                                            await sleep(retryDelayMs);
-                                        }
-                                        
-                                        segmentResult = await searchSegment(realStart, realEnd, walking);
-                                        
-                                        if (segmentResult.path) {
-                                            segmentPath = segmentResult.path;
-                                            break;
-                                        }
-                                        
-                                        attempts++;
-                                    }
-
-                                    if (segmentPath) {
-                                        const areCoordsEqual = (c1, c2) => Math.abs(c1.lng - c2.lng) < 1e-6 && Math.abs(c1.lat - c2.lat) < 1e-6;
-                                        if (i > 0) {
-                                            all_path.push(...segmentPath.slice(1));
-                                        } else {
-                                            all_path.push(...segmentPath);
-                                        }
-                                        if (i === waypoints.length - 2) { 
-                                            if (segmentPath.length > 0 && !areCoordsEqual(segmentPath[segmentPath.length - 1], { lng: realEnd.lng, lat: realEnd.lat })) {
-                                                all_path.push({ lng: realEnd.lng, lat: realEnd.lat });
-                                            }
-                                        }
-                                    } else {
-                                        if (useFallback) {
-                                            const lastPoint = all_path.length > 0 ? all_path[all_path.length - 1] : null;
-                                            if (!lastPoint || (Math.abs(lastPoint.lng - realStart.lng) > 1e-6 || Math.abs(lastPoint.lat - realStart.lat) > 1e-6)) {
-                                                all_path.push({ lng: realStart.lng, lat: realStart.lat });
-                                            }
-                                            all_path.push({ lng: realEnd.lng, lat: realEnd.lat });
-                                        } else {
-                                            return {error: `Segment ${i+1} failed after ${maxRetries+1} attempts: ${segmentResult.error}`};
-                                        }
-                                    }
-                                }
-                                
-                                return {path: all_path};
-                            }
-
-                            return await planPath(waypointsPy, apiKey, pythonParams);
-                        })
-                        """,
                         waypoints,
-                        amap_key,
-                        acc.params,
+                        python_params=acc.params,
+                        guard_label="MultiAccountPathPlanning",
                     )
+                    for notice in path_coords.get("notices", []):
+                        acc.log(notice)
+
 
                     if path_coords and "path" in path_coords:
                         api_path_coords = path_coords["path"]
@@ -18492,6 +19465,30 @@ class Api:
                 )
             finally:
                 self._update_multi_global_buttons()
+
+    def _run_all_multi_accounts_thread(self, *args, **kwargs):
+        return self._start_multi_account_threads(*args, **kwargs)
+
+    def _start_multi_account_threads(
+        self, account_list, delays, use_delay, run_only_incomplete
+    ):
+        started_threads = 0
+        for i, acc in enumerate(account_list):
+            if acc.worker_thread and acc.worker_thread.is_alive():
+                acc.log("已在运行，本次'全部开始'将跳过此账号。")
+                continue
+
+            delay = delays[i] if use_delay else 0
+            acc.stop_event.clear()
+            acc.worker_thread = threading.Thread(
+                target=self._multi_account_worker,
+                args=(acc, delay, run_only_incomplete),
+                daemon=True,
+            )
+            acc.worker_thread.start()
+            started_threads += 1
+
+        return started_threads
 
     def _get_device_sign_code(self, username):
         """生成或获取设备标识码 (signCode)"""
@@ -19988,8 +20985,12 @@ def save_session_state(session_id, api_instance, force_save=False):
         api_instance: Api实例
         force_save: 强制保存，即使距离上次保存时间很短
     """
-    if not session_id or session_id == "null":
+    session_id = normalize_session_uuid(session_id)
+    if not session_id:
         logging.warning(f"拒绝保存会话：无效的 session_id: '{session_id}'")
+        return
+    if not getattr(api_instance, "_is_persistent_session", True):
+        logging.debug(f"跳过保存认证上下文：{session_id}")
         return
     try:
         session_hash = hashlib.sha256(session_id.encode()).hexdigest()
@@ -21274,332 +22275,126 @@ class BackgroundTaskManager:
                             if len(waypoints) > 3
                             else f"Waypoints: {waypoints}"
                         )
-                        amap_key = ""
-                        try:
-                            if os.path.exists(CONFIG_FILE):
-                                cfg = _read_config_ini(CONFIG_FILE)
-                                if cfg:
-                                    amap_key = cfg.get(
-                                        "Map", "amap_js_key", fallback="")
-                                    if not amap_key:
-                                        amap_key = cfg.get(
-                                            "System", "AmapJsKey", fallback=""
-                                        )
-
-                            if amap_key:
-                                logging.info(
-                                    f"已从 {CONFIG_FILE} 实时加载 AMap Key。")
-                            else:
-                                logging.error(
-                                    f"无法为 {run_data.run_name} 自动规划路径：实时读取 {CONFIG_FILE} 失败，[Map] -> amap_js_key 缺失或为空。"
-                                )
-                                with self.lock:
-                                    task_state["status"] = "error"
-                                    task_state["error"] = (
-                                        "缺少高德地图API Key (实时读取失败)"
-                                    )
-                                    self.save_task_state(
-                                        session_id, task_state)
-                                continue
-
-                        except Exception as e:
-                            logging.error(
-                                f"实时读取 AMap Key 时发生错误: {e}", exc_info=True
-                            )
-                            with self.lock:
-                                task_state["status"] = "error"
-                                task_state["error"] = f"读取Config.ini失败: {e}"
-                                self.save_task_state(session_id, task_state)
-                            continue
 
                         global chrome_pool
                         if not chrome_pool:
                             logging.error("Chrome浏览器池不可用，无法进行路径规划！")
                             continue
 
-                        if chrome_pool:
-                            try:
+                        try:
+                            path_coords = _plan_route_path_with_provider_runtime(
+                                session_id,
+                                waypoints,
+                                python_params=api_instance.params,
+                                guard_label="BackgroundTaskPathPlanning",
+                            )
+                            for notice in path_coords.get("notices", []):
+                                logging.info(notice)
+                        except Exception as e:
+                            logging.error(
+                                f"Chrome浏览器池路径规划失败，任务名称: {run_data.run_name}，异常信息: {e}",
+                                exc_info=True,
+                            )
+                            continue
+
+                        logging.info(
+                            f"路径规划JavaScript返回结果: 类型={type(path_coords)}, 包含'path'键={'是' if (path_coords and 'path' in path_coords) else '否'}"
+                        )
+
+                        if path_coords and "path" in path_coords:
+                            api_path_coords = path_coords["path"]
+                            logging.info(
+                                f"路径规划成功，包含 {len(api_path_coords)} 个坐标点"
+                            )
+                            p = api_instance.params
+                            logging.info(
+                                f"正在生成运动模拟数据，参数: 最小时长={p.get('min_time_m', 20)}分钟, 最大时长={p.get('max_time_m', 30)}分钟, 最小距离={p.get('min_dist_m', 2000)}米"
+                            )
+                            gen_resp = api_instance.auto_generate_path_with_api(
+                                api_path_coords,
+                                p.get("min_time_m", 20),
+                                p.get("max_time_m", 30),
+                                p.get("min_dist_m", 2000),
+                            )
+
+                            logging.info(
+                                f"auto_generate_path_with_api函数返回: 成功={gen_resp.get('success')}"
+                            )
+
+                            if gen_resp.get("success"):
+                                run_data.run_coords = gen_resp["run_coords"]
+                                run_data.total_run_distance_m = gen_resp[
+                                    "total_dist"
+                                ]
+                                run_data.total_run_time_s = gen_resp[
+                                    "total_time"
+                                ]
                                 logging.info(
-                                    f"正在获取Chrome浏览器上下文，会话ID前缀: {session_id[:8]}..."
-                                )
-                                ctx = chrome_pool.get_context(session_id)
-                                page = ctx["page"]
-                                logging.info("Chrome浏览器上下文获取成功")
-                                logging.info("正在向Chrome页面加载高德地图SDK...")
-                                page.goto("about:blank")
-                                page.set_content(
-                                    """
-                                <!DOCTYPE html>
-                                <html>
-                                <head>
-                                    <meta charset="utf-8">
-                                    <script type="text/javascript" src="https://webapi.amap.com/loader.js"></script>
-                                </head>
-                                <body></body>
-                                </html>
-                                """
-                                )
-                                logging.info(
-                                    "等待高德地图加载器(AMapLoader)加载完成..."
-                                )
-                                page.wait_for_function(
-                                    "typeof AMapLoader !== 'undefined'", timeout=10000
-                                )
-                                logging.info("高德地图加载器在Chrome上下文中加载成功")
-                                logging.info(
-                                    f"正在Chrome浏览器中执行路径规划JavaScript代码..."
-                                )
-                                path_coords = chrome_pool.execute_js(
-                                    session_id,
-                                    """
-                                    (async (arg) => {
-                                        const waypointsPy = arg[0]; // 这是Python传入的 [[lon, lat], ...]
-                                        const apiKey = arg[1];
-                                        const pythonParams = arg[2]; // <--- 读取 Python 传入的参数
-
-                                        // 1. 定义辅助函数 (planPath)
-                                        async function planPath(waypointsPy, apiKey, pythonParams) {
-                                            
-                                            // 1.1 确保 AMapLoader (来自 loader.js) 存在
-                                            if (typeof AMapLoader === 'undefined') {
-                                                return {error: 'AMapLoader not loaded'};
-                                            }
-
-                                            // 1.2 调用 AMapLoader.load 并传入 key
-                                            try {
-                                                await AMapLoader.load({
-                                                    "key": apiKey,
-                                                    "version": "2.0",
-                                                    "plugins": ["AMap.Walking"]
-                                                });
-                                            } catch (e) {
-                                                return {error: 'AMapLoader.load failed: ' + (e ? e.message : 'Unknown error')};
-                                            }
-
-                                            // 1.3 检查 AMap.Walking 插件是否真的加载成功
-                                            if (typeof AMap.Walking === 'undefined') {
-                                                return {error: 'AMap.Walking plugin failed to load'};
-                                            }
-
-                                            // 1.4 ★ 步骤 2 修复：从 pythonParams 读取重试和回退设置
-                                            const useFallback = pythonParams.api_fallback_line ?? false;
-                                            const maxRetries = pythonParams.api_retries ?? 2;
-                                            const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
-                                            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-                                            // 1.5 定义分段搜索函数 (同 index.html)
-                                            const searchSegment = (start, end, walkingInstance) => new Promise((resolve) => {
-                                                walkingInstance.search(start, end, (status, result) => {
-                                                    if (status === 'complete' && result.routes?.length > 0) {
-                                                        const p = []; 
-                                                        result.routes[0].steps.forEach(s => s.path.forEach(pt => p.push({ lng: pt.lng, lat: pt.lat })));
-                                                        resolve({ path: p }); // 返回成功路径
-                                                    } else {
-                                                        let errorInfo = 'Unknown Error';
-                                                        if (status === 'error') {
-                                                            if (result && result.info) {
-                                                                errorInfo = result.info;
-                                                            } else if (result) {
-                                                                try { errorInfo = JSON.stringify(result); } catch (e) { errorInfo = result.toString(); }
-                                                            } else {
-                                                                errorInfo = status;
-                                                            }
-                                                        } else if (status === 'no_data') {
-                                                            errorInfo = 'No path found (no_data)';
-                                                        } else {
-                                                            errorInfo = status; // 如 "CUQPS_HAS_EXCEEDED_THE_LIMIT"
-                                                        }
-                                                        resolve({ error: 'Path planning failed: ' + errorInfo }); // 返回错误
-                                                    }
-                                                });
-                                            });
-
-                                            // 1.6 ★ 步骤 2 修复：迭代执行路径规划 (增加重试循环)
-                                            const all_path = [];
-                                            const waypoints = waypointsPy.map(p => new AMap.LngLat(p[0], p[1]));
-                                            const walking = new AMap.Walking({ map: null, panel: "", hideMarkers: true });
-
-                                            if (waypoints.length < 2) {
-                                                return {error: 'Waypoints must be at least 2.'};
-                                            }
-
-                                            for (let i = 0; i < waypoints.length - 1; i++) {
-                                                const realStart = waypoints[i];
-                                                const realEnd = waypoints[i + 1];
-                                                
-                                                let attempts = 0;
-                                                let segmentResult = null;
-                                                let segmentPath = null; // 存储成功的路径
-
-                                                // --- 增加重试循环 (来自 index.html) ---
-                                                while (attempts <= maxRetries) {
-                                                    if (attempts > 0) {
-                                                        await sleep(retryDelayMs); // 等待后重试
-                                                    }
-                                                    
-                                                    segmentResult = await searchSegment(realStart, realEnd, walking);
-                                                    
-                                                    if (segmentResult.path) { // 检查 .path 是否存在 (成功)
-                                                        segmentPath = segmentResult.path;
-                                                        break; // 成功，退出重试循环
-                                                    }
-                                                    
-                                                    // 失败，记录最后一次错误 (将在重试用尽时使用)
-                                                    // (不需要 console.log，Python端会记录最终错误)
-                                                    
-                                                    attempts++;
-                                                }
-                                                // --- 结束重试循环 ---
-
-                                                if (segmentPath) {
-                                                    // 成功: 拼接路径
-                                                    const areCoordsEqual = (c1, c2) => Math.abs(c1.lng - c2.lng) < 1e-6 && Math.abs(c1.lat - c2.lat) < 1e-6;
-                                                    if (i > 0) {
-                                                        all_path.push(...segmentPath.slice(1));
-                                                    } else {
-                                                        all_path.push(...segmentPath);
-                                                    }
-                                                    if (i === waypoints.length - 2) { 
-                                                        if (segmentPath.length > 0 && !areCoordsEqual(segmentPath[segmentPath.length - 1], { lng: realEnd.lng, lat: realEnd.lat })) {
-                                                            all_path.push({ lng: realEnd.lng, lat: realEnd.lat });
-                                                        }
-                                                    }
-                                                } else {
-                                                    // 失败: 检查回退
-                                                    if (useFallback) {
-                                                        // 使用直线回退 (确保连接性)
-                                                        const lastPoint = all_path.length > 0 ? all_path[all_path.length - 1] : null;
-                                                        if (!lastPoint || (Math.abs(lastPoint.lng - realStart.lng) > 1e-6 || Math.abs(lastPoint.lat - realStart.lat) > 1e-6)) {
-                                                            all_path.push({ lng: realStart.lng, lat: realStart.lat });
-                                                        }
-                                                        all_path.push({ lng: realEnd.lng, lat: realEnd.lat });
-                                                    } else {
-                                                        // 不回退，整个规划失败
-                                                        return {error: `Segment ${i+1} failed after ${maxRetries+1} attempts: ${segmentResult.error}`};
-                                                    }
-                                                }
-                                            }
-                                            
-                                            // 成功
-                                            return {path: all_path};
-                                        }
-
-                                        // 2. 调用辅助函数并返回结果
-                                        return await planPath(waypointsPy, apiKey, pythonParams);
-                                    })
-                                    """,
-                                    waypoints,
-                                    amap_key,
-                                    api_instance.params,
+                                    f"路径自动生成成功，任务: {run_data.run_name}，坐标点数: {len(gen_resp['run_coords'])}, 总距离: {gen_resp['total_dist']}米, 总时长: {gen_resp['total_time']}秒"
                                 )
 
-                                logging.info(
-                                    f"路径规划JavaScript返回结果: 类型={type(path_coords)}, 包含'path'键={'是' if (path_coords and 'path' in path_coords) else '否'}"
-                                )
-
-                                if path_coords and "path" in path_coords:
-                                    api_path_coords = path_coords["path"]
-                                    logging.info(
-                                        f"路径规划成功，包含 {len(api_path_coords)} 个坐标点"
-                                    )
-                                    p = api_instance.params
-                                    logging.info(
-                                        f"正在生成运动模拟数据，参数: 最小时长={p.get('min_time_m', 20)}分钟, 最大时长={p.get('max_time_m', 30)}分钟, 最小距离={p.get('min_dist_m', 2000)}米"
-                                    )
-                                    gen_resp = api_instance.auto_generate_path_with_api(
-                                        api_path_coords,
-                                        p.get("min_time_m", 20),
-                                        p.get("max_time_m", 30),
-                                        p.get("min_dist_m", 2000),
-                                    )
-
-                                    logging.info(
-                                        f"auto_generate_path_with_api函数返回: 成功={gen_resp.get('success')}"
-                                    )
-
-                                    if gen_resp.get("success"):
-                                        run_data.run_coords = gen_resp["run_coords"]
-                                        run_data.total_run_distance_m = gen_resp[
-                                            "total_dist"
-                                        ]
-                                        run_data.total_run_time_s = gen_resp[
-                                            "total_time"
-                                        ]
-                                        logging.info(
-                                            f"路径自动生成成功，任务: {run_data.run_name}，坐标点数: {len(gen_resp['run_coords'])}, 总距离: {gen_resp['total_dist']}米, 总时长: {gen_resp['total_time']}秒"
+                                with self.lock:
+                                    if session_id in self.tasks:
+                                        task_state = self.tasks[session_id]
+                                        task_state["last_update"] = time.time(
+                                        )
+                                        task_state["estimated_total_time_s"] = (
+                                            run_data.total_run_time_s
+                                        )
+                                        task_state[
+                                            "estimated_total_distance_m"
+                                        ] = run_data.total_run_distance_m
+                                        task_state["target_points"] = (
+                                            run_data.target_points
+                                            if hasattr(
+                                                run_data, "target_points"
+                                            )
+                                            else []
+                                        )
+                                        task_state["target_point_names"] = (
+                                            run_data.target_point_names
+                                            if hasattr(
+                                                run_data, "target_point_names"
+                                            )
+                                            else ""
+                                        )
+                                        task_state["recommended_coords"] = (
+                                            run_data.recommended_coords
+                                            if hasattr(
+                                                run_data, "recommended_coords"
+                                            )
+                                            else []
+                                        )
+                                        task_state["run_coords"] = (
+                                            run_data.run_coords
+                                            if hasattr(run_data, "run_coords")
+                                            else []
+                                        )
+                                        total_points = len(
+                                            run_data.run_coords)
+                                        task_state["singleTotalPoints"] = (
+                                            total_points
+                                        )
+                                        task_state["singleProcessedPoints"] = 0
+                                        self.save_task_state(
+                                            session_id, task_state
                                         )
 
-                                        with self.lock:
-                                            if session_id in self.tasks:
-                                                task_state = self.tasks[session_id]
-                                                task_state["last_update"] = time.time(
-                                                )
-                                                task_state["estimated_total_time_s"] = (
-                                                    run_data.total_run_time_s
-                                                )
-                                                task_state[
-                                                    "estimated_total_distance_m"
-                                                ] = run_data.total_run_distance_m
-                                                task_state["target_points"] = (
-                                                    run_data.target_points
-                                                    if hasattr(
-                                                        run_data, "target_points"
-                                                    )
-                                                    else []
-                                                )
-                                                task_state["target_point_names"] = (
-                                                    run_data.target_point_names
-                                                    if hasattr(
-                                                        run_data, "target_point_names"
-                                                    )
-                                                    else ""
-                                                )
-                                                task_state["recommended_coords"] = (
-                                                    run_data.recommended_coords
-                                                    if hasattr(
-                                                        run_data, "recommended_coords"
-                                                    )
-                                                    else []
-                                                )
-                                                task_state["run_coords"] = (
-                                                    run_data.run_coords
-                                                    if hasattr(run_data, "run_coords")
-                                                    else []
-                                                )
-                                                total_points = len(
-                                                    run_data.run_coords)
-                                                task_state["singleTotalPoints"] = (
-                                                    total_points
-                                                )
-                                                task_state["singleProcessedPoints"] = 0
-                                                self.save_task_state(
-                                                    session_id, task_state
-                                                )
-
-                                    else:
-                                        logging.error(
-                                            f"生成运动坐标序列失败: {gen_resp.get('message')}"
-                                        )
-                                        continue
-                                else:
-                                    error_msg = (
-                                        path_coords.get(
-                                            "error", "Unknown error")
-                                        if path_coords
-                                        else "No response from path planning"
-                                    )
-                                    logging.error(
-                                        f"任务路径规划失败，任务名称: {run_data.run_name}，错误信息: {error_msg}"
-                                    )
-                                    continue
-                            except Exception as e:
+                            else:
                                 logging.error(
-                                    f"Chrome浏览器池路径规划失败，任务名称: {run_data.run_name}，异常信息: {e}",
-                                    exc_info=True,
+                                    f"生成运动坐标序列失败: {gen_resp.get('message')}"
                                 )
                                 continue
                         else:
-                            logging.error("Chrome浏览器池不可用，无法进行路径规划")
+                            error_msg = (
+                                path_coords.get(
+                                    "error", "Unknown error")
+                                if path_coords
+                                else "No response from path planning"
+                            )
+                            logging.error(
+                                f"任务路径规划失败，任务名称: {run_data.run_name}，错误信息: {error_msg}"
+                            )
                             continue
 
                     except Exception as e:
@@ -26716,7 +27511,9 @@ def start_web_server(args_param):
         ):
             return None
 
-        session_id = request.headers.get("X-Session-ID", "")
+        session_id = normalize_session_uuid(
+            request.headers.get("X-Session-ID", "")
+        )
         if not session_id:
             return None
 
@@ -26954,9 +27751,9 @@ def start_web_server(args_param):
                 data = request.form.to_dict()
             auth_username = data.get("auth_username", "").strip()
             auth_password = data.get("auth_password", "").strip()
-            phone = data.get("phone", "").strip()
+            phone = _normalize_phone(data.get("phone", ""))
             nickname = data.get("nickname", "").strip()
-            sms_code = data.get("sms_code", "").strip()
+            sms_code = _normalize_sms_code(data.get("sms_code", ""))
             captcha_input = data.get("captcha", "").strip()
             captcha_id = data.get("captcha_id", "").strip()
             is_captcha_valid, captcha_error_msg = verify_captcha(
@@ -27154,10 +27951,10 @@ def start_web_server(args_param):
         config = _read_config_ini(CONFIG_FILE)
 
         data = request.get_json() or {}
-        auth_phone = (data.get("auth_phone") or "").strip()
+        auth_phone = _normalize_phone(data.get("auth_phone"))
         auth_username = (data.get("auth_username") or "").strip()
         auth_password = (data.get("auth_password") or "").strip()
-        sms_code = (data.get("auth_sms_code") or "").strip()
+        sms_code = _normalize_sms_code(data.get("auth_sms_code"))
         two_fa_code = (data.get("two_fa_code") or "").strip()
         captcha_input = (data.get("captcha") or "").strip()
         captcha_id = (data.get("captcha_id") or "").strip()
@@ -27169,7 +27966,9 @@ def start_web_server(args_param):
         if not is_captcha_valid:
             return jsonify({"success": False, "message": captcha_error_msg})
 
-        session_id = request.headers.get("X-Session-ID", "")
+        requested_session_id = normalize_session_uuid(
+            request.headers.get("X-Session-ID", "")
+        )
         # 使用统一函数获取客户端真实IP
         ip_address = request.environ.get(
             "REMOTE_ADDR") or request.remote_addr or ""
@@ -27278,13 +28077,41 @@ def start_web_server(args_param):
         if not auth_result.get("success"):
             return jsonify(auth_result)
         with web_sessions_lock:
-            if session_id in web_sessions:
-                api_instance = web_sessions[session_id]
-            else:
+            session_id = requested_session_id
+            api_instance = None
+            session_is_persistent = bool(auth_result.get("is_guest", False))
+
+            if requested_session_id:
+                if requested_session_id in web_sessions:
+                    api_instance = web_sessions[requested_session_id]
+                    session_is_persistent = getattr(
+                        api_instance, "_is_persistent_session", True
+                    )
+                else:
+                    state = load_session_state(requested_session_id)
+                    if state:
+                        api_instance = Api(args)
+                        api_instance._session_created_at = state.get(
+                            "created_at", time.time()
+                        )
+                        api_instance._web_session_id = requested_session_id
+                        api_instance._is_persistent_session = True
+                        restore_session_to_api_instance(api_instance, state)
+                        web_sessions[requested_session_id] = api_instance
+                        session_is_persistent = True
+
+            if api_instance is None:
+                session_id = str(uuid.uuid4())
                 api_instance = Api(args)
                 api_instance._session_created_at = time.time()
                 api_instance._web_session_id = session_id
+                api_instance._is_persistent_session = session_is_persistent
                 web_sessions[session_id] = api_instance
+            else:
+                session_id = getattr(api_instance, "_web_session_id", session_id) or session_id
+                api_instance._web_session_id = session_id
+                if not hasattr(api_instance, "_is_persistent_session"):
+                    api_instance._is_persistent_session = session_is_persistent
 
             normalized_auth_username = auth_result.get("auth_username", "")
             api_instance.auth_username = normalized_auth_username
@@ -27294,32 +28121,34 @@ def start_web_server(args_param):
             cleanup_message = ""
             if not auth_result.get("is_guest", False):
                 try:
-                    old_sessions, cleanup_message = (
-                        auth_system.check_single_session_enforcement(
+                    if session_is_persistent:
+                        old_sessions, cleanup_message = (
+                            auth_system.check_single_session_enforcement(
+                                normalized_auth_username, session_id
+                            )
+                        )
+                        if old_sessions:
+
+                            def cleanup_old_sessions_async():
+                                for old_sid in old_sessions:
+                                    try:
+                                        cleanup_session(
+                                            old_sid, "session_limit_exceeded")
+                                    except Exception as e:
+                                        logging.error(
+                                            f"后台清理旧会话失败 {old_sid[:16]}...: {e}"
+                                        )
+
+                            cleanup_thread = threading.Thread(
+                                target=cleanup_old_sessions_async, daemon=True
+                            )
+                            cleanup_thread.start()
+                        auth_system.link_session_to_user(
                             normalized_auth_username, session_id
                         )
-                    )
-                    if old_sessions:
-
-                        def cleanup_old_sessions_async():
-                            for old_sid in old_sessions:
-                                try:
-                                    cleanup_session(
-                                        old_sid, "session_limit_exceeded")
-                                except Exception as e:
-                                    logging.error(
-                                        f"后台清理旧会话失败 {old_sid[:16]}...: {e}"
-                                    )
-
-                        cleanup_thread = threading.Thread(
-                            target=cleanup_old_sessions_async, daemon=True
-                        )
-                        cleanup_thread.start()
-                    auth_system.link_session_to_user(normalized_auth_username, session_id)
-                    if session_id == "" or session_id is None or session_id == "null":
-                        audit_details = f"登录成功"
-                    else:
                         audit_details = f"登录成功，会话ID: {session_id}"
+                    else:
+                        audit_details = "登录成功，尚未创建业务会话"
                     if cleanup_message:
                         audit_details += f"; {cleanup_message}"
 
@@ -27335,7 +28164,8 @@ def start_web_server(args_param):
                     cleanup_message = ""
 
             try:
-                save_session_state(session_id, api_instance, force_save=True)
+                if session_is_persistent or auth_result.get("is_guest", False):
+                    save_session_state(session_id, api_instance, force_save=True)
             except Exception as e:
                 logging.error(f"保存会话状态失败: {e}")
         user_sessions = []
@@ -27396,7 +28226,8 @@ def start_web_server(args_param):
                     pass
             response_data = {
                 "success": True,
-                "session_id": session_id,
+                "session_id": session_id if session_is_persistent else None,
+                "auth_session_id": session_id,
                 "auth_username": normalized_auth_username,
                 "group": auth_result["group"],
                 "is_guest": auth_result.get("is_guest", False),
@@ -27460,6 +28291,7 @@ def start_web_server(args_param):
                 api_instance = Api(args)
                 api_instance._session_created_at = time.time()
                 api_instance._web_session_id = session_id
+                api_instance._is_persistent_session = True
                 web_sessions[session_id] = api_instance
 
             api_instance.auth_username = "guest"
@@ -27527,9 +28359,11 @@ def start_web_server(args_param):
         """
         会话切换API - 在多标签页间切换时更新认证token和cookie。
         """
-        current_session_id = request.headers.get("X-Session-ID", "")
+        current_session_id = normalize_session_uuid(
+            request.headers.get("X-Session-ID", "")
+        )
         data = request.get_json() or {}
-        target_session_id = data.get("target_session_id", "")
+        target_session_id = normalize_session_uuid(data.get("target_session_id", ""))
 
         if not current_session_id or not target_session_id:
             return jsonify({"success": False, "message": "缺少会话ID参数"}), 400
@@ -27616,8 +28450,25 @@ def start_web_server(args_param):
         # manage_users 权限允许用户查看、创建、修改、删除用户信息
         if not auth_system.check_permission(auth_username, "manage_users"):
             return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
+        keyword = request.args.get("keyword", "").strip().lower()
         users = auth_system.list_users()
-        return jsonify({"success": True, "users": users})
+
+        def _user_matches_keyword(user_item, keyword):
+            if not keyword:
+                return True
+            school_accounts = user_item.get("school_accounts") or []
+            if isinstance(school_accounts, dict):
+                school_accounts = list(school_accounts.keys())
+            haystack = [
+                str(user_item.get("auth_username", "")),
+                str(user_item.get("nickname", "")),
+                str(user_item.get("phone", "")),
+                "\n".join([str(item) for item in school_accounts]),
+            ]
+            return keyword in "\n".join(haystack).lower()
+
+        filtered_users = [user for user in users if _user_matches_keyword(user, keyword)]
+        return jsonify({"success": True, "users": filtered_users})
 
     @app.route("/auth/admin/update_user_group", methods=["POST"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
@@ -28179,10 +29030,39 @@ def start_web_server(args_param):
         if not auth_system.verify_2fa(auth_username, verification_code):
             logging.warning(f"2FA登录验证失败: {auth_username}")
             return jsonify({"success": False, "message": "验证码错误"})
-        session_id = str(uuid.uuid4())
-        api_instance = Api(args)
-        api_instance._session_created_at = time.time()
-        api_instance._web_session_id = session_id
+        requested_session_id = normalize_session_uuid(
+            request.headers.get("X-Session-ID", "")
+        )
+        api_instance = None
+        session_is_persistent = False
+        if requested_session_id:
+            with web_sessions_lock:
+                if requested_session_id in web_sessions:
+                    api_instance = web_sessions[requested_session_id]
+                    session_is_persistent = getattr(
+                        api_instance, "_is_persistent_session", True
+                    )
+                else:
+                    state = load_session_state(requested_session_id)
+                    if state:
+                        api_instance = Api(args)
+                        api_instance._session_created_at = state.get(
+                            "created_at", time.time()
+                        )
+                        api_instance._web_session_id = requested_session_id
+                        api_instance._is_persistent_session = True
+                        restore_session_to_api_instance(api_instance, state)
+                        web_sessions[requested_session_id] = api_instance
+                        session_is_persistent = True
+
+        session_id = requested_session_id if api_instance else str(uuid.uuid4())
+        if api_instance is None:
+            api_instance = Api(args)
+            api_instance._session_created_at = time.time()
+            api_instance._web_session_id = session_id
+            api_instance._is_persistent_session = False
+        else:
+            api_instance._web_session_id = session_id
         api_instance.is_authenticated = True
         api_instance.auth_username = auth_username
         user_group = auth_system.get_user_group(auth_username)
@@ -28198,11 +29078,6 @@ def start_web_server(args_param):
                         user_data = json.load(f)
 
                     user_data["last_login"] = time.time()
-                    if "session_ids" not in user_data:
-                        user_data["session_ids"] = []
-                    if session_id not in user_data["session_ids"]:
-                        user_data["session_ids"].append(session_id)
-
                     with open(user_file, "w", encoding="utf-8") as f:
                         json.dump(user_data, f, indent=2, ensure_ascii=False)
             except Exception as e:
@@ -28221,7 +29096,8 @@ def start_web_server(args_param):
         response_data = {
             "success": True,
             "message": "2FA验证成功",
-            "session_id": session_id,
+            "session_id": session_id if session_is_persistent else None,
+            "auth_session_id": session_id,
             "is_guest": is_guest,
             "token": token,
         }
@@ -29650,6 +30526,56 @@ def start_web_server(args_param):
             app.logger.error(f"读取备份文件失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"读取文件出错: {str(e)}"}), 500
 
+    @app.route("/api/admin/school-account-linked-users", methods=["GET"])
+    @login_required
+    @admin_required
+    def admin_school_account_linked_users():
+        if not auth_system.check_permission(g.user, "manage_users"):
+            return jsonify({"success": False, "message": "权限不足，需要用户管理权限"}), 403
+
+        student_number = request.args.get("student_number", "").strip()
+        if not student_number:
+            return jsonify({"success": False, "message": "缺少 student_number 参数"}), 400
+
+        linked_users = []
+        seen_entries = set()
+        for user in auth_system.list_users():
+            school_accounts = user.get("school_accounts") or []
+            if isinstance(school_accounts, dict):
+                school_accounts = list(school_accounts.keys())
+            for school_username in school_accounts:
+                backup_candidates = [
+                    os.path.join(SCHOOL_ACCOUNTS_DIR, str(school_username), f"{school_username}_backup.json"),
+                    os.path.join(SCHOOL_ACCOUNTS_DIR, f"{school_username}_backup.json"),
+                ]
+                backup_data = None
+                for backup_path in backup_candidates:
+                    if not os.path.exists(backup_path):
+                        continue
+                    try:
+                        with open(backup_path, "r", encoding="utf-8") as fp:
+                            backup_data = json.load(fp)
+                        break
+                    except Exception:
+                        continue
+                if not backup_data:
+                    continue
+                linked_student_number = str(((backup_data.get("deptInfo") or {}).get("studentNum") or "")).strip()
+                if linked_student_number != student_number:
+                    continue
+                entry_key = (str(user.get("auth_username", "")), str(school_username))
+                if entry_key in seen_entries:
+                    continue
+                seen_entries.add(entry_key)
+                linked_users.append({
+                    "username": user.get("auth_username", ""),
+                    "nickname": user.get("nickname", ""),
+                    "phone": user.get("phone", ""),
+                    "school_username": school_username,
+                    "student_number": linked_student_number,
+                })
+        return jsonify({"success": True, "users": linked_users})
+
     @app.route("/api/admin/school_account/delete", methods=["POST"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def api_admin_school_account_delete():
@@ -30883,7 +31809,7 @@ def start_web_server(args_param):
     @app.route("/auth/user/sessions", methods=["GET"])
     def auth_user_sessions():
         """获取用户的所有会话"""
-        session_id = request.headers.get("X-Session-ID", "")
+        session_id = normalize_session_uuid(request.headers.get("X-Session-ID", ""))
         api_instance = None
         is_guest = False
         auth_username = ""
@@ -31021,7 +31947,7 @@ def start_web_server(args_param):
     @app.route("/auth/user/delete_session", methods=["POST"])
     def auth_user_delete_session():
         """删除用户的一个会话"""
-        session_id = request.headers.get("X-Session-ID", "")
+        session_id = normalize_session_uuid(request.headers.get("X-Session-ID", ""))
         if not session_id or session_id not in web_sessions:
             return jsonify({"success": False, "message": "未登录"}), 401
 
@@ -31032,7 +31958,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "游客无会话管理"})
 
         data = request.json
-        target_session_id = data.get("session_id", "")
+        target_session_id = normalize_session_uuid(data.get("session_id", ""))
 
         if not target_session_id:
             return jsonify({"success": False, "message": "会话ID缺失"})
@@ -31070,7 +31996,7 @@ def start_web_server(args_param):
     @app.route("/auth/user/create_session_persistence", methods=["POST"])
     def auth_user_create_session_persistence():
         """创建会话持久化文件（登录状态下）"""
-        session_id = request.headers.get("X-Session-ID", "")
+        session_id = normalize_session_uuid(request.headers.get("X-Session-ID", ""))
 
         api_instance = None
         is_guest = True
@@ -31101,19 +32027,14 @@ def start_web_server(args_param):
         auth_username = getattr(api_instance, "auth_username", "")
         is_guest = getattr(api_instance, "is_guest", False)
         data = request.json or {}
-        new_session_id = data.get("session_id", "")
+        new_session_id = normalize_session_uuid(data.get("session_id", ""))
 
         if not new_session_id:
             return jsonify({"success": False, "message": "缺少会话ID"}), 400
-        uuid_pattern = re.compile(
-            r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
-            re.IGNORECASE,
-        )
-        if not uuid_pattern.match(new_session_id):
-            return jsonify({"success": False, "message": "无效的UUID格式"}), 400
         new_api_instance = Api(args)
         new_api_instance._session_created_at = time.time()
         new_api_instance._web_session_id = new_session_id
+        new_api_instance._is_persistent_session = True
         if hasattr(api_instance, "auth_username"):
             new_api_instance.auth_username = api_instance.auth_username
             new_api_instance.auth_group = getattr(
@@ -32027,13 +32948,13 @@ def start_web_server(args_param):
                     ),
                 },
                 "Map": {
-                    "amap_js_key": _get_config_value(
-                        config,
-                        "Map",
-                        "amap_js_key",
-                        fallback=default_config.get(
-                            "Map", "amap_js_key", fallback=""),
-                    )
+                    "provider": _get_active_map_provider(config),
+                    "providers": {
+                        "amap": _get_map_provider_runtime_config(config, provider="amap"),
+                        "tencent": _get_map_provider_runtime_config(config, provider="tencent"),
+                        "tianditu": _get_map_provider_runtime_config(config, provider="tianditu"),
+                        "baidu": _get_map_provider_runtime_config(config, provider="baidu"),
+                    },
                 },
                 "IP_Location": {
                     "query_order": _get_config_value(
@@ -32330,9 +33251,56 @@ def start_web_server(args_param):
                         "login_log_retention_days",
                         str(security_data["login_log_retention_days"]),
                     )
-            if "Map" in data and "amap_js_key" in data["Map"]:
+            if "Map" in data and "provider" in data["Map"]:
                 ensure_section(config, "Map")
-                config.set("Map", "amap_js_key", data["Map"]["amap_js_key"])
+                config.set("Map", "provider", _normalize_map_provider(data["Map"].get("provider")))
+                providers = data["Map"].get("providers") or {}
+                amap_provider = providers.get("amap") or {}
+                tencent_provider = providers.get("tencent") or {}
+                tianditu_provider = providers.get("tianditu") or {}
+                baidu_provider = providers.get("baidu") or {}
+                config.set(
+                    "Map",
+                    "providers",
+                    {
+                        "amap": {
+                            "js_key": str(
+                                amap_provider.get(
+                                    "js_key", data["Map"].get("amap_js_key", "")
+                                )
+                            ).strip(),
+                        },
+                        "tencent": {
+                            "map_key": str(
+                                tencent_provider.get(
+                                    "map_key", data["Map"].get("tencent_map_key", "")
+                                )
+                            ).strip(),
+                        },
+                        "tianditu": {
+                            "token": str(
+                                tianditu_provider.get(
+                                    "token", data["Map"].get("tianditu_token", "")
+                                )
+                            ).strip(),
+                        },
+                        "baidu": {
+                            "ak": str(
+                                baidu_provider.get(
+                                    "ak", data["Map"].get("baidu_map_ak", "")
+                                )
+                            ).strip(),
+                        },
+                    },
+                )
+                for legacy_key in [
+                    "amap_js_key",
+                    "tencent_map_key",
+                    "tianditu_token",
+                    "baidu_map_ak",
+                ]:
+                    if config.has_option("Map", legacy_key):
+                        config.remove_option("Map", legacy_key)
             if "IP_Location" in data:
                 ensure_section(config, "IP_Location")
                 ip_loc_data = data["IP_Location"]
@@ -34364,6 +35332,8 @@ def start_web_server(args_param):
         except Exception:
             newbie_help_url = ""
 
+        map_config = _get_map_provider_frontend_config(config)
+
         return {
             "sms_enabled": sms_enabled,
             "reg_verify_enabled": reg_verify_enabled,
@@ -34371,6 +35341,8 @@ def start_web_server(args_param):
             "enable_phone_login": phone_login_enabled,
             "show_newbie_help": show_newbie_help,
             "newbie_help_url": newbie_help_url,
+            "map_provider": map_config["map_provider"],
+            "map_providers": map_config["map_providers"],
         }
 
     @app.route("/api/payment/yipay_notify", methods=["GET", "POST"])
@@ -36719,9 +37691,19 @@ def start_web_server(args_param):
             return payment_yipay_notify()
 
         if not session_id:
-            return jsonify({"success": False, "message": "缺少会话ID"}), 401
+            if is_auth_optional_api_method(method):
+                api_instance = Api(args)
+                api_instance._web_session_id = ""
+                api_instance._is_persistent_session = False
+                logging.debug(
+                    f"API调用 {method} 未携带会话ID，使用临时只读初始化上下文"
+                )
+            else:
+                return jsonify({"success": False, "message": "缺少会话ID"}), 401
+        else:
+            api_instance = None
         with web_sessions_lock:
-            if session_id in web_sessions:
+            if session_id and session_id in web_sessions:
                 api_instance = web_sessions[session_id]
                 if (
                     hasattr(api_instance, "is_authenticated")
@@ -36812,10 +37794,11 @@ def start_web_server(args_param):
                             # 否则管理员操作用户界面会导致管理员自己的Token过期或无法刷新
                             token_manager.refresh_token(
                                 validated_user, session_id)
-        update_session_activity(session_id)
+        if session_id:
+            update_session_activity(session_id)
 
         with web_sessions_lock:
-            if session_id not in web_sessions:
+            if session_id and session_id not in web_sessions:
                 state = load_session_state(session_id)
                 if state and state.get("login_success"):
                     api_instance = Api(args)
@@ -36834,7 +37817,8 @@ def start_web_server(args_param):
                         jsonify({"success": False, "message": "会话已过期或无效"}),
                         401,
                     )
-            api_instance = web_sessions[session_id]
+            elif session_id:
+                api_instance = web_sessions[session_id]
         if request.method == "POST":
             params = request.get_json() or {}
         else:
@@ -36895,9 +37879,11 @@ def start_web_server(args_param):
                 "clear_current_task_draft": "record_path",
                 "auto_generate_path": "auto_generate_path",
                 "auto_generate_path_with_api": "auto_generate_path",
+                "auto_generate_path_with_provider": "auto_generate_path",
                 "update_param": "modify_params",
                 "generate_new_ua": "modify_params",
                 "save_amap_key": "modify_params",
+                "save_map_provider_key": "modify_params",
                 # ===== 地图查看权限 =====
                 "get_map_data": "view_map",
                 # ===== 用户信息权限 =====
@@ -39844,9 +40830,76 @@ def start_web_server(args_param):
     # 游客使用session UUID，注册用户使用username
     PAYMENT_LOGS_DIR = "logs/payment_logs"
 
+    # 账单日志存储目录
+    BILLING_LOGS_DIR = "logs/billing_logs"
+
     # 确保支付日志根目录存在
     # 用户子目录将在记录日志时动态创建
     os.makedirs(PAYMENT_LOGS_DIR, exist_ok=True)
+    os.makedirs(BILLING_LOGS_DIR, exist_ok=True)
+
+    def _write_billing_log(event_type, billing_record, operator_username, details=None, before=None, after=None):
+        os.makedirs(BILLING_LOGS_DIR, exist_ok=True)
+        billing_record = billing_record or {}
+        payload = {
+            "log_id": str(uuid.uuid4()),
+            "event_type": str(event_type or "").strip(),
+            "billing_id": str(billing_record.get("billing_id", "")),
+            "school_username": str(billing_record.get("school_username", "")),
+            "auth_username": str(billing_record.get("auth_username", "")),
+            "nickname": str(billing_record.get("nickname", "")),
+            "phone": str(billing_record.get("phone", "")),
+            "amount": billing_record.get("amount"),
+            "status": billing_record.get("status"),
+            "reason": str(billing_record.get("reason", "")),
+            "operator_username": str(operator_username or "unknown"),
+            "before": before or {},
+            "after": after or {},
+            "details": details or "",
+            "created_at": _billing_now_utc_string(),
+            "created_at_beijing": _billing_now_beijing_string(),
+        }
+        log_path = os.path.join(BILLING_LOGS_DIR, f"{payload['log_id']}.json")
+        with open(log_path, "w", encoding="utf-8") as fp:
+            json.dump(payload, fp, indent=2, ensure_ascii=False)
+        return payload
+
+    def _read_billing_record_by_school_username(school_username, billing_id):
+        billing_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "User_Billing",
+            "School_Bills",
+            str(school_username or "").strip(),
+            f"{str(billing_id or '').strip()}.json"
+        )
+        if not os.path.exists(billing_file):
+            return None
+        with open(billing_file, "r", encoding="utf-8") as fp:
+            return json.load(fp)
+
+    def _get_billing_operator_username():
+        operator_username = getattr(g, "user", "unknown")
+        if isinstance(operator_username, dict):
+            operator_username = operator_username.get("auth_username", "unknown")
+        return str(operator_username or "unknown")
+
+    def _billing_log_matches_keyword(payload, keyword):
+        if not keyword:
+            return True
+        haystack = "\n".join([
+            str(payload.get("billing_id", "")),
+            str(payload.get("school_username", "")),
+            str(payload.get("auth_username", "")),
+            str(payload.get("nickname", "")),
+            str(payload.get("phone", "")),
+            str(payload.get("reason", "")),
+            str(payload.get("details", "")),
+            str(payload.get("operator_username", "")),
+        ]).lower()
+        return keyword.lower() in haystack
+
+    def _safe_billing_log_sort_key(payload):
+        return str(payload.get("created_at") or "")
 
     def _normalize_order_created_at(order_data):
         """
@@ -48306,6 +49359,9 @@ def start_web_server(args_param):
         """
         try:
             school_username = request.args.get("school_username", "").strip()
+            keyword = request.args.get("keyword", "").strip()
+            page = max(1, int(request.args.get("page", "1") or 1))
+            page_size = max(1, min(100, int(request.args.get("page_size", "50") or 50)))
             billing_root = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "User_Billing",
@@ -48321,7 +49377,23 @@ def start_web_server(args_param):
 
             if school_username:
                 if school_username not in allowed_schools:
-                    return jsonify({"success": True, "records": [], "total": 0})
+                    return jsonify({
+                        "success": True,
+                        "records": [],
+                        "total": 0,
+                        "summary": {
+                            "total_count": 0,
+                            "paid_count": 0,
+                            "pending_count": 0,
+                            "admin_cleared_count": 0,
+                            "total_amount": 0.0,
+                            "paid_amount": 0.0,
+                            "pending_amount": 0.0,
+                            "admin_cleared_amount": 0.0,
+                        },
+                        "page": page,
+                        "page_size": page_size,
+                    })
                 target_schools = [school_username]
             else:
                 target_schools = sorted(allowed_schools)
@@ -48356,6 +49428,25 @@ def start_web_server(args_param):
                 school: _load_admin_school_name(school) for school in target_schools
             }
 
+            def _billing_matches_keyword(record, keyword):
+                if not keyword:
+                    return True
+                keyword_lower = keyword.lower()
+                haystack = [
+                    str(record.get("school_username", "")),
+                    str(record.get("school_name", "")),
+                    str(record.get("reason", "")),
+                    str(record.get("billing_id", "")),
+                    str(record.get("order_id", "")),
+                    str(record.get("payment_order_id", "")),
+                    str(record.get("payment_trace_id", "")),
+                    str(record.get("auth_username", "")),
+                    str(record.get("nickname", "")),
+                    str(record.get("phone", "")),
+                ]
+                combined = "\n".join(haystack).lower()
+                return keyword_lower in combined
+
             for school in target_schools:
                 user_billing_dir = os.path.join(billing_root, school)
                 if not os.path.isdir(user_billing_dir):
@@ -48375,8 +49466,7 @@ def start_web_server(args_param):
                         records.append(record)
                     except Exception as e:
                         logging.warning(f"[管理员账单] 读取账单文件 {filename} 失败: {e}")
-            
-            # 按创建时间降序排列
+
             records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
             for _r in records:
                 if _r.get("amount") is not None:
@@ -48384,8 +49474,37 @@ def start_web_server(args_param):
                         _r["amount"] = round(float(_r["amount"]), 2)
                     except Exception:  # nosec B110 - 金额格式化失败保留原值
                         pass
-            
-            return jsonify({"success": True, "records": records, "total": len(records)})
+
+            filtered_records = [record for record in records if _billing_matches_keyword(record, keyword)]
+            summary = {
+                "total_count": len(filtered_records),
+                "paid_count": 0,
+                "pending_count": 0,
+                "admin_cleared_count": 0,
+                "total_amount": 0.0,
+                "paid_amount": 0.0,
+                "pending_amount": 0.0,
+                "admin_cleared_amount": 0.0,
+            }
+            for record in filtered_records:
+                amount = round(float(record.get("amount", 0) or 0), 2)
+                status = str(record.get("status", "pending")).strip().lower()
+                summary["total_amount"] += amount
+                if status == "paid":
+                    summary["paid_count"] += 1
+                    summary["paid_amount"] += amount
+                elif status == "admin_cleared":
+                    summary["admin_cleared_count"] += 1
+                    summary["admin_cleared_amount"] += amount
+                else:
+                    summary["pending_count"] += 1
+                    summary["pending_amount"] += amount
+
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            page_records = filtered_records[start_idx:end_idx]
+            total = len(filtered_records)
+            return jsonify({"success": True, "records": page_records, "total": total, "summary": summary, "page": page, "page_size": page_size})
         except Exception as e:
             logging.error(f"[管理员账单] 获取账单列表失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"获取账单列表失败: {str(e)}"}), 500
@@ -48416,6 +49535,7 @@ def start_web_server(args_param):
             if school_username not in allowed_schools:
                 return jsonify({"success": False, "message": "无权操作该学校账号的账单"}), 403
 
+            operator_username = _get_billing_operator_username()
             billing_dir = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "User_Billing",
@@ -48430,6 +49550,9 @@ def start_web_server(args_param):
             with open(billing_file, "r", encoding="utf-8") as f:
                 record = json.load(f)
 
+            old_reason = str(record.get("reason", ""))
+            old_amount = round(float(record.get("amount", 0) or 0), 2)
+            old_status = str(record.get("status", "pending")).strip().lower()
             changed_fields = []
             now_utc = _billing_now_utc_string()
             now_beijing = _billing_now_beijing_string()
@@ -48450,7 +49573,6 @@ def start_web_server(args_param):
                         return jsonify({"success": False, "message": "金额必须大于 0"}), 400
                 except (TypeError, ValueError):
                     return jsonify({"success": False, "message": "amount 必须是有效数字"}), 400
-                old_amount = round(float(record.get("amount", 0) or 0), 2)
                 if new_amount != old_amount:
                     record["amount"] = new_amount
                     changed_fields.append("amount")
@@ -48461,7 +49583,11 @@ def start_web_server(args_param):
                 if new_status not in valid_status:
                     return jsonify({"success": False, "message": "status 必须是 pending/paid/admin_cleared"}), 400
 
-                old_status = str(record.get("status", "pending")).strip().lower()
+                if new_status == "admin_cleared" and old_status != "pending":
+                    return jsonify({"success": False, "message": "只有待支付账单才能被管理员清除"}), 400
+                if old_status == "admin_cleared" and new_status == "admin_cleared":
+                    return jsonify({"success": False, "message": "该账单已被管理员清除，请勿重复操作"}), 400
+
                 if new_status != old_status:
                     record["status"] = new_status
                     changed_fields.append("status")
@@ -48493,6 +49619,32 @@ def start_web_server(args_param):
 
             with open(billing_file, "w", encoding="utf-8") as f:
                 json.dump(record, f, indent=2, ensure_ascii=False)
+
+            if "amount" in changed_fields:
+                _write_billing_log(
+                    "billing_amount_changed",
+                    record,
+                    operator_username,
+                    before={"amount": old_amount},
+                    after={"amount": record.get("amount")},
+                )
+            if "status" in changed_fields:
+                event_type = "billing_admin_cleared" if record.get("status") == "admin_cleared" else "billing_status_changed"
+                _write_billing_log(
+                    event_type,
+                    record,
+                    operator_username,
+                    before={"status": old_status},
+                    after={"status": record.get("status")},
+                )
+            if "reason" in changed_fields:
+                _write_billing_log(
+                    "billing_reason_changed",
+                    record,
+                    operator_username,
+                    before={"reason": old_reason},
+                    after={"reason": record.get("reason")},
+                )
 
             auth_system.log_audit(
                 g.user,
@@ -48534,6 +49686,12 @@ def start_web_server(args_param):
             if not os.path.exists(billing_file):
                 return jsonify({"success": False, "message": "账单记录不存在"}), 404
 
+            operator_username = _get_billing_operator_username()
+            deleted_record = _read_billing_record_by_school_username(school_username, billing_id) or {
+                "billing_id": billing_id,
+                "school_username": school_username,
+            }
+
             remove_dir = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "User_Billing",
@@ -48547,6 +49705,14 @@ def start_web_server(args_param):
                 target_file = os.path.join(remove_dir, f"{billing_id}_{suffix}.json")
 
             shutil.move(billing_file, target_file)
+            _write_billing_log(
+                "billing_deleted",
+                deleted_record,
+                operator_username,
+                details=f"账单已移动到 {target_file}",
+                before={"status": deleted_record.get("status")},
+                after={"status": "deleted"},
+            )
             auth_system.log_audit(
                 g.user,
                 "admin_delete_billing",
@@ -48557,6 +49723,41 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[管理员账单] 删除账单失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"删除账单失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/logs", methods=["GET"])
+    @admin_required
+    def admin_billing_logs():
+        try:
+            keyword = request.args.get("keyword", "").strip()
+            event_type = request.args.get("event_type", "").strip()
+            page = max(1, int(request.args.get("page", "1") or 1))
+            page_size = max(1, min(100, int(request.args.get("page_size", "50") or 50)))
+            logs = []
+            if os.path.exists(BILLING_LOGS_DIR):
+                for filename in os.listdir(BILLING_LOGS_DIR):
+                    if not filename.endswith(".json"):
+                        continue
+                    log_path = os.path.join(BILLING_LOGS_DIR, filename)
+                    if not os.path.isfile(log_path):
+                        continue
+                    try:
+                        with open(log_path, "r", encoding="utf-8") as fp:
+                            payload = json.load(fp)
+                    except Exception:
+                        continue
+                    if event_type and str(payload.get("event_type", "")).strip().lower() != event_type.lower():
+                        continue
+                    if not _billing_log_matches_keyword(payload, keyword):
+                        continue
+                    logs.append(payload)
+            logs.sort(key=_safe_billing_log_sort_key, reverse=True)
+            total = len(logs)
+            start_idx = (page - 1) * page_size
+            page_logs = logs[start_idx:start_idx + page_size]
+            return jsonify({"success": True, "logs": page_logs, "total": total, "page": page, "page_size": page_size})
+        except Exception as e:
+            logging.error(f"[管理员账单] 获取账单日志失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取账单日志失败: {str(e)}"}), 500
 
     @app.route("/api/admin/billing/add", methods=["POST"])
     @login_required
@@ -48634,6 +49835,25 @@ def start_web_server(args_param):
             billing_id = _create_user_billing_record("", school_username, reason, total_amount)
             if not billing_id:
                 return jsonify({"success": False, "message": "创建账单记录失败，请检查日志"}), 500
+
+            created_record = _read_billing_record_by_school_username(school_username, billing_id) or {
+                "billing_id": billing_id,
+                "school_username": school_username,
+                "amount": total_amount,
+                "reason": reason,
+                "status": "pending",
+            }
+            _write_billing_log(
+                "billing_created",
+                created_record,
+                admin_username,
+                details=f"管理员创建账单，模式={mode}",
+                after={
+                    "amount": created_record.get("amount"),
+                    "status": created_record.get("status"),
+                    "reason": created_record.get("reason"),
+                },
+            )
 
             auth_system.log_audit(
                 admin_username,

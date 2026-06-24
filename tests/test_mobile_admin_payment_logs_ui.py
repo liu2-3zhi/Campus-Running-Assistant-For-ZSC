@@ -31,7 +31,13 @@ class TestMobileAdminPaymentLogsUi(unittest.TestCase):
             'request.args.get("action_type", request.args.get("action", "")).strip()',
             source,
         )
+    def test_admin_billing_logs_panel_has_search_and_pagination_hooks(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        index_source = INDEX_PATH.read_text(encoding="utf-8")
 
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertIn('id="admin-billing-logs-panel_modal"', index_source)
+        self.assertIn('id="admin-billing-logs-search-btn_modal"', index_source)
+        self.assertIn('async function loadAdminBillingLogs(page = 1)', source)
+        self.assertIn('/api/admin/billing/logs', source)
+        self.assertIn('admin-billing-logs-prev-btn_modal', source)
+        self.assertIn('admin-billing-logs-next-btn_modal', source)

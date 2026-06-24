@@ -12,6 +12,81 @@ const SECURITY_CONSTRAINTS = {
   USERNAME_PATTERN: /^[a-zA-Z0-9_\-\.@]+$/,
 };
 
+const mobileAdminUnifiedScrollState = {
+  tabType: null,
+  scrollTop: 0,
+  scrollHeight: 0,
+  clientHeight: 0,
+};
+
+function captureMobileAdminUnifiedScrollState(tabType) {
+  const panel = document.getElementById("mobile-admin-panel-unified");
+  if (!panel) {
+    return null;
+  }
+  const snapshot = {
+    tabType: tabType || mobileAdminUnifiedScrollState.tabType || null,
+    scrollTop: Number(panel.scrollTop || 0),
+    scrollHeight: Number(panel.scrollHeight || 0),
+    clientHeight: Number(panel.clientHeight || 0),
+  };
+  mobileAdminUnifiedScrollState.tabType = snapshot.tabType;
+  mobileAdminUnifiedScrollState.scrollTop = snapshot.scrollTop;
+  mobileAdminUnifiedScrollState.scrollHeight = snapshot.scrollHeight;
+  mobileAdminUnifiedScrollState.clientHeight = snapshot.clientHeight;
+  return snapshot;
+}
+
+function restoreMobileAdminUnifiedScrollState(snapshot, options = {}) {
+  const panel = document.getElementById("mobile-admin-panel-unified");
+  if (!panel || !snapshot) {
+    return;
+  }
+  const restoreMode = options.restoreMode || "replace";
+  const restore = () => {
+    if (restoreMode === "append") {
+      const previousBottomOffset = Math.max(
+        0,
+        Number(snapshot.scrollHeight || 0) - Number(snapshot.scrollTop || 0),
+      );
+      const nextScrollTop = Math.max(0, Number(panel.scrollHeight || 0) - previousBottomOffset);
+      panel.scrollTop = nextScrollTop;
+    } else {
+      panel.scrollTop = Math.max(0, Number(snapshot.scrollTop || 0));
+    }
+    mobileAdminUnifiedScrollState.tabType = snapshot.tabType || null;
+    mobileAdminUnifiedScrollState.scrollTop = Number(panel.scrollTop || 0);
+    mobileAdminUnifiedScrollState.scrollHeight = Number(panel.scrollHeight || 0);
+    mobileAdminUnifiedScrollState.clientHeight = Number(panel.clientHeight || 0);
+  };
+
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(restore);
+    return;
+  }
+  restore();
+}
+
+function withMobileAdminUnifiedScrollGuard(tabType, renderFn, options = {}) {
+  const snapshot = captureMobileAdminUnifiedScrollState(tabType);
+  const finalize = () => restoreMobileAdminUnifiedScrollState(snapshot, options);
+  try {
+    const result = renderFn();
+    if (result && typeof result.then === "function") {
+      return result.finally(finalize);
+    }
+    finalize();
+    return result;
+  } catch (error) {
+    finalize();
+    throw error;
+  }
+}
+
+function syncMobileAdminUnifiedPanelScroll(tabType, options = {}) {
+  return withMobileAdminUnifiedScrollGuard(tabType, () => {}, options);
+}
+
 // let captchaIds = {
 //   login: null,
 //   register: null,
@@ -1136,6 +1211,12 @@ let adminPaymentLogsState = {
   perPage: 20, // 每页显示20条记录（可根据需要调整）
 };
 
+const adminBillingLogsState = {
+  currentPage: 1,
+  totalPages: 1,
+  pageSize: 50,
+};
+
 // ==========================================
 // 核心功能函数
 // ==========================================
@@ -1705,6 +1786,166 @@ function loadAdminPaymentLogsNext() {
   // 加载下一页数据
   // 调用loadAdminPaymentLogs函数，传入下一页的页码
   loadAdminPaymentLogs(nextPage);
+}
+
+async function loadAdminBillingLogs(page = 1) {
+  const listContainer = document.getElementById("admin-billing-logs-list_modal");
+  const pageInfo = document.getElementById("admin-billing-logs-page-info_modal");
+  const prevBtn = document.getElementById("admin-billing-logs-prev-btn_modal");
+  const nextBtn = document.getElementById("admin-billing-logs-next-btn_modal");
+  if (!listContainer) return;
+
+  listContainer.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-12">
+      <svg class="animate-spin h-8 w-8 text-sky-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <p class="text-slate-400 text-center text-sm">正在加载账单日志...</p>
+    </div>
+  `;
+
+  const keyword =
+    document.getElementById("admin-billing-logs-search-input_modal")?.value.trim() || "";
+  const eventType =
+    document.getElementById("admin-billing-logs-event-type_modal")?.value || "";
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(adminBillingLogsState.pageSize),
+  });
+  if (keyword) params.set("keyword", keyword);
+  if (eventType) params.set("event_type", eventType);
+
+  try {
+    const resp = await fetch(`/api/admin/billing/logs?${params.toString()}`, {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.success) {
+      throw new Error(data.message || `HTTP错误: ${resp.status}`);
+    }
+
+    const logs = data.logs || [];
+    const total = Number(data.total || 0);
+    adminBillingLogsState.currentPage = page;
+    adminBillingLogsState.totalPages = Math.max(
+      1,
+      Math.ceil(total / adminBillingLogsState.pageSize),
+    );
+
+    if (!logs.length) {
+      listContainer.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
+          <svg class="w-12 h-12 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <p class="text-sm">暂无账单日志</p>
+        </div>
+      `;
+    } else {
+      listContainer.innerHTML = logs
+        .map((log) => {
+          const eventTypeTextMap = {
+            billing_created: "创建",
+            billing_amount_changed: "金额变化",
+            billing_status_changed: "状态变化",
+            billing_admin_cleared: "管理员清除",
+            billing_reason_changed: "原因变化",
+            billing_deleted: "删除",
+          };
+          const eventText =
+            eventTypeTextMap[String(log.event_type || "")] ||
+            _escapeAttr(String(log.event_type || "未知事件"));
+          const beforeJson = _escapeAttr(
+            JSON.stringify(log.before || {}, null, 2),
+          );
+          const afterJson = _escapeAttr(
+            JSON.stringify(log.after || {}, null, 2),
+          );
+          const billingId = _escapeAttr(String(log.billing_id || "-"));
+          const schoolUsername = _escapeAttr(String(log.school_username || "-"));
+          const authUsername = _escapeAttr(String(log.auth_username || "-"));
+          const nickname = _escapeAttr(String(log.nickname || "-"));
+          const phone = _escapeAttr(String(log.phone || "-"));
+          const operatorUsername = _escapeAttr(
+            String(log.operator_username || "-"),
+          );
+          const details = _escapeAttr(String(log.details || "-"));
+          const createdAt = _escapeAttr(
+            String(log.created_at_beijing || log.created_at || "-"),
+          );
+          return `
+            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-sky-100 text-sky-700 border border-sky-200">${eventText}</span>
+                <span class="text-xs text-slate-500">${createdAt}</span>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-slate-700">
+                <div>账单号：<span class="font-mono">${billingId}</span></div>
+                <div>学校账号：<span class="font-mono">${schoolUsername}</span></div>
+                <div>用户：${authUsername}</div>
+                <div>昵称：${nickname}</div>
+                <div>手机号：${phone}</div>
+                <div>操作人：${operatorUsername}</div>
+              </div>
+              <div class="text-sm text-slate-600">说明：${details}</div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <div class="font-semibold text-slate-600 mb-1">变更前</div>
+                  <pre class="whitespace-pre-wrap break-all text-slate-500">${beforeJson}</pre>
+                </div>
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <div class="font-semibold text-slate-600 mb-1">变更后</div>
+                  <pre class="whitespace-pre-wrap break-all text-slate-500">${afterJson}</pre>
+                </div>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+
+    if (pageInfo) {
+      pageInfo.textContent = `第 ${adminBillingLogsState.currentPage} 页 / 共 ${adminBillingLogsState.totalPages} 页`;
+    }
+    if (prevBtn) {
+      prevBtn.disabled = adminBillingLogsState.currentPage <= 1;
+      prevBtn.classList.toggle(
+        "opacity-50",
+        adminBillingLogsState.currentPage <= 1,
+      );
+      prevBtn.classList.toggle(
+        "cursor-not-allowed",
+        adminBillingLogsState.currentPage <= 1,
+      );
+    }
+    if (nextBtn) {
+      nextBtn.disabled =
+        adminBillingLogsState.currentPage >= adminBillingLogsState.totalPages;
+      nextBtn.classList.toggle(
+        "opacity-50",
+        adminBillingLogsState.currentPage >= adminBillingLogsState.totalPages,
+      );
+      nextBtn.classList.toggle(
+        "cursor-not-allowed",
+        adminBillingLogsState.currentPage >= adminBillingLogsState.totalPages,
+      );
+    }
+  } catch (error) {
+    listContainer.innerHTML = `<div class="text-red-500 bg-red-50 border border-red-200 rounded-lg p-3 text-sm">加载失败：${_escapeAttr(error.message || "未知错误")}</div>`;
+    if (pageInfo) pageInfo.textContent = `第 ${page} 页`;
+  }
+}
+
+function loadAdminBillingLogsPrev() {
+  if (adminBillingLogsState.currentPage <= 1) return;
+  loadAdminBillingLogs(adminBillingLogsState.currentPage - 1);
+}
+
+function loadAdminBillingLogsNext() {
+  if (adminBillingLogsState.currentPage >= adminBillingLogsState.totalPages)
+    return;
+  loadAdminBillingLogs(adminBillingLogsState.currentPage + 1);
 }
 
 /**
@@ -11490,6 +11731,13 @@ async function saveMobilePricingConfig() {
     sms_enabled: false,
     reg_verify_enabled: false,
     enable_phone_modification: false,
+    map_provider: "amap",
+    map_providers: {
+      amap: { provider: "amap", display_name: "高德地图", js_key: "", coordinate_system: "gcj02", business_coordinate_system: "gcj02" },
+      tencent: { provider: "tencent", display_name: "腾讯地图", map_key: "", coordinate_system: "gcj02", business_coordinate_system: "gcj02" },
+      tianditu: { provider: "tianditu", display_name: "天地图", token: "", coordinate_system: "wgs84", business_coordinate_system: "gcj02" },
+      baidu: { provider: "baidu", display_name: "百度地图", ak: "", coordinate_system: "bd09", business_coordinate_system: "gcj02" },
+    },
   };
 
   // 如果服务端已经注入了配置（旧方式，用于兼容），直接使用
@@ -13593,7 +13841,7 @@ async function loadMobileSessionPickerList() {
     '<p class="text-slate-400 text-center py-10">加载中...</p>';
 
   try {
-    const headers = { "X-Session-ID": sessionUUID || null };
+    const headers = { "X-Session-ID": getAuthenticatedSessionHeaderValue() };
     const response = await fetch("/auth/user/sessions", {
       headers: headers,
     });
@@ -15069,7 +15317,7 @@ async function loadMobileSessionsList() {
     '<div class="flex flex-col items-center justify-center py-10"><div class="w-8 h-8 border-4 border-sky-100 border-t-sky-500 rounded-full animate-spin mb-3"></div><span class="text-xs text-slate-400 font-medium">正在同步会话...</span></div>';
 
   try {
-    const headers = { "X-Session-ID": sessionUUID || null };
+    const headers = { "X-Session-ID": getAuthenticatedSessionHeaderValue() };
     const response = await fetch("/auth/user/sessions", {
       headers: headers,
     });
@@ -15806,6 +16054,119 @@ let isRefreshingTasks = false;
 
 let IS_OFFLINE = false;
 let sessionUUID = null;
+let authSessionUUID = null;
+let authRequestGeneration = 0;
+let authLoginInProgress = false;
+
+function isUsableClientSessionUUID(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return false;
+  }
+  if (["null", "undefined", "none"].includes(normalized.toLowerCase())) {
+    return false;
+  }
+  return /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(
+    normalized,
+  );
+}
+
+function ensureAuthLoginSessionUUID() {
+  if (isUsableClientSessionUUID(sessionUUID)) {
+    return sessionUUID;
+  }
+
+  const uuidFromUrl = getUUIDFromURL();
+  if (isUsableClientSessionUUID(uuidFromUrl)) {
+    sessionUUID = uuidFromUrl;
+    return sessionUUID;
+  }
+
+  return null;
+}
+
+function getAuthRequestSessionUUID() {
+  return isUsableClientSessionUUID(authSessionUUID)
+    ? authSessionUUID
+    : ensureAuthLoginSessionUUID();
+}
+
+function getAuthenticatedSessionHeaderValue() {
+  if (isUsableClientSessionUUID(sessionUUID)) {
+    return sessionUUID;
+  }
+  return isUsableClientSessionUUID(authSessionUUID) ? authSessionUUID : "";
+}
+
+const AUTH_CONTEXT_API_METHODS = new Set(["get_initial_data"]);
+
+function isAuthContextApiMethod(method) {
+  return AUTH_CONTEXT_API_METHODS.has(String(method || "").trim());
+}
+
+function getApiRequestSessionHeaderValue(method) {
+  if (isUsableClientSessionUUID(sessionUUID)) {
+    return sessionUUID;
+  }
+
+  const uuidFromUrl = getUUIDFromURL();
+  if (isUsableClientSessionUUID(uuidFromUrl)) {
+    sessionUUID = uuidFromUrl;
+    return sessionUUID;
+  }
+
+  sessionUUID = null;
+  if (
+    isAuthContextApiMethod(method) &&
+    isUsableClientSessionUUID(authSessionUUID)
+  ) {
+    return authSessionUUID;
+  }
+
+  return "";
+}
+
+function shouldSuppressLoggedOutElsewhereNotice(
+  errorData,
+  requestContext,
+  currentContext,
+) {
+  requestContext = requestContext || {};
+  currentContext = currentContext || {};
+
+  if (!errorData || !errorData.logged_out_elsewhere) {
+    return false;
+  }
+
+  if (currentContext.authLoginInProgress) {
+    return true;
+  }
+
+  const requestGeneration = Number(requestContext.authGeneration || 0);
+  const currentGeneration = Number(currentContext.authGeneration || 0);
+  if (requestGeneration !== currentGeneration) {
+    return true;
+  }
+
+  const normalizeSession = (value) => {
+    const normalized = String(value || "").trim();
+    if (!normalized) {
+      return "";
+    }
+    if (["null", "undefined", "none"].includes(normalized.toLowerCase())) {
+      return "";
+    }
+    return normalized;
+  };
+  const requestSessionUUID = normalizeSession(requestContext.sessionUUID);
+  const currentSessionUUID = normalizeSession(currentContext.sessionUUID);
+
+  return Boolean(
+    requestSessionUUID &&
+      currentSessionUUID &&
+      requestSessionUUID !== currentSessionUUID,
+  );
+}
 
 function getServerConnectionGuidanceMessage() {
   return `
@@ -15877,22 +16238,24 @@ async function callPythonAPI(method, ...args) {
     "Content-Type": "application/json",
   };
 
-  if (sessionUUID) {
-    headers["X-Session-ID"] = sessionUUID;
-    logMessage_Info(`[API调用] 会话ID: ${sessionUUID}`);
+  const requestSessionHeaderValue = getApiRequestSessionHeaderValue(method);
+  if (isUsableClientSessionUUID(requestSessionHeaderValue)) {
+    headers["X-Session-ID"] = requestSessionHeaderValue;
+    logMessage_Info(`[API调用] 会话ID: ${requestSessionHeaderValue}`);
+  } else if (isAuthContextApiMethod(method)) {
+    logMessage_Warning(
+      `[API调用] ${method} 未找到可用会话，将使用后端只读初始化兜底`,
+    );
   } else {
     logMessage_Warning(
-      `[API调用] 警告: sessionUUID为空，可能导致会话无效错误，尝试从URL提取...`,
+      `[API调用] 警告: sessionUUID为空，${method} 可能返回会话无效`,
     );
-    sessionUUID = getUUIDFromURL();
-    if (sessionUUID && sessionUUID !== "null" && sessionUUID !== "undefined") {
-      logMessage_Info(`[API调用] 从URL提取到会话ID: ${sessionUUID}`);
-      headers["X-Session-ID"] = sessionUUID;
-    } else {
-      sessionUUID = null;
-      logMessage_Warning(`[API调用] 无法从URL提取会话ID`);
-    }
   }
+
+  const requestAuthContext = {
+    authGeneration: authRequestGeneration,
+    sessionUUID,
+  };
 
   logMessage_Info(`[API调用] 发送请求到 /api/${method}`);
   let response;
@@ -16277,6 +16640,28 @@ async function callPythonAPI(method, ...args) {
       logMessage_Info(`[API调用] ✗ 需要重新登录: ${errorMsg}`);
 
       if (errorData.logged_out_elsewhere) {
+        if (
+          shouldSuppressLoggedOutElsewhereNotice(
+            errorData,
+            requestAuthContext,
+            {
+              authGeneration: authRequestGeneration,
+              sessionUUID,
+              authLoginInProgress,
+            },
+          )
+        ) {
+          logMessage_Info(
+            "[安全提示] 已忽略登录过程中的旧多设备登出响应",
+          );
+          return {
+            success: false,
+            stale_auth_response: true,
+            suppressed: true,
+            message: errorMsg,
+          };
+        }
+
         // ==================== 修复开始 ====================
         // 检查遮罩是否已存在，防止重复创建和倒计时重置
         if (document.getElementById("logout-elsewhere-overlay")) {
@@ -16543,6 +16928,13 @@ let singleTotalPoints = 0;
 let AMapInstance, map;
 let amapLoadingPromise = null;
 let AMapReady = false;
+let tencentMapLoadingPromise = null;
+let tiandituMapLoadingPromise = null;
+let baiduMapLoadingPromise = null;
+let providerMapInstances = {};
+let providerMapInstanceProviders = {};
+let providerMapEventsBound = {};
+let providerMapOverlays = {};
 
 let currentTasks = [];
 let selectedTaskIndex = -1;
@@ -18769,13 +19161,18 @@ async function handleAuthLogin(isMobile_use = false) {
 
     return;
   }
+  authLoginInProgress = true;
+  authRequestGeneration += 1;
+  const authRequestSessionUUID = getAuthRequestSessionUUID();
   setButtonLoading("auth-login-btn", true, "登录中...");
 
   try {
     const headers = {
       "Content-Type": "application/json",
-      "X-Session-ID": sessionUUID || null,
     };
+    if (isUsableClientSessionUUID(authRequestSessionUUID)) {
+      headers["X-Session-ID"] = authRequestSessionUUID;
+    }
 
     const response = await fetch("/auth/login", {
       method: "POST",
@@ -18809,11 +19206,20 @@ async function handleAuthLogin(isMobile_use = false) {
 
       if (result.session_id) {
         sessionUUID = result.session_id;
+        authSessionUUID = result.auth_session_id || result.session_id;
         logMessage_Info(
           "[登录成功] 会话ID已设置:",
           sessionUUID.substring(0, 16) + "...",
         );
+      } else if (result.auth_session_id) {
+        authSessionUUID = result.auth_session_id;
+        sessionUUID = null;
+        logMessage_Info(
+          "[登录成功] 认证会话已建立，请选择或创建业务会话:",
+          authSessionUUID.substring(0, 16) + "...",
+        );
       }
+      authRequestGeneration += 1;
 
       themeBackgroundLoginSyncInFlight = true;
       await syncThemeFromServer(result.theme, result.theme_style);
@@ -19038,6 +19444,7 @@ async function handleAuthLogin(isMobile_use = false) {
     if (mobileLoginCaptchaErr) mobileLoginCaptchaErr.value = "";
   } finally {
     themeBackgroundLoginSyncInFlight = false;
+    authLoginInProgress = false;
   }
 }
 
@@ -19226,6 +19633,8 @@ async function handle2FAVerify() {
     return;
   }
 
+  authLoginInProgress = true;
+  authRequestGeneration += 1;
   setButtonLoading("auth-2fa-verify-btn", true, "验证中...");
 
   try {
@@ -19233,7 +19642,7 @@ async function handle2FAVerify() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID || null,
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
       },
       credentials: "include",
       body: JSON.stringify({
@@ -19249,11 +19658,20 @@ async function handle2FAVerify() {
 
       if (result.session_id) {
         sessionUUID = result.session_id;
+        authSessionUUID = result.auth_session_id || result.session_id;
         logMessage_Info(
           "[2FA验证成功] 会话ID已设置:",
           sessionUUID.substring(0, 16) + "...",
         );
+      } else if (result.auth_session_id) {
+        authSessionUUID = result.auth_session_id;
+        sessionUUID = null;
+        logMessage_Info(
+          "[2FA验证成功] 认证会话已建立，请选择或创建业务会话:",
+          authSessionUUID.substring(0, 16) + "...",
+        );
       }
+      authRequestGeneration += 1;
 
       showButtonSuccess("auth-2fa-verify-btn", "验证成功", 800);
       showAuthSuccess("2FA验证成功！");
@@ -19306,6 +19724,8 @@ async function handle2FAVerify() {
       title: "网络错误",
       text: "网络错误，请检查连接后重试",
     });
+  } finally {
+    authLoginInProgress = false;
   }
 }
 
@@ -19715,6 +20135,51 @@ if (typeof window !== "undefined") {
       authRegisterCaptcha.addEventListener("keypress", (e) => {
         if (e.key === "Enter") {
           handleAuthRegister();
+        }
+      });
+    }
+
+    const adminUsersSearchInput = $("admin-users-search-input_modal");
+    if (adminUsersSearchInput) {
+      adminUsersSearchInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          loadAdminUsers();
+        }
+      });
+    }
+
+    const mobileAdminUsersSearchInput = $("mobile-multi-admin-users-search-input");
+    if (mobileAdminUsersSearchInput) {
+      mobileAdminUsersSearchInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          loadAdminUsers();
+        }
+      });
+    }
+
+    const adminBillingSearchInput = $("admin-billing-search-input");
+    if (adminBillingSearchInput) {
+      adminBillingSearchInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          loadAdminBillingList();
+        }
+      });
+    }
+
+    const adminBillingLogsSearchInput = $("admin-billing-logs-search-input_modal");
+    if (adminBillingLogsSearchInput) {
+      adminBillingLogsSearchInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          loadAdminBillingLogs(1);
+        }
+      });
+    }
+
+    const mobileAdminBillingSearchInput = $("mobile-multi-admin-billing-search-input");
+    if (mobileAdminBillingSearchInput) {
+      mobileAdminBillingSearchInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          loadMobileMultiAdminBillingList();
         }
       });
     }
@@ -21338,6 +21803,7 @@ function switchAdminTab(tab) {
   const pricingTab = $("admin-tab-pricing_modal");
   // 获取水印控制标签元素
   const watermarkControlTab = $("admin-tab-watermark-control_modal");
+  const billingLogsTab = $("admin-tab-billing-logs_modal");
 
   const usersPanel = $("admin-users-panel_modal");
   const groupsPanel = $("admin-groups-panel_modal");
@@ -21365,6 +21831,7 @@ function switchAdminTab(tab) {
   const pricingPanel = $("admin-pricing-panel_modal");
   // 获取水印控制面板元素
   const watermarkControlPanel = $("admin-watermark-control-panel_modal");
+  const billingLogsPanel = $("admin-billing-logs-panel_modal");
   // 获取账单管理和恢复账号标签/面板元素
   const adminBillingTab = $("admin-tab-billing_modal");
   const restoreAccountTab = $("admin-tab-restore-account_modal");
@@ -21396,6 +21863,7 @@ function switchAdminTab(tab) {
     paymentSettingsTab, // 添加支付设置 Tab
     pricingTab, // 添加价格设置 Tab
     watermarkControlTab, // 添加水印控制 Tab
+    billingLogsTab,
     adminBillingTab, // 添加账单管理 Tab
     restoreAccountTab, // 添加恢复账号 Tab
   ]
@@ -21426,6 +21894,7 @@ function switchAdminTab(tab) {
     paymentSettingsPanel, // 添加支付设置 Panel
     pricingPanel, // 添加价格设置 Panel
     watermarkControlPanel, // 添加水印控制 Panel
+    billingLogsPanel,
     adminBillingPanel, // 添加账单管理 Panel
     restoreAccountPanel, // 添加恢复账号 Panel
   ]
@@ -22532,6 +23001,14 @@ function switchAdminTab(tab) {
     }
     stopHealthAutoRefresh();
     loadAdminBillingList();
+  } else if (tab === "admin-billing-logs") {
+    if (billingLogsTab && billingLogsPanel) {
+      billingLogsTab.classList.add("text-sky-600", "border-sky-600");
+      billingLogsTab.classList.remove("text-slate-400", "border-transparent");
+      billingLogsPanel.classList.remove("hidden");
+    }
+    stopHealthAutoRefresh();
+    loadAdminBillingLogs(1);
   } else if (tab === "restore-account") {
     // 恢复账号面板
     if (restoreAccountTab && restoreAccountPanel) {
@@ -22575,13 +23052,13 @@ async function loadAdminSessions_inline() {
     if (isGodMode) {
       response = await fetch("/auth/admin/all_sessions", {
         headers: {
-          "X-Session-ID": sessionUUID,
+          "X-Session-ID": getAuthenticatedSessionHeaderValue(),
         },
       });
     } else {
       response = await fetch("/auth/user/sessions", {
         headers: {
-          "X-Session-ID": sessionUUID,
+          "X-Session-ID": getAuthenticatedSessionHeaderValue(),
         },
       });
     }
@@ -25550,18 +26027,44 @@ async function _showPhoneLocationNearInput(inputEl, phone) {
   }
 }
 
-async function loadAdminUsers() {
+async function loadAdminUsers(keywordOverride = null) {
   try {
-    const response = await fetch("/auth/admin/list_users", {
-      headers: {
-        "X-Session-ID": sessionUUID,
+    const keywordInput = document.getElementById("admin-users-search-input_modal");
+    const mobileKeywordInput = document.getElementById(
+      "mobile-multi-admin-users-search-input",
+    );
+    const keyword =
+      keywordOverride != null
+        ? String(keywordOverride).trim()
+        : keywordInput?.value.trim() || mobileKeywordInput?.value.trim() || "";
+    const response = await fetch(
+      keyword
+        ? `/auth/admin/list_users?keyword=${encodeURIComponent(keyword)}`
+        : "/auth/admin/list_users",
+      {
+        headers: {
+          "X-Session-ID": sessionUUID,
+        },
       },
-    });
+    );
     const result = await response.json();
 
+    if (keywordInput && mobileKeywordInput) {
+      if (document.activeElement === mobileKeywordInput) {
+        keywordInput.value = keyword;
+      } else {
+        mobileKeywordInput.value = keyword;
+      }
+    } else if (keywordInput) {
+      keywordInput.value = keyword;
+    } else if (mobileKeywordInput) {
+      mobileKeywordInput.value = keyword;
+    }
+
     if (!result.success) {
-      $("admin-users-list").innerHTML =
-        `<p class="text-red-500 text-center py-10">${result.message}</p>`;
+      const errorHtml = `<p class="text-red-500 text-center py-10">${result.message}</p>`;
+      const listEl = $("admin-users-list_modal");
+      if (listEl) listEl.innerHTML = errorHtml;
       return;
     }
 
@@ -25569,6 +26072,9 @@ async function loadAdminUsers() {
     if (result.users.length === 0) {
       listEl.innerHTML =
         '<p class="text-slate-400 text-center py-10">暂无用户</p>';
+      if (typeof copyAdminContentToMultiPanel === "function") {
+        copyAdminContentToMultiPanel("users");
+      }
       return;
     }
     const groupsResp = await fetch("/auth/admin/list_groups", {
@@ -25585,8 +26091,10 @@ async function loadAdminUsers() {
     _adminUsersCacheData = { users: result.users, groups };
     _rerenderAdminUsersList();
   } catch (e) {
-    $("admin-users-list").innerHTML =
-      `<p class="text-red-500 text-center py-10">加载失败: ${e.message}</p>`;
+    const listEl = $("admin-users-list_modal");
+    if (listEl) {
+      listEl.innerHTML = `<p class="text-red-500 text-center py-10">加载失败: ${e.message}</p>`;
+    }
   }
 }
 
@@ -28562,13 +29070,13 @@ async function loadAdminSessions() {
     if (isGodMode) {
       response = await fetch("/auth/admin/all_sessions", {
         headers: {
-          "X-Session-ID": sessionUUID,
+          "X-Session-ID": getAuthenticatedSessionHeaderValue(),
         },
       });
     } else {
       response = await fetch("/auth/user/sessions", {
         headers: {
-          "X-Session-ID": sessionUUID,
+          "X-Session-ID": getAuthenticatedSessionHeaderValue(),
         },
       });
     }
@@ -28724,11 +29232,11 @@ async function loadMobileAdminSessionsList() {
     let response;
     if (isGodMode) {
       response = await fetch("/auth/admin/all_sessions", {
-        headers: { "X-Session-ID": sessionUUID },
+        headers: { "X-Session-ID": getAuthenticatedSessionHeaderValue() },
       });
     } else {
       response = await fetch("/auth/user/sessions", {
-        headers: { "X-Session-ID": sessionUUID },
+        headers: { "X-Session-ID": getAuthenticatedSessionHeaderValue() },
       });
     }
 
@@ -31578,7 +32086,7 @@ async function destroySession(sessionId, confirm = true) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
       },
       body: JSON.stringify({ session_id: sessionId }),
     });
@@ -31661,7 +32169,7 @@ async function selectSession(sessionId) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
       },
       credentials: "include",
       body: JSON.stringify({
@@ -31749,7 +32257,7 @@ async function deleteSession(sessionId, confirm = true) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
       },
       body: JSON.stringify({
         session_id: sessionId,
@@ -31832,7 +32340,7 @@ async function loadSessionPickerList() {
 
   try {
     const headers = {
-      "X-Session-ID": sessionUUID || null,
+      "X-Session-ID": getAuthenticatedSessionHeaderValue(),
     };
 
     const response = await fetch("/auth/user/sessions", {
@@ -32006,7 +32514,7 @@ async function selectSessionFromPicker(sessionId) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
       },
       credentials: "include",
       body: JSON.stringify({
@@ -32056,7 +32564,7 @@ async function createNewSessionFromPicker() {
     logMessage_Info("[会话创建] 正在获取最新会话信息...");
     const response = await fetch("/auth/user/sessions", {
       headers: {
-        "X-Session-ID": sessionUUID || null,
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
       },
     });
     const result = await response.json();
@@ -32137,7 +32645,7 @@ async function createNewSessionFromPicker() {
     }
     try {
       const response = await fetch("/auth/user/sessions", {
-        headers: { "X-Session-ID": sessionUUID || null },
+        headers: { "X-Session-ID": getAuthenticatedSessionHeaderValue() },
       });
       const sessionsResult = await response.json();
 
@@ -32170,7 +32678,7 @@ async function createNewSessionFromPicker() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "X-Session-ID": sessionUUID,
+              "X-Session-ID": getAuthenticatedSessionHeaderValue(),
             },
             body: JSON.stringify({
               session_id: oldestSession.session_id,
@@ -32225,7 +32733,7 @@ async function createNewSessionFromPicker() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
       },
       body: JSON.stringify({
         session_id: newUUID,
@@ -32236,6 +32744,8 @@ async function createNewSessionFromPicker() {
 
     if (result.success) {
       logMessage_Info(`会话持久化文件已创建: ${result.message}`);
+      sessionUUID = result.session_id || newUUID;
+      authSessionUUID = sessionUUID;
       if (result.cleanup_message) {
         logMessage_Info(`提示: ${result.cleanup_message}`);
       }
@@ -32318,7 +32828,7 @@ async function deleteSessionFromPicker(sessionId, confirm = true) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Session-ID": sessionUUID,
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
       },
       body: JSON.stringify({
         session_id: sessionId,
@@ -33027,6 +33537,7 @@ async function initializeApp() {
 
     // 使用统一的加载函数获取初始数据，并自动更新管理员任务列表
     const initialData = await loadInitialData();
+    syncMapProviderConfigFromInitialData(initialData);
     const initialDataFailureNotice = getInitialDataFailureNotice(initialData);
     if (initialDataFailureNotice) {
       hideLoadingOverlays();
@@ -33150,13 +33661,10 @@ async function initializeApp() {
 
       hideLoadingOverlays();
       HiddenMobileLoadingOverlay();
-      AMAP_API_KEY = initialData.amap_key || "";
-      if (AMAP_API_KEY) {
-        try {
-          await loadAMapOnce();
-        } catch (e) {
-          logMessage_Error("地图加载失败（多账号模式恢复）", e);
-        }
+      try {
+        await ensureActiveMapProviderRuntimeIfNeeded("多账号模式恢复");
+      } catch (e) {
+        logMessage_Error("地图加载失败（多账号模式恢复）", e);
       }
       $("loading-overlay").classList.remove("hidden");
       ShowMobileLoadingOverlay();
@@ -33187,7 +33695,7 @@ async function initializeApp() {
         $("main-app").classList.add("hidden");
         console.log("[会话恢复] 桌面端：显示 multi-account-app");
       }
-      if (!multiAccountMap && AMapInstance) {
+      if (!multiAccountMap && getActiveMapProvider() === "amap" && AMapInstance) {
         try {
           multiAccountMap = new AMapInstance.Map("multi-map-container", {
             viewMode: "3D",
@@ -33233,6 +33741,10 @@ async function initializeApp() {
         }
         $("auth-login-container").classList.add("hidden");
         $("login-container").classList.add("hidden");
+      } else if (getActiveMapProvider() !== "amap") {
+        initProviderMap("multi-map-container", true);
+        $("auth-login-container").classList.add("hidden");
+        $("login-container").classList.add("hidden");
       }
       try {
         const configUsers = await callPythonAPI("multi_get_all_config_users");
@@ -33270,6 +33782,7 @@ async function initializeApp() {
       try {
         // 使用loadInitialData替代直接调用API
         const initialData = await loadInitialData({ force: true });
+        syncMapProviderConfigFromInitialData(initialData);
         if (initialData && initialData.accounts) {
           renderMultiAccountList(initialData.accounts);
           logMessage_Info(
@@ -33327,19 +33840,10 @@ async function initializeApp() {
       }
 
       hideLoadingOverlays();
-      AMAP_API_KEY = initialData.amap_key || "";
-      if (AMAP_API_KEY) {
-        try {
-          await loadAMapOnce();
-        } catch (e) {
-          logMessage_Error("地图加载失败（会话恢复）", e);
-        }
-      } else {
-        hideLoadingOverlays();
-        logMessage_Info("[警告] 未配置高德地图API Key，请在弹窗中输入。");
-        $("amap-key-modal").classList.remove("hidden");
-        $("amap-key-modal").classList.add("flex");
-        document.body.classList.add("modal-visible");
+      try {
+        await ensureActiveMapProviderRuntimeIfNeeded("会话恢复");
+      } catch (e) {
+        logMessage_Error("地图加载失败（会话恢复）", e);
       }
       $("loading-overlay").classList.remove("hidden");
 
@@ -33409,13 +33913,10 @@ async function initializeApp() {
           logMessage_Error("初始化内嵌管理面板失败:", e);
         }
       }, 100);
-      AMAP_API_KEY = initialData.amap_key || "";
-      if (AMAP_API_KEY) {
-        try {
-          await loadAMapOnce();
-        } catch (e) {
-          logMessage_Error("地图加载失败（系统账号恢复）", e);
-        }
+      try {
+        await ensureActiveMapProviderRuntimeIfNeeded("系统账号恢复");
+      } catch (e) {
+        logMessage_Error("地图加载失败（系统账号恢复）", e);
       }
 
       hideLoadingOverlays();
@@ -33442,17 +33943,10 @@ async function initializeApp() {
 
       hideLoadingOverlays();
     } else {
-      AMAP_API_KEY = initialData.amap_key || "";
-      if (!AMAP_API_KEY) {
-        logMessage_Info("[警告] 未配置高德地图API Key，请在弹窗中输入。");
-        $("amap-key-modal").classList.remove("hidden");
-        $("amap-key-modal").classList.add("flex");
-      } else {
-        try {
-          await loadAMapOnce();
-        } catch (e) {
-          logMessage_Error("AMap SDK 加载失败（ready 阶段）", e);
-        }
+      try {
+        await ensureActiveMapProviderRuntimeIfNeeded("ready 阶段");
+      } catch (e) {
+        logMessage_Error("地图加载失败（ready 阶段）", e);
       }
       hideLoadingOverlays();
     }
@@ -33844,7 +34338,864 @@ function enhanceMapInteraction(mapInstance) {
     });
   };
 }
+function getActiveMapProvider() {
+  const config = window.APP_CONFIG || {};
+  const provider = String(config.map_provider || "amap").trim().toLowerCase();
+  if (["amap", "tencent", "tianditu", "baidu"].includes(provider)) {
+    return provider;
+  }
+  return "amap";
+}
+
+function getMapProviderDisplayName(provider) {
+  const normalizedProvider = String(provider || getActiveMapProvider()).trim().toLowerCase();
+  const displayNames = {
+    amap: "高德地图",
+    tencent: "腾讯地图",
+    tianditu: "天地图",
+    baidu: "百度地图",
+  };
+  return displayNames[normalizedProvider] || displayNames.amap;
+}
+
+function getMapProviderConfig(provider) {
+  const config = window.APP_CONFIG || {};
+  const mapProviders = config.map_providers || {};
+  const normalizedProvider = String(provider || getActiveMapProvider()).trim().toLowerCase();
+  return mapProviders[normalizedProvider] || mapProviders.amap || {};
+}
+
+function getMapProviderKeyRequirement(provider) {
+  const normalizedProvider = String(provider || getActiveMapProvider()).trim().toLowerCase();
+  const requirements = {
+    amap: {
+      provider: "amap",
+      displayName: "高德地图",
+      platformName: "高德开放平台",
+      applyUrl: "https://console.amap.com/dev/key/app",
+      fieldKey: "js_key",
+      fieldLabel: "JS Key",
+      applyHint: "申请 Key 时类型选择“Web端(JS API)”。",
+    },
+    tencent: {
+      provider: "tencent",
+      displayName: "腾讯地图",
+      platformName: "腾讯位置服务控制台",
+      applyUrl: "https://lbs.qq.com/dev/console/application/mine",
+      fieldKey: "map_key",
+      fieldLabel: "地图 Key",
+      applyHint: "申请 WebService/JavaScript API 可用的 Key。",
+    },
+    tianditu: {
+      provider: "tianditu",
+      displayName: "天地图",
+      platformName: "天地图控制台",
+      applyUrl: "https://console.tianditu.gov.cn/api/key",
+      fieldKey: "token",
+      fieldLabel: "Token",
+      applyHint: "申请浏览器端或服务端可用的天地图 Token。",
+    },
+    baidu: {
+      provider: "baidu",
+      displayName: "百度地图",
+      platformName: "百度地图开放平台",
+      applyUrl: "https://lbsyun.baidu.com/apiconsole/key",
+      fieldKey: "ak",
+      fieldLabel: "AK",
+      applyHint: "申请浏览器端或服务端可用的百度地图 AK。",
+    },
+  };
+  const requirement = requirements[normalizedProvider] || requirements.amap;
+  const providerConfig = getMapProviderConfig(requirement.provider);
+  const value = String(
+    providerConfig[requirement.fieldKey] ||
+      (requirement.provider === "amap" ? AMAP_API_KEY : "") ||
+      "",
+  ).trim();
+  return {
+    ...requirement,
+    value,
+    configPath: `Map.providers.${requirement.provider}.${requirement.fieldKey}`,
+  };
+}
+
+function getActiveMapProviderApiKey() {
+  return getMapProviderKeyRequirement(getActiveMapProvider()).value;
+}
+
+function syncMapProviderConfigFromInitialData(data) {
+  if (!data || typeof data !== "object") {
+    return;
+  }
+
+  const currentConfig = window.APP_CONFIG || {};
+  const nextConfig = {
+    ...currentConfig,
+    map_providers: {
+      ...(currentConfig.map_providers || {}),
+    },
+  };
+
+  if (data.map_provider) {
+    nextConfig.map_provider = String(data.map_provider).trim().toLowerCase();
+  }
+  if (data.map_providers && typeof data.map_providers === "object") {
+    nextConfig.map_providers = {
+      ...nextConfig.map_providers,
+      ...data.map_providers,
+    };
+  }
+  if (data.amap_key) {
+    nextConfig.map_providers.amap = {
+      ...(nextConfig.map_providers.amap || {}),
+      provider: "amap",
+      display_name: "高德地图",
+      js_key: data.amap_key,
+      coordinate_system: "gcj02",
+      business_coordinate_system: "gcj02",
+    };
+  }
+
+  window.APP_CONFIG = nextConfig;
+  AMAP_API_KEY = getMapProviderKeyRequirement("amap").value || "";
+}
+
+function showMissingMapProviderKeyModal(provider) {
+  const requirement = getMapProviderKeyRequirement(provider);
+  const modal = $("amap-key-modal");
+  if (!modal) {
+    return;
+  }
+
+  const title = $("map-provider-key-modal-title");
+  const description = $("map-provider-key-modal-description");
+  const link = $("map-provider-key-modal-link");
+  const extra = $("map-provider-key-modal-extra");
+  const label = $("map-provider-key-input-label");
+  const input = $("amap-key-input");
+  const confirmButton = $("confirm-amap-key-btn");
+
+  if (title) {
+    title.textContent = `缺少${requirement.displayName} ${requirement.fieldLabel}`;
+  }
+  if (description) {
+    description.firstChild.textContent = `当前地图提供方是${requirement.displayName}，程序需要一个有效的 ${requirement.fieldLabel} 才能使用对应地图功能。请前往`;
+  }
+  if (link) {
+    link.href = requirement.applyUrl;
+    link.textContent = requirement.platformName;
+  }
+  if (extra) {
+    extra.textContent = `${requirement.applyHint} 配置路径：${requirement.configPath}。`;
+  }
+  if (label) {
+    label.textContent = `${requirement.displayName} ${requirement.fieldLabel}:`;
+  }
+  if (input) {
+    input.value = "";
+    input.placeholder = `请在此处粘贴${requirement.displayName} ${requirement.fieldLabel}`;
+    input.dataset.provider = requirement.provider;
+  }
+  if (confirmButton) {
+    confirmButton.textContent = "确认并保存";
+  }
+
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
+  document.body.classList.add("modal-visible");
+}
+
+async function ensureActiveMapProviderRuntimeIfNeeded(contextLabel = "地图") {
+  const provider = getActiveMapProvider();
+  const requirement = getMapProviderKeyRequirement(provider);
+  if (!requirement.value) {
+    logMessage_Info(
+      `[警告] 未配置${requirement.displayName} ${requirement.fieldLabel}，请在弹窗中输入。`,
+    );
+    showMissingMapProviderKeyModal(provider);
+    return false;
+  }
+
+  if (provider !== "amap") {
+    await loadActiveMapProviderRuntime(provider);
+    logMessage_Info(
+      `[地图] ${requirement.displayName}前端地图运行时已就绪（${contextLabel}）。`,
+    );
+    return true;
+  }
+
+  AMAP_API_KEY = requirement.value;
+  await loadAMapOnce();
+  return true;
+}
+
+function loadScriptOnce(scriptSelector, scriptUrl, onBeforeAppend, errorMessage) {
+  return new Promise((resolve, reject) => {
+    const existingScript = document.querySelector(scriptSelector);
+    if (existingScript) {
+      existingScript.remove();
+    }
+
+    const script = document.createElement("script");
+    script.src = scriptUrl;
+    script.async = true;
+    script.defer = true;
+    if (typeof onBeforeAppend === "function") {
+      onBeforeAppend(script, resolve, reject);
+    } else {
+      script.onload = () => resolve();
+    }
+    script.onerror = () => reject(new Error(errorMessage || "地图脚本加载失败"));
+    document.head.appendChild(script);
+  });
+}
+
+function loadTencentMapOnce(key) {
+  if (window.TMap && window.TMap.Map && window.TMap.LatLng) {
+    return Promise.resolve(window.TMap);
+  }
+  if (tencentMapLoadingPromise) return tencentMapLoadingPromise;
+
+  tencentMapLoadingPromise = loadScriptOnce(
+    'script[data-qq-map-api="true"]',
+    `https://map.qq.com/api/gljs?v=1.exp&key=${encodeURIComponent(key)}`,
+    (script, resolve) => {
+      script.dataset.qqMapApi = "true";
+      script.onload = () => resolve(window.TMap);
+    },
+    "腾讯地图脚本加载失败，请检查 Key 或网络连接。",
+  ).catch((error) => {
+    tencentMapLoadingPromise = null;
+    throw error;
+  });
+  return tencentMapLoadingPromise;
+}
+
+function loadTianDiTuMapOnce(token) {
+  if (window.T && window.T.Map) {
+    return Promise.resolve(window.T);
+  }
+  if (tiandituMapLoadingPromise) return tiandituMapLoadingPromise;
+
+  tiandituMapLoadingPromise = loadScriptOnce(
+    'script[data-tianditu-api="true"]',
+    `https://api.tianditu.gov.cn/api?v=4.0&tk=${encodeURIComponent(token)}`,
+    (script, resolve) => {
+      script.dataset.tiandituApi = "true";
+      script.onload = () => resolve(window.T);
+    },
+    "天地图脚本加载失败，请检查 Token 或网络连接。",
+  ).catch((error) => {
+    tiandituMapLoadingPromise = null;
+    throw error;
+  });
+  return tiandituMapLoadingPromise;
+}
+
+function loadBaiduMapOnce(ak) {
+  if (window.BMap && typeof window.BMap.Map === "function") {
+    return Promise.resolve(window.BMap);
+  }
+  if (baiduMapLoadingPromise) return baiduMapLoadingPromise;
+
+  baiduMapLoadingPromise = loadScriptOnce(
+    'script[data-baidu-map-api="true"]',
+    `https://api.map.baidu.com/api?v=3.0&ak=${encodeURIComponent(ak)}&callback=__onBaiduMapApiLoaded`,
+    (script, resolve) => {
+      script.dataset.baiduMapApi = "true";
+      window.__onBaiduMapApiLoaded = function () {
+        try {
+          delete window.__onBaiduMapApiLoaded;
+        } catch (_) {
+          window.__onBaiduMapApiLoaded = undefined;
+        }
+        resolve(window.BMap);
+      };
+    },
+    "百度地图脚本加载失败，请检查 AK 或网络连接。",
+  ).catch((error) => {
+    baiduMapLoadingPromise = null;
+    throw error;
+  });
+  return baiduMapLoadingPromise;
+}
+
+async function loadActiveMapProviderRuntime(provider = getActiveMapProvider()) {
+  const requirement = getMapProviderKeyRequirement(provider);
+  installGenericMapRuntimeGuards();
+  switch (requirement.provider) {
+    case "tencent":
+      return loadTencentMapOnce(requirement.value);
+    case "tianditu":
+      return loadTianDiTuMapOnce(requirement.value);
+    case "baidu":
+      return loadBaiduMapOnce(requirement.value);
+    case "amap":
+      return loadAMapOnce();
+    default:
+      throw new Error(`不支持的地图提供方: ${requirement.provider}`);
+  }
+}
+
+function destroyProviderMapInstance(containerId) {
+  clearProviderMapOverlays(containerId);
+  const instance = providerMapInstances[containerId];
+  if (!instance) return;
+  try {
+    if (typeof instance.destroy === "function") {
+      instance.destroy();
+    } else if (typeof instance.remove === "function") {
+      instance.remove();
+    } else if (typeof instance.clearOverLays === "function") {
+      instance.clearOverLays();
+    } else if (typeof instance.clearOverlays === "function") {
+      instance.clearOverlays();
+    }
+  } catch (e) {
+    logMessage_Warning(`[地图] 销毁${containerId}供应商地图实例失败:`, e);
+  }
+  delete providerMapInstances[containerId];
+  delete providerMapInstanceProviders[containerId];
+  delete providerMapEventsBound[containerId];
+}
+
+function getProviderOverlayBucket(containerId) {
+  if (!providerMapOverlays[containerId]) {
+    providerMapOverlays[containerId] = [];
+  }
+  return providerMapOverlays[containerId];
+}
+
+function clearProviderMapOverlays(containerId) {
+  const provider = providerMapInstanceProviders[containerId] || getActiveMapProvider();
+  const instance = providerMapInstances[containerId];
+  const overlays = providerMapOverlays[containerId] || [];
+  overlays.forEach((overlay) => {
+    try {
+      if (provider === "tencent" && overlay && typeof overlay.setMap === "function") {
+        overlay.setMap(null);
+      } else if (provider === "tianditu" && instance && overlay && typeof instance.removeOverLay === "function") {
+        instance.removeOverLay(overlay);
+      } else if (provider === "baidu" && instance && overlay && typeof instance.removeOverlay === "function") {
+        instance.removeOverlay(overlay);
+      } else if (overlay && typeof overlay.setMap === "function") {
+        overlay.setMap(null);
+      }
+    } catch (e) {
+      logMessage_Warning(`[地图] 清理${containerId}覆盖物失败:`, e);
+    }
+  });
+  providerMapOverlays[containerId] = [];
+}
+
+function getProviderMapDefaultZoom(provider) {
+  return provider === "tianditu" ? 16 : 17;
+}
+
+function getTianDiTuToken() {
+  return getMapProviderKeyRequirement("tianditu").value;
+}
+
+function createTianDiTuTileLayer(layerName, maxZoom = 18) {
+  if (!window.T || typeof T.TileLayer !== "function") return null;
+  const token = encodeURIComponent(getTianDiTuToken());
+  const layer = new T.TileLayer("", {
+    minZoom: 1,
+    maxZoom,
+  });
+  layer.getTileUrl = function (tile) {
+    const subdomain = Math.floor(Math.random() * 8);
+    return `https://t${subdomain}.tianditu.gov.cn/${layerName}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${layerName}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&tk=${token}&TILECOL=${tile.x}&TILEROW=${tile.y}&TILEMATRIX=${tile.z}`;
+  };
+  return layer;
+}
+
+function applyTianDiTuDefaultMapType(instance) {
+  if (!instance || !window.T || typeof T.MapType !== "function") return;
+  const vectorLayer = createTianDiTuTileLayer("vec");
+  const labelLayer = createTianDiTuTileLayer("cva");
+  if (!vectorLayer || !labelLayer) return;
+  try {
+    instance.setMapType(new T.MapType([vectorLayer, labelLayer], "TIANDITU_VECTOR_APP"));
+  } catch (e) {
+    logMessage_Warning("[地图] 设置天地图默认底图失败:", e);
+  }
+}
+
+function initProviderMap(containerId, isMultiAccount = false) {
+  const provider = getActiveMapProvider();
+  if (provider === "amap") {
+    return false;
+  }
+
+  const container = document.getElementById(containerId);
+  if (!container) {
+    return false;
+  }
+
+  const center = { lng: 113.390342, lat: 22.527403 };
+  const providerCenter = convertGcj02ToProviderCoordinates(provider, center);
+  const zoom = getProviderMapDefaultZoom(provider);
+  let instance = providerMapInstances[containerId];
+  if (instance && providerMapInstanceProviders[containerId] !== provider) {
+    destroyProviderMapInstance(containerId);
+    instance = null;
+  }
+  if (!instance) {
+    container.innerHTML = "";
+  }
+
+  try {
+    if (provider === "tencent") {
+      if (!window.TMap || !window.TMap.Map || !window.TMap.LatLng) {
+        throw new Error("腾讯地图运行时未加载");
+      }
+      if (!instance) {
+        instance = new TMap.Map(container, {
+          center: new TMap.LatLng(providerCenter.lat, providerCenter.lng),
+          zoom,
+        });
+        providerMapInstances[containerId] = instance;
+      } else {
+        instance.setCenter(new TMap.LatLng(providerCenter.lat, providerCenter.lng));
+        instance.setZoom(zoom);
+      }
+      if (!providerMapEventsBound[containerId] && typeof instance.on === "function") {
+        instance.on("click", (event) => {
+          const latLng = event && event.latLng ? event.latLng : null;
+          if (!latLng) return;
+          const lat = typeof latLng.getLat === "function" ? latLng.getLat() : latLng.lat;
+          const lng = typeof latLng.getLng === "function" ? latLng.getLng() : latLng.lng;
+          logMessage_Info(`[地图] 腾讯地图点击坐标: ${Number(lng).toFixed(6)}, ${Number(lat).toFixed(6)}`);
+        });
+        providerMapEventsBound[containerId] = true;
+      }
+    } else if (provider === "tianditu") {
+      if (!window.T || !window.T.Map || !window.T.LngLat) {
+        throw new Error("天地图运行时未加载");
+      }
+      if (!instance) {
+        instance = new T.Map(containerId);
+        providerMapInstances[containerId] = instance;
+        applyTianDiTuDefaultMapType(instance);
+      }
+      instance.centerAndZoom(new T.LngLat(providerCenter.lng, providerCenter.lat), zoom);
+      if (!providerMapEventsBound[containerId] && typeof instance.addEventListener === "function") {
+        instance.addEventListener("click", (event) => {
+          const lngLat = event && event.lnglat ? event.lnglat : null;
+          if (!lngLat) return;
+          const lng = typeof lngLat.getLng === "function" ? lngLat.getLng() : lngLat.lng;
+          const lat = typeof lngLat.getLat === "function" ? lngLat.getLat() : lngLat.lat;
+          logMessage_Info(`[地图] 天地图点击坐标: ${Number(lng).toFixed(6)}, ${Number(lat).toFixed(6)}`);
+        });
+        providerMapEventsBound[containerId] = true;
+      }
+    } else if (provider === "baidu") {
+      if (!window.BMap || typeof window.BMap.Map !== "function") {
+        throw new Error("百度地图运行时未加载");
+      }
+      if (!instance) {
+        instance = new BMap.Map(containerId);
+        providerMapInstances[containerId] = instance;
+        if (typeof instance.enableScrollWheelZoom === "function") {
+          instance.enableScrollWheelZoom(true);
+        }
+      }
+      instance.centerAndZoom(new BMap.Point(providerCenter.lng, providerCenter.lat), zoom);
+      if (!providerMapEventsBound[containerId] && typeof instance.addEventListener === "function") {
+        instance.addEventListener("click", (event) => {
+          const point = event && event.point ? event.point : null;
+          if (!point) return;
+          logMessage_Info(`[地图] 百度地图点击坐标: ${Number(point.lng).toFixed(6)}, ${Number(point.lat).toFixed(6)}`);
+        });
+        providerMapEventsBound[containerId] = true;
+      }
+    } else {
+      throw new Error(`不支持的地图提供方: ${provider}`);
+    }
+
+    providerMapInstanceProviders[containerId] = provider;
+    logMessage_Info(`[地图] ${getMapProviderDisplayName(provider)}前端地图已加载: ${containerId}`);
+    return true;
+  } catch (error) {
+    logMessage_Error(`[地图] ${getMapProviderDisplayName(provider)}前端地图初始化失败:`, error);
+    renderMapProviderFrontendPlaceholder(containerId, isMultiAccount);
+    return false;
+  }
+}
+
+const MAP_COORD_PI = Math.PI;
+const MAP_COORD_X_PI = Math.PI * 3000.0 / 180.0;
+const MAP_COORD_A = 6378245.0;
+const MAP_COORD_EE = 0.00669342162296594323;
+
+function isCoordinateOutOfChina(lng, lat) {
+  return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
+}
+
+function transformMapCoordLat(x, y) {
+  let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+  ret += (20.0 * Math.sin(6.0 * x * MAP_COORD_PI) + 20.0 * Math.sin(2.0 * x * MAP_COORD_PI)) * 2.0 / 3.0;
+  ret += (20.0 * Math.sin(y * MAP_COORD_PI) + 40.0 * Math.sin(y / 3.0 * MAP_COORD_PI)) * 2.0 / 3.0;
+  ret += (160.0 * Math.sin(y / 12.0 * MAP_COORD_PI) + 320 * Math.sin(y * MAP_COORD_PI / 30.0)) * 2.0 / 3.0;
+  return ret;
+}
+
+function transformMapCoordLng(x, y) {
+  let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+  ret += (20.0 * Math.sin(6.0 * x * MAP_COORD_PI) + 20.0 * Math.sin(2.0 * x * MAP_COORD_PI)) * 2.0 / 3.0;
+  ret += (20.0 * Math.sin(x * MAP_COORD_PI) + 40.0 * Math.sin(x / 3.0 * MAP_COORD_PI)) * 2.0 / 3.0;
+  ret += (150.0 * Math.sin(x / 12.0 * MAP_COORD_PI) + 300.0 * Math.sin(x / 30.0 * MAP_COORD_PI)) * 2.0 / 3.0;
+  return ret;
+}
+
+function wgs84ToGcj02(lng, lat) {
+  lng = Number(lng);
+  lat = Number(lat);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat) || isCoordinateOutOfChina(lng, lat)) {
+    return { lng, lat };
+  }
+  let dLat = transformMapCoordLat(lng - 105.0, lat - 35.0);
+  let dLng = transformMapCoordLng(lng - 105.0, lat - 35.0);
+  const radLat = lat / 180.0 * MAP_COORD_PI;
+  let magic = Math.sin(radLat);
+  magic = 1 - MAP_COORD_EE * magic * magic;
+  const sqrtMagic = Math.sqrt(magic);
+  dLat = (dLat * 180.0) / ((MAP_COORD_A * (1 - MAP_COORD_EE)) / (magic * sqrtMagic) * MAP_COORD_PI);
+  dLng = (dLng * 180.0) / (MAP_COORD_A / sqrtMagic * Math.cos(radLat) * MAP_COORD_PI);
+  return { lng: lng + dLng, lat: lat + dLat };
+}
+
+function gcj02ToWgs84(lng, lat) {
+  lng = Number(lng);
+  lat = Number(lat);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat) || isCoordinateOutOfChina(lng, lat)) {
+    return { lng, lat };
+  }
+  const gcj = wgs84ToGcj02(lng, lat);
+  return { lng: lng * 2 - gcj.lng, lat: lat * 2 - gcj.lat };
+}
+
+function gcj02ToBd09(lng, lat) {
+  lng = Number(lng);
+  lat = Number(lat);
+  const z = Math.sqrt(lng * lng + lat * lat) + 0.00002 * Math.sin(lat * MAP_COORD_X_PI);
+  const theta = Math.atan2(lat, lng) + 0.000003 * Math.cos(lng * MAP_COORD_X_PI);
+  return {
+    lng: z * Math.cos(theta) + 0.0065,
+    lat: z * Math.sin(theta) + 0.006,
+  };
+}
+
+function bd09ToGcj02(lng, lat) {
+  lng = Number(lng);
+  lat = Number(lat);
+  const x = lng - 0.0065;
+  const y = lat - 0.006;
+  const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * MAP_COORD_X_PI);
+  const theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * MAP_COORD_X_PI);
+  return {
+    lng: z * Math.cos(theta),
+    lat: z * Math.sin(theta),
+  };
+}
+
+function renderMapProviderFrontendPlaceholder(containerId, isMultiAccount = false) {
+  const container = document.getElementById(containerId);
+  if (!container) {
+    return false;
+  }
+  const displayName = getMapProviderDisplayName();
+  const modeText = isMultiAccount ? "多账号" : "单账号";
+  container.innerHTML = `
+    <div class="absolute inset-0 flex items-center justify-center text-slate-500 bg-slate-50/80">
+      <div class="text-center px-4">
+        <svg class="w-12 h-12 mx-auto mb-2 text-sky-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+        </svg>
+        <p class="text-sm font-medium">${displayName}已启用</p>
+        <p class="text-xs mt-1">${modeText}路线规划由后端按当前地图供应商执行。</p>
+      </div>
+    </div>
+  `;
+  return true;
+}
+
+function convertMapCoordinatesToGcj02(provider, coord) {
+  const normalizedProvider = String(provider || getActiveMapProvider()).trim().toLowerCase();
+  if (normalizedProvider === "tianditu" && coord) {
+    return wgs84ToGcj02(coord.lng, coord.lat);
+  }
+  if (normalizedProvider === "baidu") {
+    if (coord) {
+      return bd09ToGcj02(coord.lng, coord.lat);
+    }
+  }
+  return coord;
+}
+
+function convertGcj02ToProviderCoordinates(provider, coord) {
+  const normalizedProvider = String(provider || getActiveMapProvider()).trim().toLowerCase();
+  if (normalizedProvider === "tianditu" && coord) {
+    return gcj02ToWgs84(coord.lng, coord.lat);
+  }
+  if (normalizedProvider === "baidu") {
+    if (coord) {
+      return gcj02ToBd09(coord.lng, coord.lat);
+    }
+  }
+  return coord;
+}
+
+function normalizeRouteCoord(coord) {
+  if (Array.isArray(coord)) {
+    return { lng: Number(coord[0]), lat: Number(coord[1]) };
+  }
+  if (coord && typeof coord === "object") {
+    return {
+      lng: Number(coord.lng ?? coord.lon ?? coord.longitude),
+      lat: Number(coord.lat ?? coord.latitude),
+    };
+  }
+  return { lng: NaN, lat: NaN };
+}
+
+function isRouteSegmentSeparator(coord) {
+  const normalized = normalizeRouteCoord(coord);
+  return (
+    Number.isFinite(normalized.lng) &&
+    Number.isFinite(normalized.lat) &&
+    Math.abs(normalized.lng) < 1e-9 &&
+    Math.abs(normalized.lat) < 1e-9
+  );
+}
+
+function normalizeRouteCoords(coords) {
+  if (!Array.isArray(coords)) return [];
+  return coords
+    .map(normalizeRouteCoord)
+    .filter((coord) => Number.isFinite(coord.lng) && Number.isFinite(coord.lat));
+}
+
+function splitRouteCoordsIntoDrawableSegments(coords) {
+  if (!Array.isArray(coords)) return [];
+  const segments = [];
+  let currentSegment = [];
+  coords.forEach((rawCoord) => {
+    if (isRouteSegmentSeparator(rawCoord)) {
+      if (currentSegment.length > 0) {
+        segments.push(currentSegment);
+        currentSegment = [];
+      }
+      return;
+    }
+    const coord = normalizeRouteCoord(rawCoord);
+    if (Number.isFinite(coord.lng) && Number.isFinite(coord.lat)) {
+      currentSegment.push(coord);
+    }
+  });
+  if (currentSegment.length > 0) {
+    segments.push(currentSegment);
+  }
+  return segments.filter((segment) => segment.length > 0);
+}
+
+function getProviderMapInstance(containerId) {
+  const provider = getActiveMapProvider();
+  if (provider === "amap") {
+    if (containerId === "mobile-track-map-container") {
+      return mobileTrackMapInstance;
+    }
+    return map;
+  }
+  return providerMapInstances[containerId];
+}
+
+function fitProviderMapToCoordinates(containerId, coords, overlay = null) {
+  const provider = getActiveMapProvider();
+  const instance = getProviderMapInstance(containerId);
+  if (!instance || !Array.isArray(coords) || coords.length === 0) return;
+  try {
+    if (provider === "amap") {
+      const overlays = Array.isArray(overlay)
+        ? overlay
+        : overlay
+          ? [overlay]
+          : coords.map((coord) => new AMapInstance.LngLat(coord.lng, coord.lat));
+      instance.setFitView(overlays, false, [60, 60, 60, 60]);
+    } else if (provider === "tencent") {
+      const bounds = new TMap.LatLngBounds();
+      coords.forEach((coord) => bounds.extend(new TMap.LatLng(coord.lat, coord.lng)));
+      instance.fitBounds(bounds, { padding: 60 });
+    } else if (provider === "tianditu" && typeof instance.setViewport === "function") {
+      instance.setViewport(coords.map((coord) => new T.LngLat(coord.lng, coord.lat)));
+    } else if (provider === "baidu" && typeof instance.setViewport === "function") {
+      instance.setViewport(coords.map((coord) => new BMap.Point(coord.lng, coord.lat)));
+    }
+  } catch (e) {
+    logMessage_Warning(`[地图] 调整${containerId}视野失败:`, e);
+  }
+}
+
+function addProviderMarker(containerId, coord, options = {}) {
+  const provider = getActiveMapProvider();
+  const instance = getProviderMapInstance(containerId);
+  if (!instance || !coord) return null;
+  const providerCoord = convertGcj02ToProviderCoordinates(provider, coord);
+  const bucket = getProviderOverlayBucket(containerId);
+  let marker = null;
+  try {
+    if (provider === "amap" && AMapInstance) {
+      marker = new AMapInstance.Marker({
+        position: new AMapInstance.LngLat(coord.lng, coord.lat),
+        content: options.content,
+        anchor: options.anchor || "bottom-center",
+        zIndex: options.zIndex || 100,
+        map: instance,
+      });
+    } else if (provider === "tencent" && window.TMap) {
+      marker = new TMap.MultiMarker({
+        id: `provider-marker-${containerId}-${Date.now()}-${bucket.length}`,
+        map: instance,
+        geometries: [{
+          id: "marker",
+          position: new TMap.LatLng(providerCoord.lat, providerCoord.lng),
+          properties: { title: options.title || "" },
+        }],
+      });
+    } else if (provider === "tianditu" && window.T) {
+      marker = new T.Marker(new T.LngLat(providerCoord.lng, providerCoord.lat), {
+        title: options.title || "",
+      });
+      instance.addOverLay(marker);
+    } else if (provider === "baidu" && window.BMap) {
+      marker = new BMap.Marker(new BMap.Point(providerCoord.lng, providerCoord.lat));
+      instance.addOverlay(marker);
+    }
+    if (marker) bucket.push(marker);
+    return marker;
+  } catch (e) {
+    logMessage_Warning(`[地图] 添加${containerId}标记失败:`, e);
+    return null;
+  }
+}
+
+function drawProviderRouteOnMap(containerId, coords, options = {}) {
+  const provider = getActiveMapProvider();
+  const instance = getProviderMapInstance(containerId);
+  const gcjSegments = splitRouteCoordsIntoDrawableSegments(coords);
+  const gcjCoords = gcjSegments.flat();
+  if (!instance || gcjSegments.length === 0 || gcjCoords.length === 0) return null;
+
+  clearProviderMapOverlays(containerId);
+
+  const providerSegments = gcjSegments.map((segment) =>
+    segment.map((coord) => convertGcj02ToProviderCoordinates(provider, coord)),
+  );
+  const providerCoords = providerSegments.flat();
+  const bucket = getProviderOverlayBucket(containerId);
+  let line = null;
+  let fitOverlay = null;
+  const color = options.strokeColor || options.color || "#ef4444";
+  const weight = options.strokeWeight || options.weight || 5;
+  try {
+    if (provider === "amap" && AMapInstance) {
+      line = gcjSegments.map((segment) => {
+        const polyline = new AMapInstance.Polyline({
+          path: segment.map((coord) => new AMapInstance.LngLat(coord.lng, coord.lat)),
+          strokeColor: color,
+          strokeWeight: weight,
+          strokeOpacity: options.strokeOpacity ?? 0.85,
+          zIndex: options.zIndex || 50,
+        });
+        instance.add(polyline);
+        bucket.push(polyline);
+        return polyline;
+      });
+      fitOverlay = line;
+    } else if (provider === "tencent" && window.TMap) {
+      line = new TMap.MultiPolyline({
+        id: `provider-route-${containerId}`,
+        map: instance,
+        styles: {
+          route: new TMap.PolylineStyle({
+            color,
+            width: weight,
+            borderWidth: 0,
+            lineCap: "round",
+          }),
+        },
+        geometries: providerSegments.map((segment, index) => ({
+          id: `route-${index}`,
+          styleId: "route",
+          paths: segment.map((coord) => new TMap.LatLng(coord.lat, coord.lng)),
+        })),
+      });
+      bucket.push(line);
+      fitOverlay = line;
+    } else if (provider === "tianditu" && window.T) {
+      line = providerSegments.map((segment) => {
+        const polyline = new T.Polyline(
+          segment.map((coord) => new T.LngLat(coord.lng, coord.lat)),
+          {
+            color,
+            weight,
+            opacity: options.strokeOpacity ?? 0.85,
+            lineStyle: options.strokeStyle === "dashed" ? "dashed" : "solid",
+          },
+        );
+        instance.addOverLay(polyline);
+        bucket.push(polyline);
+        return polyline;
+      });
+    } else if (provider === "baidu" && window.BMap) {
+      line = providerSegments.map((segment) => {
+        const polyline = new BMap.Polyline(
+          segment.map((coord) => new BMap.Point(coord.lng, coord.lat)),
+          {
+            strokeColor: color,
+            strokeWeight: weight,
+            strokeOpacity: options.strokeOpacity ?? 0.85,
+          },
+        );
+        instance.addOverlay(polyline);
+        bucket.push(polyline);
+        return polyline;
+      });
+    }
+
+    if (line) {
+      if (options.showEndpoints !== false && gcjCoords.length > 0) {
+        addProviderMarker(containerId, gcjCoords[0], { title: "起点" });
+        if (gcjCoords.length > 1) {
+          addProviderMarker(containerId, gcjCoords[gcjCoords.length - 1], { title: "终点" });
+        }
+      }
+      fitProviderMapToCoordinates(containerId, providerCoords, fitOverlay);
+    }
+    return line;
+  } catch (e) {
+    logMessage_Error(`[地图] 绘制${getMapProviderDisplayName(provider)}路线失败:`, e);
+    return null;
+  }
+}
+
+function installGenericMapRuntimeGuards() {
+  window.__genericMapRuntimeGuardsInstalled = true;
+}
+
+function installAmapRuntimeGuards(provider) {
+  if (provider === "amap") {
+    window.__amapRuntimeGuardsInstalled = true;
+  }
+}
+
 function loadAMapOnce() {
+  const provider = getActiveMapProvider();
+  if (provider !== "amap") {
+    installGenericMapRuntimeGuards();
+    return Promise.resolve(null);
+  }
   if (AMapReady && AMapInstance) return Promise.resolve(AMapInstance);
   if (amapLoadingPromise) return amapLoadingPromise;
   if (window.AMap && window.AMap.ControlBar) {
@@ -33855,8 +35206,7 @@ function loadAMapOnce() {
   }
   if (!AMAP_API_KEY) {
     logMessage_Info("[错误] 尝试加载地图失败：API Key为空。");
-    $("amap-key-modal").classList.remove("hidden");
-    $("amap-key-modal").classList.add("flex");
+    showMissingMapProviderKeyModal("amap");
     return Promise.reject("API Key is missing.");
   }
   amapLoadingPromise = AMapLoader.load({
@@ -33882,6 +35232,10 @@ function loadAMapOnce() {
   return amapLoadingPromise;
 }
 function ensureSingleMap() {
+  if (getActiveMapProvider() !== "amap") {
+    initProviderMap("map-container", false);
+    return;
+  }
   if (map || !AMapReady || !AMapInstance) return;
   const container = document.getElementById("map-container");
   if (!container) return;
@@ -34199,6 +35553,21 @@ function attachMultiControlHandlers() {
 }
 
 function initMap(AMap) {
+  if (getActiveMapProvider() !== "amap") {
+    if (map && typeof map.destroy === "function") {
+      try {
+        map.destroy();
+      } catch (e) {
+        logMessage_Warning("销毁旧高德地图实例失败:", e);
+      }
+    }
+    map = null;
+    initProviderMap("map-container", false);
+    logMessage_Info(
+      `当前地图提供方为${getMapProviderDisplayName()}，已使用对应前端地图初始化。`,
+    );
+    return;
+  }
   if (map) {
     const container = map.getContainer();
     if (container && container.id === "map-container") {
@@ -34314,12 +35683,20 @@ function showMainApp() {
   logMessage_Info("等待UI渲染稳定...");
   setTimeout(() => {
     logMessage_Info("UI稳定，开始初始化地图...");
-    loadAMapOnce()
-      .then(() => {
-        initMap(AMapInstance);
-        ensureSingleControls();
+    ensureActiveMapProviderRuntimeIfNeeded("主应用地图初始化")
+      .then((isReady) => {
+        if (!isReady) return;
+        if (getActiveMapProvider() === "amap" && AMapInstance) {
+          initMap(AMapInstance);
+          ensureSingleControls();
+        } else {
+          initProviderMap("map-container", false);
+          if (resolveMapReady) {
+            resolveMapReady(null);
+          }
+        }
       })
-      .catch((e) => logMessage_Error("AMap 加载失败（延迟创建阶段）", e));
+      .catch((e) => logMessage_Error("地图加载失败（延迟创建阶段）", e));
   }, 100);
 }
 
@@ -34408,6 +35785,8 @@ function destroySingleMap() {
     if (map && typeof map.destroy === "function") {
       map.destroy();
     }
+    destroyProviderMapInstance("map-container");
+    destroyProviderMapInstance("mobile-map-container");
   } catch (e) {
     logMessage_Warning("destroySingleMap warning:", e);
   } finally {
@@ -34532,6 +35911,8 @@ $("multi-download-template-btn").addEventListener(
 );
 async function onConfirmAmapKey() {
   const input = $("amap-key-input");
+  const provider = input.dataset.provider || getActiveMapProvider();
+  const requirement = getMapProviderKeyRequirement(provider);
   const newKey = input.value.trim();
   if (!newKey) {
     // showModalAlert("API Key 不能为空！");
@@ -34549,19 +35930,22 @@ async function onConfirmAmapKey() {
   btn.innerHTML = `<span class="inline-block animate-spin mr-2">⏳</span>保存中...`;
 
   try {
-    const result = await callPythonAPI("save_amap_key", newKey);
+    const result = await callPythonAPI("save_map_provider_key", {
+      provider: requirement.provider,
+      api_key: newKey,
+    });
     if (result.success) {
-      AMAP_API_KEY = newKey;
+      syncMapProviderConfigFromInitialData(result);
       const modal = $("amap-key-modal");
       modal.classList.add("hidden");
       modal.classList.remove("flex");
       document.body.classList.remove("modal-visible");
-      logMessage_Info("API Key已更新，正在尝试重新加载地图...");
+      logMessage_Info(`${requirement.displayName} API Key已更新，正在尝试重新加载地图...`);
       try {
-        await loadAMapOnce();
+        await ensureActiveMapProviderRuntimeIfNeeded("保存 Key 后刷新");
         ensureSingleMap();
       } catch (e) {
-        logMessage_Error("保存Key后加载AMap SDK失败", e);
+        logMessage_Error("保存Key后加载地图失败", e);
         logMessage_Info(
           "[错误] 新的API Key似乎无效，地图加载失败。请检查后重试。",
         );
@@ -34659,6 +36043,7 @@ async function refreshUserList() {
   try {
     // 获取初始数据用于用户列表渲染，同时触发任务列表自动更新
     const initialData = await loadInitialData();
+    syncMapProviderConfigFromInitialData(initialData);
     const users = Array.isArray(initialData?.users) ? initialData.users : [];
 
     const select = document.getElementById("user-combo");
@@ -34819,15 +36204,17 @@ async function onLogin() {
     await syncThemeFromServer(result.theme, result.theme_style);
     logMessage_Info("[前端-登录] ✓ 登录成功！");
     showButtonSuccess("login-button", "登录成功");
-    if (result.amap_key) {
-      logMessage_Info("[前端-登录] 加载高德地图API...");
-      AMAP_API_KEY = result.amap_key;
+    syncMapProviderConfigFromInitialData(result);
+    if (getActiveMapProviderApiKey()) {
+      logMessage_Info(`[前端-登录] 加载${getMapProviderDisplayName()}地图配置...`);
       try {
-        await loadAMapOnce();
+        await ensureActiveMapProviderRuntimeIfNeeded("登录成功");
         logMessage_Info("[前端-登录] ✓ 地图加载成功");
       } catch (e) {
         logMessage_Error("[前端-登录] ✗ 地图加载失败:", e);
       }
+    } else {
+      showMissingMapProviderKeyModal(getActiveMapProvider());
     }
 
     logMessage_Info("[前端-登录] 显示主应用界面...");
@@ -35555,12 +36942,12 @@ async function switchToMultiMode() {
 
   document.body.classList.remove("modal-visible");
   try {
-    await loadAMapOnce();
+    await ensureActiveMapProviderRuntimeIfNeeded("进入多账号模式");
   } catch (e) {
-    logMessage_Error("AMap 未就绪，无法进入多账号地图", e);
+    logMessage_Error("地图未就绪，无法进入多账号地图", e);
     return;
   }
-  if (!multiAccountMap && AMapInstance) {
+  if (!multiAccountMap && getActiveMapProvider() === "amap" && AMapInstance) {
     multiAccountMap = new AMapInstance.Map("multi-map-container", {
       viewMode: "3D",
       pitch: 55,
@@ -35605,6 +36992,8 @@ async function switchToMultiMode() {
       keyboardEnable: true,
     });
     ensureMultiControls();
+  } else if (getActiveMapProvider() !== "amap") {
+    initProviderMap("multi-map-container", true);
   }
 
   const configUsers = await callPythonAPI("multi_get_all_config_users");
@@ -35825,6 +37214,8 @@ async function exitMultiMode() {
       logMessage_Warning("destroy multiAccountMap warning:", e);
     }
   }
+  destroyProviderMapInstance("multi-map-container");
+  destroyProviderMapInstance("mobile-multi-map-container");
   multiAccountMarkers = {};
   multiAccountMap = null;
 
@@ -37633,6 +39024,9 @@ async function process_path_queue() {
   is_planning_path = true;
   const { username, waypoints } = path_planning_queue.shift();
   try {
+    if (getActiveMapProvider() !== "amap") {
+      throw new Error("旧版前端路径规划队列仅支持高德地图；请使用后端多地图供应商路径规划。");
+    }
     logMessage_Info(`[JS-Queue] 开始处理 ${username} 的路径规划...`);
     const path = await getWalkingPath(waypoints);
     logMessage_Info(
@@ -37812,6 +39206,7 @@ function multi_updateAccountStatus(username, data) {
 }
 
 function multi_updateRunnerPosition(username, lon, lat, name) {
+  if (getActiveMapProvider() !== "amap" || !AMapInstance) return;
   if (!multiAccountMap) return;
   const pos = new AMapInstance.LngLat(lon, lat);
   if (multiAccountMarkers[username]) {
@@ -38111,6 +39506,34 @@ function forceProjectionRefresh() {
 }
 
 function drawOnMap_signature() {
+  if (getActiveMapProvider() !== "amap") {
+    const data = currentRunData;
+    if (!data) return;
+    const routeCoords = data.run_coords?.length
+      ? data.run_coords
+      : data.draft_coords?.length
+        ? data.draft_coords
+        : data.recommended_coords || [];
+    if (routeCoords.length > 0) {
+      drawProviderRouteOnMap("map-container", routeCoords, {
+        strokeColor: data.run_coords?.length ? "#ef4444" : "#10b981",
+        strokeWeight: data.run_coords?.length ? 5 : 4,
+        strokeStyle: data.run_coords?.length ? "dashed" : "solid",
+      });
+    } else {
+      clearProviderMapOverlays("map-container");
+    }
+    if (Array.isArray(data.target_points)) {
+      data.target_points.forEach((point, index) => {
+        const coord = normalizeRouteCoord(point);
+        if (Number.isFinite(coord.lng) && Number.isFinite(coord.lat)) {
+          addProviderMarker("map-container", coord, { title: `打卡点 ${index + 1}` });
+        }
+      });
+    }
+    return;
+  }
+  if (!AMapInstance) return;
   if (!map) return;
   clearMapOverlays();
   const data = currentRunData;
@@ -39132,6 +40555,7 @@ async function checkBackgroundTaskOnLoad() {
 }
 
 function ensureRunnerMarker() {
+  if (getActiveMapProvider() !== "amap" || !map || !AMapInstance) return;
   if (runnerMarker) return;
   const content =
     '<div class="w-5 h-5 rounded-full border-2 border-white shadow-lg" style="background:linear-gradient(135deg,var(--base-color-300),var(--base-color-600));"></div>';
@@ -39151,6 +40575,26 @@ function updateRunnerPosition(
   duration,
   centerNow = false,
 ) {
+  if (getActiveMapProvider() !== "amap" || !map || !AMapInstance) {
+    $("current-location-label").textContent = `当前位置GPS坐标: ${(+lon).toFixed(
+      4,
+    )}, ${(+lat).toFixed(4)}`;
+    const mobileCurrentLocationLabel = document.getElementById(
+      "mobile-current-location-label",
+    );
+    if (mobileCurrentLocationLabel) {
+      mobileCurrentLocationLabel.textContent = `当前位置: ${(+lon).toFixed(
+        4,
+      )}, ${(+lat).toFixed(4)}`;
+    }
+    runAccumulatedMs += duration || 0;
+    if (currentRunData) {
+      currentRunData.distance_covered_m = distance || 0;
+      currentRunData.target_sequence = targetSequence + 1;
+    }
+    updateDashboard();
+    return;
+  }
   ensureRunnerMarker();
   const pos = new AMapInstance.LngLat(lon, lat);
   runnerMarker.setPosition(pos);
@@ -39286,6 +40730,9 @@ async function importTask() {
   input.click();
 }
 async function getWalkingPath(waypoints) {
+  if (getActiveMapProvider() !== "amap") {
+    throw new Error("getWalkingPath 仅支持高德地图；当前供应商请使用后端多地图路径规划。");
+  }
   if (!AMapInstance || waypoints.length < 2)
     throw new Error("地图实例未加载或路径点少于2");
   const useFallback = pythonParams.api_fallback_line ?? false,
@@ -39398,23 +40845,17 @@ async function onConfirmAutoGenerate() {
     showModalAlert("请先选择一个有打卡点的任务");
     return;
   }
-  logMessage_Info("正在调用高德地图API进行路径规划...");
+  logMessage_Info(`正在按当前地图供应商（${getMapProviderDisplayName()}）进行路径规划...`);
   try {
-    const waypoints = currentRunData.target_points.map(
-      (p) => new AMapInstance.LngLat(p[0], p[1]),
-    );
-    const apiPath = await getWalkingPath(waypoints);
-    logMessage_Info(
-      `路径规划成功，共 ${apiPath.length} 个坐标点。正在生成模拟数据...`,
-    );
-    const result = await callPythonAPI(
-      "auto_generate_path_with_api",
-      apiPath,
-      minTime,
-      maxTime,
-      minDist,
-    );
+    const result = await callPythonAPI("auto_generate_path_with_provider", {
+      min_t_m: minTime,
+      max_t_m: maxTime,
+      min_d_m: minDist,
+    });
     if (result.success) {
+      if (Array.isArray(result.notices)) {
+        result.notices.forEach((notice) => logMessage_Info(notice));
+      }
       currentRunData.run_coords = result.run_coords;
       currentRunData.total_run_distance_m = result.total_dist;
       currentRunData.total_run_time_s = result.total_time;
@@ -39473,8 +40914,37 @@ async function showHistoricalTrack(trid) {
         $("mobile-track-modal").classList.add("show");
         modal.classList.remove("hidden");
         modal.style.display = "flex";
+        await ensureActiveMapProviderRuntimeIfNeeded("历史轨迹地图");
         await initMobileTrackMap();
         clearMobileTrackMap();
+        if (getActiveMapProvider() !== "amap") {
+          drawProviderRouteOnMap("mobile-track-map-container", result.coords || [], {
+            strokeColor: "#8b5cf6",
+            strokeWeight: 5,
+            strokeOpacity: 0.8,
+            showEndpoints: true,
+          });
+          return;
+        }
+      }
+    }
+
+    if (getActiveMapProvider() !== "amap") {
+      await ensureActiveMapProviderRuntimeIfNeeded("历史轨迹地图");
+      initProviderMap("map-container", false);
+      drawProviderRouteOnMap("map-container", result.coords || [], {
+        strokeColor: "#8b5cf6",
+        strokeWeight: 5,
+        strokeOpacity: 0.8,
+        showEndpoints: true,
+      });
+      return;
+    }
+    if (!AMapInstance) return;
+
+    if (isMobileMode) {
+      const modal = $("mobile-track-modal");
+      if (modal) {
         const path = result.coords.map(
           (p) => new AMapInstance.LngLat(p[0], p[1]),
         );
@@ -40889,6 +42359,13 @@ const svgIconMakeup = `<div style="pointer-events: none;">
 
 async function handleManualAttendance(event, rollCallId, targetCoords) {
   event.stopPropagation();
+  if (getActiveMapProvider() !== "amap" || !map || !AMapInstance) {
+    showModalAlert(
+      `当前地图提供方为${getMapProviderDisplayName()}，手动地图选点暂仅支持高德地图。`,
+      "提示",
+    );
+    return;
+  }
   toggleNotifications(false, true);
 
   selectedTaskIndex = -1;
@@ -41040,6 +42517,13 @@ async function handleMakeupAttendance(event, rollCallId, targetCoords) {
 }
 async function handleManualMakeupAttendance(event, rollCallId, targetCoords) {
   event.stopPropagation();
+  if (getActiveMapProvider() !== "amap" || !map || !AMapInstance) {
+    showModalAlert(
+      `当前地图提供方为${getMapProviderDisplayName()}，手动地图选点暂仅支持高德地图。`,
+      "提示",
+    );
+    return;
+  }
   toggleNotifications(false, true);
   selectedTaskIndex = -1;
   renderTaskList();
@@ -42681,6 +44165,7 @@ function destroyMobileSingleMap() {
       map = null;
       console.log("[移动端] 单账号地图已销毁");
     }
+    destroyProviderMapInstance("mobile-map-container");
     window.mobile_map_panel_initialize_mark = false;
     const container = document.getElementById("mobile-map-container");
     if (container) container.innerHTML = "";
@@ -42695,6 +44180,7 @@ function destroyMobileMultiMap() {
       multiAccountMap = null;
       console.log("[移动端] 多账号地图已销毁");
     }
+    destroyProviderMapInstance("mobile-multi-map-container");
     window.mobile_multi_map_panel_initialize_mark = false;
     const container = document.getElementById("mobile-multi-map-container");
     if (container) container.innerHTML = "";
@@ -42747,6 +44233,13 @@ async function initMobileMap(
       }, RETRY_DELAY);
     }
     return false;
+  }
+  if (getActiveMapProvider() !== "amap") {
+    initProviderMap(containerId, isMultiAccount);
+    logMessage_Info(
+      `[移动端地图] 当前提供方为${getMapProviderDisplayName()}，已使用对应前端地图初始化`,
+    );
+    return true;
   }
   if (typeof AMapInstance === "undefined") {
     logMessage_Error("[移动端地图] 高德地图API未加载");
@@ -43838,6 +45331,123 @@ function getCurrentSessionUAText() {
 // }
 // ==================== 注册登录和个人资料功能 ====================
 let isPhoneLogin = false;
+const pcLoginModeDrafts = {
+  username_mode: { username: "", password: "" },
+  phone_mode: { phone: "", sms_code: "", password: "" },
+};
+
+function sanitizePhoneDigits(value) {
+  return String(value || "").replace(/\D/g, "").slice(0, 11);
+}
+
+function sanitizeSmsCodeDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function applyDigitSanitizer(input, sanitizer) {
+  if (!input || input.dataset.digitSanitizerBound === "true") {
+    return;
+  }
+  const sanitize = () => {
+    const sanitizedValue = sanitizer(input.value);
+    if (input.value !== sanitizedValue) {
+      input.value = sanitizedValue;
+    }
+  };
+  input.addEventListener("input", sanitize);
+  input.addEventListener("paste", function () {
+    requestAnimationFrame(sanitize);
+  });
+  sanitize();
+  input.dataset.digitSanitizerBound = "true";
+}
+
+function bindAuthPhoneLoginInput() {
+  const phoneInput = document.getElementById("auth-username");
+  if (phoneInput && isPhoneLogin) {
+    applyDigitSanitizer(phoneInput, sanitizePhoneDigits);
+  }
+}
+
+function bindAuthSmsCodeInput() {
+  const smsInput = document.getElementById("auth-sms-code");
+  if (smsInput) {
+    applyDigitSanitizer(smsInput, sanitizeSmsCodeDigits);
+  }
+}
+
+function bindRegistrationDigitInputs() {
+  const regPhoneInput = document.getElementById("auth-reg-phone");
+  if (regPhoneInput) {
+    applyDigitSanitizer(regPhoneInput, sanitizePhoneDigits);
+  }
+  const regSmsInput = document.getElementById("auth-reg-sms-code");
+  if (regSmsInput) {
+    applyDigitSanitizer(regSmsInput, sanitizeSmsCodeDigits);
+  }
+}
+
+function savePcLoginModeDraft() {
+  if (isPhoneLogin) {
+    const phoneInput = document.getElementById("auth-username");
+    const passwordInput = document.getElementById("auth-password");
+    const smsInput = document.getElementById("auth-sms-code");
+    pcLoginModeDrafts.phone_mode = {
+      phone: sanitizePhoneDigits(phoneInput ? phoneInput.value : ""),
+      sms_code: sanitizeSmsCodeDigits(smsInput ? smsInput.value : ""),
+      password: passwordInput ? passwordInput.value : "",
+    };
+    return;
+  }
+
+  const usernameInput = document.getElementById("auth-username");
+  const passwordInput = document.getElementById("auth-password");
+  pcLoginModeDrafts.username_mode = {
+    username: usernameInput ? usernameInput.value : "",
+    password: passwordInput ? passwordInput.value : "",
+  };
+}
+
+function clearPcLoginModeDraftFields(mode) {
+  const passwordInput = document.getElementById("auth-password");
+  const smsInput = document.getElementById("auth-sms-code");
+  const usernameInput = document.getElementById("auth-username");
+
+  if (mode === "phone_mode") {
+    if (usernameInput) usernameInput.value = "";
+    if (smsInput) smsInput.value = "";
+    if (passwordInput) passwordInput.value = "";
+    return;
+  }
+
+  if (usernameInput) usernameInput.value = "";
+  if (passwordInput) passwordInput.value = "";
+}
+
+function restorePcLoginModeDraft(mode) {
+  const draft = pcLoginModeDrafts[mode] || {};
+  const hasDraft = Object.values(draft).some((value) => String(value || "") !== "");
+  if (!hasDraft) {
+    clearPcLoginModeDraftFields(mode);
+    return;
+  }
+
+  const passwordInput = document.getElementById("auth-password");
+  const smsInput = document.getElementById("auth-sms-code");
+  const usernameInput = document.getElementById("auth-username");
+
+  if (mode === "phone_mode") {
+    if (usernameInput) usernameInput.value = sanitizePhoneDigits(draft.phone || "");
+    if (smsInput) smsInput.value = sanitizeSmsCodeDigits(draft.sms_code || "");
+    if (passwordInput) passwordInput.value = draft.password || "";
+    bindAuthPhoneLoginInput();
+    bindAuthSmsCodeInput();
+    return;
+  }
+
+  if (usernameInput) usernameInput.value = draft.username || "";
+  if (passwordInput) passwordInput.value = draft.password || "";
+}
 
 document.addEventListener("DOMContentLoaded", function () {
   const usernameBtn = document.getElementById("auth-login-username-btn");
@@ -43852,13 +45462,12 @@ document.addEventListener("DOMContentLoaded", function () {
       document.getElementById("auth-username") || authInput;
 
     usernameBtn.addEventListener("click", function () {
+      savePcLoginModeDraft();
       isPhoneLogin = false;
       usernameBtn.className =
         "px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm";
       phoneBtn.className =
         "px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm";
-      const currentAuthInput = getCurrentAuthInput();
-      const currentValue = currentAuthInput ? currentAuthInput.value : "";
       if (authLabel) authLabel.textContent = "用户名";
       if (authUsernameContainer) {
         authUsernameContainer.innerHTML = `
@@ -43866,10 +45475,10 @@ document.addEventListener("DOMContentLoaded", function () {
                placeholder="请输入用户名" autocomplete="username">
       `;
         const newAuthInput = document.getElementById("auth-username");
-        newAuthInput.value = currentValue;
         newAuthInput.removeAttribute("inputmode");
         newAuthInput.removeAttribute("maxlength");
       }
+      restorePcLoginModeDraft("username_mode");
       const switchToSms = document.getElementById("auth-switch-to-sms");
       if (switchToSms) switchToSms.classList.add("hidden");
       const passwordSection = document.getElementById("auth-password-section");
@@ -43878,13 +45487,12 @@ document.addEventListener("DOMContentLoaded", function () {
       if (smsSection) smsSection.classList.add("hidden");
     });
     phoneBtn.addEventListener("click", function () {
+      savePcLoginModeDraft();
       isPhoneLogin = true;
       phoneBtn.className =
         "px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm";
       usernameBtn.className =
         "px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm";
-      const currentAuthInput = getCurrentAuthInput();
-      const currentValue = currentAuthInput ? currentAuthInput.value : "";
       if (authLabel) authLabel.textContent = "手机号";
       if (authUsernameContainer) {
         authUsernameContainer.innerHTML = `
@@ -43894,8 +45502,8 @@ document.addEventListener("DOMContentLoaded", function () {
                  placeholder="请输入手机号" autocomplete="tel" inputmode="numeric" maxlength="11" pattern="[0-9]*" >
         </div>
       `;
-        document.getElementById("auth-username").value = currentValue;
       }
+      restorePcLoginModeDraft("phone_mode");
       const switchToSms = document.getElementById("auth-switch-to-sms");
       if (switchToSms) switchToSms.classList.remove("hidden");
     });
@@ -43923,7 +45531,8 @@ document.addEventListener("DOMContentLoaded", function () {
   if (sendLoginCodeBtn) {
     sendLoginCodeBtn.addEventListener("click", function () {
       const phoneInput = document.getElementById("auth-username");
-      const phone = phoneInput.value.trim();
+      const phone = sanitizePhoneDigits(phoneInput.value.trim());
+      phoneInput.value = phone;
 
       if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
         showModalAlert("请输入正确的手机号");
@@ -43961,7 +45570,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const sendCodeBtn = document.getElementById("auth-reg-send-code-btn");
   if (sendCodeBtn) {
     sendCodeBtn.addEventListener("click", async function () {
-      const phone = document.getElementById("auth-reg-phone").value;
+      const phoneInput = document.getElementById("auth-reg-phone");
+      const phone = sanitizePhoneDigits(phoneInput.value);
+      phoneInput.value = phone;
       if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
         showModalAlert("请输入正确的手机号");
         return;
@@ -44017,6 +45628,10 @@ document.addEventListener("DOMContentLoaded", function () {
       loadCaptcha("register");
     }, 100);
   }
+
+  bindAuthPhoneLoginInput();
+  bindAuthSmsCodeInput();
+  bindRegistrationDigitInputs();
 
   // 手机号归属地：注册/登录输入框实时显示
   ["auth-reg-phone", "mobile-reg-phone", "auth-username"].forEach((id) => {
@@ -44210,7 +45825,7 @@ async function loadSystemConfig() {
     // ==================== 美化版 createInput 函数 ====================
     const createInput = (section, key, label, type = "text", help = "", options = {}) => {
       // 获取原始配置值
-      const rawValue = config[section]?.[key];
+      const rawValue = section.split(".").reduce((acc, part) => (acc ? acc[part] : undefined), config)?.[key];
 
       // 标准化布尔值
       let value = rawValue;
@@ -44256,6 +45871,19 @@ async function loadSystemConfig() {
           <option value="plaintext" ${value === "plaintext" ? "selected" : ""}>🔓 明文</option>
           <option value="sha256" ${value === "sha256" ? "selected" : ""}>🔐 SHA256</option>
           <option value="bcrypt" ${value === "bcrypt" ? "selected" : ""}>🛡️ BCrypt (自动加盐)</option>
+        </select>
+      `;
+      } else if (type === "select") {
+        const selectOptions = Array.isArray(options.selectOptions) ? options.selectOptions : [];
+        inputHtml = `
+        <select id="config-${section}-${key}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">
+          ${selectOptions
+            .map((option) => {
+              const optionValue = String(option.value ?? "");
+              const optionLabel = String(option.label ?? optionValue);
+              return `<option value="${optionValue}" ${value === optionValue ? "selected" : ""}>${optionLabel}</option>`;
+            })
+            .join("")}
         </select>
       `;
       } else if (type === "ip_query_order") {
@@ -44468,10 +46096,46 @@ async function loadSystemConfig() {
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">地图配置</h5>';
     html += createInput(
       "Map",
-      "amap_js_key",
-      "高德地图 API Key",
+      "provider",
+      "地图提供方",
+      "select",
+      "全局单选地图提供方：amap、tencent、tianditu。PC 与移动端配置页共享同一后端真相源。",
+      {
+        selectOptions: [
+          { value: "amap", label: "高德地图" },
+          { value: "tencent", label: "腾讯地图" },
+          { value: "tianditu", label: "天地图" },
+          { value: "baidu", label: "百度地图" },
+        ],
+      },
+    );
+    html += createInput(
+      "Map.providers.amap",
+      "js_key",
+      "高德地图 JS Key",
       "text",
-      "用于前端地图显示的JS API Key。",
+      "主配置改为 provider 嵌套字段；Map.amap_js_key 仅作为兼容读取来源。",
+    );
+    html += createInput(
+      "Map.providers.tencent",
+      "map_key",
+      "腾讯地图 Key",
+      "text",
+      "用于腾讯地图路线规划与地图渲染。",
+    );
+    html += createInput(
+      "Map.providers.tianditu",
+      "token",
+      "天地图 Token",
+      "text",
+      "用于天地图正式业务接入；内部坐标仍统一按 GCJ02 处理。",
+    );
+    html += createInput(
+      "Map.providers.baidu",
+      "ak",
+      "百度地图 AK",
+      "text",
+      "用于百度地图正式业务接入；当前先纳入 provider 契约与配置路径。",
     );
     html +=
     html +=
@@ -47500,7 +49164,13 @@ async function saveSystemConfig() {
         ),
       },
       Map: {
-        amap_js_key: $("config-Map-amap_js_key").value,
+        provider: $("config-Map-provider").value,
+        providers: {
+          amap: { js_key: $("config-Map.providers.amap-js_key").value },
+          tencent: { map_key: $("config-Map.providers.tencent-map_key").value },
+          tianditu: { token: $("config-Map.providers.tianditu-token").value },
+          baidu: { ak: $("config-Map.providers.baidu-ak").value },
+        },
       },
       IP_Location: {
         query_order: ($("config-IP_Location-query_order").value || "").trim(),
@@ -50509,8 +52179,12 @@ function copyAdminContentToMultiPanel(tabType) {
     return;
   }
 
-  // 将PC端内容复制到移动端容器
-  mobileContainer.innerHTML = pcContainer.innerHTML;
+  withMobileAdminUnifiedScrollGuard(tabType, () => {
+    // 将PC端内容复制到移动端容器
+    mobileContainer.innerHTML = pcContainer.innerHTML;
+  }, { restoreMode: "replace" });
+
+  syncMobileAdminUnifiedPanelScroll(tabType, { restoreMode: "replace" });
 
   // 【账单列表】移动端显示优化：缩小表格字号并强化横向滚动体验
   if (tabType === "billing") {
@@ -50539,6 +52213,10 @@ function copyAdminContentToMultiPanel(tabType) {
 
   // 【用户列表】替换用户管理按钮为移动端专用函数
   if (tabType === "users") {
+    mobileContainer.querySelectorAll(".phone-location-badge[data-phone]").forEach(async (span) => {
+      const info = await fetchPhoneInfo(span.dataset.phone);
+      span.innerHTML = _phoneInfoBadge(info);
+    });
     mobileContainer.querySelectorAll("button").forEach((btn) => {
       const onclickAttr = btn.getAttribute("onclick");
       if (!onclickAttr) return;
@@ -53673,7 +55351,16 @@ async function openMobileTrackModal(recordId, taskId) {
     if (paceEl && data.pace) {
       paceEl.textContent = data.pace;
     }
-    if (mobileTrackMapInstance && data.path && data.path.length > 0) {
+    if (getActiveMapProvider() !== "amap") {
+      if (data.path && data.path.length > 0) {
+        drawProviderRouteOnMap("mobile-track-map-container", data.path, {
+          strokeColor: "#3b82f6",
+          strokeWeight: 4,
+          strokeOpacity: 0.8,
+          showEndpoints: true,
+        });
+      }
+    } else if (mobileTrackMapInstance && data.path && data.path.length > 0) {
       clearMobileTrackMap();
       const path = data.path.map((p) => new AMapInstance.LngLat(p[0], p[1]));
       mobileTrackPolyline = new AMapInstance.Polyline({
@@ -53740,6 +55427,11 @@ async function openMobileTrackModal(recordId, taskId) {
   }
 }
 async function initMobileTrackMap() {
+  if (getActiveMapProvider() !== "amap") {
+    await ensureActiveMapProviderRuntimeIfNeeded("移动历史轨迹地图");
+    initProviderMap("mobile-track-map-container", false);
+    return;
+  }
   if (mobileTrackMapInstance) return;
   if (!AMapInstance) {
     console.error("高德地图API未加载");
@@ -53759,6 +55451,10 @@ async function initMobileTrackMap() {
   }
 }
 function clearMobileTrackMap() {
+  if (getActiveMapProvider() !== "amap") {
+    clearProviderMapOverlays("mobile-track-map-container");
+    return;
+  }
   if (mobileTrackPolyline) {
     mobileTrackPolyline.setMap(null);
     mobileTrackPolyline = null;
@@ -53830,6 +55526,14 @@ async function initMobileMapAttendance(targetCoords) {
   if (mobileMapAttendanceInstance) {
     mobileMapAttendanceInstance.destroy();
     mobileMapAttendanceInstance = null;
+  }
+  if (getActiveMapProvider() !== "amap") {
+    renderMapProviderFrontendPlaceholder("mobile-map-attendance-container", false);
+    showModalAlert(
+      `当前地图提供方为${getMapProviderDisplayName()}，暂不使用前端高德地图选点。`,
+      "提示",
+    );
+    return;
   }
   if (typeof AMap === "undefined") {
     console.error("[地图选点] 高德地图API未加载");
@@ -56513,6 +58217,9 @@ function getInitialDataFailureNotice(response) {
   if (!response || response.success !== false) {
     return null;
   }
+  if (response.stale_auth_response || response.suppressed) {
+    return null;
+  }
 
   const message = String(response.message || "").trim();
   if (!response.offline && !message) {
@@ -56520,8 +58227,12 @@ function getInitialDataFailureNotice(response) {
   }
 
   return {
-    title: response.offline ? "离线模式" : "初始化失败",
-    text: message || "初始化失败，请稍后重试。",
+    title: response.offline ? "后端连接异常" : "初始化失败",
+    text:
+      message ||
+      (response.offline
+        ? "暂时无法连接到后端服务器，请刷新重试。如果问题依旧，请联系管理员。"
+        : "初始化失败，请稍后重试。"),
     icon: response.offline ? "warning" : "error",
   };
 }
@@ -56572,6 +58283,7 @@ async function loadInitialData(options = {}) {
 
       // 直接返回缓存的响应数据
       // 这样可以减少对后端的压力，提高响应速度
+      syncMapProviderConfigFromInitialData(lastInitialDataResponse);
       return lastInitialDataResponse;
     }
 
@@ -56612,6 +58324,7 @@ async function loadInitialData(options = {}) {
 
     // 将响应数据缓存起来，供下次限流时使用
     lastInitialDataResponse = response;
+    syncMapProviderConfigFromInitialData(response);
 
     // ====================================================================
     // 步骤5：检查响应的有效性和成功状态
@@ -60513,6 +62226,37 @@ async function View_details_of_users_with_outstanding_payments(
       const dept = data.deptInfo || {};
       const user = data.userInfo || {};
 
+      const studentNumber = String(dept.studentNum || dept.account || "").trim();
+      let linkedUsers = [];
+      if (studentNumber) {
+        try {
+          const linkedResp = await fetch(
+            `/api/admin/school-account-linked-users?student_number=${encodeURIComponent(studentNumber)}`,
+            { headers: { "X-Session-ID": sessionUUID } },
+          );
+          const linkedResult = await linkedResp.json();
+          if (linkedResult.success && Array.isArray(linkedResult.users)) {
+            linkedUsers = linkedResult.users;
+          }
+        } catch (e) {
+          console.warn("[View_details] 获取关联账号失败:", e);
+        }
+      }
+
+      const linkedUsersHtml = linkedUsers.length
+        ? linkedUsers
+            .map(
+              (item) => `
+                <div class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <div class="text-xs text-slate-700 font-medium">${escapeHtml(item.username || "-")}</div>
+                  <div class="text-[11px] text-slate-500 mt-1">昵称：${escapeHtml(item.nickname || "-")}</div>
+                  <div class="text-[11px] text-slate-500">手机号：${escapeHtml(item.phone || "未绑定")}</div>
+                  <div class="text-[11px] text-slate-500">学校账号：${escapeHtml(item.school_username || "-")}</div>
+                </div>`,
+            )
+            .join("")
+        : '<div class="text-xs text-slate-400 text-center py-3">暂无关联账号</div>';
+
       // 获取该学校账号的账单记录
       let billingRecords = [];
       try {
@@ -60749,6 +62493,20 @@ async function View_details_of_users_with_outstanding_payments(
                                     <span class="text-[10px] text-slate-400">(明文)</span>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+                        <div class="bg-gradient-to-r from-cyan-50 via-sky-50 to-white px-3 py-2 border-b border-cyan-100 flex items-center gap-2">
+                            <div class="p-1 bg-gradient-to-br from-cyan-100 to-sky-100 rounded text-cyan-600">
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2m12 0H7m10-10a4 4 0 11-8 0 4 4 0 018 0z"/>
+                                </svg>
+                            </div>
+                            <span class="font-bold text-cyan-800 text-xs">关联账号</span>
+                        </div>
+                        <div class="p-3 space-y-2">
+                            ${linkedUsersHtml}
                         </div>
                     </div>
 
@@ -62534,6 +64292,7 @@ async function paySelectedBillingWithPreset(containerId, items) {
 async function loadAdminBillingList(usernameOverride = null) {
   const container = document.getElementById("admin-billing-list-container");
   const schoolInput = document.getElementById("admin-billing-school-input");
+  const keywordInput = document.getElementById("admin-billing-search-input");
   if (!container) return;
   const schoolUsername =
     usernameOverride != null
@@ -62541,6 +64300,7 @@ async function loadAdminBillingList(usernameOverride = null) {
       : schoolInput
         ? schoolInput.value.trim()
         : "";
+  const keyword = keywordInput ? keywordInput.value.trim() : "";
   container.innerHTML = `
     <div class="flex items-center justify-center py-10 gap-3 text-slate-400">
       <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -62549,10 +64309,12 @@ async function loadAdminBillingList(usernameOverride = null) {
       <span class="text-sm">加载中...</span>
     </div>`;
   try {
-    const url = schoolUsername
-      ? "/api/admin/billing/list?school_username=" +
-        encodeURIComponent(schoolUsername)
-      : "/api/admin/billing/list";
+    const params = new URLSearchParams();
+    if (schoolUsername) params.set("school_username", schoolUsername);
+    if (keyword) params.set("keyword", keyword);
+    params.set("page", "1");
+    params.set("page_size", "50");
+    const url = `/api/admin/billing/list?${params.toString()}`;
     const resp = await fetch(url, { headers: { "X-Session-ID": sessionUUID } });
     const data = await resp.json();
     if (!data.success) {
@@ -62560,20 +64322,19 @@ async function loadAdminBillingList(usernameOverride = null) {
       return;
     }
     const records = data.records || [];
+    const summary = data.summary || {};
     if (records.length === 0) {
       container.innerHTML = `<div class="flex flex-col items-center justify-center py-12 text-slate-400 gap-2"><svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><p class="text-sm">暂无账单记录</p><p class="text-xs text-slate-400">默认展示你有权限的学校账号账单</p></div>`;
       return;
     }
-    // 统计
-    const totalCount = records.length;
-    const paidCount = records.filter((r) => r.status === "paid").length;
-    const pendingCount = records.filter((r) => r.status === "pending").length;
-    const clearedCount = records.filter(
-      (r) => r.status === "admin_cleared",
-    ).length;
-    const totalAmount = records
-      .reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
-      .toFixed(2);
+    const totalCount = Number(summary.total_count || 0);
+    const paidCount = Number(summary.paid_count || 0);
+    const pendingCount = Number(summary.pending_count || 0);
+    const clearedCount = Number(summary.admin_cleared_count || 0);
+    const totalAmount = Number(summary.total_amount || 0).toFixed(2);
+    const paidAmount = Number(summary.paid_amount || 0).toFixed(2);
+    const pendingAmount = Number(summary.pending_amount || 0).toFixed(2);
+    const clearedAmount = Number(summary.admin_cleared_amount || 0).toFixed(2);
     const scopeTip = schoolUsername
       ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}`
       : "当前范围：所有学校账号的全部账单";
@@ -62592,9 +64353,25 @@ async function loadAdminBillingList(usernameOverride = null) {
           <p class="text-2xl font-bold text-amber-600">${pendingCount}</p>
           <p class="text-xs text-amber-600 mt-0.5">待支付</p>
         </div>
+        <div class="bg-cyan-50 border border-cyan-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-cyan-600">${clearedCount}</p>
+          <p class="text-xs text-cyan-600 mt-0.5">管理员清除</p>
+        </div>
         <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
           <p class="text-2xl font-bold text-blue-600">¥${totalAmount}</p>
           <p class="text-xs text-blue-600 mt-0.5">总金额</p>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-emerald-600">¥${paidAmount}</p>
+          <p class="text-xs text-emerald-600 mt-0.5">已支付金额</p>
+        </div>
+        <div class="bg-orange-50 border border-orange-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-orange-600">¥${pendingAmount}</p>
+          <p class="text-xs text-orange-600 mt-0.5">待支付金额</p>
+        </div>
+        <div class="bg-sky-50 border border-sky-200 rounded-lg p-3 text-center">
+          <p class="text-2xl font-bold text-sky-600">¥${clearedAmount}</p>
+          <p class="text-xs text-sky-600 mt-0.5">管理员清除金额</p>
         </div>
       </div>
       <div class="rounded-xl border border-slate-200 overflow-hidden shadow-sm">
@@ -62648,8 +64425,9 @@ async function loadAdminBillingList(usernameOverride = null) {
     if (clearedCount > 0) {
       html += `<p class="text-xs text-slate-400 mt-2 text-right">其中 ${clearedCount} 条已由管理员清除</p>`;
     }
-    container.innerHTML = html;
-    // 动态控制「状态」列换行：当容器宽度 < 5× 状态列（不换行）宽度时允许换行
+    withMobileAdminUnifiedScrollGuard("billing", () => {
+      container.innerHTML = html;
+    }, { restoreMode: "replace" });
     (function () {
       const statusCells = container.querySelectorAll(
         ".admin-status-td, .admin-status-th",
@@ -62657,7 +64435,6 @@ async function loadAdminBillingList(usernameOverride = null) {
       if (!statusCells.length) return;
       const applyWrap = () => {
         const containerW = container.getBoundingClientRect().width;
-        // 先强制不换行以量出自然宽度
         statusCells.forEach((c) => {
           c.style.whiteSpace = "nowrap";
         });
@@ -63138,10 +64915,15 @@ async function loadRemovedAccountsList() {
 }
 
 async function loadMobileMultiAdminBillingList() {
+  captureMobileAdminUnifiedScrollState("billing");
   const schoolInput = document.getElementById(
     "mobile-multi-admin-billing-school-input",
   );
+  const keywordInput = document.getElementById(
+    "mobile-multi-admin-billing-search-input",
+  );
   const schoolUsername = schoolInput ? schoolInput.value.trim() : "";
+  const keyword = keywordInput ? keywordInput.value.trim() : "";
   const container = document.getElementById("mobile-multi-admin-billing-list");
   if (!container) return;
   container.innerHTML = `
@@ -63152,10 +64934,18 @@ async function loadMobileMultiAdminBillingList() {
       <p class="text-xs">加载中...</p>
     </div>`;
   try {
-    const url = schoolUsername
-      ? "/api/admin/billing/list?school_username=" +
-        encodeURIComponent(schoolUsername)
-      : "/api/admin/billing/list";
+    const params = [];
+    if (schoolUsername) {
+      params.push(
+        `school_username=${encodeURIComponent(schoolUsername)}`,
+      );
+    }
+    if (keyword) {
+      params.push(`keyword=${encodeURIComponent(keyword)}`);
+    }
+    params.push("page=1");
+    params.push("page_size=50");
+    const url = `/api/admin/billing/list?${params.join("&")}`;
     const resp = await fetch(url, { headers: { "X-Session-ID": sessionUUID } });
     const data = await resp.json();
     if (!data.success) {
@@ -63163,46 +64953,44 @@ async function loadMobileMultiAdminBillingList() {
       return;
     }
     const records = data.records || [];
-    const billingStats = records.reduce(
-      (stats, record) => {
-        const amount = Number(record.amount || 0);
-        stats.total += 1;
-        stats.total_amount += Number.isFinite(amount) ? amount : 0;
-        if (record.status === "pending") {
-          stats.pending += 1;
-        } else if (record.status === "paid") {
-          stats.paid += 1;
-        } else if (record.status === "admin_cleared") {
-          stats.admin_cleared += 1;
-        }
-        return stats;
-      },
-      {
-        total: 0,
-        pending: 0,
-        paid: 0,
-        admin_cleared: 0,
-        total_amount: 0,
-      },
-    );
-    if (!records.length) {
-      container.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无账单记录</p></div>`;
-      return;
-    }
+    const summary = data.summary || {};
+    const billingStats = {
+      total: Number(summary.total_count || 0),
+      pending: Number(summary.pending_count || 0),
+      paid: Number(summary.paid_count || 0),
+      admin_cleared: Number(summary.admin_cleared_count || 0),
+      total_amount: Number(summary.total_amount || 0),
+      pending_amount: Number(summary.pending_amount || 0),
+      paid_amount: Number(summary.paid_amount || 0),
+      admin_cleared_amount: Number(summary.admin_cleared_amount || 0),
+    };
     const scopeTip = schoolUsername
       ? `当前筛选：学校账号 ${_escapeAttr(schoolUsername)}`
       : "当前范围：所有学校账号的全部账单";
-    let html = `<div class="mb-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">${scopeTip}</div>`;
+    const keywordTip = keyword
+      ? `关键词：${_escapeAttr(keyword)}`
+      : "关键词：未设置";
+    let html = `<div class="mb-2 text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5">${scopeTip}<br>${keywordTip}</div>`;
     html += `<div class="grid grid-cols-2 gap-2 mb-2">
       <div class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700">总账单：${_escapeAttr(String(billingStats.total))}</div>
       <div class="bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 text-amber-700">待支付：${_escapeAttr(String(billingStats.pending))}</div>
       <div class="bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1.5 text-emerald-700">已支付：${_escapeAttr(String(billingStats.paid))}</div>
-      <div class="bg-slate-100 border border-slate-300 rounded-lg px-2 py-1.5 text-slate-700">已清除：${_escapeAttr(String(billingStats.admin_cleared))}</div>
-      <div class="col-span-2 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1.5 text-indigo-700">总金额：¥${_escapeAttr(String(Number(billingStats.total_amount).toFixed(2)))}</div>
+      <div class="bg-sky-50 border border-sky-200 rounded-lg px-2 py-1.5 text-sky-700">已清除：${_escapeAttr(String(billingStats.admin_cleared))}</div>
+      <div class="bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1.5 text-indigo-700">总金额：¥${_escapeAttr(String(Number(billingStats.total_amount).toFixed(2)))}</div>
+      <div class="bg-orange-50 border border-orange-200 rounded-lg px-2 py-1.5 text-orange-700">待支付金额：¥${_escapeAttr(String(Number(billingStats.pending_amount).toFixed(2)))}</div>
+      <div class="bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1.5 text-emerald-700">已支付金额：¥${_escapeAttr(String(Number(billingStats.paid_amount).toFixed(2)))}</div>
+      <div class="bg-cyan-50 border border-cyan-200 rounded-lg px-2 py-1.5 text-cyan-700">管理员清除金额：¥${_escapeAttr(String(Number(billingStats.admin_cleared_amount).toFixed(2)))}</div>
     </div>`;
     html += `<div class="mb-2 flex items-center gap-1 justify-end">
       <button class="btn btn-ghost border border-slate-300 !py-0.5 !px-1.5 text-[11px]" onclick="loadMobileMultiAdminBillingList()">刷新</button>
     </div>`;
+    if (!records.length) {
+      html += `<div class="flex flex-col items-center justify-center py-8 text-slate-400 gap-1"><p class="text-xs">暂无账单记录</p></div>`;
+      withMobileAdminUnifiedScrollGuard("billing", () => {
+        container.innerHTML = html;
+      }, { restoreMode: "replace" });
+      return;
+    }
     html += `<div class="space-y-3">`;
     records.forEach((r) => {
       const school = _escapeAttr(r.school_username || "-");
