@@ -47,6 +47,7 @@ class TestMapProviderConfigUi(unittest.TestCase):
 
         self.assertIn("地图提供方", load_system_config_source)
         self.assertIn('"select",', load_system_config_source)
+        self.assertIn("amap、tencent、tianditu、baidu", load_system_config_source)
         self.assertIn('selectOptions: [', load_system_config_source)
         self.assertIn('{ value: "amap", label: "高德地图" }', load_system_config_source)
         self.assertIn('{ value: "tencent", label: "腾讯地图" }', load_system_config_source)
@@ -56,6 +57,16 @@ class TestMapProviderConfigUi(unittest.TestCase):
         self.assertIn('createInput(\n      "Map.providers.tencent",\n      "map_key",', load_system_config_source)
         self.assertIn('createInput(\n      "Map.providers.tianditu",\n      "token",', load_system_config_source)
         self.assertIn('createInput(\n      "Map.providers.baidu",\n      "ak",', load_system_config_source)
+
+    def test_load_system_config_does_not_duplicate_html_accumulator(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        load_system_config_source = _extract_js_section(
+            source,
+            "async function loadSystemConfig() {",
+            "\nasync function saveSystemConfig() {",
+        )
+
+        self.assertNotIn("html +=\n    html +=", load_system_config_source)
 
     def test_save_system_config_submits_global_provider_payload(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")

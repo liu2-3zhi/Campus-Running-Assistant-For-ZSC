@@ -834,12 +834,27 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             }
 
             async function searchSegment(startCoord, endCoord) {
-                const response = await fetch(buildDrivingRouteUrl(startCoord, endCoord));
-                if (!response.ok) {
-                    return { error: `路线服务请求失败：HTTP ${response.status}` };
+                const controller = new AbortController();
+                const timeoutId = window.setTimeout(() => {
+                    controller.abort();
+                }, 15000);
+                try {
+                    const response = await fetch(buildDrivingRouteUrl(startCoord, endCoord), {
+                        signal: controller.signal
+                    });
+                    if (!response.ok) {
+                        return { error: `路线服务请求失败：HTTP ${response.status}` };
+                    }
+                    const xmlText = await response.text();
+                    return { path: extractRoutePathPoints(xmlText) };
+                } catch (error) {
+                    if (error && error.name === 'AbortError') {
+                        return { error: '地图路线服务请求超时' };
+                    }
+                    return { error: `路线服务请求失败：${error && error.message ? error.message : String(error)}` };
+                } finally {
+                    window.clearTimeout(timeoutId);
                 }
-                const xmlText = await response.text();
-                return { path: extractRoutePathPoints(xmlText) };
             }
 
             if (actualMode !== 'driving') {

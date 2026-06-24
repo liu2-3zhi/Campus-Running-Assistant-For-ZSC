@@ -360,6 +360,11 @@ class TestMapProviderBackendContract(unittest.TestCase):
                 "https://api.tianditu.gov.cn/drive?postStr=",
                 "function gcj02ToTdtCoordinate(",
                 "function tdtCoordinateToGcj02(",
+                "AbortController",
+                "地图路线服务请求超时",
+                "window.setTimeout",
+                "window.clearTimeout",
+                "signal: controller.signal",
             ],
             "_plan_route_path_with_baidu_runtime": [
                 "https://api.map.baidu.com/api?v=3.0&ak=",

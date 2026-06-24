@@ -46210,7 +46210,7 @@ async function loadSystemConfig() {
       "provider",
       "地图提供方",
       "select",
-      "全局单选地图提供方：amap、tencent、tianditu。PC 与移动端配置页共享同一后端真相源。",
+      "全局单选地图提供方：amap、tencent、tianditu、baidu。PC 与移动端配置页共享同一后端真相源。",
       {
         selectOptions: [
           { value: "amap", label: "高德地图" },
@@ -46248,7 +46248,6 @@ async function loadSystemConfig() {
       "text",
       "用于百度地图正式业务接入；当前先纳入 provider 契约与配置路径。",
     );
-    html +=
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">🌐 IP 归属地查询配置</h5>';
     html += createInput(
