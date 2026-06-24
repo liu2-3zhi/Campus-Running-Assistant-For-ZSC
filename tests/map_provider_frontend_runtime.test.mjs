@@ -1,0 +1,443 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+function extractFunctionSource(source, functionName) {
+  const signature = `function ${functionName}`;
+  const start = source.indexOf(signature);
+  assert.notEqual(start, -1, `${functionName} should exist in scripts/main.new.js`);
+
+  const paramsEnd = source.indexOf(')', start);
+  assert.notEqual(paramsEnd, -1, `${functionName} should have a parameter list`);
+  const bodyStart = source.indexOf('{', paramsEnd);
+  assert.notEqual(bodyStart, -1, `${functionName} should have a body`);
+
+  let depth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inTemplate = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = bodyStart; i < source.length; i += 1) {
+    const char = source[i];
+    const next = source[i + 1];
+    const prev = source[i - 1];
+
+    if (inLineComment) {
+      if (char === '\n') inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (prev === '*' && char === '/') inBlockComment = false;
+      continue;
+    }
+    if (!inSingleQuote && !inDoubleQuote && !inTemplate) {
+      if (char === '/' && next === '/') {
+        inLineComment = true;
+        continue;
+      }
+      if (char === '/' && next === '*') {
+        inBlockComment = true;
+        continue;
+      }
+    }
+    if (!inDoubleQuote && !inTemplate && char === "'" && prev !== '\\') {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (!inSingleQuote && !inTemplate && char === '"' && prev !== '\\') {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (!inSingleQuote && !inDoubleQuote && char === '`' && prev !== '\\') {
+      inTemplate = !inTemplate;
+      continue;
+    }
+    if (inSingleQuote || inDoubleQuote || inTemplate) {
+      continue;
+    }
+    if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, i + 1);
+      }
+    }
+  }
+
+  throw new Error(`Failed to extract ${functionName}`);
+}
+
+function createDocument() {
+  const elements = new Map();
+  const createElementObject = (id = '') => ({
+    id,
+    children: [],
+    dataset: {},
+    style: {},
+    innerHTML: '',
+    appendChild(child) {
+      child.parentNode = this;
+      this.children.push(child);
+    },
+    removeChild(child) {
+      this.children = this.children.filter((item) => item !== child);
+      child.parentNode = null;
+    },
+    classList: {
+      add() {},
+      remove() {},
+    },
+  });
+
+  return {
+    getElementById(id) {
+      if (!elements.has(id)) {
+        elements.set(id, createElementObject(id));
+      }
+      return elements.get(id);
+    },
+    createElement(tagName) {
+      return {
+        ...createElementObject(''),
+        tagName,
+        async: false,
+        defer: false,
+        onload: null,
+        onerror: null,
+        src: '',
+      };
+    },
+    querySelector() {
+      return null;
+    },
+    head: createElementObject('head'),
+    body: createElementObject('body'),
+  };
+}
+
+function createTencentSdk() {
+  class LatLng {
+    constructor(lat, lng) {
+      this.lat = lat;
+      this.lng = lng;
+    }
+  }
+  class LatLngBounds {
+    constructor() {
+      this.points = [];
+    }
+    extend(point) {
+      this.points.push(point);
+    }
+  }
+  class TencentMap {
+    constructor(container, options) {
+      this.container = container;
+      this.options = options;
+      this.fitBoundsCalls = [];
+      this.zoomByCalls = [];
+      this.events = [];
+    }
+    setCenter(center) {
+      this.center = center;
+    }
+    setZoom(zoom) {
+      this.zoom = zoom;
+    }
+    on(eventName, handler) {
+      this.events.push({ eventName, handler });
+    }
+    fitBounds(bounds, options) {
+      this.fitBoundsCalls.push({ bounds, options });
+    }
+    zoomBy(delta) {
+      this.zoomByCalls.push(delta);
+    }
+    destroy() {
+      this.destroyed = true;
+    }
+  }
+  class MultiMarker {
+    constructor(options) {
+      this.options = options;
+      this.map = options.map;
+    }
+    setMap(map) {
+      this.map = map;
+    }
+  }
+  class MultiPolyline extends MultiMarker {}
+  class PolylineStyle {
+    constructor(options) {
+      this.options = options;
+    }
+  }
+  return { Map: TencentMap, LatLng, LatLngBounds, MultiMarker, MultiPolyline, PolylineStyle };
+}
+
+function createTianDiTuSdk() {
+  class LngLat {
+    constructor(lng, lat) {
+      this.lng = lng;
+      this.lat = lat;
+    }
+  }
+  class TianDiTuMap {
+    constructor(containerId) {
+      this.containerId = containerId;
+      this.overlays = [];
+      this.setViewportCalls = [];
+      this.zoomInCalls = 0;
+      this.zoomOutCalls = 0;
+    }
+    centerAndZoom(center, zoom) {
+      this.center = center;
+      this.zoom = zoom;
+    }
+    addEventListener(eventName, handler) {
+      this.eventName = eventName;
+      this.handler = handler;
+    }
+    addOverLay(overlay) {
+      this.overlays.push(overlay);
+    }
+    removeOverLay(overlay) {
+      this.overlays = this.overlays.filter((item) => item !== overlay);
+    }
+    setMapType(mapType) {
+      this.mapType = mapType;
+    }
+    setViewport(points) {
+      this.setViewportCalls.push(points);
+    }
+    zoomIn() {
+      this.zoomInCalls += 1;
+    }
+    zoomOut() {
+      this.zoomOutCalls += 1;
+    }
+    clearOverLays() {
+      this.overlays = [];
+    }
+  }
+  class Marker {
+    constructor(position, options = {}) {
+      this.position = position;
+      this.options = options;
+    }
+  }
+  class Polyline extends Marker {}
+  class TileLayer {
+    constructor(url, options) {
+      this.url = url;
+      this.options = options;
+    }
+  }
+  class MapType {
+    constructor(layers, name) {
+      this.layers = layers;
+      this.name = name;
+    }
+  }
+  return { Map: TianDiTuMap, LngLat, Marker, Polyline, TileLayer, MapType };
+}
+
+function createBaiduSdk() {
+  class Point {
+    constructor(lng, lat) {
+      this.lng = lng;
+      this.lat = lat;
+    }
+  }
+  class BaiduMap {
+    constructor(containerId) {
+      this.containerId = containerId;
+      this.overlays = [];
+      this.setViewportCalls = [];
+      this.zoomInCalls = 0;
+      this.zoomOutCalls = 0;
+    }
+    centerAndZoom(center, zoom) {
+      this.center = center;
+      this.zoom = zoom;
+    }
+    enableScrollWheelZoom(enabled) {
+      this.scrollWheelEnabled = enabled;
+    }
+    addEventListener(eventName, handler) {
+      this.eventName = eventName;
+      this.handler = handler;
+    }
+    addOverlay(overlay) {
+      this.overlays.push(overlay);
+    }
+    removeOverlay(overlay) {
+      this.overlays = this.overlays.filter((item) => item !== overlay);
+    }
+    setViewport(points) {
+      this.setViewportCalls.push(points);
+    }
+    zoomIn() {
+      this.zoomInCalls += 1;
+    }
+    zoomOut() {
+      this.zoomOutCalls += 1;
+    }
+    clearOverlays() {
+      this.overlays = [];
+    }
+  }
+  class Marker {
+    constructor(position) {
+      this.position = position;
+    }
+  }
+  class Polyline {
+    constructor(points, options) {
+      this.points = points;
+      this.options = options;
+    }
+  }
+  return { Map: BaiduMap, Point, Marker, Polyline };
+}
+
+function createRuntime(provider) {
+  const source = readFileSync(resolve('scripts/main.new.js'), 'utf8');
+  const functionNames = [
+    'getActiveMapProvider',
+    'getMapProviderDisplayName',
+    'getMapProviderConfig',
+    'getMapProviderKeyRequirement',
+    'getTianDiTuToken',
+    'createTianDiTuTileLayer',
+    'applyTianDiTuDefaultMapType',
+    'destroyProviderMapInstance',
+    'getProviderOverlayBucket',
+    'clearProviderMapOverlays',
+    'getProviderMapDefaultZoom',
+    'initProviderMap',
+    'isCoordinateOutOfChina',
+    'transformMapCoordLat',
+    'transformMapCoordLng',
+    'wgs84ToGcj02',
+    'gcj02ToWgs84',
+    'gcj02ToBd09',
+    'bd09ToGcj02',
+    'convertGcj02ToProviderCoordinates',
+    'normalizeRouteCoord',
+    'isRouteSegmentSeparator',
+    'splitRouteCoordsIntoDrawableSegments',
+    'getProviderMapInstance',
+    'fitProviderMapToCoordinates',
+    'zoomProviderMap',
+    'fitProviderMapToLastRoute',
+    'addProviderMarker',
+    'drawProviderRouteOnMap',
+  ];
+  const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
+  const document = createDocument();
+  const window = {
+    APP_CONFIG: {
+      map_provider: provider,
+      map_providers: {
+        amap: { provider: 'amap', display_name: '高德地图', js_key: 'amap-key' },
+        tencent: { provider: 'tencent', display_name: '腾讯地图', map_key: 'tencent-key' },
+        tianditu: { provider: 'tianditu', display_name: '天地图', token: 'tianditu-token' },
+        baidu: { provider: 'baidu', display_name: '百度地图', ak: 'baidu-ak' },
+      },
+    },
+  };
+  window.TMap = createTencentSdk();
+  window.T = createTianDiTuSdk();
+  window.BMap = createBaiduSdk();
+
+  const factory = Function('window', 'document', `
+    const TMap = window.TMap;
+    const T = window.T;
+    const BMap = window.BMap;
+    let AMAP_API_KEY = 'amap-key';
+    let AMapInstance = null;
+    let map = null;
+    let multiAccountMap = null;
+    let mobileTrackMapInstance = null;
+    let providerMapInstances = {};
+    let providerMapInstanceProviders = {};
+    let providerMapEventsBound = {};
+    let providerMapOverlays = {};
+    let providerMapLastFitCoords = {};
+    const MAP_COORD_PI = Math.PI;
+    const MAP_COORD_X_PI = Math.PI * 3000.0 / 180.0;
+    const MAP_COORD_A = 6378245.0;
+    const MAP_COORD_EE = 0.00669342162296594323;
+    function logMessage_Info() {}
+    function logMessage_Warning() {}
+    function logMessage_Error() {}
+    ${functionSources.join('\n\n')}
+    return {
+      initProviderMap,
+      addProviderMarker,
+      drawProviderRouteOnMap,
+      zoomProviderMap,
+      fitProviderMapToLastRoute,
+      getProviderMapInstance,
+      getState: () => ({
+        providerMapInstances,
+        providerMapOverlays,
+        providerMapLastFitCoords,
+      }),
+    };
+  `);
+
+  return factory(window, document);
+}
+
+test('provider maps initialize and expose marker-only viewport controls without network SDKs', () => {
+  const providers = ['tencent', 'tianditu', 'baidu'];
+
+  for (const provider of providers) {
+    const runtime = createRuntime(provider);
+    assert.equal(runtime.initProviderMap('map-container', false), true, provider);
+    const marker = runtime.addProviderMarker('map-container', { lng: 113.39, lat: 22.52 });
+    assert.ok(marker, `${provider} marker should be created`);
+
+    assert.equal(runtime.zoomProviderMap('map-container', 1), true, provider);
+    assert.equal(runtime.zoomProviderMap('map-container', -1), true, provider);
+    assert.equal(runtime.fitProviderMapToLastRoute('map-container'), true, provider);
+
+    const instance = runtime.getProviderMapInstance('map-container');
+    if (provider === 'tencent') {
+      assert.deepEqual(instance.zoomByCalls, [1, -1]);
+      assert.equal(instance.fitBoundsCalls.length, 1);
+      assert.equal(instance.fitBoundsCalls[0].bounds.points.length, 1);
+    } else if (provider === 'tianditu') {
+      assert.equal(instance.zoomInCalls, 1);
+      assert.equal(instance.zoomOutCalls, 1);
+      assert.equal(instance.setViewportCalls.length, 1);
+      assert.equal(instance.setViewportCalls[0].length, 1);
+    } else if (provider === 'baidu') {
+      assert.equal(instance.zoomInCalls, 1);
+      assert.equal(instance.zoomOutCalls, 1);
+      assert.equal(instance.setViewportCalls.length, 1);
+      assert.equal(instance.setViewportCalls[0].length, 1);
+    }
+  }
+});
+
+test('provider route drawing stores fit coordinates for subsequent viewport controls', () => {
+  const runtime = createRuntime('tencent');
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+  const route = runtime.drawProviderRouteOnMap('map-container', [
+    { lng: 113.39, lat: 22.52 },
+    { lng: 113.40, lat: 22.53 },
+  ]);
+
+  assert.ok(route);
+  assert.equal(runtime.fitProviderMapToLastRoute('map-container'), true);
+  const instance = runtime.getProviderMapInstance('map-container');
+  assert.equal(instance.fitBoundsCalls.length, 2);
+  assert.equal(instance.fitBoundsCalls[1].bounds.points.length >= 2, true);
+});
