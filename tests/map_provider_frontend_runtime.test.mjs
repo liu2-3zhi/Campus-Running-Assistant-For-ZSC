@@ -526,3 +526,46 @@ test('provider runtime loaders inject the active provider sdk script and resolve
     assert.equal(await runtime.loadActiveMapProviderRuntime(item.provider), expectedRuntime, item.provider);
   }
 });
+
+test('provider runtime loaders reject when sdk globals are missing after script callback', async () => {
+  const cases = [
+    {
+      provider: 'tencent',
+      errorPattern: /腾讯地图脚本加载完成但运行时不可用/,
+      finish(window, script) {
+        script.onload();
+      },
+    },
+    {
+      provider: 'tianditu',
+      errorPattern: /天地图脚本加载完成但运行时不可用/,
+      finish(window, script) {
+        script.onload();
+      },
+    },
+    {
+      provider: 'baidu',
+      errorPattern: /百度地图脚本加载完成但运行时不可用/,
+      finish(window) {
+        window.__onBaiduMapApiLoaded();
+      },
+    },
+  ];
+
+  for (const item of cases) {
+    const runtime = createRuntime(item.provider, { preloadSdks: false });
+    const document = runtime.getDocument();
+    const window = runtime.getWindow();
+
+    const runtimePromise = runtime.ensureActiveMapProviderRuntimeIfNeeded('loader-missing-sdk-test');
+    assert.equal(document.appendedScripts.length, 1, item.provider);
+    item.finish(window, document.appendedScripts[0]);
+
+    await assert.rejects(runtimePromise, item.errorPattern, item.provider);
+
+    const retryPromise = runtime.loadActiveMapProviderRuntime(item.provider);
+    assert.equal(document.appendedScripts.length, 2, item.provider);
+    item.finish(window, document.appendedScripts[1]);
+    await assert.rejects(retryPromise, item.errorPattern, item.provider);
+  }
+});

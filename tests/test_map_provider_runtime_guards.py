@@ -115,6 +115,20 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn('initProviderMap("map-container", false)', init_map_block)
         self.assertIn("initProviderMap(containerId, isMultiAccount)", mobile_map_block)
 
+    def test_non_amap_runtime_loaders_verify_sdk_globals_after_script_callback(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        runtime_source = source[
+            source.index("function loadTencentMapOnce("):
+            source.index("async function loadActiveMapProviderRuntime(", source.index("function loadTencentMapOnce("))
+        ]
+
+        self.assertIn("window.TMap && window.TMap.Map && window.TMap.LatLng", runtime_source)
+        self.assertIn("腾讯地图脚本加载完成但运行时不可用", runtime_source)
+        self.assertIn("window.T && window.T.Map", runtime_source)
+        self.assertIn("天地图脚本加载完成但运行时不可用", runtime_source)
+        self.assertIn('window.BMap && typeof window.BMap.Map === "function"', runtime_source)
+        self.assertIn("百度地图脚本加载完成但运行时不可用", runtime_source)
+
     def test_provider_map_reinit_does_not_clear_existing_sdk_dom(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
         provider_map_source = source[

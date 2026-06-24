@@ -949,7 +949,11 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                         } catch (error) {
                             window[callbackName] = undefined;
                         }
-                        resolve();
+                        if (window.BMap && typeof window.BMap.Map === 'function') {
+                            resolve();
+                            return;
+                        }
+                        reject(new Error('百度地图脚本加载完成但运行时不可用，请检查 AK、域名白名单或网络连接。'));
                     };
                     script.onerror = () => reject(new Error('百度地图脚本加载失败，请检查 AK 或网络连接。'));
                     document.head.appendChild(script);

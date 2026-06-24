@@ -362,6 +362,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
                 "https://api.map.baidu.com/api?v=3.0&ak=",
                 "function gcj02ToBd09(",
                 "function bd09ToGcj02(",
+                "百度地图脚本加载完成但运行时不可用",
             ],
         }
 
