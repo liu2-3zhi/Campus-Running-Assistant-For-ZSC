@@ -457,7 +457,21 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                 const allPath = [];
 
                 const searchSegment = (start, end) => new Promise((resolve) => {
+                    let settled = false;
+                    const timeoutId = window.setTimeout(() => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        resolve({ error: '地图路线服务请求超时' });
+                    }, 15000);
+
                     service.search(start, end, (status, result) => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        window.clearTimeout(timeoutId);
                         if (status === 'complete') {
                             const segmentPath = extractSegmentPath(result);
                             if (segmentPath.length > 0) {
@@ -1031,7 +1045,22 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
 
             function searchSegment(startCoord, endCoord, routeType, map) {
                 return new Promise((resolve) => {
-                    const searchInstance = createRouteSearch(routeType, map, resolve);
+                    let settled = false;
+                    const timeoutId = window.setTimeout(() => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        resolve({ error: '地图路线服务请求超时' });
+                    }, 15000);
+                    const searchInstance = createRouteSearch(routeType, map, (result) => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        window.clearTimeout(timeoutId);
+                        resolve(result);
+                    });
                     searchInstance.search(startCoord, endCoord);
                 });
             }
