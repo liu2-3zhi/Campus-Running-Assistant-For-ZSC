@@ -57,6 +57,41 @@ class TestMapProviderBusinessExecutionContract(unittest.TestCase):
         self.assertNotIn("AMapLoader", manual_block)
         self.assertNotIn("AMap.Walking", manual_block)
 
+    def test_backend_provider_calls_pass_request_origin_for_js_key_validation(self):
+        source = MAIN_PATH.read_text(encoding="utf-8")
+        manual_block = source.split("def auto_generate_path_with_provider(", 1)[1].split(
+            "def start_all_runs(", 1
+        )[0]
+        run_all_block = source.split("def _run_all_tasks_manager(", 1)[1].split(
+            "def get_task_history(", 1
+        )[0]
+        worker_block = source.split("def _multi_account_worker(", 1)[1].split(
+            "def _run_all_multi_accounts_thread(", 1
+        )[0]
+        background_block = source.split("def _execute_tasks_background(", 1)[1].split(
+            "def stop_task(", 1
+        )[0]
+
+        for block in [manual_block, run_all_block, worker_block]:
+            with self.subTest(block=block[:40]):
+                self.assertIn('app_base_url=getattr(self, "_web_app_base_url", None)', block)
+        self.assertIn(
+            'app_base_url=getattr(api_instance, "_web_app_base_url", None)',
+            background_block,
+        )
+
+    def test_api_routes_capture_request_origin_for_backend_map_runtime(self):
+        source = MAIN_PATH.read_text(encoding="utf-8")
+        background_route_block = source.split('def start_background_task():', 1)[1].split(
+            '@app.route("/api/background_task/status"', 1
+        )[0]
+        api_call_block = source.split("def api_call(method):", 1)[1].split(
+            "if request.method == \"POST\":", 1
+        )[0]
+
+        self.assertIn("api_instance._web_app_base_url = request.url_root", background_route_block)
+        self.assertIn("api_instance._web_app_base_url = request.url_root", api_call_block)
+
     def test_multi_account_thread_launcher_helper_remains_defined(self):
         source = MAIN_PATH.read_text(encoding="utf-8")
 

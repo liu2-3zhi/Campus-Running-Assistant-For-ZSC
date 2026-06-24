@@ -185,6 +185,38 @@ class TestMapProviderBackendContract(unittest.TestCase):
         self.assertEqual(results["tianditu"]["provider"], "tianditu")
         self.assertEqual(results["baidu"]["provider"], "baidu")
 
+    def test_provider_runtime_navigates_to_session_page_before_backend_js_execution(self):
+        runtime_config = self._runtime_config_with_map("amap", {
+            "amap": {"js_key": "amap-key"},
+        })
+        page = mock.Mock(on=mock.Mock(), goto=mock.Mock())
+
+        class ChromePoolStub:
+            def get_context(self, session_id):
+                return {"page": page}
+
+        def amap_helper(session_id, helper_page, waypoints, provider_plan, python_params):
+            page.goto.assert_called_once_with(
+                "http://127.0.0.1:5000/uuid=session-1",
+                wait_until="domcontentloaded",
+                timeout=15000,
+            )
+            self.assertIs(helper_page, page)
+            return {"path": [{"lng": 1, "lat": 1}]}
+
+        with mock.patch.object(main_module, "chrome_pool", ChromePoolStub(), create=True), \
+             mock.patch.object(main_module, "_plan_route_path_with_amap_runtime", side_effect=amap_helper):
+            result = main_module._plan_route_path_with_provider_runtime(
+                "session-1",
+                [[113.39, 22.52], [113.40, 22.53]],
+                provider="amap",
+                runtime_config=runtime_config,
+                app_base_url="http://127.0.0.1:5000/",
+            )
+
+        self.assertEqual(result["provider"], "amap")
+        self.assertIn("path", result)
+
     def test_provider_runtime_reports_unavailable_chrome_pool_with_provider_context(self):
         runtime_config = self._runtime_config_with_map("tencent", {
             "tencent": {"map_key": "tencent-key"},
