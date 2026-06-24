@@ -21,6 +21,12 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn('function convertMapCoordinatesToGcj02(', source)
         self.assertIn('function convertGcj02ToProviderCoordinates(', source)
 
+    def test_index_loads_current_map_runtime_scripts(self):
+        html = INDEX_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('<script src="/scripts/load_amap_watermark.js"></script>', html)
+        self.assertIn('<script src="scripts/main.new.js" defer=""></script>', html)
+
     def test_missing_key_modal_is_provider_agnostic(self):
         html = INDEX_PATH.read_text(encoding="utf-8")
 
@@ -308,6 +314,69 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             track_source.index('if (getActiveMapProvider() !== "amap")'),
             track_source.index("if (mobileTrackMapInstance) return;"),
         )
+
+    def test_non_amap_mobile_track_controls_use_provider_map_instance(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        control_source = source[
+            source.index("function mobileTrackZoomIn("):
+            source.index("let mobileMapAttendanceInstance", source.index("function mobileTrackZoomIn("))
+        ]
+        draw_source = source[
+            source.index("function drawProviderRouteOnMap("):
+            source.index("function installGenericMapRuntimeGuards(", source.index("function drawProviderRouteOnMap("))
+        ]
+
+        self.assertIn("let providerMapLastFitCoords = {};", source)
+        self.assertIn("function zoomProviderMap(", source)
+        self.assertIn("function fitProviderMapToLastRoute(", source)
+        self.assertIn('providerMapLastFitCoords[containerId] = providerCoords;', draw_source)
+        self.assertIn('zoomProviderMap("mobile-track-map-container", 1)', control_source)
+        self.assertIn('zoomProviderMap("mobile-track-map-container", -1)', control_source)
+        self.assertIn('fitProviderMapToLastRoute("mobile-track-map-container")', control_source)
+
+    def test_non_amap_single_and_multi_controls_use_provider_map_instance(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        provider_instance_source = source[
+            source.index("function getProviderMapInstance("):
+            source.index("function fitProviderMapToCoordinates(", source.index("function getProviderMapInstance("))
+        ]
+        single_control_source = source[
+            source.index("function attachSingleControlHandlers("):
+            source.index("function ensureMultiControls(", source.index("function attachSingleControlHandlers("))
+        ]
+        multi_control_source = source[
+            source.index("function attachMultiControlHandlers("):
+            source.index("async function initMap(", source.index("function attachMultiControlHandlers("))
+        ]
+        mobile_control_source = source[
+            source.index("function mobileZoomIn("):
+            source.index("function escapeHtml(", source.index("function mobileZoomIn("))
+        ]
+        show_main_source = source[
+            source.index("function showMainApp("):
+            source.index("function resetUI(", source.index("function showMainApp("))
+        ]
+        switch_multi_source = source[
+            source.index("async function switchToMultiMode("):
+            source.index('const configUsers = await callPythonAPI("multi_get_all_config_users")', source.index("async function switchToMultiMode("))
+        ]
+
+        self.assertIn('zoomProviderMap("map-container", 1)', single_control_source)
+        self.assertIn('zoomProviderMap("map-container", -1)', single_control_source)
+        self.assertIn("fitProviderMapToLastRoute(\"map-container\")", single_control_source)
+        self.assertIn('zoomProviderMap("multi-map-container", 1)', multi_control_source)
+        self.assertIn('zoomProviderMap("multi-map-container", -1)', multi_control_source)
+        self.assertIn("fitProviderMapToLastRoute(\"multi-map-container\")", multi_control_source)
+        self.assertIn('if (containerId === "multi-map-container")', provider_instance_source)
+        self.assertIn("return multiAccountMap;", provider_instance_source)
+        self.assertIn("ensureSingleControls();", show_main_source)
+        self.assertIn("ensureMultiControls();", switch_multi_source)
+        self.assertIn('zoomProviderMap("map-container", 1)', mobile_control_source)
+        self.assertIn('zoomProviderMap("map-container", -1)', mobile_control_source)
+        self.assertIn('fitProviderMapToLastRoute("map-container")', mobile_control_source)
+        self.assertIn('zoomProviderMap("multi-map-container", 1)', mobile_control_source)
+        self.assertIn('zoomProviderMap("multi-map-container", -1)', mobile_control_source)
+        self.assertIn('fitProviderMapToLastRoute("multi-map-container")', mobile_control_source)
 
     def test_saving_provider_key_refreshes_non_amap_map_instances(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
