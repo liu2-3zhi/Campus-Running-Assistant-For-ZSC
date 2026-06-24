@@ -34560,9 +34560,15 @@ function loadTencentMapOnce(key) {
   tencentMapLoadingPromise = loadScriptOnce(
     'script[data-qq-map-api="true"]',
     `https://map.qq.com/api/gljs?v=1.exp&key=${encodeURIComponent(key)}`,
-    (script, resolve) => {
+    (script, resolve, reject) => {
       script.dataset.qqMapApi = "true";
-      script.onload = () => resolve(window.TMap);
+      script.onload = () => {
+        if (window.TMap && window.TMap.Map && window.TMap.LatLng) {
+          resolve(window.TMap);
+          return;
+        }
+        reject(new Error("腾讯地图脚本加载完成但运行时不可用，请检查 Key、域名白名单或网络连接。"));
+      };
     },
     "腾讯地图脚本加载失败，请检查 Key 或网络连接。",
   ).catch((error) => {
@@ -34581,9 +34587,15 @@ function loadTianDiTuMapOnce(token) {
   tiandituMapLoadingPromise = loadScriptOnce(
     'script[data-tianditu-api="true"]',
     `https://api.tianditu.gov.cn/api?v=4.0&tk=${encodeURIComponent(token)}`,
-    (script, resolve) => {
+    (script, resolve, reject) => {
       script.dataset.tiandituApi = "true";
-      script.onload = () => resolve(window.T);
+      script.onload = () => {
+        if (window.T && window.T.Map) {
+          resolve(window.T);
+          return;
+        }
+        reject(new Error("天地图脚本加载完成但运行时不可用，请检查 Token、域名白名单或网络连接。"));
+      };
     },
     "天地图脚本加载失败，请检查 Token 或网络连接。",
   ).catch((error) => {
@@ -34602,7 +34614,7 @@ function loadBaiduMapOnce(ak) {
   baiduMapLoadingPromise = loadScriptOnce(
     'script[data-baidu-map-api="true"]',
     `https://api.map.baidu.com/api?v=3.0&ak=${encodeURIComponent(ak)}&callback=__onBaiduMapApiLoaded`,
-    (script, resolve) => {
+    (script, resolve, reject) => {
       script.dataset.baiduMapApi = "true";
       window.__onBaiduMapApiLoaded = function () {
         try {
@@ -34610,7 +34622,11 @@ function loadBaiduMapOnce(ak) {
         } catch (_) {
           window.__onBaiduMapApiLoaded = undefined;
         }
-        resolve(window.BMap);
+        if (window.BMap && typeof window.BMap.Map === "function") {
+          resolve(window.BMap);
+          return;
+        }
+        reject(new Error("百度地图脚本加载完成但运行时不可用，请检查 AK、域名白名单或网络连接。"));
       };
     },
     "百度地图脚本加载失败，请检查 AK 或网络连接。",
