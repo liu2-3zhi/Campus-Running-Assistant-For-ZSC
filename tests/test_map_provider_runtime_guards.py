@@ -164,6 +164,8 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("providerMapInstanceProviders[containerId] = provider;", provider_map_source)
         self.assertIn("delete providerMapInstanceProviders[containerId];", destroy_source)
         self.assertIn("providerMapInstanceProviders[containerId] || getActiveMapProvider()", clear_source)
+        self.assertIn("delete providerRunnerMarkers[containerId];", destroy_source)
+        self.assertIn("delete providerRunnerMarkers[containerId];", clear_source)
 
     def test_manual_auto_generation_uses_backend_provider_dispatch(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
@@ -254,10 +256,16 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             source.index("function updateRunnerPosition("):
             source.index("async function loadHistory(", source.index("function updateRunnerPosition("))
         ]
+        multi_runner_source = source[
+            source.index("function multi_updateRunnerPosition("):
+            source.index("function multi_removeRunnerMarker(", source.index("function multi_updateRunnerPosition("))
+        ]
 
         self.assertIn('if (getActiveMapProvider() !== "amap" || !map || !AMapInstance)', manual_attendance_source)
         self.assertIn('if (getActiveMapProvider() !== "amap" || !map || !AMapInstance)', manual_makeup_source)
-        self.assertIn('if (getActiveMapProvider() !== "amap" || !map || !AMapInstance)', runner_source)
+        self.assertIn('updateProviderRunnerMarker("map-container"', runner_source)
+        self.assertIn('updateProviderRunnerMarker("multi-map-container"', multi_runner_source)
+        self.assertIn('providerRunnerMarkers', source)
 
     def test_frontend_keeps_amap_specific_logic_separate_from_generic_runtime_guards(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
