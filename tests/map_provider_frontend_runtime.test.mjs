@@ -351,6 +351,8 @@ function createRuntime(provider, options = {}) {
     'fitProviderMapToCoordinates',
     'zoomProviderMap',
     'fitProviderMapToLastRoute',
+    'removeProviderOverlayFromMap',
+    'updateProviderRunnerMarker',
     'addProviderMarker',
     'drawProviderRouteOnMap',
     'installGenericMapRuntimeGuards',
@@ -391,6 +393,7 @@ function createRuntime(provider, options = {}) {
     let providerMapEventsBound = {};
     let providerMapOverlays = {};
     let providerMapLastFitCoords = {};
+    let providerRunnerMarkers = {};
     const MAP_COORD_PI = Math.PI;
     const MAP_COORD_X_PI = Math.PI * 3000.0 / 180.0;
     const MAP_COORD_A = 6378245.0;
@@ -407,11 +410,13 @@ function createRuntime(provider, options = {}) {
       loadActiveMapProviderRuntime,
       zoomProviderMap,
       fitProviderMapToLastRoute,
+      updateProviderRunnerMarker,
       getProviderMapInstance,
       getState: () => ({
         providerMapInstances,
         providerMapOverlays,
         providerMapLastFitCoords,
+        providerRunnerMarkers,
       }),
       getDocument: () => document,
       getWindow: () => window,
@@ -451,6 +456,40 @@ test('provider maps initialize and expose marker-only viewport controls without 
       assert.equal(instance.setViewportCalls[0].length, 1);
     }
   }
+});
+
+test('provider runner marker updates current position on non-amap maps', () => {
+  const providers = ['tencent', 'tianditu', 'baidu'];
+
+  for (const provider of providers) {
+    const runtime = createRuntime(provider);
+    assert.equal(runtime.initProviderMap('map-container', false), true, provider);
+
+    const firstMarker = runtime.updateProviderRunnerMarker('map-container', { lng: 113.39, lat: 22.52 });
+    const secondMarker = runtime.updateProviderRunnerMarker('map-container', { lng: 113.40, lat: 22.53 });
+
+    assert.ok(firstMarker, `${provider} first runner marker should be created`);
+    assert.ok(secondMarker, `${provider} second runner marker should be created`);
+    assert.notEqual(firstMarker, secondMarker, `${provider} runner marker should be replaced when position changes`);
+    assert.equal(Object.keys(runtime.getState().providerRunnerMarkers).length, 1, provider);
+  }
+});
+
+test('provider runner marker does not overwrite route fit coordinates', () => {
+  const runtime = createRuntime('tencent');
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+  runtime.drawProviderRouteOnMap('map-container', [
+    { lng: 113.39, lat: 22.52 },
+    { lng: 113.40, lat: 22.53 },
+  ]);
+  const before = runtime.getState().providerMapLastFitCoords['map-container'].map((coord) => ({ ...coord }));
+  const overlayCountBefore = runtime.getState().providerMapOverlays['map-container'].length;
+
+  runtime.updateProviderRunnerMarker('map-container', { lng: 113.41, lat: 22.54 });
+  runtime.updateProviderRunnerMarker('map-container', { lng: 113.42, lat: 22.55 });
+
+  assert.deepEqual(runtime.getState().providerMapLastFitCoords['map-container'], before);
+  assert.equal(runtime.getState().providerMapOverlays['map-container'].length, overlayCountBefore);
 });
 
 test('provider route drawing stores fit coordinates for subsequent viewport controls', () => {

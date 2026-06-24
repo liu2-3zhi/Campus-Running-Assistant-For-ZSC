@@ -16936,6 +16936,7 @@ let providerMapInstanceProviders = {};
 let providerMapEventsBound = {};
 let providerMapOverlays = {};
 let providerMapLastFitCoords = {};
+let providerRunnerMarkers = {};
 
 let currentTasks = [];
 let selectedTaskIndex = -1;
@@ -34675,6 +34676,7 @@ function destroyProviderMapInstance(containerId) {
   delete providerMapInstanceProviders[containerId];
   delete providerMapEventsBound[containerId];
   delete providerMapLastFitCoords[containerId];
+  delete providerRunnerMarkers[containerId];
 }
 
 function getProviderOverlayBucket(containerId) {
@@ -34685,26 +34687,40 @@ function getProviderOverlayBucket(containerId) {
 }
 
 function clearProviderMapOverlays(containerId) {
-  const provider = providerMapInstanceProviders[containerId] || getActiveMapProvider();
-  const instance = providerMapInstances[containerId];
   const overlays = providerMapOverlays[containerId] || [];
   overlays.forEach((overlay) => {
-    try {
-      if (provider === "tencent" && overlay && typeof overlay.setMap === "function") {
-        overlay.setMap(null);
-      } else if (provider === "tianditu" && instance && overlay && typeof instance.removeOverLay === "function") {
-        instance.removeOverLay(overlay);
-      } else if (provider === "baidu" && instance && overlay && typeof instance.removeOverlay === "function") {
-        instance.removeOverlay(overlay);
-      } else if (overlay && typeof overlay.setMap === "function") {
-        overlay.setMap(null);
-      }
-    } catch (e) {
-      logMessage_Warning(`[地图] 清理${containerId}覆盖物失败:`, e);
-    }
+    removeProviderOverlayFromMap(containerId, overlay);
   });
   providerMapOverlays[containerId] = [];
   providerMapLastFitCoords[containerId] = [];
+  delete providerRunnerMarkers[containerId];
+}
+
+function removeProviderOverlayFromMap(containerId, overlay) {
+  if (!overlay) return false;
+  const provider = providerMapInstanceProviders[containerId] || getActiveMapProvider();
+  const instance = getProviderMapInstance(containerId);
+  try {
+    if (provider === "tencent" && typeof overlay.setMap === "function") {
+      overlay.setMap(null);
+      return true;
+    }
+    if (provider === "tianditu" && instance && typeof instance.removeOverLay === "function") {
+      instance.removeOverLay(overlay);
+      return true;
+    }
+    if (provider === "baidu" && instance && typeof instance.removeOverlay === "function") {
+      instance.removeOverlay(overlay);
+      return true;
+    }
+    if (overlay && typeof overlay.setMap === "function") {
+      overlay.setMap(null);
+      return true;
+    }
+  } catch (e) {
+    logMessage_Warning(`[地图] 移除${containerId}覆盖物失败:`, e);
+  }
+  return false;
 }
 
 function getProviderMapDefaultZoom(provider) {
@@ -35139,16 +35155,48 @@ function addProviderMarker(containerId, coord, options = {}) {
       instance.addOverlay(marker);
     }
     if (marker) {
-      bucket.push(marker);
-      const fitCoords = providerMapLastFitCoords[containerId] || [];
-      fitCoords.push(providerCoord);
-      providerMapLastFitCoords[containerId] = fitCoords;
+      if (options.trackOverlay !== false) {
+        bucket.push(marker);
+      }
+      if (options.trackFit !== false) {
+        const fitCoords = providerMapLastFitCoords[containerId] || [];
+        fitCoords.push(providerCoord);
+        providerMapLastFitCoords[containerId] = fitCoords;
+      }
     }
     return marker;
   } catch (e) {
     logMessage_Warning(`[地图] 添加${containerId}标记失败:`, e);
     return null;
   }
+}
+
+function updateProviderRunnerMarker(containerId, coord, options = {}) {
+  const normalized = normalizeRouteCoord(coord);
+  if (!Number.isFinite(normalized.lng) || !Number.isFinite(normalized.lat)) {
+    return null;
+  }
+  const markerKey = options.markerKey || containerId;
+  const previousMarker = providerRunnerMarkers[markerKey];
+  if (previousMarker) {
+    removeProviderOverlayFromMap(containerId, previousMarker);
+  }
+  const title = options.title || "当前位置";
+  const content = options.content || '<div class="w-5 h-5 rounded-full border-2 border-white shadow-lg" style="background:linear-gradient(135deg,var(--base-color-300),var(--base-color-600));"></div>';
+  const marker = addProviderMarker(containerId, normalized, {
+    title,
+    content,
+    anchor: options.anchor || "center",
+    zIndex: options.zIndex || 200,
+    trackFit: false,
+    trackOverlay: false,
+  });
+  if (marker) {
+    providerRunnerMarkers[markerKey] = marker;
+  } else {
+    delete providerRunnerMarkers[markerKey];
+  }
+  return marker;
 }
 
 function drawProviderRouteOnMap(containerId, coords, options = {}) {
@@ -39306,14 +39354,24 @@ function multi_updateAccountStatus(username, data) {
 }
 
 function multi_updateRunnerPosition(username, lon, lat, name) {
-  if (getActiveMapProvider() !== "amap" || !AMapInstance) return;
+  const color = userColors[colorIndex++ % userColors.length];
+  const markerContent = `<div style="background-color: ${color};" class="text-xs font-bold whitespace-nowrap px-2 py-1 rounded-full shadow-lg text-white">${name}</div>`;
+  if (getActiveMapProvider() !== "amap") {
+    updateProviderRunnerMarker("multi-map-container", { lng: lon, lat }, {
+      markerKey: `multi-map-container:${username}`,
+      title: `${name} (${username})`,
+      content: markerContent,
+      anchor: "bottom-center",
+      zIndex: 110,
+    });
+    return;
+  }
+  if (!AMapInstance) return;
   if (!multiAccountMap) return;
   const pos = new AMapInstance.LngLat(lon, lat);
   if (multiAccountMarkers[username]) {
     multiAccountMarkers[username].setPosition(pos);
   } else {
-    const color = userColors[colorIndex++ % userColors.length];
-    const markerContent = `<div style="background-color: ${color};" class="text-xs font-bold whitespace-nowrap px-2 py-1 rounded-full shadow-lg text-white">${name}</div>`;
     multiAccountMarkers[username] = new AMapInstance.Marker({
       position: pos,
       content: markerContent,
@@ -39326,6 +39384,11 @@ function multi_updateRunnerPosition(username, lon, lat, name) {
 }
 
 function multi_removeRunnerMarker(username) {
+  const providerMarkerKey = `multi-map-container:${username}`;
+  if (providerRunnerMarkers[providerMarkerKey]) {
+    removeProviderOverlayFromMap("multi-map-container", providerRunnerMarkers[providerMarkerKey]);
+    delete providerRunnerMarkers[providerMarkerKey];
+  }
   const marker = multiAccountMarkers[username];
   if (marker && multiAccountMap) {
     multiAccountMap.remove(marker);
@@ -40676,6 +40739,10 @@ function updateRunnerPosition(
   centerNow = false,
 ) {
   if (getActiveMapProvider() !== "amap" || !map || !AMapInstance) {
+    updateProviderRunnerMarker("map-container", { lng: lon, lat });
+    if (centerNow) {
+      fitProviderMapToCoordinates("map-container", [{ lng: lon, lat }]);
+    }
     $("current-location-label").textContent = `当前位置GPS坐标: ${(+lon).toFixed(
       4,
     )}, ${(+lat).toFixed(4)}`;
