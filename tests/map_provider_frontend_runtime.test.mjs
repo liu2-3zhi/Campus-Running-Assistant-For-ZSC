@@ -492,6 +492,21 @@ test('provider runner marker does not overwrite route fit coordinates', () => {
   assert.equal(runtime.getState().providerMapOverlays['map-container'].length, overlayCountBefore);
 });
 
+test('initProviderMap renders real map not placeholder for non-amap providers', () => {
+  const providers = ['tencent', 'tianditu', 'baidu'];
+  for (const provider of providers) {
+    const runtime = createRuntime(provider);
+    const doc = runtime.getDocument();
+    const mapContainer = doc.getElementById('map-container');
+    assert.equal(runtime.initProviderMap('map-container', false), true, provider);
+    const containerInner = mapContainer.innerHTML.toLowerCase();
+    assert.doesNotMatch(containerInner, /已启用/, provider + ' should not show placeholder');
+    assert.doesNotMatch(containerInner, /后端/, provider + ' should not show placeholder');
+    assert.ok(runtime.getProviderMapInstance('map-container'), provider + ' map instance should exist');
+  }
+});
+
+
 test('provider route drawing stores fit coordinates for subsequent viewport controls', () => {
   const runtime = createRuntime('tencent');
   assert.equal(runtime.initProviderMap('map-container', false), true);
