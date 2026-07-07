@@ -17138,45 +17138,7 @@ let cachedMultiAccounts = [];
 let runAccumulatedMs = 0;
 let draftTotalDist = 0;
 
-function destroySingleMap() {
-  try {
-    if (window.mapCleanup) {
-      window.mapCleanup();
-      window.mapCleanup = null;
-    }
-    if (map && typeof map.destroy === "function") {
-      map.destroy();
-    }
-  } catch (e) {
-    logMessage_Warning("destroySingleMap warning:", e);
-  } finally {
-    map = null;
-    polylines.recommended = [];
-    polylines.draft = null;
-    polylines.run = null;
-    polylines.history = null;
-    markers = [];
-    runnerMarker = null;
-    drawingInfoMarker = null;
 
-    try {
-      const container = document.getElementById("map-container");
-      if (container) container.classList.remove("drawing");
-    } catch (_) {}
-    isDrawing = false;
-    isPathDrawing = false;
-    leftMouseDown = false;
-    pendingUnlockMap = false;
-    draftPath = [];
-    draftPathLngLat = [];
-    pendingPoints = [];
-    isUpdating = false;
-    lastMouseMoveTime = 0;
-    try {
-      document.body.classList.remove("modal-visible");
-    } catch (_) {}
-  }
-}
 
 function updateMultiGlobalButtons(startDisabled, stopDisabled) {
   const startBtn = document.getElementById("multi-start-all-btn");
@@ -35929,6 +35891,10 @@ function clearMapOverlays() {
 
 function destroySingleMap() {
   try {
+    if (window.mapCleanup) {
+      window.mapCleanup();
+      window.mapCleanup = null;
+    }
     if (map && typeof map.destroy === "function") {
       map.destroy();
     }
@@ -49415,8 +49381,45 @@ async function saveSystemConfig() {
     });
     const result = await response.json();
     if (result.success) {
+      const previousProvider = getActiveMapProvider();
+      const newProvider = (configData.Map && configData.Map.provider) || previousProvider;
+      const providerChanged = previousProvider !== newProvider;
+      try {
+        const freshConfig = await fetch("/api/frontend-config", { cache: "no-cache" }).then((r) => r.json());
+        syncMapProviderConfigFromInitialData(freshConfig);
+      } catch (_syncErr) {
+        const directUpdate = { map_provider: newProvider, map_providers: {} };
+        if (configData.Map && configData.Map.providers) {
+          const savedProviders = configData.Map.providers;
+          const currentProviders = (window.APP_CONFIG || {}).map_providers || {};
+          for (const pKey of ["amap", "tencent", "tianditu", "baidu"]) {
+            directUpdate.map_providers[pKey] = {
+              ...(currentProviders[pKey] || {}),
+              ...(savedProviders[pKey] || {}),
+            };
+          }
+        }
+        syncMapProviderConfigFromInitialData(directUpdate);
+      }
+      if (providerChanged) {
+        try {
+          destroySingleMap();
+          const isReady = await ensureActiveMapProviderRuntimeIfNeeded("切换地图提供方");
+          if (isReady) {
+            if (getActiveMapProvider() === "amap" && AMapInstance) {
+              initMap(AMapInstance);
+            } else {
+              initProviderMap("map-container", false);
+            }
+          }
+        } catch (mapErr) {
+          logMessage_Error("切换地图提供方后重新初始化失败:", mapErr);
+        }
+      }
       showModalAlert(
-        "配置已保存。请注意，部分配置（如路径）需要重启程序才能生效。",
+        providerChanged
+          ? `配置已保存，地图提供方已切换为${getMapProviderDisplayName()}。部分配置需要重启程序才能生效。`
+          : "配置已保存。请注意，部分配置（如路径）需要重启程序才能生效。",
         "保存成功",
       );
       showButtonSuccess(btn, "保存成功", 2000);

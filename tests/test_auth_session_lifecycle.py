@@ -15,6 +15,64 @@ class TestAuthSessionLifecycle(unittest.TestCase):
         self.assertFalse(main_module.is_auth_optional_api_method("load_tasks"))
         self.assertFalse(main_module.is_auth_optional_api_method("update_param"))
 
+    def test_get_initial_data_with_unrestorable_session_uses_auth_optional_context(self):
+        self.assertTrue(
+            main_module.should_use_auth_optional_api_context(
+                "get_initial_data",
+                "22222222-2222-4222-8222-222222222222",
+                session_exists=False,
+                restored_state=None,
+            )
+        )
+        self.assertTrue(
+            main_module.should_use_auth_optional_api_context(
+                "get_initial_data",
+                "22222222-2222-4222-8222-222222222222",
+                session_exists=False,
+                restored_state={"login_success": False},
+            )
+        )
+        self.assertFalse(
+            main_module.should_use_auth_optional_api_context(
+                "get_initial_data",
+                "22222222-2222-4222-8222-222222222222",
+                session_exists=False,
+                restored_state={"login_success": True},
+            )
+        )
+        self.assertFalse(
+            main_module.should_use_auth_optional_api_context(
+                "load_tasks",
+                "22222222-2222-4222-8222-222222222222",
+                session_exists=False,
+                restored_state=None,
+            )
+        )
+        auth_optional_api = SimpleNamespace(
+            _is_persistent_session=False,
+            _web_session_id="",
+        )
+        self.assertEqual(
+            main_module.resolve_auth_optional_api_session_id(
+                "get_initial_data",
+                "22222222-2222-4222-8222-222222222222",
+                auth_optional_api,
+            ),
+            "",
+        )
+        persistent_api = SimpleNamespace(
+            _is_persistent_session=True,
+            _web_session_id="22222222-2222-4222-8222-222222222222",
+        )
+        self.assertEqual(
+            main_module.resolve_auth_optional_api_session_id(
+                "get_initial_data",
+                "22222222-2222-4222-8222-222222222222",
+                persistent_api,
+            ),
+            "22222222-2222-4222-8222-222222222222",
+        )
+
     def test_auth_only_login_context_is_not_saved_as_persistent_session(self):
         auth_session_id = "11111111-1111-4111-8111-111111111111"
         auth_only_api = SimpleNamespace(

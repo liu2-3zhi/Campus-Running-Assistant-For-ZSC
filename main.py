@@ -718,7 +718,7 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
     actual_mode = str(provider_plan.get("actual_mode") or "driving").strip().lower() or "driving"
     return chrome_pool.execute_js(
         session_id,
-        """
+        r"""
         (async (arg) => {
             const waypointsPy = arg[0] || [];
             const token = arg[1];
@@ -7293,6 +7293,34 @@ def is_auth_optional_api_method(method):
     """这些通用 API 可在尚未创建业务会话时用于只读初始化。"""
     normalized = str(method or "").strip()
     return normalized in AUTH_OPTIONAL_API_METHODS
+
+
+def should_use_auth_optional_api_context(
+    method, session_id="", session_exists=False, restored_state=None
+):
+    """判断通用 API 是否应降级到临时只读初始化上下文。"""
+    if not is_auth_optional_api_method(method):
+        return False
+    if not session_id:
+        return True
+    if session_exists:
+        return False
+    if restored_state and restored_state.get("login_success"):
+        return False
+    return True
+
+
+def resolve_auth_optional_api_session_id(method, session_id, api_instance):
+    """认证可选 API 使用临时上下文时，不保留不可恢复的请求会话ID。"""
+    if api_instance is None:
+        return session_id
+    if not should_use_auth_optional_api_context(method, session_id):
+        return session_id
+    if getattr(api_instance, "_is_persistent_session", True):
+        return session_id
+    if getattr(api_instance, "_web_session_id", ""):
+        return session_id
+    return ""
 
 
 # ==============================================================================
@@ -37777,17 +37805,21 @@ def start_web_server(args_param):
         """API调用端点：将前端调用转发到Python后端"""
         session_id = request.headers.get("X-Session-ID", "")
 
+        def _make_auth_optional_api_instance(context_reason):
+            api = Api(args)
+            api._web_session_id = ""
+            api._is_persistent_session = False
+            logging.debug(
+                f"API调用 {method} {context_reason}，使用临时只读初始化上下文"
+            )
+            return api
+
         if method.startswith("payment/yipay_notify"):
             return payment_yipay_notify()
 
         if not session_id:
-            if is_auth_optional_api_method(method):
-                api_instance = Api(args)
-                api_instance._web_session_id = ""
-                api_instance._is_persistent_session = False
-                logging.debug(
-                    f"API调用 {method} 未携带会话ID，使用临时只读初始化上下文"
-                )
+            if should_use_auth_optional_api_context(method):
+                api_instance = _make_auth_optional_api_instance("未携带会话ID")
             else:
                 return jsonify({"success": False, "message": "缺少会话ID"}), 401
         else:
@@ -37902,6 +37934,18 @@ def start_web_server(args_param):
                     restore_session_to_api_instance(api_instance, state)
                     web_sessions[session_id] = api_instance
                     logging.info(f"API调用时自动恢复会话: {session_id[:32]}...")
+                elif should_use_auth_optional_api_context(
+                    method,
+                    session_id,
+                    session_exists=False,
+                    restored_state=state,
+                ):
+                    api_instance = _make_auth_optional_api_instance(
+                        "携带的会话无法恢复"
+                    )
+                    session_id = resolve_auth_optional_api_session_id(
+                        method, session_id, api_instance
+                    )
                 else:
                     return (
                         jsonify({"success": False, "message": "会话已过期或无效"}),
