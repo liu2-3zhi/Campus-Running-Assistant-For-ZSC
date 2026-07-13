@@ -14013,6 +14013,135 @@ function refreshMobileSessionPicker() {
 
 let refreshUserListInterval = null;
 let isInNetworkErrorState = false;
+let networkRetryInProgress = false;
+const NETWORK_RETRY_MAX = 3;
+const NETWORK_RETRY_DELAY_MS = 2000;
+const NETWORK_DIALOG_AUTO_RETRY_MAX = 5;
+const NETWORK_DIALOG_AUTO_RETRY_INTERVAL_MS = 8000;
+let networkDialogAutoRetryCount = 0;
+let networkDialogAutoRetryTimer = null;
+
+async function checkServerHealth() {
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch("/health", {
+      method: "GET",
+      cache: "no-cache",
+      signal: ctrl.signal,
+    });
+    clearTimeout(tid);
+    return res.ok;
+  } catch (_) {
+    return false;
+  }
+}
+
+function enterNetworkErrorState() {
+  if (isInNetworkErrorState) return;
+  isInNetworkErrorState = true;
+  logMessage_Info("[网络] 进入网络错误状态");
+
+  if (refreshUserListInterval) {
+    clearInterval(refreshUserListInterval);
+    refreshUserListInterval = null;
+  }
+  if (socket) {
+    if (socket.io) socket.io.opts.reconnection = false;
+    if (socket.connected) socket.disconnect();
+  }
+}
+
+function exitNetworkErrorState() {
+  if (!isInNetworkErrorState) return;
+  isInNetworkErrorState = false;
+  logMessage_Info("[网络] 退出网络错误状态，恢复连接");
+  stopDialogAutoRetry();
+  networkDialogAutoRetryCount = 0;
+
+  setTimeout(() => {
+    if (!refreshUserListInterval) {
+      refreshUserListInterval = setInterval(refreshUserList, 30000);
+    }
+    if (socket && !socket.connected && sessionUUID) {
+      if (socket.io) socket.io.opts.reconnection = true;
+      socket.connect();
+    }
+  }, 1000);
+}
+
+function stopDialogAutoRetry() {
+  if (networkDialogAutoRetryTimer) {
+    clearInterval(networkDialogAutoRetryTimer);
+    networkDialogAutoRetryTimer = null;
+  }
+}
+
+function startDialogAutoRetry() {
+  stopDialogAutoRetry();
+  if (networkDialogAutoRetryCount >= NETWORK_DIALOG_AUTO_RETRY_MAX) {
+    logMessage_Info(`[网络] 后台自动重试已达上限 (${NETWORK_DIALOG_AUTO_RETRY_MAX})，等待用户操作`);
+    return;
+  }
+  networkDialogAutoRetryTimer = setInterval(async () => {
+    networkDialogAutoRetryCount++;
+    logMessage_Info(`[网络] 后台自动重试 ${networkDialogAutoRetryCount}/${NETWORK_DIALOG_AUTO_RETRY_MAX}`);
+    const alive = await checkServerHealth();
+    if (alive) {
+      logMessage_Info("[网络] 后台自动重试成功，服务器恢复");
+      Swal.close();
+      exitNetworkErrorState();
+      return;
+    }
+    if (networkDialogAutoRetryCount >= NETWORK_DIALOG_AUTO_RETRY_MAX) {
+      stopDialogAutoRetry();
+      logMessage_Info("[网络] 后台自动重试用尽，等待用户手动重试");
+    }
+  }, NETWORK_DIALOG_AUTO_RETRY_INTERVAL_MS);
+}
+
+async function showNetworkErrorDialog() {
+  stopDialogAutoRetry();
+
+  const remaining = NETWORK_DIALOG_AUTO_RETRY_MAX - networkDialogAutoRetryCount;
+  const autoHint = remaining > 0
+    ? `<p style="font-size:12px;color:#999;margin-top:12px;">将在后台每 ${NETWORK_DIALOG_AUTO_RETRY_INTERVAL_MS / 1000} 秒自动探测，剩余 ${remaining} 次</p>`
+    : `<p style="font-size:12px;color:#e67e22;margin-top:12px;">自动重试已用尽，请手动点击重试</p>`;
+
+  const result = await Swal.fire({
+    title: "网络错误",
+    html: String(getServerConnectionGuidanceMessage()).replace(/\n/g, "<br>") + autoHint,
+    icon: "error",
+    confirmButtonText: "重试连接",
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    didOpen: () => {
+      if (remaining > 0) startDialogAutoRetry();
+    },
+  });
+
+  if (!result.isConfirmed) return;
+
+  logMessage_Info("[网络] 用户点击重试连接");
+  stopDialogAutoRetry();
+  const alive = await checkServerHealth();
+  if (alive) {
+    exitNetworkErrorState();
+  } else {
+    showNetworkErrorDialog();
+  }
+}
+
+function safeRemoveModalVisible() {
+  const openModals = document.querySelectorAll(
+    "#admin-panel-modal.flex, #mobile-admin-panel-modal.flex, " +
+    "#amap-key-modal.flex, #user-details-modal.flex, " +
+    "#task-details-modal.flex, #account-params-modal.flex"
+  );
+  if (openModals.length === 0) {
+    document.body.classList.remove("modal-visible");
+  }
+}
 let cdnErrorCount = 0;
 let cdnErrorTimer = null;
 let appInitialized = false;
@@ -15219,6 +15348,12 @@ function initializeMobileUI() {
     mobileMultiAccountBtn.addEventListener("click", async function () {
       console.log("[移动端UI] 多账号模式按钮点击");
 
+      stopBackgroundTaskPolling();
+      try {
+        await callPythonAPI_raw("/api/background_task/stop", "POST", null);
+      } catch (_) {}
+      onRunStopped();
+
       const result = await callPythonAPI("enter_multi_account_mode");
       if (!result.success) {
         // showModalAlert("进入多账号模式失败", "错误");
@@ -16092,10 +16227,13 @@ function getAuthRequestSessionUUID() {
 }
 
 function getAuthenticatedSessionHeaderValue() {
+  if (isUsableClientSessionUUID(authSessionUUID)) {
+    return authSessionUUID;
+  }
   if (isUsableClientSessionUUID(sessionUUID)) {
     return sessionUUID;
   }
-  return isUsableClientSessionUUID(authSessionUUID) ? authSessionUUID : "";
+  return "";
 }
 
 const AUTH_CONTEXT_API_METHODS = new Set(["get_initial_data"]);
@@ -16105,21 +16243,24 @@ function isAuthContextApiMethod(method) {
 }
 
 function getApiRequestSessionHeaderValue(method) {
+  if (authLoginInProgress && isUsableClientSessionUUID(authSessionUUID)) {
+    return authSessionUUID;
+  }
+
   if (isUsableClientSessionUUID(sessionUUID)) {
     return sessionUUID;
   }
 
   const uuidFromUrl = getUUIDFromURL();
   if (isUsableClientSessionUUID(uuidFromUrl)) {
-    sessionUUID = uuidFromUrl;
-    return sessionUUID;
+    if (!isUsableClientSessionUUID(authSessionUUID)) {
+      sessionUUID = uuidFromUrl;
+      return sessionUUID;
+    }
   }
 
   sessionUUID = null;
-  if (
-    isAuthContextApiMethod(method) &&
-    isUsableClientSessionUUID(authSessionUUID)
-  ) {
+  if (isUsableClientSessionUUID(authSessionUUID)) {
     return authSessionUUID;
   }
 
@@ -16276,96 +16417,52 @@ async function callPythonAPI(method, ...args) {
   } catch (networkError) {
     logMessage_Error(`[API调用] ✗ 网络请求失败 (${method}):`, networkError);
 
-    if (!isInNetworkErrorState) {
-      isInNetworkErrorState = true;
-      logMessage_Info(
-        "[API调用] 进入网络错误状态，停止后端日志发送和WebSocket",
-      );
+    if (!networkRetryInProgress) {
+      networkRetryInProgress = true;
+      logMessage_Info(`[网络] 请求 ${method} 失败，启动 health 探测与重试`);
 
-      if (refreshUserListInterval) {
-        logMessage_Info("[API调用] 停止用户列表刷新定时器 (因网络错误)");
-        clearInterval(refreshUserListInterval);
-        refreshUserListInterval = null;
-      }
-
-      if (socket) {
-        if (socket.io) {
-          socket.io.opts.reconnection = false;
+      const alive = await checkServerHealth();
+      if (alive) {
+        logMessage_Info("[网络] health 探测成功，服务器仍在运行，开始重试");
+        for (let attempt = 1; attempt <= NETWORK_RETRY_MAX; attempt++) {
+          await new Promise((r) => setTimeout(r, NETWORK_RETRY_DELAY_MS));
+          try {
+            response = await fetch(`/api/${method}`, {
+              method: "POST",
+              headers: headers,
+              credentials: "include",
+              body: JSON.stringify(
+                args.length === 1 &&
+                  typeof args[0] === "object" &&
+                  args[0] !== null &&
+                  !Array.isArray(args[0])
+                  ? args[0]
+                  : args,
+              ),
+            });
+            logMessage_Info(`[网络] 重试第 ${attempt} 次成功 (${method})`);
+            networkRetryInProgress = false;
+            break;
+          } catch (retryErr) {
+            logMessage_Warning(`[网络] 重试第 ${attempt}/${NETWORK_RETRY_MAX} 次失败 (${method})`);
+            if (attempt === NETWORK_RETRY_MAX) {
+              networkRetryInProgress = false;
+              enterNetworkErrorState();
+              showNetworkErrorDialog();
+              throw retryErr;
+            }
+          }
         }
-        if (socket.connected) {
-          socket.disconnect();
-        }
-        logMessage_Info(
-          "[API调用] 已断开WebSocket连接并禁用自动重连 (因网络错误)",
-        );
+      } else {
+        logMessage_Error("[网络] health 探测失败，服务器不可达");
+        networkRetryInProgress = false;
+        enterNetworkErrorState();
+        showNetworkErrorDialog();
+        throw networkError;
       }
+    } else {
+      throw networkError;
     }
-
-    // showModalAlert(
-    //   "无法连接到服务器，请检查您的网络连接或稍后重试。",
-    //   "网络错误",
-    //   () => {
-    //     if (isInNetworkErrorState) {
-    //       logMessage_Info("[API调用] 用户关闭网络错误弹窗，准备恢复连接");
-    //       isInNetworkErrorState = false;
-
-    //       setTimeout(() => {
-    //         if (!refreshUserListInterval) {
-    //           refreshUserListInterval = setInterval(refreshUserList, 5000);
-    //           logMessage_Info("[API调用] 用户列表刷新定时器已恢复");
-    //         }
-
-    //         if (socket && !socket.connected && sessionUUID) {
-    //           if (socket.io) {
-    //             socket.io.opts.reconnection = true;
-    //           }
-    //           socket.connect();
-    //           logMessage_Info(
-    //             "[API调用] 正在重新连接WebSocket（已重新启用自动重连）"
-    //           );
-    //         }
-    //       }, 1000);
-    //     }
-    //   }
-    // );
-
-    Swal.fire({
-      title: "网络错误",
-      html: String(getServerConnectionGuidanceMessage()).replace(/\n/g, "<br>"),
-      icon: "error",
-      confirmButtonText: "确定",
-      allowOutsideClick: false,
-      allowEscapeKey: false,
-    }).then((result) => {
-      if (result.isConfirmed) {
-        // 原有的回调逻辑放在这里
-        if (isInNetworkErrorState) {
-          logMessage_Info("[API调用] 用户关闭网络错误弹窗，准备恢复连接");
-          isInNetworkErrorState = false;
-
-          setTimeout(() => {
-            // 恢复定时器
-            if (!refreshUserListInterval) {
-              refreshUserListInterval = setInterval(refreshUserList, 5000);
-              logMessage_Info("[API调用] 用户列表刷新定时器已恢复");
-            }
-
-            // 恢复 WebSocket
-            if (socket && !socket.connected && sessionUUID) {
-              if (socket.io) {
-                socket.io.opts.reconnection = true;
-              }
-              socket.connect();
-              logMessage_Info(
-                "[API调用] 正在重新连接WebSocket（已重新启用自动重连）",
-              );
-            }
-          }, 1000);
-        }
-      }
-    });
-
-    throw networkError;
   }
 
   if (!response.ok) {
@@ -16386,31 +16483,7 @@ async function callPythonAPI(method, ...args) {
       errorData.message.includes("账号已被封禁")
     ) {
       logMessage_Error("[API调用] ✗ 账号已被封禁！");
-
-      if (!isInNetworkErrorState) {
-        isInNetworkErrorState = true;
-        logMessage_Info(
-          "[API调用] 进入网络错误状态，停止后端日志发送和WebSocket",
-        );
-
-        if (refreshUserListInterval) {
-          logMessage_Info("[API调用] 停止用户列表刷新定时器 (因网络错误)");
-          clearInterval(refreshUserListInterval);
-          refreshUserListInterval = null;
-        }
-
-        if (socket) {
-          if (socket.io) {
-            socket.io.opts.reconnection = false;
-          }
-          if (socket.connected) {
-            socket.disconnect();
-          }
-          logMessage_Info(
-            "[API调用] 已断开WebSocket连接并禁用自动重连 (因网络错误)",
-          );
-        }
-      }
+      enterNetworkErrorState();
 
       // 检查遮罩是否已存在，防止重复创建
       if (!document.getElementById("account-banned-overlay")) {
@@ -16503,10 +16576,11 @@ async function callPythonAPI(method, ...args) {
       errorData.message.includes("会话已过期或无效")
     ) {
       const shouldSuppressSessionExpiredModal =
-        method === "get_theme_styles" && !sessionUUID;
+        (method === "get_theme_styles" && !sessionUUID) ||
+        authLoginInProgress;
       if (shouldSuppressSessionExpiredModal) {
         logMessage_Info(
-          "[API调用] get_theme_styles 在未登录状态返回会话失效，跳过弹窗并交由本地缓存兜底",
+          `[API调用] ${method} 返回会话失效，但当前处于登录流程中或未登录状态，跳过弹窗`,
         );
         throw new Error("会话已过期或无效");
       }
@@ -19236,7 +19310,7 @@ async function handleAuthLogin(isMobile_use = false) {
               "/auth/user/cancel_account_cancellation",
               {
                 method: "POST",
-                headers: { "X-Session-ID": sessionUUID },
+                headers: { "X-Session-ID": getAuthenticatedSessionHeaderValue() },
               },
             );
             const revokeData = await revokeResp.json();
@@ -33700,6 +33774,7 @@ async function initializeApp() {
             keyboardEnable: true,
           });
           ensureMultiControls();
+          removeAmapLicenseOverlay("multi-map-container");
         } catch (e) {
           logMessage_Error("初始化多账号地图失败:", e);
         }
@@ -33812,7 +33887,7 @@ async function initializeApp() {
       $("loading-overlay").classList.remove("hidden");
 
       if (refreshUserListInterval) clearInterval(refreshUserListInterval);
-      refreshUserListInterval = setInterval(refreshUserList, 5000);
+      refreshUserListInterval = setInterval(refreshUserList, 30000);
       logMessage_Info("refreshUserList interval started.");
 
       showMainApp();
@@ -34012,6 +34087,23 @@ async function restoreMobileTaskState() {
 }
 
 let socket = null;
+let wsHeartbeatTimer = null;
+
+function startWsHeartbeat() {
+  stopWsHeartbeat();
+  wsHeartbeatTimer = setInterval(() => {
+    if (socket && socket.connected) {
+      socket.emit("heartbeat", { ts: Date.now() });
+    }
+  }, 20000);
+}
+
+function stopWsHeartbeat() {
+  if (wsHeartbeatTimer) {
+    clearInterval(wsHeartbeatTimer);
+    wsHeartbeatTimer = null;
+  }
+}
 
 function connectWebSocket() {
   if (socket && socket.connected) {
@@ -34026,10 +34118,13 @@ function connectWebSocket() {
 
   logMessage_Info("尝试连接 WebSocket...");
   socket = io({
-    autoConexceptnect: false,
+    autoConnect: false,
     reconnection: true,
     reconnectionDelay: 1000,
-    reconnectionAttempts: 5,
+    reconnectionDelayMax: 30000,
+    reconnectionAttempts: Infinity,
+    pingTimeout: 60000,
+    pingInterval: 25000,
   });
   socket.connect();
 
@@ -34038,10 +34133,13 @@ function connectWebSocket() {
     stopVerificationCodesPollingFallback();
     logMessage_Info("WebSocket 连接成功。SID:", socket.id);
     socket.emit("join", { session_id: sessionUUID });
+    startWsHeartbeat();
+    refreshUserList();
   });
 
   socket.on("disconnect", (reason) => {
     verificationCodesSocketHealthy = false;
+    stopWsHeartbeat();
     syncVerificationCodesPollingByModalState();
     logMessage_Info("WebSocket 连接已断开:", reason);
     logMessage_Info("[System] WebSocket 连接已断开，尝试重连...");
@@ -34055,6 +34153,8 @@ function connectWebSocket() {
       logMessage_Info("[System-Error] WebSocket 连接失败");
     }
   });
+
+  socket.on("heartbeat_ack", () => {});
 
   socket.on("log_message", (data) => {
     if (data && data.msg) {
@@ -34816,7 +34916,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
     return true;
   } catch (error) {
     logMessage_Error(`[地图] ${getMapProviderDisplayName(provider)}前端地图初始化失败:`, error);
-    renderMapProviderFrontendPlaceholder(containerId, isMultiAccount);
+    renderMapProviderFrontendPlaceholder(containerId, isMultiAccount, error.message || "初始化失败");
     return false;
   }
 }
@@ -34897,21 +34997,38 @@ function bd09ToGcj02(lng, lat) {
   };
 }
 
-function renderMapProviderFrontendPlaceholder(containerId, isMultiAccount = false) {
+function renderMapProviderFrontendPlaceholder(containerId, isMultiAccount = false, errorReason = "") {
   const container = document.getElementById(containerId);
   if (!container) {
     return false;
   }
+  const provider = getActiveMapProvider();
   const displayName = getMapProviderDisplayName();
-  const modeText = isMultiAccount ? "多账号" : "单账号";
+  const requirement = getMapProviderKeyRequirement(provider);
+  const hasKey = !!requirement.value;
+  let statusHtml;
+  if (!hasKey) {
+    statusHtml = `
+      <p class="text-sm font-medium text-amber-600">${displayName}未配置 ${requirement.fieldLabel}</p>
+      <p class="text-xs mt-1">请在系统设置中配置${displayName} ${requirement.fieldLabel}以显示地图。</p>
+      <p class="text-xs mt-1 text-slate-400">路线规划仍由后端执行。</p>`;
+  } else if (errorReason) {
+    statusHtml = `
+      <p class="text-sm font-medium text-red-500">${displayName}加载失败</p>
+      <p class="text-xs mt-1">${errorReason}</p>
+      <p class="text-xs mt-1 text-slate-400">路线规划仍由后端执行。</p>`;
+  } else {
+    statusHtml = `
+      <p class="text-sm font-medium">${displayName}已启用</p>
+      <p class="text-xs mt-1">路线规划由后端按当前地图供应商执行。</p>`;
+  }
   container.innerHTML = `
     <div class="absolute inset-0 flex items-center justify-center text-slate-500 bg-slate-50/80">
       <div class="text-center px-4">
-        <svg class="w-12 h-12 mx-auto mb-2 text-sky-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-12 h-12 mx-auto mb-2 ${hasKey ? "text-sky-300" : "text-amber-400"}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
         </svg>
-        <p class="text-sm font-medium">${displayName}已启用</p>
-        <p class="text-xs mt-1">${modeText}路线规划由后端按当前地图供应商执行。</p>
+        ${statusHtml}
       </div>
     </div>
   `;
@@ -35653,6 +35770,26 @@ function attachMultiControlHandlers() {
   }
 }
 
+function removeAmapLicenseOverlay(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const remove = () => {
+    container.querySelectorAll("div").forEach((el) => {
+      if (
+        el.style.position === "absolute" &&
+        el.style.zIndex === "9999" &&
+        el.textContent.includes("经识别")
+      ) {
+        el.remove();
+      }
+    });
+  };
+  remove();
+  const observer = new MutationObserver(() => remove());
+  observer.observe(container, { childList: true, subtree: true });
+  setTimeout(() => observer.disconnect(), 10000);
+}
+
 async function initMap(AMap) {
   if (getActiveMapProvider() !== "amap") {
     if (map && typeof map.destroy === "function") {
@@ -35734,6 +35871,7 @@ async function initMap(AMap) {
 
   map.on("complete", () => {
     logMessage_Info("地图实例已加载。");
+    removeAmapLicenseOverlay("map-container");
     if (resolveMapReady) {
       resolveMapReady(map);
     }
@@ -35850,7 +35988,7 @@ function resetUI() {
   isUpdating = false;
   lastMouseMoveTime = 0;
   try {
-    document.body.classList.remove("modal-visible");
+    safeRemoveModalVisible();
   } catch (_) {}
 
   $("start-run-button").textContent = "开始执行";
@@ -35927,7 +36065,7 @@ function destroySingleMap() {
     lastMouseMoveTime = 0;
 
     try {
-      document.body.classList.remove("modal-visible");
+      safeRemoveModalVisible();
     } catch (_) {}
   }
 }
@@ -36004,7 +36142,7 @@ $("auto-gen-button").addEventListener("click", () => {
 $("cancel-gen-button").addEventListener("click", () => {
   $("auto-gen-modal").classList.add("hidden");
   $("auto-gen-modal").classList.remove("flex");
-  document.body.classList.remove("modal-visible");
+  safeRemoveModalVisible();
 });
 $("confirm-gen-button").addEventListener("click", onConfirmAutoGenerate);
 
@@ -36052,7 +36190,7 @@ async function onConfirmAmapKey() {
       const modal = $("amap-key-modal");
       modal.classList.add("hidden");
       modal.classList.remove("flex");
-      document.body.classList.remove("modal-visible");
+      safeRemoveModalVisible();
       logMessage_Info(`${requirement.displayName} API Key已更新，正在尝试重新加载地图...`);
       try {
         await ensureActiveMapProviderRuntimeIfNeeded("保存 Key 后刷新");
@@ -36197,7 +36335,7 @@ async function refreshUserList() {
   }
 }
 
-setInterval(refreshUserList, 5000);
+setInterval(refreshUserList, 30000);
 
 async function onUserChange() {
   const loginBtn = $("login-button");
@@ -37021,6 +37159,12 @@ async function switchToMultiMode() {
   const exitBtn = $("exit-app-btn");
   if (exitBtn) exitBtn.classList.remove("hidden");
 
+  stopBackgroundTaskPolling();
+  try {
+    await callPythonAPI_raw("/api/background_task/stop", "POST", null);
+  } catch (_) {}
+  onRunStopped();
+
   const result = await callPythonAPI("enter_multi_account_mode");
   if (!result.success) return;
   if (isMobileMode) {
@@ -37105,6 +37249,7 @@ async function switchToMultiMode() {
       keyboardEnable: true,
     });
     ensureMultiControls();
+    removeAmapLicenseOverlay("multi-map-container");
   } else if (getActiveMapProvider() !== "amap") {
     initProviderMap("multi-map-container", true);
     ensureMultiControls();

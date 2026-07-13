@@ -16742,6 +16742,17 @@ class Api:
                 except Exception:
                     pass
             self.path_gen_callbacks.clear()
+            session_id = getattr(self, "_web_session_id", None)
+            if background_task_manager and session_id:
+                try:
+                    background_task_manager.stop_task(session_id)
+                except Exception:
+                    pass
+            if session_id and socketio:
+                try:
+                    socketio.emit("run_stopped", {}, room=session_id)
+                except Exception:
+                    pass
             if self.window:
                 try:
                     self.window.evaluate_js("onRunStopped()")
@@ -25902,7 +25913,13 @@ def start_web_server(args_param):
     logging.warning("[SocketIO] 这解决了由 SubmissionWorker 线程引起的 'Cannot switch to a different thread' 错误")
     current_thread = threading.current_thread()
     logging.info(f"[SocketIO] 初始化线程: Thread[{current_thread.name}, id={current_thread.ident}]")
-    socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
+    socketio = SocketIO(
+        app,
+        async_mode="threading",
+        cors_allowed_origins="*",
+        ping_timeout=60,
+        ping_interval=25,
+    )
     logging.info("[SocketIO] SocketIO 初始化成功，使用 threading 模式")
     logging.info("[SocketIO] 在 threading 模式下，socketio.emit() 可以从任何线程安全调用")
     app.config["SESSION_TYPE"] = "filesystem"
@@ -28341,6 +28358,10 @@ def start_web_server(args_param):
                         _cancellation_status = None  # 仅在 pending 状态时通知前端
                 except Exception:
                     pass
+            try:
+                _login_theme_style = config.get("Config", "theme_style", fallback="default")
+            except Exception:
+                _login_theme_style = "default"
             response_data = {
                 "success": True,
                 "session_id": session_id if session_is_persistent else None,
@@ -28353,6 +28374,7 @@ def start_web_server(args_param):
                 "session_limit_info": session_limit_info,
                 "avatar_url": auth_result.get("avatar_url", ""),
                 "theme": auth_result.get("theme", "light"),
+                "theme_style": _login_theme_style,
                 "token": token,
                 "kicked_sessions_count": len(kicked_sessions),
                 "account_cancellation": _cancellation_status,
@@ -50593,6 +50615,10 @@ def start_web_server(args_param):
             logging.warning(
                 f"WebSocket 客户端 {request.sid} 加入房间失败：缺少 session_id。"
             )
+
+    @socketio.on("heartbeat")
+    def handle_heartbeat(data):
+        emit("heartbeat_ack", {"ts": time.time()})
 
     @socketio.on("disconnect")
     def handle_disconnect():
