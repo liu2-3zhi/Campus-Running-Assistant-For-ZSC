@@ -753,9 +753,22 @@ body {
   > #multi-map-container
   .amap-copyright,
 body.modal-visible .amap-logo,
-body.modal-visible .amap-copyright {
-  display: none;
-  z-index: -1;
+body.modal-visible .amap-copyright,
+body.modal-visible .smnoprint,
+body.modal-visible .tdt-control-container,
+body.modal-visible .BMap_cpyCtrl,
+body.modal-visible .anchorBL {
+  display: none !important;
+  z-index: -1 !important;
+}
+
+body.modal-visible #map-container,
+body.modal-visible #multi-map-container,
+body.modal-visible #mobile-map-container,
+body.modal-visible #mobile-multi-map-container,
+body.modal-visible #mobile-track-map-container {
+  isolation: isolate;
+  pointer-events: none !important;
 }
 
 #admin-modal-close-btn:hover {
