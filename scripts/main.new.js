@@ -14111,7 +14111,7 @@ async function showNetworkErrorDialog() {
 
   const result = await Swal.fire({
     title: "网络错误",
-    html: String(getServerConnectionGuidanceMessage()).replace(/\n/g, "<br>") + autoHint,
+    html: getServerConnectionGuidanceMessage() + autoHint,
     icon: "error",
     confirmButtonText: "重试连接",
     allowOutsideClick: false,
