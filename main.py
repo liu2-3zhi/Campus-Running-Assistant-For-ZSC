@@ -36935,8 +36935,6 @@ def start_web_server(args_param):
     @app.route("/api/frontend_config.js")
     def get_frontend_config_javascript():
         """将前端配置以JavaScript形式返回，并尝试根据Referer恢复会话"""
-        if not _is_vue_mode():
-            return jsonify({"success": False, "message": "Not available"}), 404
         # ==========================================
         # 逻辑合并：尝试从 Referer 恢复会话状态
         # ==========================================
