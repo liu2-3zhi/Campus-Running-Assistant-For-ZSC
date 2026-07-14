@@ -1,3 +1,5 @@
+let sessionUUID = null;
+
 // ============================================================
 // [安全配置] 输入验证常量
 // 这些常量与Python后端保持一致，确保前后端验证规则统一
@@ -11780,7 +11782,6 @@ async function saveMobilePricingConfig() {
   if (extractedSessionUUID) {
     fetchOptions.headers = {
       "X-Session-ID": extractedSessionUUID,
-      "X-Session-ID": sessionUUID,
     };
   }
 
@@ -16188,7 +16189,6 @@ let isRefreshingNotifications = false;
 let isRefreshingTasks = false;
 
 let IS_OFFLINE = false;
-let sessionUUID = null;
 let authSessionUUID = null;
 let authRequestGeneration = 0;
 let authLoginInProgress = false;
