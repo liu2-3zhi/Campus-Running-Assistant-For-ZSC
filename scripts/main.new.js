@@ -14104,20 +14104,20 @@ function startDialogAutoRetry() {
 async function showNetworkErrorDialog() {
   stopDialogAutoRetry();
 
-  const remaining = NETWORK_DIALOG_AUTO_RETRY_MAX - networkDialogAutoRetryCount;
-  const autoHint = remaining > 0
-    ? `<p style="font-size:12px;color:#999;margin-top:12px;">将在后台每 ${NETWORK_DIALOG_AUTO_RETRY_INTERVAL_MS / 1000} 秒自动探测，剩余 ${remaining} 次</p>`
-    : `<p style="font-size:12px;color:#e67e22;margin-top:12px;">自动重试已用尽，请手动点击重试</p>`;
-
   const result = await Swal.fire({
     title: "网络错误",
-    html: getServerConnectionGuidanceMessage() + autoHint,
+    html: getServerConnectionGuidanceMessage(),
     icon: "error",
     confirmButtonText: "重试连接",
     allowOutsideClick: false,
     allowEscapeKey: false,
-    didOpen: () => {
-      if (remaining > 0) startDialogAutoRetry();
+    didOpen: (popup) => {
+      popup.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      });
     },
   });
 
