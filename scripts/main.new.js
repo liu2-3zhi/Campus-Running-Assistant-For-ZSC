@@ -1950,6 +1950,136 @@ function loadAdminBillingLogsNext() {
   loadAdminBillingLogs(adminBillingLogsState.currentPage + 1);
 }
 
+const mobileBillingLogsState = { currentPage: 1, totalPages: 1, pageSize: 10 };
+
+async function loadMobileBillingLogs(page = 1) {
+  const listContainer = document.getElementById("mobile-billing-logs-list");
+  const pageInfo = document.getElementById("mobile-billing-logs-page-info");
+  const prevBtn = document.getElementById("mobile-billing-logs-prev-btn");
+  const nextBtn = document.getElementById("mobile-billing-logs-next-btn");
+  if (!listContainer) return;
+
+  listContainer.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-10">
+      <svg class="animate-spin h-7 w-7 text-sky-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <p class="text-slate-400 text-xs">正在加载账单日志...</p>
+    </div>
+  `;
+
+  const keyword = document.getElementById("mobile-billing-logs-search-input")?.value.trim() || "";
+  const eventType = document.getElementById("mobile-billing-logs-event-type")?.value || "";
+  const params = new URLSearchParams({ page: String(page), page_size: String(mobileBillingLogsState.pageSize) });
+  if (keyword) params.set("keyword", keyword);
+  if (eventType) params.set("event_type", eventType);
+
+  try {
+    const resp = await fetch(`/api/admin/billing/logs?${params.toString()}`, {
+      headers: { "X-Session-ID": sessionUUID },
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.success) throw new Error(data.message || `HTTP错误: ${resp.status}`);
+
+    const logs = data.logs || [];
+    const total = Number(data.total || 0);
+    mobileBillingLogsState.currentPage = page;
+    mobileBillingLogsState.totalPages = Math.max(1, Math.ceil(total / mobileBillingLogsState.pageSize));
+
+    if (!logs.length) {
+      listContainer.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-10 text-slate-400 gap-2">
+          <svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <p class="text-xs">暂无账单日志</p>
+        </div>
+      `;
+    } else {
+      const eventTypeTextMap = {
+        billing_created: "创建", billing_amount_changed: "金额变化",
+        billing_status_changed: "状态变化", billing_admin_cleared: "管理员清除",
+        billing_reason_changed: "原因变化", billing_deleted: "删除",
+      };
+      const eventColorMap = {
+        billing_created: "bg-emerald-100 text-emerald-700 border-emerald-200",
+        billing_deleted: "bg-red-100 text-red-700 border-red-200",
+        billing_admin_cleared: "bg-amber-100 text-amber-700 border-amber-200",
+      };
+      const defaultColor = "bg-sky-100 text-sky-700 border-sky-200";
+      listContainer.innerHTML = logs.map((log, idx) => {
+        const rawType = String(log.event_type || "");
+        const eventText = eventTypeTextMap[rawType] || _escapeAttr(rawType || "未知");
+        const colorCls = eventColorMap[rawType] || defaultColor;
+        const createdAt = _escapeAttr(String(log.created_at_beijing || log.created_at || "-"));
+        const billingId = _escapeAttr(String(log.billing_id || "-"));
+        const schoolUsername = _escapeAttr(String(log.school_username || "-"));
+        const authUsername = _escapeAttr(String(log.auth_username || "-"));
+        const operatorUsername = _escapeAttr(String(log.operator_username || "-"));
+        const details = _escapeAttr(String(log.details || "-"));
+        const beforeJson = _escapeAttr(JSON.stringify(log.before || {}, null, 2));
+        const afterJson = _escapeAttr(JSON.stringify(log.after || {}, null, 2));
+        const detailId = `mbl-diff-${page}-${idx}`;
+        return `
+          <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div class="px-3 py-2.5 space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <span class="inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${colorCls} border">${eventText}</span>
+                <span class="text-[11px] text-slate-500 whitespace-nowrap">${createdAt}</span>
+              </div>
+              <div class="space-y-1 text-xs text-slate-700">
+                <div class="flex justify-between"><span class="text-slate-500">账单号</span><span class="font-mono text-right break-all">${billingId}</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">学校账号</span><span class="font-mono text-right break-all">${schoolUsername}</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">用户</span><span>${authUsername}</span></div>
+                <div class="flex justify-between"><span class="text-slate-500">操作人</span><span>${operatorUsername}</span></div>
+              </div>
+              <div class="text-xs text-slate-600 bg-slate-50 rounded-lg px-2.5 py-1.5">说明：${details}</div>
+            </div>
+            <button type="button" class="w-full px-3 py-2 text-xs text-slate-500 bg-slate-50 border-t border-slate-200 flex items-center justify-center gap-1 active:bg-slate-100 transition-colors" onclick="var d=document.getElementById('${detailId}');if(d){d.classList.toggle('hidden');this.querySelector('svg').style.transform=d.classList.contains('hidden')?'':'rotate(180deg)'}">
+              <span>变更详情</span>
+              <svg class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div id="${detailId}" class="hidden border-t border-slate-200 px-3 py-2.5 space-y-2">
+              <div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                <div class="font-semibold text-[11px] text-slate-600 mb-1">变更前</div>
+                <pre class="whitespace-pre-wrap break-all text-[11px] text-slate-500 leading-relaxed">${beforeJson}</pre>
+              </div>
+              <div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                <div class="font-semibold text-[11px] text-slate-600 mb-1">变更后</div>
+                <pre class="whitespace-pre-wrap break-all text-[11px] text-slate-500 leading-relaxed">${afterJson}</pre>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    if (pageInfo) pageInfo.textContent = `${mobileBillingLogsState.currentPage} / ${mobileBillingLogsState.totalPages}`;
+    if (prevBtn) {
+      prevBtn.disabled = mobileBillingLogsState.currentPage <= 1;
+      prevBtn.classList.toggle("opacity-50", mobileBillingLogsState.currentPage <= 1);
+    }
+    if (nextBtn) {
+      nextBtn.disabled = mobileBillingLogsState.currentPage >= mobileBillingLogsState.totalPages;
+      nextBtn.classList.toggle("opacity-50", mobileBillingLogsState.currentPage >= mobileBillingLogsState.totalPages);
+    }
+  } catch (error) {
+    listContainer.innerHTML = `<div class="text-red-500 bg-red-50 border border-red-200 rounded-lg p-3 text-xs">加载失败：${_escapeAttr(error.message || "未知错误")}</div>`;
+    if (pageInfo) pageInfo.textContent = `第 ${page} 页`;
+  }
+}
+
+function loadMobileBillingLogsPrev() {
+  if (mobileBillingLogsState.currentPage <= 1) return;
+  loadMobileBillingLogs(mobileBillingLogsState.currentPage - 1);
+}
+
+function loadMobileBillingLogsNext() {
+  if (mobileBillingLogsState.currentPage >= mobileBillingLogsState.totalPages) return;
+  loadMobileBillingLogs(mobileBillingLogsState.currentPage + 1);
+}
+
 /**
  * 显示支付日志详情模态框
  *
@@ -20225,6 +20355,15 @@ if (typeof window !== "undefined") {
       });
     }
 
+    const mobileBillingLogsSearchInput = $("mobile-billing-logs-search-input");
+    if (mobileBillingLogsSearchInput) {
+      mobileBillingLogsSearchInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          loadMobileBillingLogs(1);
+        }
+      });
+    }
+
     const profileConfirmPassword = $("profile-confirm-password");
     if (profileConfirmPassword) {
       profileConfirmPassword.addEventListener("keypress", (e) => {
@@ -36125,6 +36264,14 @@ $("process-button").addEventListener("click", processCurrentPath);
 $("start-run-button").addEventListener("click", toggleRun);
 $("start-all-button").addEventListener("click", toggleAllRuns);
 $("export-button").addEventListener("click", exportTask);
+
+// 移动端路径工具按钮
+if ($("mobile-record-button")) $("mobile-record-button").addEventListener("click", toggleRecordMode);
+if ($("mobile-auto-gen-button")) $("mobile-auto-gen-button").addEventListener("click", () => { const modal = $("auto-gen-modal"); if (modal) { modal.classList.remove("hidden"); modal.classList.add("flex"); document.body.classList.add("modal-visible"); } });
+if ($("mobile-process-button")) $("mobile-process-button").addEventListener("click", processCurrentPath);
+if ($("mobile-clear-button")) $("mobile-clear-button").addEventListener("click", () => clearCurrentPath(true));
+if ($("mobile-export-button")) $("mobile-export-button").addEventListener("click", exportTask);
+
 $("import-button").addEventListener("click", async (e) => {
   if (!(await checkButtonPermission("import-button", "use_import_button"))) {
     return;
@@ -50182,6 +50329,12 @@ async function initMobileAdminPanel(prefix) {
       permission: "admin",
     },
     {
+      id: "billing-logs",
+      label: "账单日志",
+      icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>',
+      permission: "admin",
+    },
+    {
       id: "restore-account",
       label: "账号恢复",
       icon: '<svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9"></path></svg>',
@@ -51868,6 +52021,7 @@ function switchMobileAdminTab(tabId, prefix) {
       密码恢复: "bruteforce", // 密码恢复标签
       水印控制: "watermark", // 水印控制标签映射
       账单: "billing", // 账单管理标签映射
+      账单日志: "billing-logs", // 账单日志标签映射
       账号恢复: "restore-account", // 账号恢复标签映射
     };
     const buttonTabId = tabMap[buttonText];
@@ -52020,6 +52174,7 @@ function switchMobileAdminTab(tabId, prefix) {
       "mobile-multi-admin-bruteforce-panel", // 密码恢复面板
       "mobile-multi-admin-watermark-panel", // 水印控制面板
       "mobile-multi-admin-billing-panel", // 账单面板
+      "mobile-multi-admin-billing-logs-panel", // 账单日志面板
       "mobile-multi-admin-restore-account-panel", // 账号恢复面板
     ];
 
@@ -52076,6 +52231,9 @@ function switchMobileAdminTab(tabId, prefix) {
         break;
       case "billing":
         loadMobileMultiAdminBillingList();
+        break;
+      case "billing-logs":
+        loadMobileBillingLogs(1);
         break;
       case "restore-account":
         loadMobileMultiRemovedAccountsList();
