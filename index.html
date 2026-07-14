@@ -5068,6 +5068,33 @@
               </label>
             </div>
 
+            <!-- ========== 路径工具 ========== -->
+            <div class="mt-4 pt-3 border-t border-slate-100">
+              <button
+                id="mobile-path-tools-toggle"
+                class="w-full flex items-center justify-between text-xs font-semibold text-slate-600 py-2 -my-1 active:bg-slate-50 rounded-lg transition-colors"
+                onclick="var a=document.getElementById('mobile-path-tools-area'),s=this.querySelector('.path-toggle-arrow');a.classList.toggle('hidden');if(s)s.style.transform=a.classList.contains('hidden')?'':'rotate(180deg)'"
+              >
+                <span class="flex items-center gap-1.5">
+                  <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                  路径工具
+                </span>
+                <svg class="w-4 h-4 path-toggle-arrow transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+              <div id="mobile-path-tools-area" class="hidden grid grid-cols-2 gap-2 mt-1">
+                <button id="mobile-record-button" class="py-2.5 px-3 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-medium active:bg-emerald-100 transition">录制路径</button>
+                <button id="mobile-auto-gen-button" class="py-2.5 px-3 bg-slate-50 text-slate-600 rounded-lg text-xs font-medium active:bg-slate-100 transition">自动生成</button>
+                <button id="mobile-process-button" class="py-2.5 px-3 bg-sky-50 text-sky-600 rounded-lg text-xs font-medium active:bg-sky-100 transition">处理路径</button>
+                <button id="mobile-clear-button" class="py-2.5 px-3 bg-amber-50 text-amber-600 rounded-lg text-xs font-medium active:bg-amber-100 transition">清除路径</button>
+                <button id="mobile-export-button" class="py-2.5 px-3 bg-violet-50 text-violet-600 rounded-lg text-xs font-medium active:bg-violet-100 col-span-2 transition">导出</button>
+              </div>
+            </div>
+
             <!-- ========== 实时状态面板 ========== -->
             <div class="mt-4 pt-3 border-t border-slate-100">
               <h4
@@ -7399,6 +7426,56 @@
                   </svg>
                   <p class="text-xs">点击查询加载账单记录</p>
                 </div>
+              </div>
+            </div>
+
+            <div id="mobile-multi-admin-billing-logs-panel" class="hidden space-y-3">
+              <div class="bg-gradient-to-r from-sky-50 to-cyan-50 rounded-xl border border-sky-200 p-3 flex items-center justify-between shadow-sm">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 bg-sky-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-4 h-4 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 class="font-bold text-sm text-sky-700">账单日志</h4>
+                    <p class="text-xs text-sky-600">审计账单创建、修改、清除等记录</p>
+                  </div>
+                </div>
+                <button class="btn btn-ghost !py-2 !px-3 text-xs flex items-center gap-1" onclick="loadMobileBillingLogs(1)">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  刷新
+                </button>
+              </div>
+              <div class="bg-white border border-slate-200 rounded-xl px-3 py-2.5 shadow-sm space-y-2">
+                <div class="flex gap-2 items-center">
+                  <input type="text" id="mobile-billing-logs-search-input" class="input-field !text-xs !py-2 flex-1 min-w-0" placeholder="搜索账单号 / 用户 / 手机" />
+                  <select id="mobile-billing-logs-event-type" class="input-field !text-xs !py-2 w-28 flex-shrink-0">
+                    <option value="">全部事件</option>
+                    <option value="billing_created">创建</option>
+                    <option value="billing_amount_changed">金额变化</option>
+                    <option value="billing_status_changed">状态变化</option>
+                    <option value="billing_admin_cleared">管理员清除</option>
+                    <option value="billing_reason_changed">原因变化</option>
+                    <option value="billing_deleted">删除</option>
+                  </select>
+                </div>
+                <button type="button" class="btn btn-primary w-full !py-2 text-xs" onclick="loadMobileBillingLogs(1)">搜索</button>
+              </div>
+              <div id="mobile-billing-logs-list" class="space-y-2.5">
+                <div class="flex flex-col items-center justify-center py-10 text-slate-400 gap-2">
+                  <svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <p class="text-xs">点击搜索加载账单日志</p>
+                </div>
+              </div>
+              <div class="flex justify-between items-center pt-2.5 border-t border-slate-200">
+                <button type="button" id="mobile-billing-logs-prev-btn" class="btn btn-ghost !py-2 !px-4 text-xs min-w-[4rem]" onclick="loadMobileBillingLogsPrev()">上一页</button>
+                <span id="mobile-billing-logs-page-info" class="text-xs text-slate-600 font-medium">1 / 1</span>
+                <button type="button" id="mobile-billing-logs-next-btn" class="btn btn-ghost !py-2 !px-4 text-xs min-w-[4rem]" onclick="loadMobileBillingLogsNext()">下一页</button>
               </div>
             </div>
 
