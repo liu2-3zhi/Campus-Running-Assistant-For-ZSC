@@ -32,14 +32,28 @@ const router = useRouter()
 // ── Mobile state ──
 const sidebarVisible = ref(false)
 const mobileActivePanel = ref('control')
+const controlTab = ref('execute')
 const collapsedSections = ref({})
 
 function toggleSection(section) {
   collapsedSections.value[section] = !collapsedSections.value[section]
 }
 
+// 移动端侧边栏部分导航项对应控制面板内的 Tab（复刻 original：这些功能位于主控制区）
+const NAV_TO_CONTROL_TAB = {
+  checkpoints: 'checkpoints',
+  attendance: 'attendance',
+  history: 'history',
+  settings: 'params',
+}
+
 function handleMobileNavigate(panel) {
-  mobileActivePanel.value = panel
+  if (NAV_TO_CONTROL_TAB[panel]) {
+    controlTab.value = NAV_TO_CONTROL_TAB[panel]
+    mobileActivePanel.value = 'control'
+  } else {
+    mobileActivePanel.value = panel
+  }
   sidebarVisible.value = false
 }
 
@@ -175,7 +189,7 @@ onUnmounted(() => {
       <main class="pt-12 h-screen overflow-hidden">
         <!-- control panel -->
         <div v-show="mobileActivePanel === 'control'" class="h-full overflow-y-auto px-3 py-3 space-y-3">
-          <ControlTabs />
+          <ControlTabs :open-tab="controlTab" />
           <StatusPanels />
         </div>
 
@@ -189,37 +203,7 @@ onUnmounted(() => {
           <TaskPanel />
         </div>
 
-        <!-- checkpoints panel -->
-        <div v-show="mobileActivePanel === 'checkpoints'" class="h-full overflow-y-auto px-3 py-3">
-          <div class="panel p-4">
-            <h3 class="text-sm font-semibold text-[var(--ink)] mb-3">打卡点</h3>
-            <p class="text-sm text-[var(--ink-muted)]">打卡点数据加载区域</p>
-          </div>
-        </div>
-
-        <!-- attendance panel -->
-        <div v-show="mobileActivePanel === 'attendance'" class="h-full overflow-y-auto px-3 py-3">
-          <div class="panel p-4">
-            <h3 class="text-sm font-semibold text-[var(--ink)] mb-3">签到</h3>
-            <p class="text-sm text-[var(--ink-muted)]">签到数据加载区域</p>
-          </div>
-        </div>
-
-        <!-- history panel -->
-        <div v-show="mobileActivePanel === 'history'" class="h-full overflow-y-auto px-3 py-3">
-          <div class="panel p-4">
-            <h3 class="text-sm font-semibold text-[var(--ink)] mb-3">历史记录</h3>
-            <p class="text-sm text-[var(--ink-muted)]">历史记录加载区域</p>
-          </div>
-        </div>
-
-        <!-- settings panel -->
-        <div v-show="mobileActivePanel === 'settings'" class="h-full overflow-y-auto px-3 py-3">
-          <div class="panel p-4">
-            <h3 class="text-sm font-semibold text-[var(--ink)] mb-3">参数设置</h3>
-            <p class="text-sm text-[var(--ink-muted)]">参数设置区域</p>
-          </div>
-        </div>
+        <!-- 打卡点/签到/历史/参数：已由侧边栏导航路由到「控制」面板对应 Tab（见 NAV_TO_CONTROL_TAB） -->
 
         <!-- notifications panel -->
         <div v-show="mobileActivePanel === 'notifications'" class="h-full overflow-y-auto px-3 py-3">
@@ -228,9 +212,33 @@ onUnmounted(() => {
 
         <!-- task-details panel -->
         <div v-show="mobileActivePanel === 'task-details'" class="h-full overflow-y-auto px-3 py-3">
-          <div class="panel p-4">
-            <h3 class="text-sm font-semibold text-[var(--ink)] mb-3">任务详情</h3>
-            <p class="text-sm text-[var(--ink-muted)]">任务详情加载区域</p>
+          <div class="panel p-4 space-y-3">
+            <h3 class="text-sm font-semibold text-[var(--ink)] mb-1">任务详情</h3>
+            <div v-if="!app.selectedTask" class="text-sm text-[var(--ink-muted)] py-6 text-center">
+              请先在「任务」中选择一个任务
+            </div>
+            <div v-else class="space-y-2 text-sm">
+              <div class="flex justify-between">
+                <span class="text-[var(--ink-muted)]">任务名称</span>
+                <span class="text-[var(--ink)] font-medium">{{ app.selectedTask.name || app.selectedTask.task_name || ('任务 #' + (app.selectedTaskIndex + 1)) }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-[var(--ink-muted)]">状态</span>
+                <span class="text-[var(--ink)]">{{ app.selectedTask.status || '待执行' }}</span>
+              </div>
+              <div v-if="app.selectedTask.distance != null" class="flex justify-between">
+                <span class="text-[var(--ink-muted)]">距离</span>
+                <span class="text-[var(--ink)]">{{ (Number(app.selectedTask.distance) / 1000).toFixed(2) }} km</span>
+              </div>
+              <div v-if="app.selectedTask.duration != null" class="flex justify-between">
+                <span class="text-[var(--ink-muted)]">时长</span>
+                <span class="text-[var(--ink)]">{{ app.selectedTask.duration }}</span>
+              </div>
+              <div v-if="app.selectedTask.target_points || app.selectedTask.checkpoints" class="flex justify-between">
+                <span class="text-[var(--ink-muted)]">打卡点数</span>
+                <span class="text-[var(--ink)]">{{ (app.selectedTask.target_points || app.selectedTask.checkpoints || []).length }}</span>
+              </div>
+            </div>
           </div>
         </div>
 

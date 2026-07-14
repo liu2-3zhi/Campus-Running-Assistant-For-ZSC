@@ -4,14 +4,24 @@
 
     <!-- Top controls bar -->
     <div class="flex flex-wrap items-center gap-3">
-      <!-- Level filter -->
-      <select v-model="levelFilter" class="select-field text-sm" @change="fetchLogs">
+      <!-- Level filter (client-side) -->
+      <select v-model="levelFilter" class="select-field text-sm">
         <option value="">全部级别</option>
         <option value="DEBUG">DEBUG</option>
         <option value="INFO">INFO</option>
         <option value="WARNING">WARNING</option>
         <option value="ERROR">ERROR</option>
+        <option value="CRITICAL">CRITICAL</option>
       </select>
+
+      <!-- Keyword filter (server-side, 支持 | 或 & 组合) -->
+      <input
+        v-model="keyword"
+        type="text"
+        class="input-field text-sm w-40"
+        placeholder="关键词 (a&b|c)"
+        @keyup.enter="resetAndFetch"
+      />
 
       <!-- Per-page selector -->
       <select v-model.number="perPage" class="select-field text-sm" @change="resetAndFetch">
@@ -77,7 +87,7 @@
       >
         上一页
       </button>
-      <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
+      <span>第 {{ currentPage }} / {{ totalPages }} 页<span v-if="totalLines" class="ml-2 text-[var(--ink-muted)]">共 {{ totalLines }} 行</span></span>
       <button
         class="btn btn-secondary text-sm"
         :disabled="currentPage >= totalPages || loading"
@@ -90,15 +100,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { callRawAPI } from '@/services/api'
 
 const levelFilter = ref('')
+const keyword = ref('')
 const perPage = ref(100)
 const currentPage = ref(1)
 const totalPages = ref(1)
-const logContent = ref('')
-const logLines = ref([])
+const totalLines = ref(0)
+const rawLines = ref([])
 const loading = ref(false)
 const errorMsg = ref('')
 
@@ -109,6 +120,13 @@ const REFRESH_INTERVAL = 10
 let refreshTimer = null
 let countdownTimer = null
 
+// 级别过滤在前端进行（与 original filterLogsByLevel 一致）
+const logLines = computed(() => {
+  if (!levelFilter.value) return rawLines.value
+  const re = new RegExp('\\b' + levelFilter.value + '\\b')
+  return rawLines.value.filter(line => re.test(line))
+})
+
 function getLineColorClass(line) {
   if (/\bERROR\b/.test(line) || /\bCRITICAL\b/.test(line)) return 'text-red-500'
   if (/\bWARNING\b/.test(line)) return 'text-yellow-500'
@@ -117,27 +135,24 @@ function getLineColorClass(line) {
   return ''
 }
 
-function parseLogLines(content) {
-  if (!content) return []
-  return content.split('\n').filter(line => line.length > 0)
-}
-
 async function fetchLogs() {
   loading.value = true
   errorMsg.value = ''
   try {
     const params = {
       page: currentPage.value,
-      per_page: perPage.value,
+      limit: perPage.value,
     }
-    if (levelFilter.value) {
-      params.level = levelFilter.value
+    if (keyword.value.trim()) {
+      params.keyword = keyword.value.trim()
     }
-    const data = await callRawAPI('/auth/admin/audit_logs?' + new URLSearchParams(params).toString(), 'GET')
-    logContent.value = data.logs || ''
-    logLines.value = parseLogLines(logContent.value)
-    currentPage.value = data.page || 1
-    totalPages.value = data.total_pages || 1
+    const data = await callRawAPI('/logs/view?' + new URLSearchParams(params).toString(), 'GET')
+    const rawLogs = Array.isArray(data.logs) ? data.logs : (data.logs ? String(data.logs).split('\n') : [])
+    rawLines.value = rawLogs.map(l => String(l).replace(/\r?\n$/, '')).filter(l => l.length > 0)
+    const pg = data.pagination || {}
+    currentPage.value = pg.current_page || 1
+    totalPages.value = pg.total_pages || 1
+    totalLines.value = pg.total_lines || 0
   } catch (e) {
     errorMsg.value = e.message || '获取日志失败'
   } finally {

@@ -1,17 +1,21 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { callAPI } from '@/services/api'
+import { ref, computed, onMounted } from 'vue'
+import { callRawAPI } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 
-const sslInfo = ref(null)
+const sslConfig = ref(null)
+const certInfo = ref(null)
 const loading = ref(false)
 const error = ref('')
 const success = ref('')
 const uploading = ref(false)
-const httpsEnabled = ref(false)
+const toggling = ref(false)
+const sslEnabled = ref(false)
 
 const certFile = ref(null)
 const keyFile = ref(null)
+
+const certValid = computed(() => certInfo.value && !certInfo.value.error)
 
 function clearMessages() { error.value = ''; success.value = '' }
 
@@ -19,16 +23,17 @@ function formatDate(dateStr) {
   if (!dateStr) return '--'
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return '--'
-  return d.toLocaleDateString('zh-CN')
+  return d.toLocaleString('zh-CN')
 }
 
 async function loadSSLStatus() {
   loading.value = true
   clearMessages()
   try {
-    const res = await callAPI('admin_ssl_status')
-    sslInfo.value = res
-    httpsEnabled.value = res.https_enabled || false
+    const res = await callRawAPI('/api/admin/ssl/info', 'GET')
+    sslConfig.value = res.config || null
+    certInfo.value = res.cert_info || null
+    sslEnabled.value = !!(res.config && res.config.ssl_enabled)
   } catch (e) {
     error.value = e.message || '加载SSL状态失败'
   } finally {
@@ -53,21 +58,23 @@ async function uploadCert() {
   clearMessages()
   try {
     const formData = new FormData()
-    formData.append('cert', certFile.value)
-    formData.append('key', keyFile.value)
+    formData.append('cert_file', certFile.value)
+    formData.append('key_file', keyFile.value)
     const auth = useAuthStore()
     const sessionId = auth.getAuthenticatedSessionHeaderValue()
     const headers = {}
     if (sessionId) headers['X-Session-ID'] = sessionId
-    const res = await fetch('/api/admin_ssl_upload', {
+    const res = await fetch('/api/admin/ssl/upload', {
       method: 'POST',
       headers,
       credentials: 'include',
       body: formData,
     })
-    if (!res.ok) throw new Error('上传失败')
-    await res.json()
-    success.value = 'SSL证书已上传'
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || data.success === false) {
+      throw new Error(data.message || '上传失败')
+    }
+    success.value = data.message || 'SSL证书已上传'
     certFile.value = null
     keyFile.value = null
     await loadSSLStatus()
@@ -78,14 +85,21 @@ async function uploadCert() {
   }
 }
 
-async function toggleHTTPS() {
+async function toggleSSL() {
+  toggling.value = true
   clearMessages()
   try {
-    await callAPI('admin_ssl_toggle', { enabled: !httpsEnabled.value })
-    httpsEnabled.value = !httpsEnabled.value
-    success.value = httpsEnabled.value ? 'HTTPS已启用' : 'HTTPS已禁用'
+    const res = await callRawAPI('/api/admin/ssl/toggle', 'POST', { enabled: !sslEnabled.value })
+    if (res && res.success === false) {
+      error.value = res.message || '切换SSL失败'
+      return
+    }
+    sslEnabled.value = !!res.ssl_enabled
+    success.value = res.message || (sslEnabled.value ? 'SSL已启用' : 'SSL已禁用')
   } catch (e) {
-    error.value = e.message || '切换HTTPS失败'
+    error.value = e.message || '切换SSL失败'
+  } finally {
+    toggling.value = false
   }
 }
 
@@ -111,36 +125,44 @@ onMounted(loadSSLStatus)
       <!-- Current cert info -->
       <div class="panel p-4">
         <h3 class="font-medium text-[var(--ink)] mb-3">当前证书信息</h3>
-        <div v-if="sslInfo && sslInfo.domain" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <div class="text-xs text-[var(--ink-secondary)] mb-1">域名</div>
-            <div class="text-sm font-medium text-[var(--ink)]">{{ sslInfo.domain }}</div>
-          </div>
-          <div>
-            <div class="text-xs text-[var(--ink-secondary)] mb-1">到期日期</div>
-            <div class="text-sm font-medium text-[var(--ink)]">{{ formatDate(sslInfo.expiry || sslInfo.expires_at) }}</div>
+        <div v-if="certValid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="sm:col-span-2">
+            <div class="text-xs text-[var(--ink-secondary)] mb-1">主题</div>
+            <div class="text-sm font-medium text-[var(--ink)] break-all">{{ certInfo.subject }}</div>
           </div>
           <div>
             <div class="text-xs text-[var(--ink-secondary)] mb-1">颁发者</div>
-            <div class="text-sm font-medium text-[var(--ink)]">{{ sslInfo.issuer || '--' }}</div>
+            <div class="text-sm font-medium text-[var(--ink)] break-all">{{ certInfo.issuer || '--' }}</div>
+          </div>
+          <div>
+            <div class="text-xs text-[var(--ink-secondary)] mb-1">到期日期</div>
+            <div class="text-sm font-medium" :class="certInfo.is_expired ? 'text-red-500' : 'text-[var(--ink)]'">
+              {{ formatDate(certInfo.not_after) }}
+              <span v-if="certInfo.is_expired" class="ml-1">（已过期）</span>
+            </div>
+          </div>
+          <div v-if="certInfo.san && certInfo.san.length" class="sm:col-span-2">
+            <div class="text-xs text-[var(--ink-secondary)] mb-1">备用域名 (SAN)</div>
+            <div class="text-sm text-[var(--ink)] break-all">{{ certInfo.san.join(', ') }}</div>
           </div>
         </div>
-        <div v-else class="text-sm text-[var(--ink-secondary)]">暂无证书信息</div>
+        <div v-else class="text-sm text-[var(--ink-secondary)]">{{ certInfo?.error || '暂无证书信息' }}</div>
       </div>
 
-      <!-- HTTPS toggle -->
+      <!-- SSL toggle -->
       <div class="panel p-4">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="font-medium text-[var(--ink)]">HTTPS</h3>
-            <p class="text-xs text-[var(--ink-secondary)] mt-1">启用或禁用HTTPS强制跳转</p>
+            <h3 class="font-medium text-[var(--ink)]">SSL / HTTPS</h3>
+            <p class="text-xs text-[var(--ink-secondary)] mt-1">启用或禁用 HTTPS（需重启服务器才能生效）</p>
           </div>
           <button
             class="btn text-sm"
-            :class="httpsEnabled ? 'btn-primary' : 'btn-secondary'"
-            @click="toggleHTTPS"
+            :class="sslEnabled ? 'btn-primary' : 'btn-secondary'"
+            :disabled="toggling"
+            @click="toggleSSL"
           >
-            {{ httpsEnabled ? '已启用' : '已禁用' }}
+            {{ toggling ? '切换中...' : (sslEnabled ? '已启用' : '已禁用') }}
           </button>
         </div>
       </div>

@@ -28,18 +28,26 @@
           </div>
 
           <!-- Create form -->
-          <div v-if="showCreateForm" class="flex gap-2 mb-2">
+          <div v-if="showCreateForm" class="space-y-2 mb-2">
+            <input
+              v-model="newGroupKey"
+              type="text"
+              class="input-field text-sm w-full"
+              placeholder="组标识（英文，如 vip）"
+            />
             <input
               v-model="newGroupName"
               type="text"
-              class="input-field text-sm flex-1"
-              placeholder="组名称"
+              class="input-field text-sm w-full"
+              placeholder="组显示名称"
               @keyup.enter="createGroup"
             />
-            <button class="btn btn-primary text-xs" :disabled="creating" @click="createGroup">
-              {{ creating ? '...' : '创建' }}
-            </button>
-            <button class="btn btn-ghost text-xs" @click="cancelCreate">取消</button>
+            <div class="flex gap-2">
+              <button class="btn btn-primary text-xs flex-1" :disabled="creating" @click="createGroup">
+                {{ creating ? '...' : '创建' }}
+              </button>
+              <button class="btn btn-ghost text-xs" @click="cancelCreate">取消</button>
+            </div>
           </div>
 
           <!-- Loading -->
@@ -50,11 +58,11 @@
           <!-- Group items -->
           <template v-else>
             <div
-              v-for="group in groups"
-              :key="group.id"
+              v-for="group in groupList"
+              :key="group.key"
               class="px-3 py-2 rounded-lg cursor-pointer transition-colors flex items-center justify-between"
               :class="
-                selectedGroupId === group.id
+                selectedKey === group.key
                   ? 'bg-[var(--accent)] text-white'
                   : 'text-[var(--ink-secondary)] hover:bg-[var(--glass)]'
               "
@@ -62,18 +70,19 @@
             >
               <span class="text-sm truncate">{{ group.name }}</span>
               <span
+                v-if="group.is_system"
                 class="text-xs px-1.5 py-0.5 rounded-full"
                 :class="
-                  selectedGroupId === group.id
+                  selectedKey === group.key
                     ? 'bg-white/20 text-white'
                     : 'bg-[var(--glass)] text-[var(--ink-muted)]'
                 "
               >
-                {{ group.member_count ?? 0 }}
+                系统
               </span>
             </div>
             <div
-              v-if="groups.length === 0"
+              v-if="groupList.length === 0"
               class="py-4 text-center text-[var(--ink-muted)] text-sm"
             >
               暂无权限组
@@ -91,9 +100,11 @@
         <div v-else class="panel p-4 space-y-4">
           <div class="flex items-center justify-between">
             <h3 class="text-base font-semibold text-[var(--ink)]">
-              {{ selectedGroup.name }} - 权限配置
+              {{ selectedGroup.name }}
+              <span class="text-xs text-[var(--ink-muted)] font-mono">({{ selectedGroup.key }})</span>
             </h3>
             <button
+              v-if="!selectedGroup.is_system"
               class="btn btn-danger text-xs"
               :disabled="deleting"
               @click="confirmDeleteGroup"
@@ -101,6 +112,10 @@
               {{ deleting ? '删除中...' : '删除组' }}
             </button>
           </div>
+
+          <p v-if="selectedGroup.key === 'super_admin'" class="text-xs text-[var(--warning)]">
+            超级管理员组拥有所有权限且不可编辑。
+          </p>
 
           <!-- Delete confirmation -->
           <div
@@ -123,17 +138,18 @@
           <!-- Permissions checkboxes -->
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             <label
-              v-for="perm in allPermissions"
-              :key="perm.key"
+              v-for="key in allPermissionKeys"
+              :key="key"
               class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-[var(--glass)] cursor-pointer transition-colors"
             >
               <input
                 type="checkbox"
-                :checked="editPermissions.includes(perm.key)"
+                :checked="editPermissions.includes(key)"
+                :disabled="selectedGroup.key === 'super_admin'"
                 class="rounded border-[var(--border-color)] text-[var(--accent)] focus:ring-[var(--accent)]"
-                @change="togglePermission(perm.key)"
+                @change="togglePermission(key)"
               />
-              <span class="text-sm text-[var(--ink)]">{{ perm.label }}</span>
+              <span class="text-sm text-[var(--ink)]">{{ translatePermission(key) }}</span>
             </label>
           </div>
 
@@ -141,7 +157,7 @@
           <div class="flex justify-end">
             <button
               class="btn btn-primary"
-              :disabled="saving"
+              :disabled="saving || selectedGroup.key === 'super_admin'"
               @click="savePermissions"
             >
               {{ saving ? '保存中...' : '保存权限' }}
@@ -154,47 +170,74 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { callRawAPI } from '@/services/api'
 
-const allPermissions = [
-  { key: 'manage_users', label: '用户管理' },
-  { key: 'manage_groups', label: '权限组管理' },
-  { key: 'view_logs', label: '查看日志' },
-  { key: 'manage_sessions', label: '会话管理' },
-  { key: 'manage_ip_bans', label: 'IP封禁管理' },
-  { key: 'manage_sms', label: '短信配置' },
-  { key: 'manage_config', label: '系统配置' },
-  { key: 'manage_captcha', label: '验证码管理' },
-  { key: 'manage_reminders', label: '定时提醒' },
-  { key: 'manage_ssl', label: 'SSL管理' },
-  { key: 'manage_cdn', label: 'CDN管理' },
-  { key: 'manage_security', label: '安全管理' },
-  { key: 'view_payment_logs', label: '查看支付日志' },
-  { key: 'manage_payment', label: '支付管理' },
-  { key: 'manage_pricing', label: '定价管理' },
-  { key: 'manage_watermark', label: '水印管理' },
-  { key: 'manage_billing', label: '账单管理' },
-  { key: 'view_billing_logs', label: '查看账单日志' },
-  { key: 'restore_accounts', label: '恢复账号' },
-]
+/* 权限键 → 中文文案（未命中回退原始键） */
+const PERMISSION_LABELS = {
+  view_tasks: '查看任务', create_tasks: '创建任务', delete_tasks: '删除任务',
+  start_tasks: '开始任务', stop_tasks: '停止任务', view_map: '查看地图',
+  record_path: '录制路径', auto_generate_path: '自动生成路径',
+  view_notifications: '查看通知', mark_notifications_read: '标记通知已读',
+  view_user_details: '查看用户详情', modify_user_settings: '修改用户设置',
+  execute_multi_account: '多账号执行', use_attendance: '使用签到',
+  view_logs: '查看日志', clear_logs: '清空日志', auto_fill_password: '自动填充密码',
+  import_offline: '离线导入', export_data: '导出数据', modify_params: '修改参数',
+  manage_own_sessions: '管理自己的会话', use_login_button: '使用登录按钮',
+  use_multi_account_button: '使用多账号按钮', use_import_button: '使用导入按钮',
+  view_messages: '查看留言', post_messages: '发布留言',
+  delete_own_messages: '删除自己的留言', delete_any_messages: '删除任意留言',
+  modify_config: '修改配置', view_session_details: '查看会话详情',
+  manage_users: '用户管理', manage_permissions: '权限管理',
+  reset_user_password: '重置用户密码', view_audit_logs: '查看审计日志',
+  view_all_sessions: '查看所有会话', force_logout_users: '强制登出用户',
+  manage_user_sessions: '管理用户会话', view_captcha_history: '查看验证码历史',
+  manage_system: '系统管理', create_permission_groups: '创建权限组',
+  modify_permission_groups: '修改权限组', delete_permission_groups: '删除权限组',
+  god_mode: '上帝模式', manage_billing: '账单管理', view_billing_logs: '查看账单日志',
+  restore_accounts: '恢复账号', manage_payment: '支付管理', manage_pricing: '定价管理',
+  manage_watermark: '水印管理',
+}
 
-const groups = ref([])
+function translatePermission(key) {
+  return PERMISSION_LABELS[key] || key
+}
+
+const groups = ref({})          // dict: key -> { name, is_system, permissions:{k:bool} }
 const loading = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
 
 const showCreateForm = ref(false)
+const newGroupKey = ref('')
 const newGroupName = ref('')
 const creating = ref(false)
 
-const selectedGroupId = ref(null)
+const selectedKey = ref(null)
 const selectedGroup = ref(null)
 const editPermissions = ref([])
 const saving = ref(false)
 
 const showDeleteConfirm = ref(false)
 const deleting = ref(false)
+
+const groupList = computed(() =>
+  Object.entries(groups.value || {}).map(([key, g]) => ({
+    key,
+    name: g.name || key,
+    is_system: g.is_system || false,
+    permissions: g.permissions || {},
+  }))
+)
+
+/* 所有权限键的并集（后端已将每组补全为同一键集） */
+const allPermissionKeys = computed(() => {
+  const set = new Set()
+  for (const g of Object.values(groups.value || {})) {
+    for (const k of Object.keys(g.permissions || {})) set.add(k)
+  }
+  return Array.from(set).sort()
+})
 
 function clearMessages() {
   errorMsg.value = ''
@@ -217,7 +260,11 @@ async function fetchGroups() {
   clearMessages()
   try {
     const data = await callRawAPI('/auth/admin/list_groups', 'GET')
-    groups.value = data.groups || []
+    groups.value = data.groups || {}
+    // 保持当前选中
+    if (selectedKey.value && groups.value[selectedKey.value]) {
+      selectGroup({ key: selectedKey.value, ...groups.value[selectedKey.value] })
+    }
   } catch (e) {
     showError(e.message || '获取权限组失败')
   } finally {
@@ -226,9 +273,11 @@ async function fetchGroups() {
 }
 
 function selectGroup(group) {
-  selectedGroupId.value = group.id
-  selectedGroup.value = group
-  editPermissions.value = [...(group.permissions || [])]
+  selectedKey.value = group.key
+  const g = groups.value[group.key] || {}
+  selectedGroup.value = { key: group.key, name: g.name || group.key, is_system: g.is_system || false }
+  const perms = g.permissions || {}
+  editPermissions.value = Object.keys(perms).filter(k => perms[k])
   showDeleteConfirm.value = false
   clearMessages()
 }
@@ -244,16 +293,24 @@ function togglePermission(key) {
 
 function cancelCreate() {
   showCreateForm.value = false
+  newGroupKey.value = ''
   newGroupName.value = ''
 }
 
 async function createGroup() {
+  const key = newGroupKey.value.trim()
   const name = newGroupName.value.trim()
-  if (!name) return
+  if (!key) { showError('组标识不能为空'); return }
+  if (!name) { showError('组显示名称不能为空'); return }
   creating.value = true
   clearMessages()
   try {
-    await callRawAPI('/auth/admin/create_group', 'POST', { group_name: name, display_name: name })
+    const res = await callRawAPI('/auth/admin/create_group', 'POST', {
+      group_name: key,
+      display_name: name,
+      permissions: {},
+    })
+    if (res && res.success === false) throw new Error(res.message || '创建失败')
     showSuccess(`权限组「${name}」创建成功`)
     cancelCreate()
     await fetchGroups()
@@ -266,18 +323,22 @@ async function createGroup() {
 
 async function savePermissions() {
   if (!selectedGroup.value) return
+  if (selectedGroup.value.key === 'super_admin') return
   saving.value = true
   clearMessages()
   try {
-    await callRawAPI('/auth/admin/update_group', 'POST', {
-      group_key: selectedGroup.value.id,
-      permissions: editPermissions.value
+    // 构建完整的 {key: bool} 权限字典
+    const permissions = {}
+    for (const k of allPermissionKeys.value) {
+      permissions[k] = editPermissions.value.includes(k)
+    }
+    const res = await callRawAPI('/auth/admin/update_group', 'POST', {
+      group_key: selectedGroup.value.key,
+      permissions,
     })
+    if (res && res.success === false) throw new Error(res.message || '保存失败')
     showSuccess('权限已保存')
     await fetchGroups()
-    // Re-select to update local state
-    const updated = groups.value.find(g => g.id === selectedGroupId.value)
-    if (updated) selectGroup(updated)
   } catch (e) {
     showError(e.message || '保存权限失败')
   } finally {
@@ -294,9 +355,10 @@ async function deleteGroup() {
   deleting.value = true
   clearMessages()
   try {
-    await callRawAPI('/auth/admin/delete_group', 'POST', { group_name: selectedGroup.value.id })
+    const res = await callRawAPI('/auth/admin/delete_group', 'POST', { group_name: selectedGroup.value.key })
+    if (res && res.success === false) throw new Error(res.message || '删除失败')
     showSuccess(`权限组「${selectedGroup.value.name}」已删除`)
-    selectedGroupId.value = null
+    selectedKey.value = null
     selectedGroup.value = null
     editPermissions.value = []
     showDeleteConfirm.value = false

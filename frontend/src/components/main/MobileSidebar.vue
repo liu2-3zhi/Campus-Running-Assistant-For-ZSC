@@ -1,5 +1,9 @@
 <script setup>
+import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import PaymentModal from '@/components/main/PaymentModal.vue'
+import OrdersModal from '@/components/main/OrdersModal.vue'
+import BillingModal from '@/components/main/BillingModal.vue'
 
 const props = defineProps({
   visible: {
@@ -32,6 +36,24 @@ const navItems = [
 
 function handleNav(key) {
   emit('navigate', key)
+  emit('close')
+}
+
+// 支付 / 订单 / 账单 弹窗（复刻 original 用户端入口）
+const showPayment = ref(false)
+const showOrders = ref(false)
+const showBilling = ref(false)
+
+const payNavItems = [
+  { key: 'orders', label: '我的订单', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+  { key: 'billing', label: '我的账单', icon: 'M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z' },
+  { key: 'payment', label: '发起支付', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
+]
+
+function openPayModal(kind) {
+  if (kind === 'orders') showOrders.value = true
+  else if (kind === 'billing') showBilling.value = true
+  else if (kind === 'payment') showPayment.value = true
   emit('close')
 }
 </script>
@@ -85,6 +107,22 @@ function handleNav(key) {
               <!-- Divider -->
               <div class="my-2 mx-4 border-t border-[var(--border-color)]"></div>
 
+              <!-- 支付 / 订单 / 账单 入口（复刻 original 用户端） -->
+              <button
+                v-for="item in payNavItems"
+                :key="item.key"
+                class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--ink-secondary)] hover:bg-[var(--glass)] hover:text-[var(--ink)] transition-colors"
+                @click="openPayModal(item.key)"
+              >
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" :d="item.icon" />
+                </svg>
+                {{ item.label }}
+              </button>
+
+              <!-- Divider -->
+              <div class="my-2 mx-4 border-t border-[var(--border-color)]"></div>
+
               <!-- Admin link (conditional) -->
               <button
                 v-if="auth.isAdmin"
@@ -115,6 +153,11 @@ function handleNav(key) {
       </div>
     </transition>
   </Teleport>
+
+  <!-- 支付 / 订单 / 账单 弹窗（AppModal 自带 teleport，独立于侧边栏生命周期） -->
+  <PaymentModal :visible="showPayment" @close="showPayment = false" @paid="showOrders = true" />
+  <OrdersModal :visible="showOrders" @close="showOrders = false" />
+  <BillingModal :visible="showBilling" @close="showBilling = false" />
 </template>
 
 <style scoped>

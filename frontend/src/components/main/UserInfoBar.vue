@@ -1,4 +1,5 @@
 <script setup>
+import { ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useThemeStore } from '@/stores/theme'
@@ -6,6 +7,9 @@ import { useNotificationStore } from '@/stores/notification'
 import { callAPI } from '@/services/api'
 import { disconnectWebSocket } from '@/services/socket'
 import { useRouter } from 'vue-router'
+import PaymentModal from '@/components/main/PaymentModal.vue'
+import OrdersModal from '@/components/main/OrdersModal.vue'
+import BillingModal from '@/components/main/BillingModal.vue'
 
 const auth = useAuthStore()
 const app = useAppStore()
@@ -14,6 +18,11 @@ const notifStore = useNotificationStore()
 const router = useRouter()
 
 const emit = defineEmits(['show-notifications', 'show-user-details', 'show-admin'])
+
+// 支付 / 订单 / 账单 弹窗（复刻 original 用户端入口）
+const showPayment = ref(false)
+const showOrders = ref(false)
+const showBilling = ref(false)
 
 async function handleLogout() {
   try {
@@ -82,6 +91,42 @@ async function handleLogout() {
         详情
       </button>
 
+      <!-- 我的订单 -->
+      <button
+        class="btn btn-ghost text-xs"
+        @click="showOrders = true"
+        title="我的订单"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+        订单
+      </button>
+
+      <!-- 我的账单 -->
+      <button
+        class="btn btn-ghost text-xs"
+        @click="showBilling = true"
+        title="我的账单"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+        </svg>
+        账单
+      </button>
+
+      <!-- 发起支付 -->
+      <button
+        class="btn btn-ghost text-xs"
+        @click="showPayment = true"
+        title="发起支付"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+        </svg>
+        支付
+      </button>
+
       <!-- Admin panel -->
       <button
         v-if="auth.isAdmin"
@@ -121,5 +166,10 @@ async function handleLogout() {
         退出
       </button>
     </div>
+
+    <!-- 支付 / 订单 / 账单 弹窗（复刻 original 用户端） -->
+    <PaymentModal :visible="showPayment" @close="showPayment = false" @paid="showOrders = true" />
+    <OrdersModal :visible="showOrders" @close="showOrders = false" />
+    <BillingModal :visible="showBilling" @close="showBilling = false" />
   </div>
 </template>

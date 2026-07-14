@@ -21,6 +21,11 @@ let markers = []
 let polylines = []
 let licenseObserver = null
 
+// --- 交互式绘制状态 ---
+let clickHandler = null       // 当前绑定的地图点击回调
+let boundClickProvider = null // 记录绑定时的 provider，用于正确解绑
+let draftPolyline = null      // 草稿折线实例（独立于普通 overlays 单独管理）
+
 // --- Script loader utility ---
 function loadScript(src, id) {
   return new Promise((resolve, reject) => {
@@ -299,6 +304,11 @@ async function initMap() {
 
 function destroyMap() {
   clearOverlays()
+  // 重置绘制相关引用（地图即将销毁，旧句柄无需再解绑，直接置空以防悬挂）
+  clickHandler = null
+  boundClickProvider = null
+  draftPolyline = null
+  setDrawingCursor(false)
   if (map) {
     try {
       if (typeof map.destroy === 'function') {
@@ -466,6 +476,112 @@ function clearOverlays() {
   polylines = []
 }
 
+// --- Interactive path drawing ---
+// 从各 provider 的点击事件对象中提取 { lng, lat }。
+// amap 已按任务要求完整实现（e.lnglat.getLng/getLat）；其余 provider 依据各自 SDK
+// 常见事件结构尽力实现，未经运行时验证，详见报告。
+function extractClickLngLat(provider, e) {
+  try {
+    if (provider === 'amap') {
+      const ll = e && e.lnglat
+      if (!ll) return null
+      return {
+        lng: typeof ll.getLng === 'function' ? ll.getLng() : ll.lng,
+        lat: typeof ll.getLat === 'function' ? ll.getLat() : ll.lat,
+      }
+    } else if (provider === 'tencent') {
+      // 腾讯 gljs：点击事件坐标位于 e.latLng（TMap.LatLng，含 getLng/getLat）
+      const ll = e && (e.latLng || e.latlng)
+      if (!ll) return null
+      return {
+        lng: typeof ll.getLng === 'function' ? ll.getLng() : ll.lng,
+        lat: typeof ll.getLat === 'function' ? ll.getLat() : ll.lat,
+      }
+    } else if (provider === 'tianditu') {
+      // 天地图：click 事件坐标位于 e.lnglat（T.LngLat，含 getLng/getLat）
+      const ll = e && e.lnglat
+      if (!ll) return null
+      return {
+        lng: typeof ll.getLng === 'function' ? ll.getLng() : ll.lng,
+        lat: typeof ll.getLat === 'function' ? ll.getLat() : ll.lat,
+      }
+    } else if (provider === 'baidu') {
+      // 百度：click 事件坐标位于 e.point（BMap.Point，含 lng/lat 属性）
+      const p = e && e.point
+      if (!p) return null
+      return { lng: p.lng, lat: p.lat }
+    }
+  } catch (_) {}
+  return null
+}
+
+// 移除单个 overlay（草稿折线），并从 polylines 跟踪数组中剔除，避免累积。
+function removeSingleOverlay(overlay) {
+  if (!overlay) return
+  const provider = mapStore.activeProvider
+  try {
+    if (provider === 'amap' && map) map.remove(overlay)
+    else if (provider === 'tencent') overlay.setMap(null)
+    else if (provider === 'tianditu' && map) map.removeOverLay(overlay)
+    else if (provider === 'baidu' && map) map.removeOverlay(overlay)
+  } catch (_) {}
+  const idx = polylines.indexOf(overlay)
+  if (idx !== -1) polylines.splice(idx, 1)
+}
+
+// 用已有的 drawPolyline 重绘草稿折线：先清掉旧草稿，再按当前草稿点重画。
+function redrawDraft() {
+  removeSingleOverlay(draftPolyline)
+  draftPolyline = null
+  const pts = mapStore.draftPoints
+  if (pts && pts.length >= 2) {
+    draftPolyline = drawPolyline(
+      pts.map(p => [p.lng, p.lat]),
+      { color: '#1f2937', weight: 6, opacity: 0.9 }
+    )
+  }
+}
+
+function setDrawingCursor(on) {
+  const container = document.getElementById(props.containerId)
+  if (container) container.style.cursor = on ? 'crosshair' : ''
+}
+
+function bindDrawingClick() {
+  if (!map || clickHandler) return
+  const provider = mapStore.activeProvider
+  clickHandler = (e) => {
+    const pt = extractClickLngLat(provider, e)
+    if (!pt || pt.lng == null || pt.lat == null) return
+    mapStore.addDraftPoint({ lng: pt.lng, lat: pt.lat })
+    redrawDraft()
+  }
+  boundClickProvider = provider
+  if (provider === 'amap' || provider === 'tencent') {
+    map.on('click', clickHandler)
+  } else if (provider === 'tianditu' || provider === 'baidu') {
+    map.addEventListener('click', clickHandler)
+  }
+  setDrawingCursor(true)
+}
+
+function unbindDrawingClick() {
+  if (map && clickHandler && boundClickProvider) {
+    try {
+      if (boundClickProvider === 'amap' || boundClickProvider === 'tencent') {
+        map.off('click', clickHandler)
+      } else if (boundClickProvider === 'tianditu' || boundClickProvider === 'baidu') {
+        map.removeEventListener('click', clickHandler)
+      }
+    } catch (_) {}
+  }
+  clickHandler = null
+  boundClickProvider = null
+  setDrawingCursor(false)
+  removeSingleOverlay(draftPolyline)
+  draftPolyline = null
+}
+
 // --- Zoom controls ---
 function handleZoomIn() {
   if (!map) return
@@ -517,8 +633,18 @@ function handleResetView() {
 }
 
 // --- Watch provider changes ---
-watch(() => mapStore.activeProvider, () => {
-  initMap()
+watch(() => mapStore.activeProvider, async () => {
+  await initMap()
+  // 切换 provider 后若仍处于录制模式，为新地图实例重新绑定绘制点击
+  if (mapStore.isDrawing) bindDrawingClick()
+})
+
+// --- Watch drawing mode ---
+// isDrawing 为 true：给当前地图绑定点击事件收集草稿点并重绘草稿折线；
+// 为 false：解绑点击、清除草稿折线并恢复光标。
+watch(() => mapStore.isDrawing, (drawing) => {
+  if (drawing) bindDrawingClick()
+  else unbindDrawingClick()
 })
 
 // --- Lifecycle ---
