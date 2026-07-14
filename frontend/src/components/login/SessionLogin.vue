@@ -27,12 +27,22 @@ const userList = ref([])
 
 // --- User list ---
 function populateUsers(data) {
-  if (data?.users && Array.isArray(data.users)) {
+  if (data?.users && Array.isArray(data.users) && data.users.length > 0) {
     userList.value = data.users
-    if (data.users.length > 0 && !selectedUser.value) {
-      selectedUser.value = data.users[0].username || data.users[0].name || ''
+    if (!selectedUser.value) {
+      const last = data.last_user || data.lastUser
+      selectedUser.value = last || data.users[0].username || data.users[0].name || ''
+      onUserSelect()
     }
   }
+}
+
+// --- Load saved user combo from backend (对齐原始 loadInitialData 填充 user-combo) ---
+async function loadUserCombo() {
+  try {
+    const data = await callAPI('get_initial_data')
+    if (data) populateUsers(data)
+  } catch (_) {}
 }
 
 function onUserSelect() {
@@ -41,10 +51,12 @@ function onUserSelect() {
   )
   if (user) {
     loginForm.username = user.username || user.name || ''
+    loginForm.password = ''
+    autoFillPassword()
   }
 }
 
-// --- Auto-fill via backend ---
+// --- Auto-fill password & UA via backend (on_user_selected) ---
 async function autoFillPassword() {
   if (!loginForm.username) return
   try {
@@ -52,6 +64,8 @@ async function autoFillPassword() {
     if (data?.password) {
       loginForm.password = data.password
     }
+    const ua = data?.ua || data?.user_agent
+    if (ua) userAgent.value = ua
   } catch (_) {}
 }
 
@@ -109,7 +123,7 @@ function handleImport() {
 // --- Lifecycle ---
 onMounted(() => {
   populateUsers(props.initialData)
-  randomUA()
+  loadUserCombo()
 })
 </script>
 
@@ -122,7 +136,7 @@ onMounted(() => {
         class="w-full appearance-none rounded-xl border-2 border-slate-200 bg-white px-4 py-3 pr-10 text-sm font-medium text-slate-700 outline-none transition-colors focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
         @change="onUserSelect"
       >
-        <option value="">选择已保存的账号</option>
+        <option value="">请选择用户</option>
         <option v-for="user in userList" :key="user.username || user.name" :value="user.username || user.name">
           {{ user.display_name || user.nickname || user.username || user.name }}
         </option>
@@ -189,17 +203,28 @@ onMounted(() => {
     </button>
 
     <!-- User-Agent section -->
-    <div class="flex items-center gap-2 px-1">
-      <p class="flex-1 truncate text-xs text-slate-400" :title="userAgent">
-        <span class="font-medium text-slate-500">UA:</span> {{ userAgent || '未设置' }}
+    <div class="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          User-Agent 标识
+        </div>
+        <button
+          class="shrink-0 flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          @click="randomUA"
+          title="随机生成新的User-Agent，用于模拟不同设备和浏览器"
+        >
+          <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114.3-3M20 15a8 8 0 01-14.3 3" />
+          </svg>
+          随机
+        </button>
+      </div>
+      <p class="break-all text-xs text-slate-400" :title="userAgent">
+        {{ userAgent || '(未加载)' }}
       </p>
-      <button
-        class="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
-        @click="randomUA"
-        title="随机更换 User-Agent"
-      >
-        换
-      </button>
     </div>
 
     <!-- Messages -->

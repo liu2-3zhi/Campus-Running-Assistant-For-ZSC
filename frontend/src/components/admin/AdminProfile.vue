@@ -10,8 +10,11 @@ const success = ref('')
 const profile = ref({
   avatar: '',
   display_name: '',
+  username: '',
+  phone: '',
   theme: 'light',
   theme_style: '',
+  two_factor_enabled: false,
 })
 
 const passwordForm = ref({
@@ -19,6 +22,12 @@ const passwordForm = ref({
   new_password: '',
   confirm_password: '',
 })
+
+/* ── 2FA state ── */
+const twoFA = ref({ secret: '', qr_uri: '', code: '' })
+const generating2FA = ref(false)
+const enabling2FA = ref(false)
+const disabling2FA = ref(false)
 
 const savingName = ref(false)
 const savingTheme = ref(false)
@@ -47,11 +56,16 @@ async function loadProfile() {
   try {
     const res = await callRawAPI('/auth/user/details', 'GET')
     const user = res.user || res
+    const rawAvatar = user.avatar_url || user.avatar || ''
     profile.value = {
-      avatar: user.avatar_url || user.avatar || '',
+      // default_avatar.png 视为无自定义头像
+      avatar: (rawAvatar && rawAvatar !== 'default_avatar.png') ? rawAvatar : '',
       display_name: user.nickname || user.display_name || '',
+      username: user.auth_username || user.username || '',
+      phone: user.phone || '',
       theme: user.theme || 'light',
       theme_style: user.theme_style || 'default',
+      two_factor_enabled: user['2fa_enabled'] || user.two_factor_enabled || false,
     }
   } catch (e) {
     error.value = e.message || '加载个人信息失败'
@@ -165,6 +179,59 @@ function triggerAvatarUpload() {
   input.click()
 }
 
+/* ── 2FA management ── */
+async function generate2FA() {
+  generating2FA.value = true
+  clearMessages()
+  try {
+    const res = await callRawAPI('/auth/2fa/generate', 'POST', {})
+    if (res.success === false) throw new Error(res.message || '生成失败')
+    twoFA.value = { secret: res.secret || '', qr_uri: res.qr_uri || '', code: '' }
+    success.value = '已生成 2FA 密钥，请在验证器 App 中添加后输入验证码启用'
+  } catch (e) {
+    error.value = e.message || '生成 2FA 密钥失败'
+  } finally {
+    generating2FA.value = false
+  }
+}
+
+async function enable2FA() {
+  const code = (twoFA.value.code || '').trim()
+  if (!/^\d{6}$/.test(code)) {
+    error.value = '请输入 6 位验证码'
+    return
+  }
+  enabling2FA.value = true
+  clearMessages()
+  try {
+    const res = await callRawAPI('/auth/2fa/enable', 'POST', { code })
+    if (res.success === false) throw new Error(res.message || '启用失败')
+    success.value = '2FA 已启用'
+    twoFA.value = { secret: '', qr_uri: '', code: '' }
+    await loadProfile()
+  } catch (e) {
+    error.value = e.message || '启用 2FA 失败'
+  } finally {
+    enabling2FA.value = false
+  }
+}
+
+async function disable2FA() {
+  if (!confirm('确定要关闭双因素认证 (2FA) 吗？')) return
+  disabling2FA.value = true
+  clearMessages()
+  try {
+    const res = await callRawAPI('/auth/2fa/disable', 'POST', {})
+    if (res.success === false) throw new Error(res.message || '关闭失败')
+    success.value = '2FA 已关闭'
+    await loadProfile()
+  } catch (e) {
+    error.value = e.message || '关闭 2FA 失败'
+  } finally {
+    disabling2FA.value = false
+  }
+}
+
 onMounted(loadProfile)
 </script>
 
@@ -259,6 +326,54 @@ onMounted(loadProfile)
           <button class="btn btn-primary text-sm" :disabled="changingPassword" @click="changePassword">
             {{ changingPassword ? '提交中...' : '修改密码' }}
           </button>
+        </div>
+      </div>
+
+      <!-- Two-factor authentication -->
+      <div class="panel p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-medium text-[var(--ink)]">双因素认证 (2FA)</h3>
+          <span
+            v-if="profile.two_factor_enabled"
+            class="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700"
+          >已启用</span>
+          <span v-else class="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">未启用</span>
+        </div>
+
+        <!-- Enabled: allow disabling -->
+        <div v-if="profile.two_factor_enabled" class="space-y-3">
+          <p class="text-sm text-[var(--ink-secondary)]">您的账号已开启双因素认证，登录时需要输入验证器 App 生成的动态验证码。</p>
+          <button class="btn btn-danger text-sm" :disabled="disabling2FA" @click="disable2FA">
+            {{ disabling2FA ? '关闭中...' : '关闭 2FA' }}
+          </button>
+        </div>
+
+        <!-- Disabled: setup flow -->
+        <div v-else class="space-y-3 max-w-md">
+          <p class="text-sm text-[var(--ink-secondary)]">开启后可提升账号安全性。请先生成密钥，将其添加到验证器 App，再输入动态验证码完成启用。</p>
+          <button class="btn btn-secondary text-sm" :disabled="generating2FA" @click="generate2FA">
+            {{ generating2FA ? '生成中...' : '生成 2FA 密钥' }}
+          </button>
+
+          <div v-if="twoFA.secret" class="space-y-3 pt-1">
+            <div>
+              <label class="block text-xs text-[var(--ink-secondary)] mb-1">密钥（手动添加到验证器）</label>
+              <input :value="twoFA.secret" readonly class="input-field w-full font-mono text-sm" @focus="$event.target.select()" />
+            </div>
+            <div v-if="twoFA.qr_uri">
+              <label class="block text-xs text-[var(--ink-secondary)] mb-1">otpauth 链接</label>
+              <textarea :value="twoFA.qr_uri" readonly rows="2" class="input-field w-full font-mono text-xs" @focus="$event.target.select()"></textarea>
+            </div>
+            <div>
+              <label class="block text-xs text-[var(--ink-secondary)] mb-1">验证码</label>
+              <div class="flex items-center gap-3">
+                <input v-model="twoFA.code" class="input-field flex-1" type="text" inputmode="numeric" maxlength="6" placeholder="6 位动态验证码" />
+                <button class="btn btn-primary text-sm" :disabled="enabling2FA" @click="enable2FA">
+                  {{ enabling2FA ? '启用中...' : '启用' }}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </template>

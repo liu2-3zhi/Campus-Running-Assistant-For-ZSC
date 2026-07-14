@@ -45,6 +45,7 @@ const registerForm = reactive({
 const show2FA = ref(false)
 const twoFACode = ref('')
 const pending2FAData = ref(null)
+const twoFAUsername = ref('')
 
 // Captcha
 const loginCaptchaIframeSrc = ref('')
@@ -327,6 +328,24 @@ async function handleLogin() {
     const data = await res.json()
 
     if (!data.success) {
+      // 手机号未注册 → 引导跳转注册并预填手机号/验证码
+      if (loginMode.value === 'phone' && /未注册|不存在|未绑定/.test(data.message || '')) {
+        const jump = await Swal.fire({
+          icon: 'info',
+          title: '手机号未注册',
+          text: data.message || '该手机号尚未注册，是否立即前往注册？',
+          showCancelButton: true,
+          confirmButtonText: '前往注册',
+          cancelButtonText: '取消',
+        })
+        if (jump.isConfirmed) {
+          activeTab.value = 'register'
+          registerForm.phone = loginForm.phone
+          if (passwordMode.value === 'sms') registerForm.smsCode = loginForm.smsCode
+          loadCaptcha('register')
+          return
+        }
+      }
       errorMsg.value = data.message || '登录失败'
       loadCaptcha('login')
       return
@@ -334,6 +353,8 @@ async function handleLogin() {
 
     if (data.requires_2fa) {
       pending2FAData.value = data
+      twoFAUsername.value = data.auth_username
+        || (loginMode.value === 'phone' ? loginForm.phone : loginForm.username)
       show2FA.value = true
       return
     }
@@ -383,6 +404,16 @@ async function handleRegister() {
 
   if (!registerForm.username || !registerForm.password) {
     errorMsg.value = '请填写用户名和密码'
+    return
+  }
+
+  if (/[一-龥]/.test(registerForm.username)) {
+    errorMsg.value = '用户名不能包含中文'
+    return
+  }
+
+  if (registerForm.password.length < 6) {
+    errorMsg.value = '密码长度至少为6个字符'
     return
   }
 
@@ -444,7 +475,7 @@ async function handle2FAVerify() {
       headers,
       credentials: 'include',
       body: JSON.stringify({
-        auth_username: pending2FAData.value?.auth_username || '',
+        auth_username: twoFAUsername.value || pending2FAData.value?.auth_username || '',
         code: twoFACode.value,
       }),
     })
@@ -497,9 +528,9 @@ onUnmounted(() => {
   <div class="w-full">
     <!-- 2FA form -->
     <div v-if="show2FA" class="space-y-4">
-      <h3 class="text-lg font-semibold">两步验证</h3>
+      <h3 class="text-lg font-semibold">双因素认证</h3>
       <p class="text-sm" style="color: var(--ink-secondary)">
-        请输入您的身份验证器应用生成的6位验证码
+        请输入您的验证器应用中的6位验证码
       </p>
       <input
         v-model="twoFACode"
@@ -532,14 +563,14 @@ onUnmounted(() => {
                 :class="{ active: loginMode === 'username' }"
                 @click="loginMode = 'username'; passwordMode = 'password'"
               >
-                账号登录
+                用户名登录
               </button>
               <button
                 class="tab-button"
                 :class="{ active: loginMode === 'phone' }"
                 @click="loginMode = 'phone'"
               >
-                手机登录
+                手机号登录
               </button>
             </div>
 
@@ -727,7 +758,7 @@ onUnmounted(() => {
                 v-model="registerForm.username"
                 type="text"
                 class="input-field"
-                placeholder="请输入用户名"
+                placeholder="请输入用户名（3-20字符，不含中文）"
                 autocomplete="username"
               />
             </div>
@@ -778,7 +809,7 @@ onUnmounted(() => {
                 v-model="registerForm.nickname"
                 type="text"
                 class="input-field"
-                placeholder="请输入昵称（可选）"
+                placeholder="请输入昵称（可含中文）"
               />
             </div>
 
@@ -819,7 +850,7 @@ onUnmounted(() => {
                 v-model="registerForm.password"
                 type="password"
                 class="input-field"
-                placeholder="请输入密码"
+                placeholder="请输入密码（至少6字符）"
                 autocomplete="new-password"
               />
             </div>
@@ -833,6 +864,7 @@ onUnmounted(() => {
                 class="input-field"
                 placeholder="请再次输入密码"
                 autocomplete="new-password"
+                @keyup.enter="handleRegister"
               />
             </div>
 
@@ -846,6 +878,7 @@ onUnmounted(() => {
                   maxlength="6"
                   class="input-field flex-1"
                   placeholder="请输入图形验证码"
+                  @keyup.enter="handleRegister"
                 />
                 <div
                   ref="registerCaptchaContainerRef"
@@ -890,7 +923,7 @@ onUnmounted(() => {
             <!-- Available runs hint (conditional) -->
             <div v-if="showAvailableRuns && availableRunsText" class="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-700 dark:bg-green-900/20">
               <p class="text-center text-sm font-medium text-green-700 dark:text-green-400">
-                {{ availableRunsText }}
+                🎁 {{ availableRunsText }}
               </p>
             </div>
 

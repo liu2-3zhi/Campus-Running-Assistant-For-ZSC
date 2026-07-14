@@ -11,7 +11,13 @@ const REFRESH_INTERVAL = 5
 let refreshTimer = null
 let countdownTimer = null
 
-const componentOrder = ['core', 'payment', 'sms']
+const componentOrder = ['running_core', 'payment_system', 'sms_system']
+
+const componentLabels = {
+  running_core: '核心服务（跑步执行）',
+  payment_system: '支付服务',
+  sms_system: '短信服务',
+}
 
 function statusColor(status) {
   if (status === 'healthy' || status === 'ok' || status === 'up') return 'bg-green-500'
@@ -21,7 +27,7 @@ function statusColor(status) {
 
 function statusLabel(status) {
   if (status === 'healthy' || status === 'ok' || status === 'up') return '正常'
-  if (status === 'degraded' || status === 'slow' || status === 'warning') return '异常'
+  if (status === 'degraded' || status === 'slow' || status === 'warning') return '部分异常'
   return '故障'
 }
 
@@ -33,14 +39,6 @@ function formatUptime(seconds) {
   if (d > 0) return d + '天 ' + h + '小时'
   if (h > 0) return h + '小时 ' + m + '分钟'
   return m + '分钟'
-}
-
-function formatBytes(bytes) {
-  if (!bytes && bytes !== 0) return '--'
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'
-  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB'
-  return (bytes / 1073741824).toFixed(2) + ' GB'
 }
 
 async function fetchHealth() {
@@ -120,8 +118,18 @@ onUnmounted(() => { stopAutoRefresh() })
     <div v-if="loading && !healthData" class="py-12 text-center text-[var(--ink-secondary)]">加载中...</div>
 
     <template v-else-if="healthData">
+      <!-- Summary -->
+      <div v-if="healthData.summary" class="panel p-3 flex flex-wrap gap-4 text-sm">
+        <span class="text-[var(--ink-secondary)]">核心异常组件：
+          <b :class="healthData.summary.critical_failed_count ? 'text-red-500' : 'text-[var(--ink)]'">{{ healthData.summary.critical_failed_count }}</b>
+        </span>
+        <span class="text-[var(--ink-secondary)]">非核心异常组件：
+          <b :class="healthData.summary.non_critical_failed_count ? 'text-yellow-500' : 'text-[var(--ink)]'">{{ healthData.summary.non_critical_failed_count }}</b>
+        </span>
+      </div>
+
       <!-- Component status cards -->
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div v-if="healthData.components" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div
           v-for="name in componentOrder"
           :key="name"
@@ -129,12 +137,15 @@ onUnmounted(() => { stopAutoRefresh() })
         >
           <span
             class="w-3 h-3 rounded-full flex-shrink-0"
-            :class="statusColor(healthData.components?.[name]?.status || healthData[name + '_status'] || 'unknown')"
+            :class="statusColor(healthData.components?.[name]?.status || 'unknown')"
           />
-          <div>
-            <div class="font-medium text-[var(--ink)] capitalize">{{ name === 'core' ? '核心服务' : name === 'payment' ? '支付服务' : '短信服务' }}</div>
+          <div class="min-w-0">
+            <div class="font-medium text-[var(--ink)]">{{ componentLabels[name] }}</div>
             <div class="text-xs text-[var(--ink-secondary)]">
-              {{ statusLabel(healthData.components?.[name]?.status || healthData[name + '_status'] || 'unknown') }}
+              {{ statusLabel(healthData.components?.[name]?.status || 'unknown') }}
+            </div>
+            <div v-if="healthData.components?.[name]?.message" class="text-xs text-[var(--ink-muted)] mt-0.5 break-words">
+              {{ healthData.components[name].message }}
             </div>
           </div>
         </div>
@@ -143,21 +154,22 @@ onUnmounted(() => { stopAutoRefresh() })
       <!-- Metrics -->
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div class="panel p-4">
-          <div class="text-xs text-[var(--ink-secondary)] mb-1">运行时间</div>
+          <div class="text-xs text-[var(--ink-secondary)] mb-1">整体状态</div>
+          <div class="text-lg font-semibold text-[var(--ink)] flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full" :class="statusColor(healthData.status)" />
+            {{ statusLabel(healthData.status) }}
+          </div>
+        </div>
+        <div class="panel p-4">
+          <div class="text-xs text-[var(--ink-secondary)] mb-1">运行时长</div>
           <div class="text-lg font-semibold text-[var(--ink)]">
-            {{ formatUptime(healthData.uptime || healthData.uptime_seconds) }}
+            {{ healthData.uptime_formatted || formatUptime(healthData.uptime_seconds) }}
           </div>
         </div>
         <div class="panel p-4">
           <div class="text-xs text-[var(--ink-secondary)] mb-1">响应时间</div>
           <div class="text-lg font-semibold text-[var(--ink)]">
-            {{ healthData.response_time ? (healthData.response_time + ' ms') : '--' }}
-          </div>
-        </div>
-        <div class="panel p-4">
-          <div class="text-xs text-[var(--ink-secondary)] mb-1">内存使用</div>
-          <div class="text-lg font-semibold text-[var(--ink)]">
-            {{ healthData.memory_usage ? formatBytes(healthData.memory_usage) : (healthData.memory ? healthData.memory : '--') }}
+            {{ (healthData.response_time_ms != null) ? (healthData.response_time_ms + ' ms') : '--' }}
           </div>
         </div>
       </div>

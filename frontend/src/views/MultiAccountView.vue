@@ -516,7 +516,7 @@ watch(() => appStore.multiPositions, (positions) => {
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-3">
         <h1 class="text-lg font-bold" style="color: var(--ink)">
-          多账号管理
+          多账号控制台
         </h1>
         <span
           class="rounded-full px-2.5 py-0.5 text-xs font-medium"
@@ -611,7 +611,7 @@ watch(() => appStore.multiPositions, (positions) => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              全部启动
+              全部开始
             </button>
             <button class="btn btn-danger text-sm" @click="stopAll">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -656,7 +656,7 @@ watch(() => appStore.multiPositions, (positions) => {
                 v-model.number="delaySettings.maxDelay"
                 type="number"
                 min="0"
-                max="300"
+                max="600"
                 class="input-field text-sm"
               />
             </div>
@@ -670,15 +670,18 @@ watch(() => appStore.multiPositions, (positions) => {
               class="h-4 w-4 rounded"
               @change="syncRunOnlyIncomplete"
             />
-            仅运行未完成账号
+            仅执行未完成的任务
           </label>
         </div>
 
         <!-- Account List Header -->
         <div class="panel p-4">
+          <h3 class="mb-3 text-sm font-semibold" style="color: var(--ink)">
+            账号列表 ({{ accounts.length }})
+          </h3>
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-3">
-              <label class="flex cursor-pointer items-center gap-2 text-sm">
+              <label v-show="accounts.length > 0" class="flex cursor-pointer items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   :checked="allSelected"
@@ -708,7 +711,7 @@ watch(() => appStore.multiPositions, (positions) => {
                 <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                模板
+                下载模板
               </button>
             </div>
           </div>
@@ -728,7 +731,7 @@ watch(() => appStore.multiPositions, (positions) => {
               class="py-6 text-center text-sm"
               style="color: var(--ink-muted)"
             >
-              暂无账号，请添加
+              请先添加或导入账号
             </div>
 
             <div
@@ -881,7 +884,7 @@ watch(() => appStore.multiPositions, (positions) => {
               刷新全部
             </button>
             <button class="btn btn-success px-2.5 py-1.5 text-xs" :disabled="selectedCount === 0" @click="startSelected">
-              启动选中
+              开始选中
             </button>
             <button class="btn btn-warning px-2.5 py-1.5 text-xs" :disabled="selectedCount === 0" @click="stopSelected">
               停止选中
@@ -999,7 +1002,7 @@ watch(() => appStore.multiPositions, (positions) => {
         >
           <div class="mb-2 flex items-center justify-between">
             <h3 class="text-sm font-semibold" style="color: var(--ink)">
-              日志
+              全局日志
             </h3>
             <button
               class="btn btn-ghost px-2 py-1 text-xs"
