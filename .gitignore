@@ -31,3 +31,7 @@ auto_attendance_config.json
 /.claude
 /random_background_image
 /.worktrees
+.pytest_cache
+/dist
+/docs/superpowers
+/frontend/node_modules

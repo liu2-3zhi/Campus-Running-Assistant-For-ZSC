@@ -36922,9 +36922,21 @@ def start_web_server(args_param):
             logging.error(f"[用户登出] 处理登出请求时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"登出失败: {str(e)}"}), 500
 
+    def _is_vue_mode():
+        """检查当前前端模式是否为 Vue"""
+        try:
+            cfg = _read_config_ini(CONFIG_FILE)
+            if cfg:
+                return cfg.get("Config", "frontend_mode", fallback="original").strip().lower() == "vue"
+        except Exception:
+            pass
+        return False
+
     @app.route("/api/frontend_config.js")
     def get_frontend_config_javascript():
         """将前端配置以JavaScript形式返回，并尝试根据Referer恢复会话"""
+        if not _is_vue_mode():
+            return jsonify({"success": False, "message": "Not available"}), 404
         # ==========================================
         # 逻辑合并：尝试从 Referer 恢复会话状态
         # ==========================================
@@ -36988,10 +37000,75 @@ def start_web_server(args_param):
         resp.mimetype = "application/javascript"
         return resp
 
+    # Vue 前端自动构建：vue 模式下若 dist/ 不存在则尝试构建
+    _vue_dist_dir = os.path.join(os.path.dirname(__file__), "dist")
+    _vue_frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
+    if _is_vue_mode() and not os.path.exists(os.path.join(_vue_dist_dir, "index.html")):
+        if os.path.exists(os.path.join(_vue_frontend_dir, "package.json")):
+            logging.info("[Vue] dist/ 不存在，尝试自动构建前端...")
+            try:
+                _npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
+                # 安装依赖
+                if not os.path.exists(os.path.join(_vue_frontend_dir, "node_modules")):
+                    subprocess.run(
+                        [_npm_cmd, "install"],
+                        cwd=_vue_frontend_dir,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+                    logging.info("[Vue] npm install 完成")
+                # 构建
+                subprocess.run(
+                    [_npm_cmd, "run", "build"],
+                    cwd=_vue_frontend_dir,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                logging.info("[Vue] 前端构建完成")
+            except FileNotFoundError:
+                logging.warning("[Vue] npm 未安装，无法自动构建前端。请手动在 frontend/ 目录运行 npm install && npm run build")
+            except subprocess.TimeoutExpired:
+                logging.warning("[Vue] 前端构建超时")
+            except subprocess.CalledProcessError as e:
+                logging.warning(f"[Vue] 前端构建失败: {e.stderr or e.stdout or e}")
+            except Exception as e:
+                logging.warning(f"[Vue] 前端构建异常: {e}")
+        else:
+            logging.warning("[Vue] frontend_mode 为 vue 但 frontend/ 目录不存在，无法提供 Vue 前端")
+
+    @app.route("/assets/<path:filename>")
+    def serve_vue_assets(filename):
+        """服务 Vue 构建产物的静态资源"""
+        if not _is_vue_mode():
+            return jsonify({"success": False, "message": "Not available"}), 404
+        assets_dir = os.path.join(_vue_dist_dir, "assets")
+        if os.path.exists(assets_dir):
+            return send_from_directory(assets_dir, filename)
+        return jsonify({"success": False, "message": "Asset not found"}), 404
+
+    def _serve_vue_index():
+        """尝试服务 Vue 构建的 index.html"""
+        vue_index = os.path.join(_vue_dist_dir, "index.html")
+        if os.path.exists(vue_index):
+            return send_from_directory(_vue_dist_dir, "index.html")
+        return None
+
     @app.route("/")
     @app.route("/uuid=<uuid>")
+    @app.route("/app")
+    @app.route("/multi")
     def index(uuid=None):
         """首页：显示应用界面（统一入口）"""
+        vue_mode = _is_vue_mode()
+
+        # original 模式下，/app 和 /multi 是 Vue SPA 专属路由，重定向回首页
+        if not vue_mode and request.path in ("/app", "/multi"):
+            return redirect(url_for("index"))
+
         # 如果提供了uuid但格式不正确，重定向到纯首页
         if uuid:
             uuid_pattern = re.compile(
@@ -37002,7 +37079,13 @@ def start_web_server(args_param):
                 logging.warning(f"无效的UUID格式: {uuid[:40]}... 重定向到首页")
                 return redirect(url_for("index"))
 
-        # 每次请求都重新读取入口HTML，避免服务进程继续提供启动时的旧快照
+        # Vue 模式下，优先服务 Vue 构建产物
+        if vue_mode:
+            vue_response = _serve_vue_index()
+            if vue_response is not None:
+                return vue_response
+
+        # 原版 index.html
         try:
             with open("index.html", "r", encoding="utf-8") as file:
                 current_html_content = file.read()
