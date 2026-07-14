@@ -1,5 +1,24 @@
-# Dockerfile for Python Running Helper
-# 使用官方Python 3.11镜像作为基础镜像
+# ============================================================
+# Stage 1: 构建 Vue 前端
+# ============================================================
+FROM node:22-slim AS frontend-builder
+
+WORKDIR /build
+
+# 先拷贝依赖清单，利用 Docker 缓存层
+COPY frontend/package.json frontend/package-lock.json* ./frontend/
+
+RUN cd frontend && npm ci --prefer-offline
+
+# 再拷贝源码与 vite 配置（outDir 指向 ../dist）
+COPY frontend/ ./frontend/
+
+RUN cd frontend && npm run build
+# 构建产物位于 /build/dist/
+
+# ============================================================
+# Stage 2: Python 应用镜像
+# ============================================================
 FROM python:3.11-slim
 
 # 设置工作目录
@@ -49,6 +68,9 @@ RUN apt-get update && apt-get install -y dos2unix parallel
 # 复制应用程序文件
 COPY . .
 
+# 从 Stage 1 拷贝预编译好的 Vue 前端产物
+COPY --from=frontend-builder /build/dist/ /app/dist/
+
 # 复制 nginx 日志转发脚本（用于集中处理日志）
 COPY ./nginx/nginx_log_forwarder.py /app/nginx_log_forwarder.py
 
@@ -62,7 +84,7 @@ EXPOSE 80 443
 ENV PYTHONUNBUFFERED=1
 
 # 放宽权限，确保运行时可读写项目目录（保持与当前项目行为一致）
-RUN chmod -R 777 . 
+RUN chmod -R 777 .
 
 # 复制入口脚本并赋予执行权限
 COPY ./docker/docker-entrypoint.sh /app/docker-entrypoint.sh

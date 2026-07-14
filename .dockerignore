@@ -16,6 +16,10 @@ build
 .pytest_cache
 .coverage
 
+# Node.js 相关
+frontend/node_modules
+frontend/.vite
+
 # 虚拟环境
 venv
 env
@@ -81,3 +85,4 @@ auto_attendance_config.json
 *.back
 /.claude
 /random_background_image
+/docs/superpowers
