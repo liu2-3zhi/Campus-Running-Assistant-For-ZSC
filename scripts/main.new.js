@@ -16887,8 +16887,11 @@ async function callPythonAPI(method, ...args) {
           text: errorMsg,
           confirmButtonText: "返回登录",
           allowOutsideClick: false,
-        }).then(() => {
-          window.location.href = "/";
+          allowEscapeKey: false,
+        }).then((result) => {
+          if (result.isConfirmed) {
+            window.location.href = "/";
+          }
         });
         // }
       }
@@ -32249,8 +32252,9 @@ async function selectSession(sessionId) {
           text: result.message || "认证已失效，请重新登录",
           confirmButtonText: "返回登录",
           allowOutsideClick: false,
-        }).then(() => {
-          window.location.href = "/";
+          allowEscapeKey: false,
+        }).then((r) => {
+          if (r.isConfirmed) window.location.href = "/";
         });
       }
     }
@@ -32580,8 +32584,9 @@ async function selectSessionFromPicker(sessionId) {
           text: result.message || "认证已失效，请重新登录",
           confirmButtonText: "返回登录",
           allowOutsideClick: false,
-        }).then(() => {
-          window.location.href = "/";
+          allowEscapeKey: false,
+        }).then((r) => {
+          if (r.isConfirmed) window.location.href = "/";
         });
       }
     }
