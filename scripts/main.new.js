@@ -102,6 +102,16 @@ captchaIds_modal = null;
 captchaIds_mobile_login = null;
 captchaIds_mobile_register = null;
 
+const RUNTIME_CAPTCHA_PROVIDER_DEFAULT = {
+  provider: "image",
+  behavior_type: "SLIDER",
+};
+const BEHAVIOR_CAPTCHA_VERIFIED_CODE = "behavior-verified";
+let runtimeCaptchaProviderConfig = null;
+let runtimeCaptchaProviderConfigPromise = null;
+let behaviorCaptchaLoaderPromise = null;
+const behaviorCaptchaInstances = {};
+
 const configLoadState = {
   sms: false,
   system: false,
@@ -18627,7 +18637,344 @@ const captchaDimensions = {
 
 // 当打开短信验证码模态框时，记录请求期望的宽度（以便传给后端并设置iframe）
 let captchaModalRequestedWidth = null;
+
+function normalizeRuntimeCaptchaProviderConfig(settings = {}) {
+  const provider =
+    String(settings.provider || "image").trim().toLowerCase() === "behavior"
+      ? "behavior"
+      : "image";
+  const behaviorType = String(
+    settings.behavior_type || RUNTIME_CAPTCHA_PROVIDER_DEFAULT.behavior_type,
+  )
+    .trim()
+    .toUpperCase();
+  return {
+    provider,
+    behavior_type: behaviorType || RUNTIME_CAPTCHA_PROVIDER_DEFAULT.behavior_type,
+  };
+}
+
+function setRuntimeCaptchaProviderConfig(settings) {
+  runtimeCaptchaProviderConfig = normalizeRuntimeCaptchaProviderConfig(settings);
+  runtimeCaptchaProviderConfigPromise = null;
+  return runtimeCaptchaProviderConfig;
+}
+
+function invalidateRuntimeCaptchaProviderConfig() {
+  runtimeCaptchaProviderConfig = null;
+  runtimeCaptchaProviderConfigPromise = null;
+}
+
+async function fetchRuntimeCaptchaProviderConfig() {
+  if (runtimeCaptchaProviderConfig) {
+    return runtimeCaptchaProviderConfig;
+  }
+  if (runtimeCaptchaProviderConfigPromise) {
+    return runtimeCaptchaProviderConfigPromise;
+  }
+
+  runtimeCaptchaProviderConfigPromise = fetch("/api/captcha/provider", {
+    method: "GET",
+    credentials: "include",
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      if (!data || data.success === false) {
+        throw new Error(data?.message || "验证码提供方配置读取失败");
+      }
+      return setRuntimeCaptchaProviderConfig(data);
+    })
+    .catch((error) => {
+      console.warn("[验证码] 读取提供方配置失败，回退图片验证码:", error);
+      return setRuntimeCaptchaProviderConfig(RUNTIME_CAPTCHA_PROVIDER_DEFAULT);
+    });
+
+  return runtimeCaptchaProviderConfigPromise;
+}
+
+async function isBehaviorCaptchaProvider() {
+  const providerConfig = await fetchRuntimeCaptchaProviderConfig();
+  return providerConfig.provider === "behavior";
+}
+
+function ensureBehaviorCaptchaLoader() {
+  if (window.initTAC) {
+    return Promise.resolve();
+  }
+  if (behaviorCaptchaLoaderPromise) {
+    return behaviorCaptchaLoaderPromise;
+  }
+  behaviorCaptchaLoaderPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "/api/captcha/behavior/loader.js";
+    script.async = true;
+    script.onload = () => {
+      if (window.initTAC) {
+        resolve();
+      } else {
+        reject(new Error("TAC loader 未暴露 initTAC"));
+      }
+    };
+    script.onerror = () => reject(new Error("验证码 SDK 加载失败"));
+    document.head.appendChild(script);
+  }).catch((error) => {
+    behaviorCaptchaLoaderPromise = null;
+    throw error;
+  });
+  return behaviorCaptchaLoaderPromise;
+}
+
+function getCaptchaDisplayIdForForm(formType) {
+  if (formType === "login") return "auth-login-captcha-display";
+  if (formType === "register") return "auth-register-captcha-display";
+  if (formType === "mobile-login") return "mobile-login-captcha-display";
+  if (formType === "mobile-register") return "mobile-register-captcha-display";
+  return "";
+}
+
+function getCaptchaInputIdForForm(formType) {
+  if (formType === "login") return "auth-login-captcha";
+  if (formType === "register") return "auth-register-captcha";
+  if (formType === "mobile-login") return "mobile-login-captcha";
+  if (formType === "mobile-register") return "mobile-register-captcha";
+  return "";
+}
+
+function setCaptchaIdForForm(formType, captchaId) {
+  if (formType === "login") {
+    captchaIds_login = captchaId;
+  } else if (formType === "register") {
+    captchaIds_register = captchaId;
+  } else if (formType === "mobile-login") {
+    captchaIds_mobile_login = captchaId;
+  } else if (formType === "mobile-register") {
+    captchaIds_mobile_register = captchaId;
+  }
+}
+
+function setCaptchaInputValueForForm(formType, value) {
+  const inputId = getCaptchaInputIdForForm(formType);
+  const input = inputId ? document.getElementById(inputId) : null;
+  if (input) {
+    input.value = value;
+  }
+}
+
+function setCaptchaInputBehaviorMode(formType, enabled) {
+  const inputId = getCaptchaInputIdForForm(formType);
+  const input = inputId ? document.getElementById(inputId) : null;
+  if (!input) return;
+
+  if (enabled) {
+    if (input.dataset.imageCaptchaPlaceholder === undefined) {
+      input.dataset.imageCaptchaPlaceholder = input.getAttribute("placeholder") || "";
+    }
+    input.classList.add("hidden");
+    input.setAttribute("aria-hidden", "true");
+    input.setAttribute("tabindex", "-1");
+    return;
+  }
+
+  input.classList.remove("hidden");
+  input.removeAttribute("aria-hidden");
+  input.removeAttribute("tabindex");
+  if (input.dataset.imageCaptchaPlaceholder !== undefined) {
+    input.setAttribute("placeholder", input.dataset.imageCaptchaPlaceholder);
+  }
+}
+
+function setCaptchaDisplayBehaviorMode(displayElement, enabled) {
+  if (!displayElement) return;
+  if (enabled) {
+    displayElement.dataset.behaviorCaptcha = "true";
+    if (
+      displayElement.hasAttribute("onclick") &&
+      displayElement.dataset.imageCaptchaOnclick === undefined
+    ) {
+      displayElement.dataset.imageCaptchaOnclick =
+        displayElement.getAttribute("onclick") || "";
+    }
+    displayElement.removeAttribute("onclick");
+    displayElement.onclick = null;
+    return;
+  }
+
+  delete displayElement.dataset.behaviorCaptcha;
+  if (displayElement.dataset.imageCaptchaOnclick !== undefined) {
+    displayElement.setAttribute("onclick", displayElement.dataset.imageCaptchaOnclick);
+  }
+}
+
+function destroyBehaviorCaptchaInstance(instanceKey) {
+  const instance = behaviorCaptchaInstances[instanceKey];
+  if (!instance) return;
+  try {
+    if (typeof instance.destroyWindow === "function") {
+      instance.destroyWindow();
+    } else if (typeof instance.destroy === "function") {
+      instance.destroy();
+    }
+  } catch (error) {
+    console.warn("[验证码] 销毁行为验证码实例失败:", error);
+  }
+  behaviorCaptchaInstances[instanceKey] = null;
+}
+
+async function loadBehaviorCaptcha(formType) {
+  const displayId = getCaptchaDisplayIdForForm(formType);
+  const displayElement = displayId ? document.getElementById(displayId) : null;
+  if (!displayElement) {
+    console.error(`[验证码-behavior] 未找到验证码显示元素: ${displayId || formType}`);
+    return;
+  }
+
+  setCaptchaIdForForm(formType, "");
+  setCaptchaInputValueForForm(formType, "");
+  setCaptchaInputBehaviorMode(formType, true);
+  setCaptchaDisplayBehaviorMode(displayElement, true);
+
+  const widgetId = `behavior-captcha-${formType}`;
+  const statusId = `${widgetId}-status`;
+  displayElement.style.width = "";
+  displayElement.style.height = "";
+  displayElement.innerHTML = `
+    <div class="w-full" style="min-height:60px;">
+      <div id="${widgetId}" style="min-height:60px;"></div>
+      <p id="${statusId}" class="mt-1 text-xs text-slate-400">请完成上方人机验证</p>
+    </div>
+  `;
+
+  try {
+    const providerConfig = await fetchRuntimeCaptchaProviderConfig();
+    await ensureBehaviorCaptchaLoader();
+    destroyBehaviorCaptchaInstance(formType);
+    const behaviorType =
+      providerConfig.behavior_type || RUNTIME_CAPTCHA_PROVIDER_DEFAULT.behavior_type;
+    const tac = await window.initTAC("/api/captcha/behavior/tac/", {
+      requestCaptchaDataUrl:
+        "/api/captcha/behavior/gen?type=" + encodeURIComponent(behaviorType),
+      validCaptchaUrl: "/api/captcha/behavior/check",
+      bindEl: `#${widgetId}`,
+      validSuccess: (res) => {
+        const captchaId = res && res.data ? res.data.id : "";
+        setCaptchaIdForForm(formType, captchaId);
+        setCaptchaInputValueForForm(formType, "behavior-verified");
+        const statusElement = document.getElementById(statusId);
+        if (statusElement) {
+          statusElement.textContent = "验证通过";
+          statusElement.className = "mt-1 text-xs text-green-600";
+        }
+      },
+      validFail: (res, code, tacInstance) => {
+        setCaptchaIdForForm(formType, "");
+        setCaptchaInputValueForForm(formType, "");
+        if (tacInstance && typeof tacInstance.reloadCaptcha === "function") {
+          tacInstance.reloadCaptcha();
+        }
+      },
+    }, { logoUrl: null });
+    behaviorCaptchaInstances[formType] = tac;
+    if (tac && typeof tac.init === "function") {
+      tac.init();
+    }
+  } catch (error) {
+    displayElement.innerHTML =
+      '<span class="text-red-500 text-xs">人机验证加载失败</span>';
+    console.error("[验证码-behavior] 加载异常:", error);
+  }
+}
+
+function setCaptchaModalInputBehaviorMode(enabled) {
+  const modalInput = document.getElementById("captcha-modal-input");
+  if (!modalInput) return;
+  const inputGroup = modalInput.closest(".space-y-2");
+  if (enabled) {
+    modalInput.dataset.behaviorCaptcha = "true";
+    modalInput.value = "";
+    modalInput.classList.add("hidden");
+    modalInput.setAttribute("aria-hidden", "true");
+    modalInput.setAttribute("tabindex", "-1");
+    if (inputGroup) inputGroup.classList.add("hidden");
+    return;
+  }
+
+  delete modalInput.dataset.behaviorCaptcha;
+  modalInput.classList.remove("hidden");
+  modalInput.removeAttribute("aria-hidden");
+  modalInput.removeAttribute("tabindex");
+  if (inputGroup) inputGroup.classList.remove("hidden");
+}
+
+async function loadBehaviorCaptchaModal() {
+  const displayElement = document.getElementById("captcha-modal-display");
+  const modalInput = document.getElementById("captcha-modal-input");
+  if (!displayElement) {
+    console.error("[验证码模态窗-behavior] 未找到验证码显示元素");
+    return;
+  }
+
+  captchaIds_modal = "";
+  setCaptchaModalInputBehaviorMode(true);
+  setCaptchaDisplayBehaviorMode(displayElement, true);
+  displayElement.style.width = "100%";
+  displayElement.style.height = "auto";
+  displayElement.innerHTML = `
+    <div class="w-full" style="min-height:60px;">
+      <div id="captcha-modal-tac" style="min-height:60px;"></div>
+      <p id="captcha-modal-tac-status" class="mt-1 text-xs text-slate-400">请完成上方人机验证</p>
+    </div>
+  `;
+
+  try {
+    const providerConfig = await fetchRuntimeCaptchaProviderConfig();
+    await ensureBehaviorCaptchaLoader();
+    destroyBehaviorCaptchaInstance("modal");
+    const behaviorType =
+      providerConfig.behavior_type || RUNTIME_CAPTCHA_PROVIDER_DEFAULT.behavior_type;
+    const tac = await window.initTAC("/api/captcha/behavior/tac/", {
+      requestCaptchaDataUrl:
+        "/api/captcha/behavior/gen?type=" + encodeURIComponent(behaviorType),
+      validCaptchaUrl: "/api/captcha/behavior/check",
+      bindEl: "#captcha-modal-tac",
+      validSuccess: (res) => {
+        const captchaId = res && res.data ? res.data.id : "";
+        captchaIds_modal = captchaId;
+        if (modalInput) {
+          modalInput.value = "behavior-verified";
+        }
+        const statusElement = document.getElementById("captcha-modal-tac-status");
+        if (statusElement) {
+          statusElement.textContent = "验证通过，请点击确认发送";
+          statusElement.className = "mt-1 text-xs text-green-600";
+        }
+      },
+      validFail: (res, code, tacInstance) => {
+        captchaIds_modal = "";
+        if (modalInput) modalInput.value = "";
+        if (tacInstance && typeof tacInstance.reloadCaptcha === "function") {
+          tacInstance.reloadCaptcha();
+        }
+      },
+    }, { logoUrl: null });
+    behaviorCaptchaInstances.modal = tac;
+    if (tac && typeof tac.init === "function") {
+      tac.init();
+    }
+  } catch (error) {
+    displayElement.innerHTML =
+      '<span class="text-red-500 text-xs">人机验证加载失败</span>';
+    console.error("[验证码模态窗-behavior] 加载异常:", error);
+  }
+}
+
 async function loadCaptcha(formType) {
+  if (await isBehaviorCaptchaProvider()) {
+    return loadBehaviorCaptcha(formType);
+  }
+
   let displayId = undefined;
 
   if (formType === "login") {
@@ -18648,6 +18995,10 @@ async function loadCaptcha(formType) {
     console.error(`[验证码] 未找到验证码显示元素: ${displayId}`);
     return;
   }
+  destroyBehaviorCaptchaInstance(formType);
+  setCaptchaInputBehaviorMode(formType, false);
+  setCaptchaInputValueForForm(formType, "");
+  setCaptchaDisplayBehaviorMode(displayElement, false);
   displayElement.innerHTML =
     '<span class="text-slate-400 text-xs">加载中...</span>';
 
@@ -18773,6 +19124,10 @@ function refreshCaptcha(formType) {
 let pendingSMSContext = null;
 
 async function loadCaptchaModal(requestedWidth) {
+  if (await isBehaviorCaptchaProvider()) {
+    return loadBehaviorCaptchaModal();
+  }
+
   const displayElement = document.getElementById("captcha-modal-display");
 
   if (!displayElement) {
@@ -18780,6 +19135,10 @@ async function loadCaptchaModal(requestedWidth) {
     return;
   }
 
+  destroyBehaviorCaptchaInstance("modal");
+  setCaptchaModalInputBehaviorMode(false);
+  setCaptchaDisplayBehaviorMode(displayElement, false);
+  captchaIds_modal = "";
   displayElement.innerHTML =
     '<span class="text-slate-400 text-xs">加载中...</span>';
 
@@ -18982,13 +19341,14 @@ function closeCaptchaModal() {
 async function confirmCaptchaAndSendSMS() {
   const captchaInput = document.getElementById("captcha-modal-input");
   const captcha = captchaInput.value.trim();
+  const isBehaviorMode = captchaInput?.dataset.behaviorCaptcha === "true";
 
   if (!captcha) {
     // showModalAlert("请输入验证码");
     Swal.fire({
       icon: "warning",
-      title: "请输入验证码",
-      text: "请输入图形验证码",
+      title: isBehaviorMode ? "请完成人机验证" : "请输入验证码",
+      text: isBehaviorMode ? "请先完成上方人机验证" : "请输入图形验证码",
     });
     return;
   }
@@ -46042,6 +46402,9 @@ document.addEventListener("DOMContentLoaded", function () {
   );
   if (loginCaptchaDisplay) {
     loginCaptchaDisplay.addEventListener("click", function () {
+      if (loginCaptchaDisplay.dataset.behaviorCaptcha === "true") {
+        return;
+      }
       refreshCaptcha("login");
     });
   }
@@ -46059,6 +46422,9 @@ document.addEventListener("DOMContentLoaded", function () {
   );
   if (registerCaptchaDisplay) {
     registerCaptchaDisplay.addEventListener("click", function () {
+      if (registerCaptchaDisplay.dataset.behaviorCaptcha === "true") {
+        return;
+      }
       refreshCaptcha("register");
     });
   }
@@ -46768,6 +47134,208 @@ async function loadSystemConfig() {
  *
  * @returns {Promise<void>} 无返回值
  */
+const DEFAULT_CAPTCHA_PROVIDER_SETTINGS = {
+  provider: "image",
+  behavior_base_url: "",
+  behavior_api_key: "",
+  behavior_type: "SLIDER",
+};
+
+// 本地行为验证码支持的类型，参考 captcha-local API.md（C:/Users/Zelly/Documents/GitHub/captcha-local/API.md）。
+const BEHAVIOR_CAPTCHA_TYPES = [
+  { value: "SLIDER", label: "滑块验证码" },
+  { value: "SLIDER2", label: "滑块验证码 V2（旋转图块）" },
+  { value: "ROTATE", label: "旋转验证码" },
+  { value: "CONCAT", label: "滑动还原验证码" },
+  { value: "WORD_IMAGE_CLICK", label: "文字点选验证码" },
+  { value: "GESTURE", label: "曲线绘制验证码" },
+  { value: "CURVE", label: "滑动曲线验证码" },
+  { value: "CURVE2", label: "滑动曲线验证码 V2" },
+  { value: "CURVE3", label: "滑动曲线验证码 V3" },
+  { value: "WORD_ORDER_CLICK", label: "语序点选验证码" },
+  { value: "POW", label: "工作量证明验证码" },
+  { value: "MATH", label: "数学计算验证码" },
+  { value: "ICON_CLICK", label: "图标点选验证码" },
+  { value: "DIRECTION_CLICK", label: "方向识别验证码" },
+  { value: "RANDOM", label: "随机验证码" },
+];
+
+function getCaptchaFormElement(id) {
+  return document.getElementById(id);
+}
+
+function populateBehaviorCaptchaTypeSelects() {
+  const optionsHtml = BEHAVIOR_CAPTCHA_TYPES.map(
+    (item) => `<option value="${item.value}">${item.label}（${item.value}）</option>`,
+  ).join("");
+
+  ["captcha-behavior-type", "mobile-captcha-behavior-type"].forEach((id) => {
+    const select = getCaptchaFormElement(id);
+    if (!select || select.dataset.behaviorCaptchaTypesReady === "true") {
+      return;
+    }
+    const currentValue = select.value || DEFAULT_CAPTCHA_PROVIDER_SETTINGS.behavior_type;
+    select.innerHTML = optionsHtml;
+    select.dataset.behaviorCaptchaTypesReady = "true";
+    select.value = BEHAVIOR_CAPTCHA_TYPES.some((item) => item.value === currentValue)
+      ? currentValue
+      : DEFAULT_CAPTCHA_PROVIDER_SETTINGS.behavior_type;
+  });
+}
+
+function normalizeCaptchaProviderSettings(settings = {}) {
+  settings = settings || {};
+  const provider =
+    String(settings.provider || DEFAULT_CAPTCHA_PROVIDER_SETTINGS.provider)
+      .trim()
+      .toLowerCase() === "behavior"
+      ? "behavior"
+      : "image";
+  const behaviorType = String(
+    settings.behavior_type || DEFAULT_CAPTCHA_PROVIDER_SETTINGS.behavior_type,
+  )
+    .trim()
+    .toUpperCase();
+
+  return {
+    provider,
+    behavior_base_url: String(settings.behavior_base_url || "").trim(),
+    behavior_api_key: String(settings.behavior_api_key || ""),
+    behavior_type: BEHAVIOR_CAPTCHA_TYPES.some((item) => item.value === behaviorType)
+      ? behaviorType
+      : DEFAULT_CAPTCHA_PROVIDER_SETTINGS.behavior_type,
+  };
+}
+
+function toggleCaptchaProviderFields(prefix = "") {
+  const behaviorRadio = getCaptchaFormElement(`${prefix}captcha-provider-behavior`);
+  const serverFields = getCaptchaFormElement(`${prefix}captcha-behavior-fields`);
+  const imageFields = getCaptchaFormElement(`${prefix}captcha-image-fields`);
+  const provider = behaviorRadio && behaviorRadio.checked ? "behavior" : "image";
+  if (serverFields) {
+    serverFields.classList.toggle("hidden", provider !== "behavior");
+  }
+  if (imageFields) {
+    imageFields.classList.toggle("hidden", provider === "behavior");
+  }
+  setCaptchaProviderCardStates(prefix, provider);
+  setCaptchaProviderActionText(prefix, provider);
+}
+
+function setCaptchaProviderCardStates(prefix = "", provider = "image") {
+  ["image", "behavior"].forEach((item) => {
+    const radio = getCaptchaFormElement(`${prefix}captcha-provider-${item}`);
+    const card = radio ? radio.closest("[data-captcha-provider-card]") : null;
+    if (!card) return;
+    const active = item === provider;
+    card.classList.toggle("border-sky-400", active);
+    card.classList.toggle("bg-sky-50", active);
+    card.classList.toggle("ring-1", active);
+    card.classList.toggle("ring-sky-200", active);
+    card.classList.toggle("border-slate-200", !active);
+  });
+}
+
+function setCaptchaProviderActionText(prefix = "", provider = "image") {
+  const testButton = getCaptchaFormElement(`${prefix}test-captcha-btn`);
+  if (!testButton) return;
+  testButton.textContent = provider === "behavior" ? "🔄 测试服务器" : "🔄 测试生成";
+}
+
+function applyCaptchaProviderSettings(settings = {}, prefix = "") {
+  populateBehaviorCaptchaTypeSelects();
+  const normalized = normalizeCaptchaProviderSettings(settings);
+  const imageRadio = getCaptchaFormElement(`${prefix}captcha-provider-image`);
+  const behaviorRadio = getCaptchaFormElement(`${prefix}captcha-provider-behavior`);
+  const baseUrlInput = getCaptchaFormElement(`${prefix}captcha-behavior-base-url`);
+  const apiKeyInput = getCaptchaFormElement(`${prefix}captcha-behavior-api-key`);
+  const typeSelect = getCaptchaFormElement(`${prefix}captcha-behavior-type`);
+
+  if (imageRadio) imageRadio.checked = normalized.provider === "image";
+  if (behaviorRadio) behaviorRadio.checked = normalized.provider === "behavior";
+  if (baseUrlInput) baseUrlInput.value = normalized.behavior_base_url;
+  if (apiKeyInput) apiKeyInput.value = normalized.behavior_api_key;
+  if (typeSelect) typeSelect.value = normalized.behavior_type;
+  toggleCaptchaProviderFields(prefix);
+}
+
+function readCaptchaProviderForm(prefix = "") {
+  populateBehaviorCaptchaTypeSelects();
+  const behaviorRadio = getCaptchaFormElement(`${prefix}captcha-provider-behavior`);
+  const baseUrlInput = getCaptchaFormElement(`${prefix}captcha-behavior-base-url`);
+  const apiKeyInput = getCaptchaFormElement(`${prefix}captcha-behavior-api-key`);
+  const typeSelect = getCaptchaFormElement(`${prefix}captcha-behavior-type`);
+  return normalizeCaptchaProviderSettings({
+    provider: behaviorRadio && behaviorRadio.checked ? "behavior" : "image",
+    behavior_base_url: baseUrlInput ? baseUrlInput.value : "",
+    behavior_api_key: apiKeyInput ? apiKeyInput.value : "",
+    behavior_type: typeSelect ? typeSelect.value : "SLIDER",
+  });
+}
+
+function handleCaptchaProviderChange(prefix = "") {
+  toggleCaptchaProviderFields(prefix);
+}
+
+function getCaptchaTestPreviewElements(prefix = "") {
+  return {
+    container: getCaptchaFormElement(`${prefix}captcha-test-preview`),
+    display: getCaptchaFormElement(`${prefix}captcha-preview-display`),
+    answerLabel: getCaptchaFormElement(`${prefix}captcha-preview-answer-label`),
+    answer: getCaptchaFormElement(`${prefix}captcha-preview-answer`),
+  };
+}
+
+function renderCaptchaTestPreview(result, prefix = "") {
+  const { container, display, answerLabel, answer } =
+    getCaptchaTestPreviewElements(prefix);
+  if (!container || !display || !answer) {
+    return;
+  }
+
+  container.classList.remove("hidden");
+  if (result.provider === "behavior") {
+    const captcha = result.captcha || {};
+    const captchaId = result.captcha_id || captcha.id || "-";
+    const captchaType = result.behavior_type || captcha.type || "-";
+    const backgroundImage = captcha.backgroundImage || "";
+    const templateImage = captcha.templateImage || "";
+    const imageHtml = backgroundImage
+      ? `<img src="${escapeHtml(backgroundImage)}" alt="验证码背景" class="max-w-full rounded border border-slate-200 bg-white">`
+      : '<div class="text-xs text-slate-500 bg-slate-50 rounded border border-slate-200 px-3 py-6">验证码服务器未返回可预览图片</div>';
+    const templateHtml = templateImage
+      ? `<img src="${escapeHtml(templateImage)}" alt="验证码模板" class="max-h-20 rounded border border-slate-200 bg-white p-1">`
+      : "";
+    display.innerHTML = `
+      <div class="w-full max-w-full space-y-2">
+        <div class="flex items-center justify-center overflow-hidden">${imageHtml}</div>
+        ${templateHtml ? `<div class="flex items-center justify-center">${templateHtml}</div>` : ""}
+        <div class="text-[11px] text-slate-500 break-all">
+          类型：<span class="font-mono">${escapeHtml(captchaType)}</span>
+        </div>
+      </div>
+    `;
+    if (answerLabel) answerLabel.textContent = "验证码 ID：";
+    answer.textContent = captchaId;
+    return;
+  }
+
+  const captchaWidth = result.width || 343;
+  const captchaHeight = result.height || 119;
+  const timestamp = Date.now();
+  display.innerHTML = `
+    <iframe
+      src="/api/captcha/html/${result.captcha_id}?t=${timestamp}&width=${captchaWidth}"
+      style="max-width: ${captchaWidth}px; max-height: ${captchaHeight}px; width: ${captchaWidth}px; height: ${captchaHeight}px; border: none; overflow: hidden; display: block; margin: 0 auto;"
+      scrolling="no"
+      frameborder="0"
+      title="验证码预览">
+    </iframe>
+  `;
+  if (answerLabel) answerLabel.textContent = "验证码答案：";
+  answer.textContent = result.code || "-";
+}
+
 async function loadCaptchaSettings(ShowSwalFire = true) {
   configLoadState.captcha = false;
   try {
@@ -46823,6 +47391,8 @@ async function loadCaptchaSettings(ShowSwalFire = true) {
       // 默认值为0.08（8%），这是一个适中的噪点密度
       $("captcha-noise-level").value =
         settings.noise_level !== undefined ? settings.noise_level : 0.08;
+      applyCaptchaProviderSettings(settings, "");
+      applyCaptchaProviderSettings(settings, "mobile-");
 
       // 步骤9：记录成功加载的日志，包含实际加载的配置值
       console.log(
@@ -46851,6 +47421,8 @@ async function loadCaptchaSettings(ShowSwalFire = true) {
       $("captcha-length").value = 4; // 默认长度4个字符
       $("captcha-scale-factor").value = 2; // 默认缩放因子2倍
       $("captcha-noise-level").value = 0.08; // 默认噪点比例8%
+      applyCaptchaProviderSettings(DEFAULT_CAPTCHA_PROVIDER_SETTINGS, "");
+      applyCaptchaProviderSettings(DEFAULT_CAPTCHA_PROVIDER_SETTINGS, "mobile-");
 
       // 步骤13：显示警告提示，告知用户正在使用默认值
       Swal.fire({
@@ -46872,6 +47444,8 @@ async function loadCaptchaSettings(ShowSwalFire = true) {
     $("captcha-length").value = 4; // 默认长度
     $("captcha-scale-factor").value = 2; // 默认缩放因子
     $("captcha-noise-level").value = 0.08; // 默认噪点比例
+    applyCaptchaProviderSettings(DEFAULT_CAPTCHA_PROVIDER_SETTINGS, "");
+    applyCaptchaProviderSettings(DEFAULT_CAPTCHA_PROVIDER_SETTINGS, "mobile-");
 
     // 步骤16：显示友好的错误提示给用户
     // 使用Swal.fire显示错误对话框，用户需要点击确认才能关闭
@@ -46916,10 +47490,26 @@ async function saveCaptchaSettings() {
       });
       return;
     }
+    const providerConfig = readCaptchaProviderForm("");
+    if (providerConfig.provider === "behavior" && !providerConfig.behavior_base_url) {
+      Swal.fire({
+        icon: "error",
+        title: "参数错误",
+        text: "选择验证码服务器时，服务地址不能为空",
+      });
+      return;
+    }
+    const providerConfigSummary = {
+      behavior_base_url: providerConfig.behavior_base_url,
+      behavior_api_key: providerConfig.behavior_api_key ? "******" : "",
+      behavior_type: providerConfig.behavior_type,
+    };
     console.log("[验证码设置] 参数验证通过:", {
       length,
       scale_factor,
       noise_level,
+      provider: providerConfig.provider,
+      ...providerConfigSummary,
     });
     const response = await fetch("/api/captcha/save_settings", {
       method: "POST",
@@ -46932,6 +47522,7 @@ async function saveCaptchaSettings() {
         length,
         scale_factor,
         noise_level,
+        ...providerConfig,
       }),
     });
     const result = await response.json();
@@ -46950,8 +47541,11 @@ async function saveCaptchaSettings() {
           length,
           scale_factor,
           noise_level,
+          ...providerConfig,
         };
       }
+      applyCaptchaProviderSettings(providerConfig, "mobile-");
+      setRuntimeCaptchaProviderConfig(providerConfig);
     } else {
       throw new Error(result?.message || "保存失败");
     }
@@ -46978,32 +47572,43 @@ async function testGenerateCaptcha() {
 
   try {
     console.log("[验证码设置] 开始测试生成验证码...");
-    const length = parseInt($("captcha-length").value);
-    const scale_factor = parseInt($("captcha-scale-factor").value);
-    const noise_level = parseFloat($("captcha-noise-level").value);
-    if (isNaN(length) || length < 3 || length > 6) {
+    const providerConfig = readCaptchaProviderForm("");
+    if (providerConfig.provider === "behavior" && !providerConfig.behavior_base_url) {
       Swal.fire({
         icon: "error",
         title: "参数错误",
-        text: "验证码长度必须在3-6之间",
+        text: "选择验证码服务器时，服务地址不能为空",
       });
       return;
     }
-    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 32) {
-      Swal.fire({
-        icon: "error",
-        title: "参数错误",
-        text: "细分倍数必须在2-32之间",
-      });
-      return;
-    }
-    if (isNaN(noise_level) || noise_level < 0 || noise_level > 0.3) {
-      Swal.fire({
-        icon: "error",
-        title: "参数错误",
-        text: "噪点比例必须在0.0-0.3之间",
-      });
-      return;
+    const length = parseInt($("captcha-length").value) || 4;
+    const scale_factor = parseInt($("captcha-scale-factor").value) || 2;
+    const noise_level = parseFloat($("captcha-noise-level").value) || 0.08;
+    if (providerConfig.provider !== "behavior") {
+      if (isNaN(length) || length < 3 || length > 6) {
+        Swal.fire({
+          icon: "error",
+          title: "参数错误",
+          text: "验证码长度必须在3-6之间",
+        });
+        return;
+      }
+      if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 32) {
+        Swal.fire({
+          icon: "error",
+          title: "参数错误",
+          text: "细分倍数必须在2-32之间",
+        });
+        return;
+      }
+      if (isNaN(noise_level) || noise_level < 0 || noise_level > 0.3) {
+        Swal.fire({
+          icon: "error",
+          title: "参数错误",
+          text: "噪点比例必须在0.0-0.3之间",
+        });
+        return;
+      }
     }
 
     // if (!need_weight || (need_weight == '' || need_weight == "NULL" || need_weight == "null" || need_weight == "undefined")) {
@@ -47039,30 +47644,17 @@ async function testGenerateCaptcha() {
         scale_factor,
         noise_level,
         weight: need_weight,
+        ...providerConfig,
       }),
     });
     const result = await response.json();
     if (result && result.success) {
-      console.log("[验证码设置] 测试生成成功，验证码:", result.code);
-      $("captcha-test-preview").classList.remove("hidden");
-      const displayContainer = $("captcha-preview-display");
-      const captchaWidth = result.width || 343;
-      const captchaHeight = result.height || 119;
-
-      const timestamp = Date.now();
-
-      const iframeHtml = `
-      <iframe 
-        src="/api/captcha/html/${result.captcha_id}?t=${timestamp}&width=${captchaWidth}"
-        style="max-width: ${captchaWidth}px; max-height: ${captchaHeight}px; width: ${captchaWidth}px; height: ${captchaHeight}px; border: none; overflow: hidden; display: block; margin: 0 auto;"
-        scrolling="no"
-        frameborder="0"
-        title="验证码预览">
-      </iframe>
-    `;
-      displayContainer.innerHTML = iframeHtml;
-      $("captcha-preview-answer").textContent = result.code;
-      console.log("[验证码设置] 预览区域已更新 (iframe模式)");
+      if (result.provider === "behavior") {
+        console.log("[验证码设置] 验证码服务器测试生成成功，ID:", result.captcha_id);
+      } else {
+        console.log("[验证码设置] 测试生成成功，验证码:", result.code);
+      }
+      renderCaptchaTestPreview(result, "");
     } else {
       throw new Error(result?.message || "生成失败");
     }
@@ -47086,6 +47678,17 @@ async function testGenerateCaptcha() {
   }
 }
 document.addEventListener("DOMContentLoaded", function () {
+  populateBehaviorCaptchaTypeSelects();
+  ["", "mobile-"].forEach((prefix) => {
+    ["image", "behavior"].forEach((provider) => {
+      const radio = getCaptchaFormElement(`${prefix}captcha-provider-${provider}`);
+      if (radio) {
+        radio.addEventListener("change", () => handleCaptchaProviderChange(prefix));
+      }
+    });
+    toggleCaptchaProviderFields(prefix);
+  });
+
   const saveCaptchaSettingsBtn = $("save-captcha-settings-btn");
   if (saveCaptchaSettingsBtn) {
     saveCaptchaSettingsBtn.addEventListener("click", saveCaptchaSettings);
@@ -56944,6 +57547,7 @@ async function mobileLoadCaptchaSettings(showAlert = true) {
 
       // 步骤10：使用默认配置对象更新表单
       mobileUpdateCaptchaForm({
+        ...DEFAULT_CAPTCHA_PROVIDER_SETTINGS,
         length: 4, // 默认长度4个字符
         scale_factor: 2, // 默认缩放因子2倍
         noise_level: 0.08, // 默认噪点比例8%
@@ -56961,6 +57565,7 @@ async function mobileLoadCaptchaSettings(showAlert = true) {
 
     // 步骤13：在发生错误时，仍然提供默认值，确保用户可以继续使用
     mobileUpdateCaptchaForm({
+      ...DEFAULT_CAPTCHA_PROVIDER_SETTINGS,
       length: 4, // 默认长度
       scale_factor: 2, // 默认缩放因子
       noise_level: 0.08, // 默认噪点比例
@@ -57028,6 +57633,7 @@ function mobileUpdateCaptchaForm(settings) {
   if (noiseInput)
     noiseInput.value =
       settings.noise_level !== undefined ? settings.noise_level : 0.08;
+  applyCaptchaProviderSettings(settings, "mobile-");
 }
 
 /**
@@ -57061,6 +57667,11 @@ async function mobileSaveCaptchaSettings() {
       showModalAlert("噪点比例必须在0.00-0.30之间", "参数错误");
       return;
     }
+    const providerConfig = readCaptchaProviderForm("mobile-");
+    if (providerConfig.provider === "behavior" && !providerConfig.behavior_base_url) {
+      showModalAlert("选择验证码服务器时，服务地址不能为空", "参数错误");
+      return;
+    }
 
     // 调用后端API保存配置 - 使用正确的 API 端点 /api/captcha/save_settings
     const result = await callPythonAPI_raw(
@@ -57070,6 +57681,7 @@ async function mobileSaveCaptchaSettings() {
         length: length,
         scale_factor: scale_factor,
         noise_level: noise_level,
+        ...providerConfig,
       },
     );
 
@@ -57082,6 +57694,8 @@ async function mobileSaveCaptchaSettings() {
       if (pcLength) pcLength.value = length;
       if (pcScale) pcScale.value = scale_factor;
       if (pcNoise) pcNoise.value = noise_level;
+      applyCaptchaProviderSettings(providerConfig, "");
+      setRuntimeCaptchaProviderConfig(providerConfig);
     } else {
       showModalAlert(result?.message || "保存失败", "错误");
     }
@@ -57108,6 +57722,15 @@ async function mobileTestCaptcha() {
 
   try {
     console.log("[移动端验证码] 测试生成验证码...");
+    const providerConfig = readCaptchaProviderForm("mobile-");
+    if (providerConfig.provider === "behavior" && !providerConfig.behavior_base_url) {
+      Swal.fire({
+        icon: "error",
+        title: "参数错误",
+        text: "选择验证码服务器时，服务地址不能为空",
+      });
+      return;
+    }
 
     // 获取当前表单配置
     const length =
@@ -57120,29 +57743,31 @@ async function mobileTestCaptcha() {
         document.getElementById("mobile-captcha-noise-level")?.value,
       ) || 0.08;
 
-    if (isNaN(length) || length < 3 || length > 6) {
-      Swal.fire({
-        icon: "error",
-        title: "参数错误",
-        text: "验证码长度必须在3-6之间",
-      });
-      return;
-    }
-    if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 32) {
-      Swal.fire({
-        icon: "error",
-        title: "参数错误",
-        text: "细分倍数必须在2-32之间",
-      });
-      return;
-    }
-    if (isNaN(noise_level) || noise_level < 0 || noise_level > 0.3) {
-      Swal.fire({
-        icon: "error",
-        title: "参数错误",
-        text: "噪点比例必须在0.0-0.3之间",
-      });
-      return;
+    if (providerConfig.provider !== "behavior") {
+      if (isNaN(length) || length < 3 || length > 6) {
+        Swal.fire({
+          icon: "error",
+          title: "参数错误",
+          text: "验证码长度必须在3-6之间",
+        });
+        return;
+      }
+      if (isNaN(scale_factor) || scale_factor < 2 || scale_factor > 32) {
+        Swal.fire({
+          icon: "error",
+          title: "参数错误",
+          text: "细分倍数必须在2-32之间",
+        });
+        return;
+      }
+      if (isNaN(noise_level) || noise_level < 0 || noise_level > 0.3) {
+        Swal.fire({
+          icon: "error",
+          title: "参数错误",
+          text: "噪点比例必须在0.0-0.3之间",
+        });
+        return;
+      }
     }
 
     Background_width =
@@ -57162,6 +57787,7 @@ async function mobileTestCaptcha() {
         scale_factor,
         noise_level,
         weight: Background_width,
+        ...providerConfig,
       }),
     });
 
@@ -57185,40 +57811,10 @@ async function mobileTestCaptcha() {
 
       // 检查后端返回结果是否成功
       if (result && result.success) {
-        // 判断后端返回的验证码格式类型
-        captchaWidth = result.width || 343;
-        captchaHeight = result.height || 119;
-
-        console.log("移动端验证码面板宽度", Background_width);
-        if (result.captcha_id) {
-          previewDisplay.innerHTML = `<div class="inline-block border border-slate-200 rounded p-1 bg-white">
-          
-          <iframe src="/api/captcha/html/${
-            result.captcha_id
-          }?t=${Date.now()}&width=${Background_width}" style=" border: none; overflow: hidden; display: block; margin: 0 auto max-width: ${captchaWidth}px; max-height: ${captchaHeight}px; width: ${captchaWidth}px; height: ${captchaHeight}px;" scrolling="no" frameborder="0" title="验证码预览">
-      </iframe>
-          
-          </div>`;
-          // 显示验证码的正确答案，如果没有则显示"未知"
-          previewAnswer.textContent = result.code || "未知";
-        } else if (result.html) {
-          // 后端返回HTML格式验证码（像素风格）
-          // 使用内联块元素包裹HTML验证码，并添加边框和圆角样式
-          previewDisplay.innerHTML = `<div class="inline-block border border-slate-200 rounded p-1 bg-white">${result.html}</div>`;
-          // 显示验证码的正确答案，如果没有则显示"未知"
-          previewAnswer.textContent = result.code || "未知";
-        } else if (result.image_base64) {
-          // 后端返回base64图片格式
-          // 将base64数据转换为可显示的图片标签
-          previewDisplay.innerHTML = `<img src="data:image/png;base64,${result.image_base64}" alt="验证码预览" class="border border-slate-200 rounded">`;
-          // 显示验证码的正确答案，如果没有则显示"未知"
-          previewAnswer.textContent = result.code || "未知";
-        } else {
-          // 后端返回成功但没有任何验证码数据
-          previewDisplay.innerHTML =
-            '<p class="text-red-500 text-xs">生成失败：未返回验证码数据</p>';
-          previewAnswer.textContent = "-";
+        if (result.provider === "behavior") {
+          console.log("[移动端验证码] 验证码服务器测试生成成功，ID:", result.captcha_id);
         }
+        renderCaptchaTestPreview(result, "mobile-");
       } else {
         // 后端返回失败或结果无效，显示错误信息
         previewDisplay.innerHTML = `<p class="text-red-500 text-xs">生成失败: ${

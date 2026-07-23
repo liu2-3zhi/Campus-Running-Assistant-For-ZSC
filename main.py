@@ -1787,13 +1787,91 @@ def _normalize_sms_code(value):
 
 
 
+def get_captcha_provider_config():
+    """
+    读取验证码提供方配置（本地图片 / 本地行为验证码）。
+
+    返回 dict：
+    - provider: "image"（本地图片验证码，默认） | "behavior"
+    - behavior_base_url: 本地行为验证码服务根地址（后端代理时使用，浏览器不直接访问）
+    - behavior_api_key: X-Captcha-Key 值（可为空）
+    - behavior_type: 验证码类型（SLIDER/ROTATE/... 默认 SLIDER）
+    """
+    provider = "image"
+    base_url = ""
+    api_key = ""
+    ctype = "SLIDER"
+    try:
+        cfg = _read_config_ini(CONFIG_JSON_FILE)
+        if cfg is not None:
+            provider = (cfg.get("Captcha", "provider",
+                        fallback="image") or "image").strip().lower()
+            if provider not in ("image", "behavior"):
+                provider = "image"
+            base_url = (cfg.get("Captcha", "behavior_base_url",
+                        fallback="") or "").strip().rstrip("/")
+            api_key = (cfg.get("Captcha", "behavior_api_key", fallback="") or "").strip()
+            ctype = (cfg.get("Captcha", "behavior_type",
+                     fallback="SLIDER") or "SLIDER").strip() or "SLIDER"
+    except Exception as e:
+        logging.warning(f"[验证码] 读取验证码提供方配置失败，回退本地图片: {e}")
+    return {
+        "provider": provider,
+        "behavior_base_url": base_url,
+        "behavior_api_key": api_key,
+        "behavior_type": ctype,
+    }
+
+
+def _verify_behavior_captcha(captcha_id):
+    """
+    本地行为验证码二次校验：调用行为验证码服务 GET /check2?id=<captcha_id>。
+    返回 (bool, error_msg)。校验通过后该 id 在 behavior 侧被消费，无法重放。
+    """
+    import requests as _requests
+
+    conf = get_captcha_provider_config()
+    base_url = conf.get("behavior_base_url") or ""
+    if not base_url:
+        logging.error("[验证码-behavior] 未配置 behavior_base_url")
+        return False, "人机验证服务未配置"
+    headers = {}
+    if conf.get("behavior_api_key"):
+        headers["X-Captcha-Key"] = conf["behavior_api_key"]
+    try:
+        resp = _requests.get(
+            f"{base_url}/check2",
+            params={"id": captcha_id},
+            headers=headers,
+            timeout=5,
+        )
+        passed = resp.status_code == 200 and resp.text.strip().lower() == "true"
+        if passed:
+            logging.info(f"[验证码-behavior] 二验通过: ID={captcha_id[:12]}...")
+            return True, ""
+        logging.warning(
+            f"[验证码-behavior] 二验未通过: ID={captcha_id[:12]}..., status={resp.status_code}, body={resp.text[:40]}"
+        )
+        return False, "人机验证未通过，请重试"
+    except Exception as e:
+        logging.error(f"[验证码-behavior] 二验请求失败: {e}")
+        return False, "人机验证服务异常，请稍后重试"
+
+
 def verify_captcha(captcha_id, user_input):
     """
-    验证验证码辅助函数
+    验证验证码辅助函数（按提供方分支：本地图片 / behavior）
     """
     logging.debug(f"[验证码] 开始验证: ID={captcha_id}..., 用户输入='{user_input}'")
     if not captcha_id or not captcha_id.strip():
         return False, "验证码ID不能为空"
+
+    # ========================================
+    # 提供方分支：behavior 走 /check2 二次校验，不依赖文本输入
+    # ========================================
+    if get_captcha_provider_config().get("provider") == "behavior":
+        return _verify_behavior_captcha(captcha_id.strip())
+
     if not user_input or not user_input.strip():
         return False, "人机验证码不能为空"
     captchas_dir = os.path.join("logs", "captchas")
@@ -13607,6 +13685,13 @@ class Api:
                 "scale_factor": _safe_get_int("Captcha", "scale_factor", 2),
                 "noise_level": _safe_get_float("Captcha", "noise_level", 0.08),
             }
+            try:
+                _cap_prov = get_captcha_provider_config()
+                captcha_settings["provider"] = _cap_prov["provider"]
+                captcha_settings["behavior_type"] = _cap_prov["behavior_type"]
+            except Exception:
+                captcha_settings["provider"] = "image"
+                captcha_settings["behavior_type"] = "SLIDER"
             logging.debug(f"【本地验证码】加载验证码设置: {captcha_settings}")
 
             current_theme = "light"
@@ -39932,6 +40017,13 @@ def start_web_server(args_param):
                 "noise_level": noise_level    # 噪声级别
             }
 
+            # 合并验证码提供方配置（本地图片 / behavior），供管理面板切换与配置
+            _prov = get_captcha_provider_config()
+            config_data["provider"] = _prov["provider"]
+            config_data["behavior_base_url"] = _prov["behavior_base_url"]
+            config_data["behavior_api_key"] = _prov["behavior_api_key"]
+            config_data["behavior_type"] = _prov["behavior_type"]
+
             # 记录调试信息：准备返回配置数据
             logging.debug(f"[验证码配置] 准备返回配置数据: {config_data}")
 
@@ -39959,6 +40051,93 @@ def start_web_server(args_param):
                 },
                 "message": "使用默认配置（配置读取失败）"  # 提示信息
             }), 200
+
+    # ============================================================
+    # 本地行为验证码 —— 后端代理（浏览器只访问本站，不暴露验证码服务地址与 key）
+    # ============================================================
+    @app.route("/api/captcha/provider", methods=["GET"])
+    def get_captcha_provider():
+        """公开：返回当前验证码提供方与 behavior 类型，供登录/注册页决定渲染哪种验证码。
+        不返回 behavior 地址与 key。"""
+        conf = get_captcha_provider_config()
+        return jsonify({
+            "success": True,
+            "provider": conf["provider"],
+            "behavior_type": conf["behavior_type"],
+        })
+
+    def _behavior_base_or_error():
+        conf = get_captcha_provider_config()
+        base = conf.get("behavior_base_url") or ""
+        return base, conf
+
+    @app.route("/api/captcha/behavior/loader.js", methods=["GET"])
+    def behavior_proxy_loader():
+        """代理 behavior 的 SDK 加载器 loader.js"""
+        import requests as _requests
+        from flask import Response
+        base, _ = _behavior_base_or_error()
+        if not base:
+            return Response("// behavior 未配置", mimetype="application/javascript", status=503)
+        try:
+            r = _requests.get(f"{base}/loader.js", timeout=5)
+            return Response(r.content, mimetype="application/javascript", status=r.status_code)
+        except Exception as e:
+            logging.error(f"[验证码-behavior] 代理 loader.js 失败: {e}")
+            return Response("// behavior loader 加载失败", mimetype="application/javascript", status=502)
+
+    @app.route("/api/captcha/behavior/tac/<path:subpath>", methods=["GET"])
+    def behavior_proxy_tac(subpath):
+        """代理 behavior 的 SDK 静态资源（tac/css、tac/js、tac/images）"""
+        import requests as _requests
+        from flask import Response
+        base, _ = _behavior_base_or_error()
+        if not base:
+            return Response("", status=503)
+        try:
+            r = _requests.get(f"{base}/tac/{subpath}", timeout=8)
+            ctype = r.headers.get("Content-Type", "application/octet-stream")
+            return Response(r.content, mimetype=ctype.split(";")[0], status=r.status_code)
+        except Exception as e:
+            logging.error(f"[验证码-behavior] 代理 tac 资源失败({subpath}): {e}")
+            return Response("", status=502)
+
+    @app.route("/api/captcha/behavior/gen", methods=["GET"])
+    def behavior_proxy_gen():
+        """代理 behavior /gen（注入 X-Captcha-Key，key 不出后端）"""
+        import requests as _requests
+        base, conf = _behavior_base_or_error()
+        if not base:
+            return jsonify({"code": 500, "msg": "behavior 未配置", "data": {}}), 503
+        ctype = (request.args.get("type") or conf.get("behavior_type") or "SLIDER").strip()
+        headers = {}
+        if conf.get("behavior_api_key"):
+            headers["X-Captcha-Key"] = conf["behavior_api_key"]
+        try:
+            r = _requests.get(f"{base}/gen", params={"type": ctype},
+                              headers=headers, timeout=8)
+            return (r.text, r.status_code, {"Content-Type": "application/json"})
+        except Exception as e:
+            logging.error(f"[验证码-behavior] 代理 /gen 失败: {e}")
+            return jsonify({"code": 500, "msg": "验证码服务异常", "data": {}}), 502
+
+    @app.route("/api/captcha/behavior/check", methods=["POST"])
+    def behavior_proxy_check():
+        """代理 behavior /check（注入 X-Captcha-Key）"""
+        import requests as _requests
+        base, conf = _behavior_base_or_error()
+        if not base:
+            return jsonify({"code": 500, "msg": "behavior 未配置", "data": {}}), 503
+        headers = {"Content-Type": "application/json"}
+        if conf.get("behavior_api_key"):
+            headers["X-Captcha-Key"] = conf["behavior_api_key"]
+        try:
+            r = _requests.post(f"{base}/check", data=request.get_data(),
+                               headers=headers, timeout=8)
+            return (r.text, r.status_code, {"Content-Type": "application/json"})
+        except Exception as e:
+            logging.error(f"[验证码-behavior] 代理 /check 失败: {e}")
+            return jsonify({"code": 500, "msg": "验证码服务异常", "data": {}}), 502
 
     @app.route("/api/captcha/get", methods=["GET"])
     def get_captcha():
@@ -40811,6 +40990,25 @@ def start_web_server(args_param):
             config.set("Captcha", "scale_factor", str(scale_factor))
             config.set("Captcha", "noise_level", str(noise_level))
 
+            # ========================================
+            # 6.1 验证码提供方配置（本地图片 / 本地行为验证码）
+            #     仅当请求携带对应字段时更新，保持向后兼容
+            # ========================================
+            if "provider" in data:
+                _provider = str(data.get("provider") or "image").strip().lower()
+                if _provider not in ("image", "behavior"):
+                    _provider = "image"
+                config.set("Captcha", "provider", _provider)
+            if "behavior_base_url" in data:
+                config.set("Captcha", "behavior_base_url",
+                           str(data.get("behavior_base_url") or "").strip().rstrip("/"))
+            if "behavior_api_key" in data:
+                config.set("Captcha", "behavior_api_key",
+                           str(data.get("behavior_api_key") or "").strip())
+            if "behavior_type" in data:
+                config.set("Captcha", "behavior_type",
+                           (str(data.get("behavior_type") or "SLIDER").strip() or "SLIDER"))
+
             _write_config_with_comments(config, config_file)
 
             logging.info(f"【本地验证码】验证码设置已成功保存到 {config_file}")
@@ -40857,6 +41055,78 @@ def start_web_server(args_param):
             data = request.get_json()
             if not data:
                 return jsonify({"success": False, "message": "请求数据为空"}), 400
+
+            if str(data.get("provider") or "").strip().lower() == "behavior":
+                import requests as _requests
+
+                behavior_base_url = str(data.get("behavior_base_url") or "").strip().rstrip("/")
+                behavior_api_key = str(data.get("behavior_api_key") or "").strip()
+                behavior_type = str(data.get("behavior_type") or "SLIDER").strip() or "SLIDER"
+                if not behavior_base_url:
+                    return jsonify({
+                        "success": False,
+                        "message": "验证码服务地址不能为空",
+                    }), 400
+                if not (
+                    behavior_base_url.startswith("http://")
+                    or behavior_base_url.startswith("https://")
+                ):
+                    return jsonify({
+                        "success": False,
+                        "message": "验证码服务地址必须以 http:// 或 https:// 开头",
+                    }), 400
+
+                headers = {}
+                if behavior_api_key:
+                    headers["X-Captcha-Key"] = behavior_api_key
+                try:
+                    upstream_response = _requests.get(
+                        f"{behavior_base_url}/gen",
+                        params={"type": behavior_type},
+                        headers=headers,
+                        timeout=8,
+                    )
+                    try:
+                        upstream_json = upstream_response.json()
+                    except Exception:
+                        logging.error(
+                            "[验证码-behavior] 测试生成返回非JSON: status=%s body=%s",
+                            upstream_response.status_code,
+                            upstream_response.text[:200],
+                        )
+                        return jsonify({
+                            "success": False,
+                            "message": "验证码服务器返回非JSON响应",
+                        }), 502
+
+                    upstream_code = str(upstream_json.get("code", ""))
+                    if upstream_response.status_code != 200 or upstream_code != "200":
+                        return jsonify({
+                            "success": False,
+                            "provider": "behavior",
+                            "message": upstream_json.get("msg")
+                            or f"验证码服务器生成失败：HTTP {upstream_response.status_code}",
+                            "upstream_status": upstream_response.status_code,
+                            "upstream_code": upstream_json.get("code"),
+                        }), 502
+
+                    captcha_payload = upstream_json.get("data") or {}
+                    captcha_id = str(captcha_payload.get("id") or "")
+                    return jsonify({
+                        "success": True,
+                        "provider": "behavior",
+                        "captcha_id": captcha_id,
+                        "behavior_type": captcha_payload.get("type") or behavior_type,
+                        "captcha": captcha_payload,
+                        "message": "验证码服务器生成成功",
+                    })
+                except Exception as e:
+                    logging.error(f"[验证码-behavior] 测试生成失败: {e}", exc_info=True)
+                    return jsonify({
+                        "success": False,
+                        "provider": "behavior",
+                        "message": f"验证码服务器请求失败: {str(e)}",
+                    }), 502
 
             # ========================================
             # 4. 提取并验证参数

@@ -15,16 +15,42 @@ const length = ref(4)
 const scaleFactor = ref(2)
 const noiseLevel = ref(0.08)
 
+// ---- 验证码提供方（本地图片 / 本地行为验证码）----
+const provider = ref('image') // 'image' | 'behavior'
+const behaviorBaseUrl = ref('')
+const behaviorApiKey = ref('')
+const behaviorType = ref('SLIDER')
+// 本地行为验证码支持的类型（参考 captcha-local API.md）
+const BEHAVIOR_TYPES = [
+  { value: 'SLIDER', label: '滑块验证码' },
+  { value: 'SLIDER2', label: '滑块验证码 V2（旋转图块）' },
+  { value: 'ROTATE', label: '旋转验证码' },
+  { value: 'CONCAT', label: '滑动还原验证码' },
+  { value: 'WORD_IMAGE_CLICK', label: '文字点选' },
+  { value: 'WORD_ORDER_CLICK', label: '语序点选' },
+  { value: 'ICON_CLICK', label: '图标点选' },
+  { value: 'DIRECTION_CLICK', label: '方向识别' },
+  { value: 'GESTURE', label: '曲线绘制' },
+  { value: 'CURVE', label: '滑动曲线' },
+  { value: 'CURVE2', label: '滑动曲线 V2' },
+  { value: 'CURVE3', label: '滑动曲线 V3' },
+  { value: 'MATH', label: '数学计算' },
+  { value: 'POW', label: '工作量证明' },
+  { value: 'RANDOM', label: '随机（每次随机选一种）' },
+]
+
 // 配置面板 ref（用于计算测试生成时的显示宽度）
 const configPanelRef = ref(null)
 
 // ---- 测试生成预览 ----
 const previewReady = ref(false)
+const previewProvider = ref('image')
 const previewId = ref('')
 const previewCode = ref('')
 const previewWidth = ref(343)
 const previewHeight = ref(119)
 const previewTs = ref(0)
+const previewCaptcha = ref(null)
 
 const previewSrc = computed(() =>
   previewId.value
@@ -138,6 +164,11 @@ async function fetchConfig(showSuccess = false) {
       length.value = s.length !== undefined ? s.length : 4
       scaleFactor.value = s.scale_factor !== undefined ? s.scale_factor : 2
       noiseLevel.value = s.noise_level !== undefined ? s.noise_level : 0.08
+      // 验证码提供方配置
+      provider.value = s.provider === 'behavior' ? 'behavior' : 'image'
+      behaviorBaseUrl.value = s.behavior_base_url || ''
+      behaviorApiKey.value = s.behavior_api_key || ''
+      behaviorType.value = s.behavior_type || 'SLIDER'
       configLoaded.value = true
       if (showSuccess) success.value = '验证码配置已加载'
     } else {
@@ -165,9 +196,20 @@ async function saveConfig() {
   }
   const params = validateParams()
   if (!params) return
+  if (provider.value === 'behavior' && !behaviorBaseUrl.value.trim()) {
+    error.value = '选择本地行为验证码时，验证码服务地址不能为空'
+    return
+  }
+  const body = {
+    ...params,
+    provider: provider.value,
+    behavior_base_url: behaviorBaseUrl.value.trim(),
+    behavior_api_key: behaviorApiKey.value,
+    behavior_type: behaviorType.value,
+  }
   saving.value = true
   try {
-    const result = await callRawAPI('/api/captcha/save_settings', 'POST', params)
+    const result = await callRawAPI('/api/captcha/save_settings', 'POST', body)
     if (result && result.success) {
       success.value = '验证码设置已保存'
     } else {
@@ -183,7 +225,13 @@ async function saveConfig() {
 async function testGenerate() {
   success.value = ''
   error.value = ''
-  const params = validateParams()
+  if (provider.value === 'behavior' && !behaviorBaseUrl.value.trim()) {
+    error.value = '选择本地行为验证码时，验证码服务地址不能为空'
+    return
+  }
+  const params = provider.value === 'behavior'
+    ? { length: 4, scale_factor: 2, noise_level: 0.08 }
+    : validateParams()
   if (!params) return
   testing.value = true
   try {
@@ -191,12 +239,18 @@ async function testGenerate() {
     const result = await callRawAPI('/api/captcha/test_generate', 'POST', {
       ...params,
       weight,
+      provider: provider.value,
+      behavior_base_url: behaviorBaseUrl.value.trim(),
+      behavior_api_key: behaviorApiKey.value,
+      behavior_type: behaviorType.value,
     })
     if (result && result.success) {
+      previewProvider.value = result.provider === 'behavior' ? 'behavior' : 'image'
       previewId.value = result.captcha_id
       previewWidth.value = result.width || 343
       previewHeight.value = result.height || 119
-      previewCode.value = result.code
+      previewCode.value = result.code || ''
+      previewCaptcha.value = result.captcha || null
       previewTs.value = Date.now()
       previewReady.value = true
     } else {
@@ -282,7 +336,62 @@ onMounted(async () => {
     <div v-if="loading" class="text-center py-12 text-[var(--ink-muted)]">加载中...</div>
 
     <template v-else>
-      <!-- 验证码参数配置 -->
+      <!-- 验证码提供方切换 -->
+      <div class="panel p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-base font-semibold text-[var(--ink)]">🧩 验证码提供方</h3>
+          <button @click="saveConfig" :disabled="saving" class="btn btn-primary text-sm">
+            {{ saving ? '保存中...' : '💾 保存提供方设置' }}
+          </button>
+        </div>
+        <p class="text-xs text-[var(--ink-secondary)]">
+          切换后，登录/注册页将渲染所选验证码；后端按提供方分别校验（本地图片比对文本，本地行为验证码走行为校验 + 二次校验）。
+        </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label
+            class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
+            :class="provider === 'image' ? 'border-[var(--accent)] bg-[var(--accent)]/5' : 'border-[var(--border-color)]'"
+          >
+            <input type="radio" value="image" v-model="provider" class="mt-1 accent-[var(--accent)]" />
+            <span>
+              <span class="block text-sm font-semibold text-[var(--ink)]">本地图片验证码</span>
+              <span class="block text-xs text-[var(--ink-secondary)]">系统内置的字符图片验证码（下方参数生效）</span>
+            </span>
+          </label>
+          <label
+            class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
+            :class="provider === 'behavior' ? 'border-[var(--accent)] bg-[var(--accent)]/5' : 'border-[var(--border-color)]'"
+          >
+            <input type="radio" value="behavior" v-model="provider" class="mt-1 accent-[var(--accent)]" />
+            <span>
+              <span class="block text-sm font-semibold text-[var(--ink)]">本地行为验证码</span>
+              <span class="block text-xs text-[var(--ink-secondary)]">滑块/旋转/点选等行为验证码（后端代理生成与校验）</span>
+            </span>
+          </label>
+        </div>
+
+        <!-- 本地行为验证码配置 -->
+        <div v-if="provider === 'behavior'" class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-[var(--border-color)]">
+          <div class="md:col-span-2">
+            <label class="block text-sm text-[var(--ink-secondary)] mb-1">验证码服务地址（BASE_URL）</label>
+            <input v-model="behaviorBaseUrl" type="text" class="input-field w-full" placeholder="如 http://127.0.0.1:8080（内网地址，浏览器不直接访问）" />
+            <p class="text-xs text-[var(--ink-muted)] mt-1">后端代理访问该地址；浏览器仅访问本站 /api/captcha/behavior/*，不暴露此地址与 key。</p>
+          </div>
+          <div>
+            <label class="block text-sm text-[var(--ink-secondary)] mb-1">API Key（X-Captcha-Key，可选）</label>
+            <input v-model="behaviorApiKey" type="password" class="input-field w-full" placeholder="留空表示匿名请求" autocomplete="new-password" />
+          </div>
+          <div>
+            <label class="block text-sm text-[var(--ink-secondary)] mb-1">验证码类型</label>
+            <select v-model="behaviorType" class="select-field w-full">
+              <option v-for="t in BEHAVIOR_TYPES" :key="t.value" :value="t.value">{{ t.label }}（{{ t.value }}）</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 验证码参数配置（仅本地图片验证码生效） -->
       <div ref="configPanelRef" class="panel p-5 space-y-4">
         <div class="flex items-center justify-between">
           <h3 class="text-base font-semibold text-[var(--ink)]">🔒 验证码参数配置</h3>
@@ -291,7 +400,7 @@ onMounted(async () => {
           </button>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div v-if="provider !== 'behavior'" class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label class="block text-sm text-[var(--ink-secondary)] mb-1">验证码长度（3-6）</label>
             <input v-model.number="length" type="number" min="3" max="6" step="1" class="input-field w-full" />
@@ -319,7 +428,28 @@ onMounted(async () => {
         <div v-if="previewReady" class="mt-2 p-4 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] space-y-2">
           <div class="text-sm text-[var(--ink-secondary)]">预览：</div>
           <div class="flex items-center justify-center bg-white rounded p-2 overflow-hidden">
+            <div v-if="previewProvider === 'behavior'" class="w-full space-y-2 text-center">
+              <img
+                v-if="previewCaptcha && previewCaptcha.backgroundImage"
+                :src="previewCaptcha.backgroundImage"
+                alt="验证码背景"
+                class="mx-auto max-w-full rounded border border-[var(--border-color)]"
+              />
+              <div v-else class="rounded border border-[var(--border-color)] bg-[var(--surface-1)] px-3 py-6 text-xs text-[var(--ink-muted)]">
+                验证码服务器未返回可预览图片
+              </div>
+              <img
+                v-if="previewCaptcha && previewCaptcha.templateImage"
+                :src="previewCaptcha.templateImage"
+                alt="验证码模板"
+                class="mx-auto max-h-20 rounded border border-[var(--border-color)] bg-white p-1"
+              />
+              <div class="text-xs text-[var(--ink-secondary)]">
+                类型：<span class="font-mono">{{ previewCaptcha?.type || behaviorType }}</span>
+              </div>
+            </div>
             <iframe
+              v-else
               :src="previewSrc"
               :style="{ width: previewWidth + 'px', height: previewHeight + 'px', maxWidth: previewWidth + 'px', maxHeight: previewHeight + 'px' }"
               class="border-none block mx-auto"
@@ -328,7 +458,10 @@ onMounted(async () => {
               title="验证码预览"
             ></iframe>
           </div>
-          <div class="text-sm text-[var(--ink-secondary)]">
+          <div v-if="previewProvider === 'behavior'" class="text-sm text-[var(--ink-secondary)]">
+            验证码 ID：<span class="font-mono font-bold text-[var(--ink)]">{{ previewId }}</span>
+          </div>
+          <div v-else class="text-sm text-[var(--ink-secondary)]">
             正确答案：<span class="font-mono font-bold text-[var(--ink)]">{{ previewCode }}</span>
           </div>
         </div>
