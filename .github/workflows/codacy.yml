@@ -33,6 +33,17 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
+      - name: 准备 Codacy Python 扫描目录
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/codacy-source
+          mkdir -p /tmp/codacy-source
+          while IFS= read -r -d '' path; do
+            mkdir -p "/tmp/codacy-source/$(dirname "$path")"
+            cp -- "$path" "/tmp/codacy-source/$path"
+          done < <(git ls-files -z -- '*.py')
+
       # 执行 Codacy Analysis CLI，并输出包含扫描结果的 SARIF 文件
       - name: 运行 Codacy Analysis CLI
         uses: codacy/codacy-analysis-cli-action@d840f886c4bd4edc059706d09c6a1586111c540b
@@ -43,6 +54,7 @@ jobs:
           verbose: true
           output: /tmp/codacy-results.sarif
           format: sarif
+          directory: /tmp/codacy-source
           tool: bandit
           # 调整非安全问题的严重级别映射
           gh-code-scanning-compat: true
