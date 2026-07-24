@@ -1,7 +1,6 @@
 // Service Worker for 跑步助手 PWA
-const CACHE_NAME = 'paobuzs-v2';
+const CACHE_NAME = 'paobuzs-v3';
 const STATIC_ASSETS = [
-  '/',
   '/styles/style.css',
   '/scripts/main.new.js',
   '/favicon.ico',
@@ -9,6 +8,7 @@ const STATIC_ASSETS = [
   '/icon-512x512.png',
   '/manifest.json'
 ];
+const NETWORK_FIRST_PATH_PREFIXES = ['/api/', '/auth/', '/upload', '/download', '/editor.md/'];
 
 // Install: pre-cache static assets
 self.addEventListener('install', (event) => {
@@ -32,7 +32,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: network-first for API calls, cache-first for static assets
+// Fetch: network-first for navigation and API calls, cache-first for static assets
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -41,11 +41,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Navigation requests must prefer network so entry HTML stays fresh after deploys
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response && response.status === 200) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put('/', responseClone);
+          });
+        }
+        return response;
+      }).catch(() => {
+        return caches.match('/').then((fallback) => {
+          if (fallback) return fallback;
+          return new Response(
+            '<html><body><h2 style="font-family:sans-serif;text-align:center;margin-top:40px">当前处于离线状态，请连接网络后重试。</h2></body></html>',
+            { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+          );
+        });
+      })
+    );
+    return;
+  }
+
   // Network-first strategy for API and dynamic routes
-  if (url.pathname.startsWith('/api/') ||
-      url.pathname.startsWith('/auth/') ||
-      url.pathname.startsWith('/upload') ||
-      url.pathname.startsWith('/download')) {
+  if (NETWORK_FIRST_PATH_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
     event.respondWith(
       fetch(event.request).catch(() => {
         return new Response(
@@ -85,3 +106,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+

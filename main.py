@@ -4,12 +4,60 @@
 
 from __future__ import annotations
 
+import ast
+import tempfile
 _import_failures = []
 _log_buffer = []
 _logging_exception_hooks_installed = False
 
+# 运行时在 main() 中从 product_name_generator.py 导入。
+# 这里先定义占位全局变量，便于启动校验测试对其进行 mock。
+LoMeiGenerator = None
+PRODUCT_NAME_GENERATOR_MODE = None
+validate_product_name_generator_mode = None
+
+
+class _NoopLock:
+    """模块级占位锁：在完整初始化前避免 NameError。"""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
 
 MAX_MEMORY_SESSIONS = 100
+
+# 支付订单状态常量（模块级，便于测试与工具函数复用）
+ORDER_STATUS_FAILED = "failed"
+ORDER_STATUS_PENDING = "pending"
+ORDER_STATUS_PAID = "paid"
+ORDER_STATUS_REFUNDED_PARTIAL = "refunded_partial"
+ORDER_STATUS_REFUNDED_FULL = "refunded_full"
+ORDER_STATUS_FROZEN = "frozen"
+ORDER_STATUS_PREAUTH = "preauth"
+ORDER_STATUS_TIMEOUT = "timeout"
+ORDER_STATUS_CLOSED = "closed"
+
+PAYMENT_ORDERS_DIR = "payment_orders"
+QR_CACHE_INDEX_FILE = "payment_orders/qr_cache_index.json"
+payment_verify_probes = {}
+payment_verify_probes_lock = _NoopLock()
+
+# 运行时全局状态的安全默认值。
+# 这些对象会在启动流程中被重新初始化；这里提供兜底，避免在初始化前访问时报 NameError。
+browsing_activity = {}
+browsing_activity_lock = _NoopLock()
+CDN_FILES = {}
+js_cache_storage = {}
+js_cache_lock = _NoopLock()
+js_cache_last_update = {}
+font_cache_storage = {}
+font_cache_lock = _NoopLock()
+source_map_storage = {}
+source_map_lock = _NoopLock()
+_midnight_runtime_reload_hook = None
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 AUTO_ATTENDANCE_MAX_MINUTES = 120  # 自动签到最长持续时间（分钟），超时后自动关闭
@@ -38,8 +86,2056 @@ def _buffer_log(level, message):
     """
     暂存日志到缓冲区，同时打印到控制台。
     """
-    print(message)
+    try:
+        print(message)
+    except UnicodeEncodeError:
+        try:
+            _sys = __import__("sys")
+            output_encoding = getattr(getattr(_sys, "stdout", None), "encoding", None) or "utf-8"
+            safe_message = str(message).encode(output_encoding, errors="replace").decode(
+                output_encoding, errors="replace"
+            )
+            print(safe_message)
+        except Exception:
+            print(str(message).encode("ascii", errors="replace").decode("ascii"))
     _log_buffer.append((level, message))
+
+
+def _cleanup_expired_payment_verify_probes(now_ts=None):
+    current_ts = float(now_ts if now_ts is not None else time.time())
+    with payment_verify_probes_lock:
+        expired_tokens = [
+            token
+            for token, probe in payment_verify_probes.items()
+            if float((probe or {}).get("expires_at", 0) or 0) <= current_ts
+        ]
+        for token in expired_tokens:
+            payment_verify_probes.pop(token, None)
+
+
+def _create_payment_verify_probe(ttl_seconds=15):
+    _cleanup_expired_payment_verify_probes()
+    token = secrets.token_urlsafe(24)
+    challenge = secrets.token_urlsafe(32)
+    now_ts = time.time()
+    with payment_verify_probes_lock:
+        payment_verify_probes[token] = {
+            "token": token,
+            "challenge": challenge,
+            "created_at": now_ts,
+            "expires_at": now_ts + float(ttl_seconds),
+            "consumed": False,
+        }
+    return token, challenge
+
+
+def _consume_payment_verify_probe(token, challenge, now_ts=None):
+    _cleanup_expired_payment_verify_probes(now_ts=now_ts)
+    with payment_verify_probes_lock:
+        probe = payment_verify_probes.get(str(token or ""))
+        if not isinstance(probe, dict):
+            return False
+        if probe.get("consumed"):
+            return False
+        if str(probe.get("challenge") or "") != str(challenge or ""):
+            return False
+        probe["consumed"] = True
+        return True
+
+
+def _is_payment_verify_probe_consumed(token):
+    with payment_verify_probes_lock:
+        probe = payment_verify_probes.get(str(token or ""))
+        return bool(isinstance(probe, dict) and probe.get("consumed"))
+
+
+def _build_payment_verify_probe_url(base_url, token):
+    normalized_base = str(base_url or "").rstrip("/")
+    return f"{normalized_base}/api/payment/verify_probe/{token}"
+
+
+def _apply_no_cache_headers(response):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+def _install_amap_dialog_guard(page, guard_label="AMap"):
+    """在 AMap 相关加载阶段自动拦截原生对话框，避免浏览器执行被阻塞。"""
+    try:
+        def _handle_dialog(dialog):
+            try:
+                logging.warning(
+                    f"[{guard_label}] 拦截原生弹窗 type={getattr(dialog, 'type', 'unknown')} message={getattr(dialog, 'message', '')}"
+                )
+                dialog.dismiss()
+            except Exception as dialog_error:
+                logging.debug(f"[{guard_label}] dismiss dialog failed: {dialog_error}")
+
+        page.on("dialog", _handle_dialog)
+    except Exception as e:
+        logging.debug(f"[{guard_label}] install dialog guard failed: {e}")
+
+
+MAP_PROVIDER_DISPLAY_NAMES = {
+    "amap": "高德地图",
+    "tencent": "腾讯地图",
+    "tianditu": "天地图",
+    "baidu": "百度地图",
+}
+
+MAP_PROVIDER_KEY_FIELDS = {
+    "amap": "js_key",
+    "tencent": "map_key",
+    "tianditu": "token",
+    "baidu": "ak",
+}
+
+
+
+def _normalize_map_provider(provider):
+    normalized = str(provider or "").strip().lower()
+    if normalized in MAP_PROVIDER_DISPLAY_NAMES:
+        return normalized
+    return "amap"
+
+
+
+def _get_active_map_provider(config=None):
+    runtime_config = config or _read_config_ini(CONFIG_FILE)
+    configured_provider = runtime_config.get("Map", "provider", fallback="amap")
+    return _normalize_map_provider(configured_provider)
+
+
+
+def _get_map_provider_runtime_config(config=None, provider=None):
+    runtime_config = config or _read_config_ini(CONFIG_FILE)
+    provider = _normalize_map_provider(provider or _get_active_map_provider(runtime_config))
+    providers_config = runtime_config.get("Map", "providers", fallback=None)
+    if isinstance(providers_config, dict):
+        amap_provider = providers_config.get("amap") or {}
+        tencent_provider = providers_config.get("tencent") or {}
+        tianditu_provider = providers_config.get("tianditu") or {}
+        baidu_provider = providers_config.get("baidu") or {}
+    else:
+        amap_provider = {}
+        tencent_provider = {}
+        tianditu_provider = {}
+        baidu_provider = {}
+    provider_configs = {
+        "amap": {
+            "provider": "amap",
+            "display_name": MAP_PROVIDER_DISPLAY_NAMES["amap"],
+            "js_key": str(
+                amap_provider.get("js_key")
+                or runtime_config.get("Map", "amap_js_key", fallback="")
+            ).strip(),
+            "coordinate_system": "gcj02",
+            "business_coordinate_system": "gcj02",
+        },
+        "tencent": {
+            "provider": "tencent",
+            "display_name": MAP_PROVIDER_DISPLAY_NAMES["tencent"],
+            "map_key": str(
+                tencent_provider.get("map_key")
+                or runtime_config.get("Map", "tencent_map_key", fallback="")
+            ).strip(),
+            "coordinate_system": "gcj02",
+            "business_coordinate_system": "gcj02",
+        },
+        "tianditu": {
+            "provider": "tianditu",
+            "display_name": MAP_PROVIDER_DISPLAY_NAMES["tianditu"],
+            "token": str(
+                tianditu_provider.get("token")
+                or runtime_config.get("Map", "tianditu_token", fallback="")
+            ).strip(),
+            "coordinate_system": "wgs84",
+            "business_coordinate_system": "gcj02",
+        },
+        "baidu": {
+            "provider": "baidu",
+            "display_name": MAP_PROVIDER_DISPLAY_NAMES["baidu"],
+            "ak": str(
+                baidu_provider.get("ak")
+                or runtime_config.get("Map", "baidu_map_ak", fallback="")
+            ).strip(),
+            "coordinate_system": "bd09",
+            "business_coordinate_system": "gcj02",
+        },
+    }
+    return provider_configs[provider]
+
+
+def _get_map_provider_frontend_config(config=None):
+    runtime_config = config or _read_config_ini(CONFIG_FILE)
+    map_provider = _get_active_map_provider(runtime_config)
+    map_providers = {
+        "amap": _get_map_provider_runtime_config(runtime_config, provider="amap"),
+        "tencent": _get_map_provider_runtime_config(runtime_config, provider="tencent"),
+        "tianditu": _get_map_provider_runtime_config(runtime_config, provider="tianditu"),
+        "baidu": _get_map_provider_runtime_config(runtime_config, provider="baidu"),
+    }
+    return {
+        "map_provider": map_provider,
+        "map_providers": map_providers,
+    }
+
+
+def _resolve_amap_js_key(config=None):
+    if isinstance(config, (str, bytes, os.PathLike)):
+        runtime_config = _read_config_ini(config)
+    else:
+        runtime_config = config or _read_config_ini(CONFIG_FILE)
+    if runtime_config is None:
+        runtime_config = _get_default_config()
+    providers_config = runtime_config.get("Map", "providers", fallback=None)
+    if isinstance(providers_config, str):
+        providers_config = JsonConfigAdapter._coerce_map_providers(providers_config)
+    if isinstance(providers_config, dict):
+        amap_provider = providers_config.get("amap") or {}
+        amap_js_key = str(amap_provider.get("js_key", "")).strip()
+        if amap_js_key:
+            return amap_js_key
+    return str(runtime_config.get("Map", "amap_js_key", fallback="")).strip()
+
+
+
+def _get_map_provider_plugins(provider, route_mode="walking"):
+    provider = _normalize_map_provider(provider)
+    normalized_route_mode = str(route_mode or "walking").strip().lower() or "walking"
+    if provider == "amap":
+        if normalized_route_mode == "driving":
+            return ["AMap.Driving"]
+        return ["AMap.Walking"]
+    return []
+
+
+
+def _install_map_runtime_guard(page, provider="amap", guard_label="MapRuntime"):
+    provider = _normalize_map_provider(provider)
+    try:
+        def _handle_page_error(error):
+            logging.warning(f"[{guard_label}] pageerror: {error}")
+
+        page.on("pageerror", _handle_page_error)
+    except Exception as e:
+        logging.debug(f"[{guard_label}] install generic runtime guard failed: {e}")
+
+    if provider == "amap":
+        _install_amap_dialog_guard(page, guard_label=guard_label)
+
+
+def _build_map_backend_session_url(app_base_url, session_id):
+    normalized_base = str(app_base_url or "").strip()
+    if not normalized_base:
+        return None
+    parsed = urllib.parse.urlparse(normalized_base)
+    if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
+        return None
+    return urllib.parse.urljoin(
+        normalized_base.rstrip("/") + "/",
+        f"uuid={urllib.parse.quote(str(session_id or ''), safe='')}",
+    )
+
+
+def _ensure_map_backend_page_origin(page, session_id, app_base_url, guard_label="MapRoutePlanning"):
+    session_url = _build_map_backend_session_url(app_base_url, session_id)
+    if not session_url:
+        return False
+    try:
+        page.goto(session_url, wait_until="domcontentloaded", timeout=15000)
+        return True
+    except Exception as e:
+        logging.warning(
+            f"[{guard_label}] 后端地图页面来源初始化失败: {e}"
+        )
+        return False
+
+
+
+def _plan_route_with_map_provider(waypoints, provider=None, route_mode="walking", runtime_config=None):
+    runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
+    provider = _normalize_map_provider(provider or _get_active_map_provider(runtime_config))
+    provider_config = _get_map_provider_runtime_config(runtime_config, provider=provider)
+    actual_mode = str(route_mode or "walking").strip().lower() or "walking"
+    notices = []
+    if provider == "tianditu" and route_mode == "walking":
+        actual_mode = "driving"
+        notices.append("当前地图供应商不支持步行规划，已自动使用驾车规划代替")
+    plugins = _get_map_provider_plugins(provider, actual_mode)
+    return {
+        "provider": provider,
+        "provider_config": provider_config,
+        "route_mode": route_mode,
+        "actual_mode": actual_mode,
+        "plugins": plugins,
+        "notices": notices,
+        "waypoints": waypoints,
+    }
+
+
+
+def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_plan, python_params=None):
+    provider_config = provider_plan.get("provider_config") or {}
+    api_key = str(provider_config.get("js_key", "")).strip()
+    if not api_key:
+        return {"error": "未配置高德地图 JS Key"}
+
+    plugins = provider_plan.get("plugins") or ["AMap.Walking"]
+    actual_mode = str(provider_plan.get("actual_mode") or "walking").strip().lower() or "walking"
+    return chrome_pool.execute_js(
+        session_id,
+        """
+        (async (arg) => {
+            const waypointsPy = arg[0] || [];
+            const apiKey = arg[1];
+            const pythonParams = arg[2] || {};
+            const plugins = arg[3] || ["AMap.Walking"];
+            const actualMode = arg[4] || "walking";
+            const useFallback = pythonParams.api_fallback_line ?? false;
+            const maxRetries = pythonParams.api_retries ?? 2;
+            const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            async function ensureAmapLoader() {
+                if (typeof AMapLoader !== 'undefined') {
+                    return;
+                }
+                await new Promise((resolve, reject) => {
+                    const existingScript = document.querySelector('script[data-amap-loader="true"]');
+                    if (existingScript) {
+                        existingScript.remove();
+                    }
+                    const script = document.createElement('script');
+                    script.src = 'https://webapi.amap.com/loader.js';
+                    script.async = true;
+                    script.defer = true;
+                    script.dataset.amapLoader = 'true';
+                    script.onload = () => resolve();
+                    script.onerror = () => reject(new Error('高德地图加载器加载失败'));
+                    document.head.appendChild(script);
+                });
+            }
+
+            function buildLngLat(point) {
+                return new AMap.LngLat(Number(point[0]), Number(point[1]));
+            }
+
+            function extractSegmentPath(result) {
+                const firstRoute = result && result.routes && result.routes[0];
+                const steps = firstRoute && Array.isArray(firstRoute.steps) ? firstRoute.steps : [];
+                const path = [];
+                steps.forEach(step => {
+                    const stepPath = Array.isArray(step.path) ? step.path : [];
+                    stepPath.forEach(pt => path.push({ lng: Number(pt.lng), lat: Number(pt.lat) }));
+                });
+                return path;
+            }
+
+            async function planPath() {
+                if (!Array.isArray(waypointsPy) || waypointsPy.length < 2) {
+                    return { error: 'Waypoints must be at least 2.' };
+                }
+
+                await ensureAmapLoader();
+                try {
+                    await AMapLoader.load({ key: apiKey, version: '2.0', plugins });
+                } catch (error) {
+                    return { error: 'AMapLoader.load failed: ' + (error ? error.message : 'Unknown error') };
+                }
+
+                const serviceName = actualMode === 'driving' ? 'Driving' : 'Walking';
+                const ServiceCtor = actualMode === 'driving' ? AMap.Driving : AMap.Walking;
+                if (typeof ServiceCtor === 'undefined') {
+                    return { error: `AMap.${serviceName} plugin failed to load` };
+                }
+
+                const service = new ServiceCtor({ map: null, panel: '', hideMarkers: true });
+                const waypoints = waypointsPy.map(buildLngLat);
+                const allPath = [];
+
+                const searchSegment = (start, end) => new Promise((resolve) => {
+                    let settled = false;
+                    const timeoutId = window.setTimeout(() => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        resolve({ error: '地图路线服务请求超时' });
+                    }, 15000);
+
+                    service.search(start, end, (status, result) => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        window.clearTimeout(timeoutId);
+                        if (status === 'complete') {
+                            const segmentPath = extractSegmentPath(result);
+                            if (segmentPath.length > 0) {
+                                resolve({ path: segmentPath });
+                                return;
+                            }
+                        }
+                        const errorInfo = result && result.info ? result.info : status || 'Unknown error';
+                        resolve({ error: 'Path planning failed: ' + errorInfo });
+                    });
+                });
+
+                for (let i = 0; i < waypoints.length - 1; i += 1) {
+                    const realStart = waypoints[i];
+                    const realEnd = waypoints[i + 1];
+                    let attempts = 0;
+                    let segmentResult = null;
+                    let segmentPath = null;
+
+                    while (attempts <= maxRetries) {
+                        if (attempts > 0) {
+                            await sleep(retryDelayMs);
+                        }
+                        segmentResult = await searchSegment(realStart, realEnd);
+                        if (segmentResult.path) {
+                            segmentPath = segmentResult.path;
+                            break;
+                        }
+                        attempts += 1;
+                    }
+
+                    if (segmentPath) {
+                        if (i > 0) {
+                            allPath.push(...segmentPath.slice(1));
+                        } else {
+                            allPath.push(...segmentPath);
+                        }
+                    } else if (useFallback) {
+                        if (allPath.length === 0) {
+                            allPath.push({ lng: Number(realStart.lng), lat: Number(realStart.lat) });
+                        }
+                        allPath.push({ lng: Number(realEnd.lng), lat: Number(realEnd.lat) });
+                    } else {
+                        return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                    }
+                }
+
+                return { path: allPath };
+            }
+
+            return await planPath();
+        })
+        """,
+        waypoints,
+        api_key,
+        python_params or {},
+        plugins,
+        actual_mode,
+    )
+
+
+
+def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_plan, python_params=None):
+    provider_config = provider_plan.get("provider_config") or {}
+    map_key = str(provider_config.get("map_key", "")).strip()
+    if not map_key:
+        return {"error": "未配置腾讯地图 Key"}
+
+    actual_mode = str(provider_plan.get("actual_mode") or "walking").strip().lower() or "walking"
+    return chrome_pool.execute_js(
+        session_id,
+        """
+        (async (arg) => {
+            const waypointsPy = arg[0] || [];
+            const mapKey = arg[1];
+            const pythonParams = arg[2] || {};
+            const actualMode = arg[3] || 'walking';
+            const routeType = actualMode === 'driving' ? 'driving' : 'walking';
+            const useFallback = pythonParams.api_fallback_line ?? false;
+            const maxRetries = pythonParams.api_retries ?? 2;
+            const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+            let jsonpRequestId = 0;
+
+            function buildRouteUrl(startCoord, endCoord) {
+                return `https://apis.map.qq.com/ws/direction/v1/${encodeURIComponent(routeType)}/?from=${encodeURIComponent(`${startCoord.lat},${startCoord.lng}`)}&to=${encodeURIComponent(`${endCoord.lat},${endCoord.lng}`)}&output=jsonp&key=${encodeURIComponent(mapKey)}`;
+            }
+
+            function requestJsonp(url) {
+                return new Promise((resolve, reject) => {
+                    const callbackName = `__qqRouteCallback_${Date.now()}_${++jsonpRequestId}`;
+                    const requestUrl = url.includes('?') ? `${url}&callback=${encodeURIComponent(callbackName)}` : `${url}?callback=${encodeURIComponent(callbackName)}`;
+                    const script = document.createElement('script');
+                    let settled = false;
+                    let timeoutId = null;
+
+                    function cleanup() {
+                        if (timeoutId) {
+                            window.clearTimeout(timeoutId);
+                        }
+                        if (script.parentNode) {
+                            script.parentNode.removeChild(script);
+                        }
+                        try {
+                            delete window[callbackName];
+                        } catch (error) {
+                            window[callbackName] = undefined;
+                        }
+                    }
+
+                    window[callbackName] = function (data) {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        cleanup();
+                        resolve(data);
+                    };
+
+                    script.src = requestUrl;
+                    script.async = true;
+                    script.onerror = () => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        cleanup();
+                        reject(new Error('腾讯路线服务 JSONP 加载失败'));
+                    };
+
+                    timeoutId = window.setTimeout(() => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        cleanup();
+                        reject(new Error('腾讯路线服务 JSONP 请求超时'));
+                    }, 15000);
+
+                    document.head.appendChild(script);
+                });
+            }
+
+            function decodePolyline(polyline) {
+                if (!Array.isArray(polyline) || polyline.length < 2) {
+                    return [];
+                }
+                const coors = polyline.slice();
+                for (let i = 2; i < coors.length; i += 1) {
+                    coors[i] = Number(coors[i - 2]) + Number(coors[i]) / 1000000;
+                }
+                const points = [];
+                for (let i = 0; i < coors.length; i += 2) {
+                    const lat = Number(coors[i]);
+                    const lng = Number(coors[i + 1]);
+                    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+                        points.push({ lng, lat });
+                    }
+                }
+                return points;
+            }
+
+            function extractRoutePathPoints(routeResponse) {
+                const routes = routeResponse && routeResponse.result && routeResponse.result.routes;
+                const firstRoute = Array.isArray(routes) ? routes[0] : null;
+                const polyline = firstRoute && Array.isArray(firstRoute.polyline) ? firstRoute.polyline : null;
+                return decodePolyline(polyline);
+            }
+
+            async function searchSegment(startCoord, endCoord) {
+                const data = await requestJsonp(buildRouteUrl(startCoord, endCoord));
+                if (!data || typeof data !== 'object') {
+                    return { error: '路线服务未返回有效数据。' };
+                }
+                if (data.status !== 0) {
+                    return { error: data.message || `路线服务返回状态异常：${data.status}` };
+                }
+                const pathPoints = extractRoutePathPoints(data);
+                if (pathPoints.length < 2) {
+                    return { error: '路线服务未返回可绘制的有效路径点。' };
+                }
+                return { path: pathPoints };
+            }
+
+            if (!Array.isArray(waypointsPy) || waypointsPy.length < 2) {
+                return { error: 'Waypoints must be at least 2.' };
+            }
+
+            const waypoints = waypointsPy.map(point => ({ lng: Number(point[0]), lat: Number(point[1]) }));
+            const allPath = [];
+
+            for (let i = 0; i < waypoints.length - 1; i += 1) {
+                const realStart = waypoints[i];
+                const realEnd = waypoints[i + 1];
+                let attempts = 0;
+                let segmentResult = null;
+                let segmentPath = null;
+
+                while (attempts <= maxRetries) {
+                    if (attempts > 0) {
+                        await sleep(retryDelayMs);
+                    }
+                    segmentResult = await searchSegment(realStart, realEnd);
+                    if (segmentResult.path) {
+                        segmentPath = segmentResult.path;
+                        break;
+                    }
+                    attempts += 1;
+                }
+
+                if (segmentPath) {
+                    if (i > 0) {
+                        allPath.push(...segmentPath.slice(1));
+                    } else {
+                        allPath.push(...segmentPath);
+                    }
+                } else if (useFallback) {
+                    if (allPath.length === 0) {
+                        allPath.push({ lng: realStart.lng, lat: realStart.lat });
+                    }
+                    allPath.push({ lng: realEnd.lng, lat: realEnd.lat });
+                } else {
+                    return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                }
+            }
+
+            return { path: allPath };
+        })
+        """,
+        waypoints,
+        map_key,
+        python_params or {},
+        actual_mode,
+    )
+
+
+
+def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider_plan, python_params=None):
+    provider_config = provider_plan.get("provider_config") or {}
+    token = str(provider_config.get("token", "")).strip()
+    if not token:
+        return {"error": "未配置天地图 Token"}
+
+    actual_mode = str(provider_plan.get("actual_mode") or "driving").strip().lower() or "driving"
+    return chrome_pool.execute_js(
+        session_id,
+        r"""
+        (async (arg) => {
+            const waypointsPy = arg[0] || [];
+            const token = arg[1];
+            const pythonParams = arg[2] || {};
+            const actualMode = arg[3] || 'driving';
+            const useFallback = pythonParams.api_fallback_line ?? false;
+            const maxRetries = pythonParams.api_retries ?? 2;
+            const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+            const GCJ_PI = Math.PI;
+            const GCJ_A = 6378245.0;
+            const GCJ_EE = 0.00669342162296594323;
+
+            function isOutOfChina(lng, lat) {
+                return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
+            }
+
+            function transformLat(x, y) {
+                let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+                ret += (20.0 * Math.sin(6.0 * x * GCJ_PI) + 20.0 * Math.sin(2.0 * x * GCJ_PI)) * 2.0 / 3.0;
+                ret += (20.0 * Math.sin(y * GCJ_PI) + 40.0 * Math.sin(y / 3.0 * GCJ_PI)) * 2.0 / 3.0;
+                ret += (160.0 * Math.sin(y / 12.0 * GCJ_PI) + 320 * Math.sin(y * GCJ_PI / 30.0)) * 2.0 / 3.0;
+                return ret;
+            }
+
+            function transformLng(x, y) {
+                let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+                ret += (20.0 * Math.sin(6.0 * x * GCJ_PI) + 20.0 * Math.sin(2.0 * x * GCJ_PI)) * 2.0 / 3.0;
+                ret += (20.0 * Math.sin(x * GCJ_PI) + 40.0 * Math.sin(x / 3.0 * GCJ_PI)) * 2.0 / 3.0;
+                ret += (150.0 * Math.sin(x / 12.0 * GCJ_PI) + 300.0 * Math.sin(x / 30.0 * GCJ_PI)) * 2.0 / 3.0;
+                return ret;
+            }
+
+            function tdtCoordinateToGcj02(coord) {
+                const lng = Number(coord && coord.lng);
+                const lat = Number(coord && coord.lat);
+                if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                    throw new Error('地图工作坐标无效，无法转换为高德坐标。');
+                }
+                if (isOutOfChina(lng, lat)) {
+                    return { lng, lat };
+                }
+                let dLat = transformLat(lng - 105.0, lat - 35.0);
+                let dLng = transformLng(lng - 105.0, lat - 35.0);
+                const radLat = lat / 180.0 * GCJ_PI;
+                let magic = Math.sin(radLat);
+                magic = 1 - GCJ_EE * magic * magic;
+                const sqrtMagic = Math.sqrt(magic);
+                dLat = (dLat * 180.0) / ((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic) * GCJ_PI);
+                dLng = (dLng * 180.0) / (GCJ_A / sqrtMagic * Math.cos(radLat) * GCJ_PI);
+                return { lng: lng + dLng, lat: lat + dLat };
+            }
+
+            function gcj02ToTdtCoordinate(coord) {
+                const lng = Number(coord && coord.lng);
+                const lat = Number(coord && coord.lat);
+                if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                    throw new Error('高德坐标无效，无法转换为地图工作坐标。');
+                }
+                if (isOutOfChina(lng, lat)) {
+                    return { lng, lat };
+                }
+                const guessed = tdtCoordinateToGcj02({ lng, lat });
+                return { lng: lng * 2 - guessed.lng, lat: lat * 2 - guessed.lat };
+            }
+
+            function buildDrivingRouteUrl(startCoord, endCoord) {
+                const postStr = {
+                    orig: `${startCoord.lng},${startCoord.lat}`,
+                    dest: `${endCoord.lng},${endCoord.lat}`,
+                    style: '0'
+                };
+                return `https://api.tianditu.gov.cn/drive?postStr=${encodeURIComponent(JSON.stringify(postStr))}&type=search&tk=${encodeURIComponent(token)}`;
+            }
+
+            function extractRoutePathPoints(routeXmlText) {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(routeXmlText, 'text/xml');
+                const parserError = xmlDoc.querySelector('parsererror');
+                if (parserError) {
+                    throw new Error('路线服务返回了无法解析的 XML。');
+                }
+                const resultNode = xmlDoc.querySelector('result');
+                if (!resultNode) {
+                    throw new Error('路线服务未返回 result 节点。');
+                }
+                const routeLatLonNode = resultNode.querySelector('routelatlon');
+                const rawRoute = routeLatLonNode ? routeLatLonNode.textContent.trim() : '';
+                if (!rawRoute) {
+                    throw new Error('路线服务未返回可绘制的路径点。');
+                }
+                const points = rawRoute
+                    .split(';')
+                    .map(pair => pair.trim())
+                    .filter(Boolean)
+                    .map(pair => {
+                        const match = pair.match(/^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/);
+                        if (!match) {
+                            return null;
+                        }
+                        const lng = Number(match[1]);
+                        const lat = Number(match[2]);
+                        if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                            return null;
+                        }
+                        return tdtCoordinateToGcj02({ lng, lat });
+                    })
+                    .filter(Boolean);
+                if (points.length < 2) {
+                    throw new Error('路线服务未返回足够的有效路径点。');
+                }
+                return points;
+            }
+
+            async function searchSegment(startCoord, endCoord) {
+                const controller = new AbortController();
+                const timeoutId = window.setTimeout(() => {
+                    controller.abort();
+                }, 15000);
+                try {
+                    const response = await fetch(buildDrivingRouteUrl(startCoord, endCoord), {
+                        signal: controller.signal
+                    });
+                    if (!response.ok) {
+                        return { error: `路线服务请求失败：HTTP ${response.status}` };
+                    }
+                    const xmlText = await response.text();
+                    return { path: extractRoutePathPoints(xmlText) };
+                } catch (error) {
+                    if (error && error.name === 'AbortError') {
+                        return { error: '地图路线服务请求超时' };
+                    }
+                    return { error: `路线服务请求失败：${error && error.message ? error.message : String(error)}` };
+                } finally {
+                    window.clearTimeout(timeoutId);
+                }
+            }
+
+            if (actualMode !== 'driving') {
+                return { error: '当前天地图执行器仅支持驾车规划。' };
+            }
+            if (!Array.isArray(waypointsPy) || waypointsPy.length < 2) {
+                return { error: 'Waypoints must be at least 2.' };
+            }
+
+            const waypoints = waypointsPy.map(point => gcj02ToTdtCoordinate({ lng: Number(point[0]), lat: Number(point[1]) }));
+            const allPath = [];
+
+            for (let i = 0; i < waypoints.length - 1; i += 1) {
+                const realStart = waypoints[i];
+                const realEnd = waypoints[i + 1];
+                let attempts = 0;
+                let segmentResult = null;
+                let segmentPath = null;
+
+                while (attempts <= maxRetries) {
+                    if (attempts > 0) {
+                        await sleep(retryDelayMs);
+                    }
+                    segmentResult = await searchSegment(realStart, realEnd);
+                    if (segmentResult.path) {
+                        segmentPath = segmentResult.path;
+                        break;
+                    }
+                    attempts += 1;
+                }
+
+                if (segmentPath) {
+                    if (i > 0) {
+                        allPath.push(...segmentPath.slice(1));
+                    } else {
+                        allPath.push(...segmentPath);
+                    }
+                } else if (useFallback) {
+                    const startGcj = tdtCoordinateToGcj02(realStart);
+                    const endGcj = tdtCoordinateToGcj02(realEnd);
+                    if (allPath.length === 0) {
+                        allPath.push(startGcj);
+                    }
+                    allPath.push(endGcj);
+                } else {
+                    return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                }
+            }
+
+            return { path: allPath };
+        })
+        """,
+        waypoints,
+        token,
+        python_params or {},
+        actual_mode,
+    )
+
+
+
+def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_plan, python_params=None):
+    provider_config = provider_plan.get("provider_config") or {}
+    ak = str(provider_config.get("ak", "")).strip()
+    if not ak:
+        return {"error": "未配置百度地图 AK"}
+
+    actual_mode = str(provider_plan.get("actual_mode") or "walking").strip().lower() or "walking"
+    return chrome_pool.execute_js(
+        session_id,
+        """
+        (async (arg) => {
+            const waypointsPy = arg[0] || [];
+            const ak = arg[1];
+            const pythonParams = arg[2] || {};
+            const actualMode = arg[3] || 'walking';
+            const useFallback = pythonParams.api_fallback_line ?? false;
+            const maxRetries = pythonParams.api_retries ?? 2;
+            const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            function gcj02ToBd09(lng, lat) {
+                const xPi = Math.PI * 3000.0 / 180.0;
+                const z = Math.sqrt(lng * lng + lat * lat) + 0.00002 * Math.sin(lat * xPi);
+                const theta = Math.atan2(lat, lng) + 0.000003 * Math.cos(lng * xPi);
+                return {
+                    lng: z * Math.cos(theta) + 0.0065,
+                    lat: z * Math.sin(theta) + 0.006
+                };
+            }
+
+            function bd09ToGcj02(lng, lat) {
+                const xPi = Math.PI * 3000.0 / 180.0;
+                const x = lng - 0.0065;
+                const y = lat - 0.006;
+                const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * xPi);
+                const theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * xPi);
+                return {
+                    lng: z * Math.cos(theta),
+                    lat: z * Math.sin(theta)
+                };
+            }
+
+            async function ensureBaiduMapScript() {
+                if (window.BMap && typeof window.BMap.Map === 'function') {
+                    return;
+                }
+                await new Promise((resolve, reject) => {
+                    const existingScript = document.querySelector('script[data-baidu-map-api="true"]');
+                    if (existingScript) {
+                        existingScript.remove();
+                    }
+                    const script = document.createElement('script');
+                    const callbackName = '__backendBaiduMapApiLoaded';
+                    script.src = `https://api.map.baidu.com/api?v=3.0&ak=${encodeURIComponent(ak)}&callback=${callbackName}`;
+                    script.async = true;
+                    script.defer = true;
+                    script.dataset.baiduMapApi = 'true';
+                    window[callbackName] = function () {
+                        try {
+                            delete window[callbackName];
+                        } catch (error) {
+                            window[callbackName] = undefined;
+                        }
+                        if (window.BMap && typeof window.BMap.Map === 'function') {
+                            resolve();
+                            return;
+                        }
+                        reject(new Error('百度地图脚本加载完成但运行时不可用，请检查 AK、域名白名单或网络连接。'));
+                    };
+                    script.onerror = () => reject(new Error('百度地图脚本加载失败，请检查 AK 或网络连接。'));
+                    document.head.appendChild(script);
+                });
+            }
+
+            function ensureMapInstance() {
+                let container = document.getElementById('__backend_baidu_route_map__');
+                if (!container) {
+                    container = document.createElement('div');
+                    container.id = '__backend_baidu_route_map__';
+                    container.style.cssText = 'width:1px;height:1px;position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none;';
+                    document.body.appendChild(container);
+                }
+                if (!window.__backendBaiduRouteMap) {
+                    window.__backendBaiduRouteMap = new BMap.Map(container);
+                    window.__backendBaiduRouteMap.centerAndZoom(new BMap.Point(116.404, 39.915), 12);
+                }
+                return window.__backendBaiduRouteMap;
+            }
+
+            function createRouteSearch(routeType, map, resolve) {
+                let searchInstance = null;
+                const commonOptions = {
+                    renderOptions: {
+                        map,
+                        autoViewport: false,
+                        enableDragging: false
+                    },
+                    onSearchComplete(results) {
+                        const status = searchInstance && typeof searchInstance.getStatus === 'function'
+                            ? searchInstance.getStatus()
+                            : null;
+                        try {
+                            const firstPlan = results && typeof results.getPlan === 'function' ? results.getPlan(0) : null;
+                            if (!firstPlan || typeof firstPlan.getNumRoutes !== 'function') {
+                                throw new Error('路线结果中未找到有效方案。');
+                            }
+                            const routeCount = firstPlan.getNumRoutes();
+                            const points = [];
+                            for (let i = 0; i < routeCount; i += 1) {
+                                const route = firstPlan.getRoute(i);
+                                if (!route || typeof route.getPath !== 'function') {
+                                    continue;
+                                }
+                                const path = route.getPath();
+                                if (Array.isArray(path)) {
+                                    path.forEach(point => {
+                                        const converted = bd09ToGcj02(Number(point.lng), Number(point.lat));
+                                        points.push({ lng: converted.lng, lat: converted.lat });
+                                    });
+                                }
+                            }
+                            if (points.length < 2) {
+                                throw new Error('路线结果未返回可绘制的有效路径点。');
+                            }
+                            resolve({ path: points });
+                        } catch (error) {
+                            if (status !== null && typeof BMAP_STATUS_SUCCESS !== 'undefined' && status !== BMAP_STATUS_SUCCESS) {
+                                resolve({ error: `路线规划失败，状态码：${status}` });
+                                return;
+                            }
+                            resolve({ error: error.message || String(error) });
+                        }
+                    }
+                };
+
+                if (routeType === 'walking') {
+                    searchInstance = new BMap.WalkingRoute(map, commonOptions);
+                } else {
+                    searchInstance = new BMap.DrivingRoute(map, commonOptions);
+                }
+                return searchInstance;
+            }
+
+            function searchSegment(startCoord, endCoord, routeType, map) {
+                return new Promise((resolve) => {
+                    let settled = false;
+                    const timeoutId = window.setTimeout(() => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        resolve({ error: '地图路线服务请求超时' });
+                    }, 15000);
+                    const searchInstance = createRouteSearch(routeType, map, (result) => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        window.clearTimeout(timeoutId);
+                        resolve(result);
+                    });
+                    searchInstance.search(startCoord, endCoord);
+                });
+            }
+
+            if (!Array.isArray(waypointsPy) || waypointsPy.length < 2) {
+                return { error: 'Waypoints must be at least 2.' };
+            }
+
+            await ensureBaiduMapScript();
+            const map = ensureMapInstance();
+            const routeType = actualMode === 'driving' ? 'driving' : 'walking';
+            const waypoints = waypointsPy.map(point => {
+                const converted = gcj02ToBd09(Number(point[0]), Number(point[1]));
+                return new BMap.Point(converted.lng, converted.lat);
+            });
+            const allPath = [];
+
+            for (let i = 0; i < waypoints.length - 1; i += 1) {
+                const realStart = waypoints[i];
+                const realEnd = waypoints[i + 1];
+                let attempts = 0;
+                let segmentResult = null;
+                let segmentPath = null;
+
+                while (attempts <= maxRetries) {
+                    if (attempts > 0) {
+                        await sleep(retryDelayMs);
+                    }
+                    segmentResult = await searchSegment(realStart, realEnd, routeType, map);
+                    if (segmentResult.path) {
+                        segmentPath = segmentResult.path;
+                        break;
+                    }
+                    attempts += 1;
+                }
+
+                if (segmentPath) {
+                    if (i > 0) {
+                        allPath.push(...segmentPath.slice(1));
+                    } else {
+                        allPath.push(...segmentPath);
+                    }
+                } else if (useFallback) {
+                    const startGcj = bd09ToGcj02(Number(realStart.lng), Number(realStart.lat));
+                    const endGcj = bd09ToGcj02(Number(realEnd.lng), Number(realEnd.lat));
+                    if (allPath.length === 0) {
+                        allPath.push(startGcj);
+                    }
+                    allPath.push(endGcj);
+                } else {
+                    return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                }
+            }
+
+            return { path: allPath };
+        })
+        """,
+        waypoints,
+        ak,
+        python_params or {},
+        actual_mode,
+    )
+
+
+
+def _plan_route_path_with_provider_runtime(
+    session_id,
+    waypoints,
+    python_params=None,
+    provider=None,
+    runtime_config=None,
+    guard_label="MapRoutePlanning",
+    app_base_url=None,
+):
+    runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
+    provider_plan = _plan_route_with_map_provider(
+        waypoints,
+        provider=provider,
+        route_mode="walking",
+        runtime_config=runtime_config,
+    )
+    provider = provider_plan["provider"]
+
+    global chrome_pool
+    if not chrome_pool:
+        return {
+            "error": "Chrome浏览器池不可用，无法进行路径规划。",
+            "provider": provider,
+            "notices": provider_plan.get("notices", []),
+        }
+
+    ctx = chrome_pool.get_context(session_id)
+    page = ctx["page"]
+    _install_map_runtime_guard(page, provider=provider, guard_label=guard_label)
+    _ensure_map_backend_page_origin(
+        page,
+        session_id,
+        app_base_url,
+        guard_label=guard_label,
+    )
+
+    if provider == "amap":
+        result = _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_plan, python_params)
+    elif provider == "tencent":
+        result = _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_plan, python_params)
+    elif provider == "tianditu":
+        result = _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider_plan, python_params)
+    elif provider == "baidu":
+        result = _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_plan, python_params)
+    else:
+        result = {"error": f"不支持的地图供应商: {provider}"}
+
+    if not isinstance(result, dict):
+        result = {"error": "路径规划执行器未返回有效结果。"}
+    result["provider"] = provider
+    result["provider_plan"] = provider_plan
+    result["notices"] = provider_plan.get("notices", [])
+    return result
+
+
+
+
+def _parse_daily_restart_time_string(time_value):
+    normalized_time = str(time_value or "").strip()
+    parts = normalized_time.split(":")
+    if (
+        len(parts) != 2
+        or len(parts[0]) != 2
+        or len(parts[1]) != 2
+        or not parts[0].isdigit()
+        or not parts[1].isdigit()
+    ):
+        return None, None, False
+
+    hour = int(parts[0])
+    minute = int(parts[1])
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        return None, None, False
+
+    return hour, minute, True
+
+
+def _get_daily_restart_schedule_config(config=None):
+    runtime_config = config or _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+    enabled = runtime_config.getboolean(
+        "Daily_Restart", "enabled", fallback=False
+    )
+    time_value = str(
+        runtime_config.get("Daily_Restart", "time", fallback="00:00") or ""
+    ).strip()
+    hour, minute, valid = _parse_daily_restart_time_string(time_value)
+    return {
+        "enabled": enabled,
+        "time": time_value,
+        "hour": hour if valid else None,
+        "minute": minute if valid else None,
+        "valid": valid,
+    }
+
+
+def _should_run_midnight_runtime_maintenance(current_dt=None, config=None):
+    now_dt = current_dt or datetime.datetime.now()
+    schedule_config = _get_daily_restart_schedule_config(config)
+    if not schedule_config["enabled"] or not schedule_config["valid"]:
+        return False
+    return (
+        now_dt.hour == schedule_config["hour"]
+        and now_dt.minute == schedule_config["minute"]
+    )
+
+
+def _get_daily_full_restart_marker_path():
+    return os.path.join(LOGIN_LOGS_DIR, "daily_restart_marker.json")
+
+
+
+def _get_daily_full_restart_log_path():
+    return os.path.join(LOGIN_LOGS_DIR, "daily_restart.log")
+
+
+
+def _append_daily_full_restart_log(message, now_dt=None, log_path=None):
+    timestamp = (now_dt or datetime.datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
+    target_path = log_path or _get_daily_full_restart_log_path()
+    parent_dir = os.path.dirname(target_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+    with open(target_path, "a", encoding="utf-8") as f:
+        f.write(f"{timestamp} {message}\n")
+
+
+
+def _read_daily_full_restart_marker(marker_path=None):
+    target_path = marker_path or _get_daily_full_restart_marker_path()
+    if not os.path.exists(target_path):
+        return None
+    try:
+        with open(target_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+
+def _write_daily_full_restart_marker(marker_path=None, now_dt=None):
+    target_path = marker_path or _get_daily_full_restart_marker_path()
+    current_dt = now_dt or datetime.datetime.now()
+    parent_dir = os.path.dirname(target_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+    with open(target_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {"last_restart_date": current_dt.date().isoformat()},
+            f,
+            ensure_ascii=False,
+        )
+
+
+
+def _has_daily_full_restart_marker_for_date(target_date, marker_path=None):
+    marker_payload = _read_daily_full_restart_marker(marker_path)
+    if not marker_payload:
+        return False
+    return marker_payload.get("last_restart_date") == target_date.isoformat()
+
+
+
+def _build_daily_restart_helper_command(
+    old_pid,
+    python_executable,
+    main_script_path,
+    cwd,
+    restart_log_path,
+    restart_marker_path,
+    forwarded_argv,
+):
+    return [
+        python_executable,
+        main_script_path,
+        "--daily-restart-helper",
+        "--daily-restart-parent-pid",
+        str(old_pid),
+        "--daily-restart-python-executable",
+        python_executable,
+        "--daily-restart-main-script-path",
+        main_script_path,
+        "--daily-restart-cwd",
+        cwd,
+        "--daily-restart-log-path",
+        restart_log_path,
+        "--daily-restart-marker-path",
+        restart_marker_path,
+        "--daily-restart-forward-args-json",
+        json.dumps(list(forwarded_argv or []), ensure_ascii=False),
+    ]
+
+
+
+def _strip_daily_restart_helper_args(argv):
+    helper_value_flags = {
+        "--daily-restart-parent-pid",
+        "--daily-restart-python-executable",
+        "--daily-restart-main-script-path",
+        "--daily-restart-cwd",
+        "--daily-restart-log-path",
+        "--daily-restart-marker-path",
+        "--daily-restart-forward-args-json",
+    }
+    filtered_args = []
+    args_list = list(argv or [])
+    index = 0
+
+    while index < len(args_list):
+        current_arg = args_list[index]
+        if current_arg == "--daily-restart-helper":
+            index += 1
+            continue
+        if current_arg in helper_value_flags:
+            index += 2
+            continue
+        if any(
+            current_arg.startswith(f"{helper_flag}=")
+            for helper_flag in helper_value_flags
+        ):
+            index += 1
+            continue
+        filtered_args.append(current_arg)
+        index += 1
+
+    return filtered_args
+
+
+
+def _flush_all_log_handlers():
+    root_logger = logging.getLogger()
+    for handler in list(getattr(root_logger, "handlers", [])):
+        try:
+            handler.flush()
+        except Exception:
+            continue
+
+
+
+def _is_process_running(pid):
+    try:
+        target_pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+
+    if target_pid <= 0:
+        return False
+
+    try:
+        os.kill(target_pid, 0)
+    except OSError:
+        return False
+    except Exception:
+        return False
+    return True
+
+
+
+def _wait_for_process_exit(
+    pid,
+    timeout_seconds=60,
+    poll_interval=0.5,
+    is_running_func=None,
+    sleep_func=None,
+    monotonic_func=None,
+):
+    check_running = is_running_func or _is_process_running
+    do_sleep = sleep_func or time.sleep
+    now_monotonic = monotonic_func or time.monotonic
+    deadline = now_monotonic() + max(float(timeout_seconds or 0), 0)
+
+    while True:
+        if not check_running(pid):
+            return True
+        if now_monotonic() >= deadline:
+            return False
+        do_sleep(poll_interval)
+
+
+
+def _run_daily_restart_helper(args):
+    restart_log_path = getattr(args, "daily_restart_log_path", None)
+    parent_pid = getattr(args, "daily_restart_parent_pid", None)
+    python_executable = getattr(args, "daily_restart_python_executable", None)
+    main_script_path = getattr(args, "daily_restart_main_script_path", None)
+    restart_cwd = getattr(args, "daily_restart_cwd", None) or os.getcwd()
+    forwarded_args_json = getattr(args, "daily_restart_forward_args_json", "[]")
+
+    if not python_executable or not main_script_path or not parent_pid:
+        _append_daily_full_restart_log(
+            "[每日完全重启 helper] 缺少必要启动参数，放弃接棒重启",
+            log_path=restart_log_path,
+        )
+        return False
+
+    _append_daily_full_restart_log(
+        f"[每日完全重启 helper] 已启动，等待旧进程退出 pid={parent_pid}",
+        log_path=restart_log_path,
+    )
+
+    if not _wait_for_process_exit(parent_pid):
+        _append_daily_full_restart_log(
+            f"[每日完全重启 helper] 等待旧进程退出超时 pid={parent_pid}",
+            log_path=restart_log_path,
+        )
+        return False
+
+    try:
+        forwarded_args = json.loads(forwarded_args_json)
+        if not isinstance(forwarded_args, list):
+            forwarded_args = []
+    except (TypeError, ValueError, json.JSONDecodeError):
+        forwarded_args = []
+
+    forwarded_args = _strip_daily_restart_helper_args(forwarded_args)
+    command = [python_executable, main_script_path, *forwarded_args]
+    _append_daily_full_restart_log(
+        f"[每日完全重启 helper] 旧进程已退出，准备拉起新进程，cwd={restart_cwd} args={forwarded_args}",
+        log_path=restart_log_path,
+    )
+
+    try:
+        new_process = subprocess.Popen(command, cwd=restart_cwd)
+    except Exception as exc:
+        _append_daily_full_restart_log(
+            f"[每日完全重启 helper] 拉起新进程失败: {exc}",
+            log_path=restart_log_path,
+        )
+        return False
+
+    _append_daily_full_restart_log(
+        f"[每日完全重启 helper] 已拉起新进程 pid={getattr(new_process, 'pid', 'unknown')}",
+        log_path=restart_log_path,
+    )
+    _flush_all_log_handlers()
+    return True
+
+
+
+def _trigger_daily_full_restart(now_dt=None, exit_func=None):
+    current_dt = now_dt or datetime.datetime.now()
+    current_date = current_dt.date()
+    marker_path = _get_daily_full_restart_marker_path()
+    restart_log_path = _get_daily_full_restart_log_path()
+
+    if _has_daily_full_restart_marker_for_date(current_date, marker_path):
+        _append_daily_full_restart_log(
+            f"[每日完全重启] {current_date.isoformat()} 已执行过，跳过重复触发",
+            current_dt,
+            log_path=restart_log_path,
+        )
+        return False
+
+    command = _build_daily_restart_helper_command(
+        old_pid=os.getpid(),
+        python_executable=sys.executable,
+        main_script_path=os.path.abspath(__file__),
+        cwd=os.getcwd(),
+        restart_log_path=restart_log_path,
+        restart_marker_path=marker_path,
+        forwarded_argv=sys.argv[1:],
+    )
+
+    try:
+        helper_process = subprocess.Popen(command, cwd=os.getcwd())
+    except Exception as exc:
+        _append_daily_full_restart_log(
+            f"[每日完全重启] helper 启动失败，取消本次重启: {exc}",
+            current_dt,
+            log_path=restart_log_path,
+        )
+        return False
+
+    _write_daily_full_restart_marker(marker_path, current_dt)
+    _append_daily_full_restart_log(
+        f"[每日完全重启] helper 已启动 pid={getattr(helper_process, 'pid', 'unknown')}，主进程准备退出",
+        current_dt,
+        log_path=restart_log_path,
+    )
+    _flush_all_log_handlers()
+    (exit_func or os._exit)(0)
+    return True
+
+
+
+def _handle_midnight_runtime_maintenance_tick(last_run_date, now_dt=None, config=None):
+    current_dt = now_dt or datetime.datetime.now()
+    if not _should_run_midnight_runtime_maintenance(current_dt, config=config):
+        return last_run_date, False
+
+    current_date = current_dt.date()
+    if current_date == last_run_date:
+        return last_run_date, False
+
+    _trigger_daily_full_restart(now_dt=current_dt)
+    return current_date, True
+
+
+
+def _run_midnight_runtime_maintenance():
+    logging.info("[午夜维护] 已切换为每日完全重启编排模式")
+    return _trigger_daily_full_restart()
+
+
+
+def start_midnight_runtime_maintenance_worker():
+    def midnight_runtime_maintenance_worker():
+        current_thread = threading.current_thread()
+        logging.info(
+            f"[午夜维护 Worker] 已在线程中启动: Thread[{current_thread.name}, id={current_thread.ident}]"
+        )
+        last_run_date = None
+        while True:
+            try:
+                now_dt = datetime.datetime.now()
+                last_run_date, _ = _handle_midnight_runtime_maintenance_tick(
+                    last_run_date,
+                    now_dt=now_dt,
+                )
+                time.sleep(30)
+            except Exception as e:
+                logging.error(f"[午夜维护] 后台维护线程异常: {e}", exc_info=True)
+                time.sleep(30)
+
+    maintenance_thread = threading.Thread(
+        target=midnight_runtime_maintenance_worker,
+        daemon=True,
+        name="Midnight_Runtime_Maintenance_Worker",
+    )
+    maintenance_thread.start()
+    logging.info(f"[线程创建] 午夜维护线程已启动: {maintenance_thread.name} (id={maintenance_thread.ident})")
+    return maintenance_thread
+
+
+def _is_same_origin_url(candidate_url, base_url):
+    try:
+        candidate = urllib.parse.urlparse(str(candidate_url or "").strip())
+        base = urllib.parse.urlparse(str(base_url or "").strip())
+    except Exception:
+        return False
+    if not candidate.scheme or not candidate.netloc:
+        return False
+    candidate_port = candidate.port or (443 if candidate.scheme.lower() == "https" else 80)
+    base_port = base.port or (443 if base.scheme.lower() == "https" else 80)
+    return (
+        candidate.scheme.lower(),
+        candidate.hostname.lower() if candidate.hostname else "",
+        candidate_port,
+    ) == (
+        base.scheme.lower(),
+        base.hostname.lower() if base.hostname else "",
+        base_port,
+    )
+
+
+def _normalize_payment_return_url(return_url, app_host, notify_url):
+    normalized_return_url = str(return_url or "").strip()
+    if not normalized_return_url or normalized_return_url in {
+        "null",
+        "NULL",
+        "None",
+        "none",
+        "undefined",
+        "undefind",
+    }:
+        return None
+    if not _is_same_origin_url(normalized_return_url, app_host):
+        logging.warning(
+            f"[支付验证] 拒绝跨站 return_url: {normalized_return_url} (app_host={app_host})"
+        )
+        return None
+    return normalized_return_url
+
+
+def _normalize_sms_signature(signature):
+    normalized_signature = str(signature or "").strip()
+    if not normalized_signature:
+        return ""
+    while (
+        normalized_signature.startswith("【")
+        and normalized_signature.endswith("】")
+        and len(normalized_signature) >= 2
+    ):
+        normalized_signature = normalized_signature[1:-1].strip()
+    return f"【{normalized_signature}】" if normalized_signature else ""
+
+
+def _build_sms_verification_content(signature, template, code, code_expire_minutes):
+    normalized_signature = _normalize_sms_signature(signature)
+    rendered_template = str(template or "")
+    rendered_template = rendered_template.replace("{code}", str(code)).replace(
+        "{minutes}", str(code_expire_minutes)
+    )
+    return f"{normalized_signature}{rendered_template}"
+
+
+def _get_sms_config_view_data(config):
+    return {
+        "enable_sms_service": config.getboolean(
+            "Features", "enable_sms_service", fallback=False
+        ),
+        "enable_phone_modification": config.getboolean(
+            "Features", "enable_phone_modification", fallback=False
+        ),
+        "enable_phone_login": config.getboolean(
+            "Features", "enable_phone_login", fallback=False
+        ),
+        "enable_phone_registration_verify": config.getboolean(
+            "Features", "enable_phone_registration_verify", fallback=False
+        ),
+        "username": config.get("SMS_Service_SMSBao", "username", fallback=""),
+        "api_key": config.get("SMS_Service_SMSBao", "api_key", fallback=""),
+        "signature": _normalize_sms_signature(
+            config.get("SMS_Service_SMSBao", "signature", fallback="")
+        ),
+        "template_register": config.get(
+            "SMS_Service_SMSBao", "template_register", fallback=""
+        ),
+        "code_expire_minutes": config.getint(
+            "SMS_Service_SMSBao", "code_expire_minutes", fallback=5
+        ),
+        "rate_limit_per_account_day": config.getint(
+            "SMS_Service_SMSBao", "rate_limit_per_account_day", fallback=10
+        ),
+        "rate_limit_per_ip_day": config.getint(
+            "SMS_Service_SMSBao", "rate_limit_per_ip_day", fallback=20
+        ),
+        "rate_limit_per_phone_day": config.getint(
+            "SMS_Service_SMSBao", "rate_limit_per_phone_day", fallback=5
+        ),
+    }
+
+
+def _get_daily_restart_config_view_data(config):
+    schedule_config = _get_daily_restart_schedule_config(config)
+    return {
+        "enabled": schedule_config["enabled"],
+        "time": schedule_config["time"] if schedule_config["time"] else "00:00",
+    }
+
+
+def _apply_sms_config_updates(config, data):
+    if not config.has_section("Features"):
+        config.add_section("Features")
+    config.set(
+        "Features",
+        "enable_sms_service",
+        str(data.get("enable_sms_service", False)).lower(),
+    )
+    config.set(
+        "Features",
+        "enable_phone_modification",
+        str(data.get("enable_phone_modification", False)).lower(),
+    )
+    config.set(
+        "Features",
+        "enable_phone_login",
+        str(data.get("enable_phone_login", False)).lower(),
+    )
+    config.set(
+        "Features",
+        "enable_phone_registration_verify",
+        str(data.get("enable_phone_registration_verify", False)).lower(),
+    )
+    if not config.has_section("SMS_Service_SMSBao"):
+        config.add_section("SMS_Service_SMSBao")
+    config.set("SMS_Service_SMSBao", "username", data.get("username", ""))
+    config.set("SMS_Service_SMSBao", "api_key", data.get("api_key", ""))
+    config.set(
+        "SMS_Service_SMSBao",
+        "signature",
+        _normalize_sms_signature(data.get("signature", "")),
+    )
+    config.set(
+        "SMS_Service_SMSBao",
+        "template_register",
+        data.get("template_register", ""),
+    )
+    config.set(
+        "SMS_Service_SMSBao",
+        "code_expire_minutes",
+        str(data.get("code_expire_minutes", 5)),
+    )
+    config.set(
+        "SMS_Service_SMSBao",
+        "rate_limit_per_account_day",
+        str(data.get("rate_limit_per_account_day", 10)),
+    )
+    config.set(
+        "SMS_Service_SMSBao",
+        "rate_limit_per_ip_day",
+        str(data.get("rate_limit_per_ip_day", 20)),
+    )
+    config.set(
+        "SMS_Service_SMSBao",
+        "rate_limit_per_phone_day",
+        str(data.get("rate_limit_per_phone_day", 5)),
+    )
+    return config
+
+
+def _apply_daily_restart_config_updates(config, data):
+    enabled_value = str(data.get("enabled", False)).lower()
+    time_value = str(data.get("time", "00:00") or "").strip()
+    _, _, valid = _parse_daily_restart_time_string(time_value)
+    if not valid:
+        raise ValueError("每日自动重启时间必须是合法的 HH:MM 24 小时制")
+
+    if not config.has_section("Daily_Restart"):
+        config.add_section("Daily_Restart")
+    config.set("Daily_Restart", "enabled", enabled_value)
+    config.set("Daily_Restart", "time", time_value)
+    return config
+
+
+SMSBAO_ERROR_MESSAGES = {
+    "30": "密码错误",
+    "40": "账号不存在",
+    "41": "余额不足",
+    "42": "账户已过期",
+    "43": "IP地址限制",
+    "50": "内容含有敏感词",
+    "51": "手机号码不正确",
+}
+
+
+
+def _get_smsbao_error_message(result_code):
+    return SMSBAO_ERROR_MESSAGES.get(result_code, f"未知错误(错误码:{result_code})")
+
+
+
+def _digits_only(value):
+    return re.sub(r"\D", "", str(value or "").strip())
+
+
+
+def _normalize_phone(value):
+    return _digits_only(value)[:11]
+
+
+
+def _normalize_sms_code(value):
+    return _digits_only(value)
+
+
+
+def get_captcha_provider_config():
+    """
+    读取验证码提供方配置（本地图片 / 本地行为验证码）。
+
+    返回 dict：
+    - provider: "image"（本地图片验证码，默认） | "behavior"
+    - behavior_base_url: 本地行为验证码服务根地址（后端代理时使用，浏览器不直接访问）
+    - behavior_api_key: X-Captcha-Key 值（可为空）
+    - behavior_type: 验证码类型（SLIDER/ROTATE/... 默认 SLIDER）
+    """
+    provider = "image"
+    base_url = ""
+    api_key = ""
+    ctype = "SLIDER"
+    try:
+        cfg = _read_config_ini(CONFIG_JSON_FILE)
+        if cfg is not None:
+            provider = (cfg.get("Captcha", "provider",
+                        fallback="image") or "image").strip().lower()
+            if provider not in ("image", "behavior"):
+                provider = "image"
+            base_url = (cfg.get("Captcha", "behavior_base_url",
+                        fallback="") or "").strip().rstrip("/")
+            api_key = (cfg.get("Captcha", "behavior_api_key", fallback="") or "").strip()
+            ctype = (cfg.get("Captcha", "behavior_type",
+                     fallback="SLIDER") or "SLIDER").strip() or "SLIDER"
+    except Exception as e:
+        logging.warning(f"[验证码] 读取验证码提供方配置失败，回退本地图片: {e}")
+    return {
+        "provider": provider,
+        "behavior_base_url": base_url,
+        "behavior_api_key": api_key,
+        "behavior_type": ctype,
+    }
+
+
+def append_behavior_captcha_history(captcha_id, behavior_type="SLIDER", status="created"):
+    """
+    记录 captcha-local 生成历史。行为验证码答案和图片不可回溯，只记录 ID、类型和状态。
+    """
+    if not captcha_id:
+        return
+    try:
+        now_ts = time.time()
+        history_dir = os.path.join(LOGIN_LOGS_DIR, "captcha_history")
+        os.makedirs(history_dir, exist_ok=True)
+        date_str = datetime.datetime.fromtimestamp(now_ts).strftime("%Y%m%d")
+        history_file = os.path.join(history_dir, f"captcha_history_{date_str}.jsonl")
+        try:
+            session_id = request.headers.get("X-Session-ID", "unknown")
+            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            user_agent = request.headers.get("User-Agent", "unknown")
+        except Exception:
+            session_id = "unknown"
+            client_ip = "unknown"
+            user_agent = "unknown"
+        history_entry = {
+            "captcha_id": str(captcha_id),
+            "provider": "behavior",
+            "captcha_provider": "behavior",
+            "behavior_type": str(behavior_type or "SLIDER"),
+            "display_text": "使用验证码服务器",
+            "code": "",
+            "html": "",
+            "session_id": session_id,
+            "client_ip": client_ip,
+            "user_agent": user_agent,
+            "timestamp": now_ts,
+            "timestamp_readable": datetime.datetime.fromtimestamp(now_ts).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+            "expires_at": now_ts + 120,
+            "status": status,
+            "verified_at": None,
+            "verified_input": None,
+        }
+        with open(history_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(history_entry, ensure_ascii=False) + "\n")
+        logging.debug(
+            f"[验证码历史-behavior] 已记录验证码服务器请求: ID={str(captcha_id)[:12]}..."
+        )
+    except Exception as e:
+        logging.error(f"[验证码历史-behavior] 记录历史失败: {e}", exc_info=True)
+
+
+def update_behavior_captcha_history(captcha_id, passed):
+    """
+    更新 captcha-local 二次校验结果。不可回溯答案，verified_input 固定显示服务器校验。
+    """
+    if not captcha_id:
+        return
+    try:
+        history_dir = os.path.join(LOGIN_LOGS_DIR, "captcha_history")
+        if not os.path.exists(history_dir):
+            return
+        status = "verified_success" if passed else "verified_failed"
+        now_ts = time.time()
+        for filename in sorted(os.listdir(history_dir), reverse=True):
+            if not filename.endswith(".jsonl"):
+                continue
+            history_file = os.path.join(history_dir, filename)
+            try:
+                with open(history_file, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                updated = False
+                for index, line in enumerate(lines):
+                    try:
+                        record = json.loads(line.strip())
+                    except Exception:
+                        continue
+                    if record.get("captcha_id") != captcha_id:
+                        continue
+                    record["provider"] = "behavior"
+                    record["captcha_provider"] = "behavior"
+                    record["display_text"] = "使用验证码服务器"
+                    record["code"] = ""
+                    record["html"] = ""
+                    record["status"] = status
+                    record["verified_at"] = now_ts
+                    record["verified_at_readable"] = datetime.datetime.fromtimestamp(
+                        now_ts
+                    ).strftime("%Y-%m-%d %H:%M:%S")
+                    record["verified_input"] = "验证码服务器二次校验"
+                    lines[index] = json.dumps(record, ensure_ascii=False) + "\n"
+                    updated = True
+                    break
+                if updated:
+                    with open(history_file, "w", encoding="utf-8") as f:
+                        f.writelines(lines)
+                    return
+            except Exception as e:
+                logging.warning(f"[验证码历史-behavior] 更新文件 {filename} 失败: {e}")
+    except Exception as e:
+        logging.error(f"[验证码历史-behavior] 更新历史失败: {e}", exc_info=True)
+
+
+def normalize_captcha_history_record(record):
+    if not isinstance(record, dict):
+        return record
+    provider = str(
+        record.get("provider") or record.get("captcha_provider") or ""
+    ).strip().lower()
+    if provider == "behavior":
+        record["provider"] = "behavior"
+        record["captcha_provider"] = "behavior"
+        record["display_text"] = "使用验证码服务器"
+        record["code"] = ""
+        record["captcha_code"] = ""
+        record["html"] = ""
+        if record.get("verified_input"):
+            record["verified_input"] = "验证码服务器二次校验"
+    return record
+
+
+def _verify_behavior_captcha(captcha_id):
+    """
+    本地行为验证码二次校验：调用行为验证码服务 GET /check2?id=<captcha_id>。
+    返回 (bool, error_msg)。校验通过后该 id 在 behavior 侧被消费，无法重放。
+    """
+    import requests as _requests
+
+    conf = get_captcha_provider_config()
+    base_url = conf.get("behavior_base_url") or ""
+    if not base_url:
+        logging.error("[验证码-behavior] 未配置 behavior_base_url")
+        return False, "人机验证服务未配置"
+    headers = {}
+    if conf.get("behavior_api_key"):
+        headers["X-Captcha-Key"] = conf["behavior_api_key"]
+    try:
+        resp = _requests.get(
+            f"{base_url}/check2",
+            params={"id": captcha_id},
+            headers=headers,
+            timeout=5,
+        )
+        passed = resp.status_code == 200 and resp.text.strip().lower() == "true"
+        update_behavior_captcha_history(captcha_id, passed)
+        if passed:
+            logging.info(f"[验证码-behavior] 二验通过: ID={captcha_id[:12]}...")
+            return True, ""
+        logging.warning(
+            f"[验证码-behavior] 二验未通过: ID={captcha_id[:12]}..., status={resp.status_code}, body={resp.text[:40]}"
+        )
+        return False, "人机验证未通过，请重试"
+    except Exception as e:
+        logging.error(f"[验证码-behavior] 二验请求失败: {e}")
+        return False, "人机验证服务异常，请稍后重试"
+
+
+def verify_captcha(captcha_id, user_input):
+    """
+    验证验证码辅助函数（按提供方分支：本地图片 / behavior）
+    """
+    logging.debug(f"[验证码] 开始验证: ID={captcha_id}..., 用户输入='{user_input}'")
+
+    # ========================================
+    # 提供方分支：behavior 走 /check2 二次校验，不依赖文本输入
+    # ========================================
+    if get_captcha_provider_config().get("provider") == "behavior":
+        if not captcha_id or not captcha_id.strip():
+            return False, "请先完成人机验证"
+        return _verify_behavior_captcha(captcha_id.strip())
+
+    if not captcha_id or not captcha_id.strip():
+        return False, "验证码ID不能为空"
+
+    if not user_input or not user_input.strip():
+        return False, "人机验证码不能为空"
+    captchas_dir = os.path.join("logs", "captchas")
+    captcha_file = os.path.join(captchas_dir, f"{captcha_id}.json")
+    if not os.path.exists(captcha_file):
+        logging.warning(f"[验证码] 验证码文件不存在: ID={captcha_id}...")
+        return False, "人机验证码不存在或已失效"
+
+    try:
+        with open(captcha_file, "r", encoding="utf-8") as f:
+            captcha_data = json.load(f)
+        current_time = time.time()
+        if captcha_data.get("expires_at", 0) < current_time:
+            try:
+                os.remove(captcha_file)
+            except Exception as e:
+                logging.warning(f"[验证码] 删除过期验证码文件失败: {e}")
+            return False, "人机验证码已过期"
+        stored_code = captcha_data.get("code", "")
+        user_input_upper = user_input.strip().upper()
+        is_correct = user_input_upper == stored_code
+
+        def update_captcha_history():
+            try:
+                history_dir = os.path.join("logs", "captcha_history")
+                date_str = datetime.datetime.now().strftime("%Y%m%d")
+                history_file = os.path.join(
+                    history_dir, f"captcha_history_{date_str}.jsonl"
+                )
+                if os.path.exists(history_file):
+                    lines = []
+                    with open(history_file, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    updated = False
+                    for i, line in enumerate(lines):
+                        try:
+                            record = json.loads(line.strip())
+                            if record.get("captcha_id") == captcha_id:
+                                record["status"] = (
+                                    "verified_success"
+                                    if is_correct
+                                    else "verified_failed"
+                                )
+                                record["verified_at"] = time.time()
+                                record["verified_at_readable"] = (
+                                    datetime.datetime.fromtimestamp(
+                                        time.time()
+                                    ).strftime("%Y-%m-%d %H:%M:%S")
+                                )
+                                record["verified_input"] = user_input_upper
+                                lines[i] = (
+                                    json.dumps(
+                                        record, ensure_ascii=False) + "\n"
+                                )
+                                updated = True
+                                break
+                        except:
+                            pass
+
+                    if updated:
+                        with open(history_file, "w", encoding="utf-8") as f:
+                            f.writelines(lines)
+
+                        logging.debug(
+                            f"[验证码历史] 已更新验证结果: ID={captcha_id[:8]}..., 结果={'成功' if is_correct else '失败'}"
+                        )
+            except Exception as e:
+                logging.error(f"[验证码历史] 更新验证结果失败: {e}", exc_info=True)
+
+        threading.Thread(target=update_captcha_history,
+                         daemon=True).start()
+        try:
+            os.remove(captcha_file)
+            logging.debug(f"[验证码] 已删除验证码文件: {captcha_id}")
+        except Exception as e:
+            logging.warning(f"[验证码] 删除验证码文件失败: {e}")
+        if is_correct:
+            logging.info(f"[验证码] 验证成功: ID={captcha_id[:8]}...")
+            return True, ""
+        else:
+            logging.warning(f"[验证码] 验证失败: ID={captcha_id[:8]}...")
+            return False, "人机验证码错误"
+
+    except json.JSONDecodeError as e:
+        logging.error(f"[验证码] JSON解析失败: {e}")
+        try:
+            os.remove(captcha_file)
+        except:
+            pass
+        return False, "人机验证码数据损坏"
+
+    except Exception as e:
+        logging.error(f"[验证码] 验证过程出错: {e}", exc_info=True)
+        return False, "人机验证码验证失败"
+
+
+
+def _register_payment_verify_probe_route(app):
+    @app.route("/api/payment/verify_probe/<token>", methods=["POST"])
+    def payment_verify_probe(token):
+        data = request.get_json(silent=True) or {}
+        challenge = data.get("challenge", "")
+        if not _consume_payment_verify_probe(token, challenge):
+            response = jsonify({"success": False})
+            return _apply_no_cache_headers(response), 404
+        response = jsonify({"success": True})
+        return _apply_no_cache_headers(response)
+
+
+def _register_payment_verify_host_route_for_tests(app, login_required, verifier_factory=None):
+    verifier_factory = verifier_factory or IPVerifier
+
+    @app.route("/api/payment/verify_host", methods=["POST"])
+    @login_required
+    def payment_verify_host():
+        data = request.get_json(silent=True) or {}
+        app_host = str(data.get("app_host", "")).strip()
+        if not app_host:
+            return jsonify({
+                "success": False,
+                "message": "app_host参数不能为空",
+                "verified": False,
+            })
+        if not (app_host.startswith("http://") or app_host.startswith("https://")):
+            return jsonify({
+                "success": False,
+                "message": "app_host格式不正确，必须以http://或https://开头",
+                "verified": False,
+            })
+
+        verified = verifier_factory().check_app_host(app_host.rstrip("/"))
+        if verified:
+            return jsonify({
+                "success": True,
+                "message": "验证通过，这是本服务器",
+                "verified": True,
+            })
+        return jsonify({
+            "success": False,
+            "message": "验证失败：目标地址未命中本机随机探针",
+            "verified": False,
+        })
 
 
 def _try_import_builtin(module_name, display_name=None, use_print=False):
@@ -72,16 +2168,20 @@ hashlib = _try_import_builtin("hashlib")
 json = _try_import_builtin("json")
 configparser = _try_import_builtin("configparser")
 datetime = _try_import_builtin("datetime")
+urllib = _try_import_builtin("urllib")
 traceback = _try_import_builtin("traceback")
 zipfile = _try_import_builtin("zipfile")
 random = _try_import_builtin("random")
+secrets = _try_import_builtin("secrets")
+string = _try_import_builtin("string")
 argparse = _try_import_builtin("argparse")
+subprocess = _try_import_builtin("subprocess")
 gc = _try_import_builtin("gc")
 heapq = _try_import_builtin("heapq")
 ipaddress = _try_import_builtin("ipaddress")
 shutil = _try_import_builtin("shutil")
 codecs = _try_import_builtin("codecs")
-tempfile = _try_import_builtin("tempfile")
+mimetypes = _try_import_builtin("mimetypes")
 
 if _import_failures:
     _buffer_log("ERROR", f"\n{'='*70}")
@@ -102,6 +2202,7 @@ if _import_failures:
 
 _buffer_log("INFO", "[导入检查] ✓ 所有内置模块导入成功\n")
 _import_failures.clear()
+payment_verify_probes_lock = threading.Lock()
 
 if sys and sys.platform.startswith("win"):
     try:
@@ -123,7 +2224,9 @@ def import_standard_libraries():
 
     std_libs = [
         ("ssl", "import ssl"),
-        ("eventlet", "import eventlet"),
+        # eventlet 属于第三方依赖，不应放在标准库检查里。
+        # 其缺失应由后续核心依赖检查统一报告为“依赖缺失”，而非 Python 环境损坏。
+        # eventlet 相关导入放在 import_core_third_party() 中处理。
         # ("eventlet.wsgi", "import eventlet.wsgi"),
         ("argparse", "import argparse"),
         ("base64", "import base64"),
@@ -146,6 +2249,7 @@ def import_standard_libraries():
         ("time", "import time"),
         ("traceback", "import traceback"),
         ("urllib", "import urllib"),
+        ("urllib.request", "import urllib.request"),
         ("uuid", "import uuid"),
         ("warnings", "import warnings"),
         ("atexit", "import atexit"),
@@ -460,12 +2564,6 @@ def initialize_global_variables():
     global browsing_activity, browsing_activity_lock
     browsing_activity = {}
     browsing_activity_lock = threading.Lock()
-
-    # 全局变量：用于存储从 verify_challenge 接口接收到的验证码
-    # 这个变量在 payment_verify_challenge() 函数中被赋值
-    # 在 create_order() 方法中被读取用于验证
-    global payment_verify_challenge_get
-    payment_verify_challenge_get = ""
 
     # 全局变量：缓存服务器的公网IP地址（IPv4 和 IPv6）
     # 用于 is_allowed_ip() 函数中判断请求是否来自服务器本身
@@ -1019,161 +3117,75 @@ class IPVerifier:
     def check_app_host(self, client_app_host: str) -> bool:
         """
         验证 client_app_host 是否真的是本服务器。
-        
-        【IPv6 完全支持】
-        本方法全面支持 IPv6 地址验证：
-        - 自动处理 IPv6 地址的方括号：用户输入 ::1 会被自动转换为 http://[::1]
-        - 支持 IPv6 地址的多种表示形式（会被自动标准化）
-        - 支持 IPv4-mapped IPv6 地址：::ffff:192.168.1.1
 
-        支持多种输入格式：
-        - 纯IP: 127.0.0.1（将使用默认http协议和默认端口）
-        - 带协议: http://127.0.0.1, https://127.0.0.1
-        - 带端口: 127.0.0.1:8080（将使用默认http协议）
-        - 带协议和端口: https://127.0.0.1:8080
-        - 特殊格式: https:127.0.0.1:8080（无双斜杠）
-        - IPv6: http://[::1]:8080, [::1]:8080, ::1
-        - IPv4-mapped IPv6: http://[::ffff:127.0.0.1]:8080
-
-        Args:
-            client_app_host: 用户输入的host字符串
-
-        Returns:
-            bool: 验证成功返回True，否则返回False
+        只接受成功命中当前进程的一次性随机 probe：
+        - 路径固定为 `/api/payment/verify_probe/<token>` 模式；
+        - 请求体携带一次性随机 challenge；
+        - 远端返回 success 仍不足以判定成功，必须同时确认本机 probe 已被消费。
         """
-        # 解析输入（parse_host_input 会自动处理 IPv6 地址的标准化）
         parsed = self.parse_host_input(client_app_host)
 
         if not parsed['ip']:
             logging.warning(f"[本机验证] 无法解析host: {client_app_host}")
             return False
 
-        # 获取用于发起请求的完整 URL
-        # build_full_url 会自动为 IPv6 地址添加方括号
         base_url = parsed['full_url']
 
         if not base_url:
             logging.warning(f"[本机验证] 无法构建请求URL: {client_app_host}")
             return False
 
-        # 记录解析结果，便于调试
-        # 对于 IPv6 地址，会显示标准化后的形式
         logging.info(
             f"[本机验证] 解析结果 - IP: {parsed['ip']}, 端口: {parsed['port']}, 协议: {parsed['scheme']}, URL: {base_url}")
 
-        # 生成一个长度为2048位的随机验证码（challenge）
-        # 用于验证 client_app_host 是否真的是本服务器
-        # 随机字符包括大小写字母和数字，确保足够的随机性和安全性
-        challenge = "".join(random.choices(
-            string.ascii_letters + string.digits, k=2048))
-
-        # 记录日志：开始验证app_host
-        # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
-        challenge_preview = (
-            f"{challenge[:32]}... {challenge[-32:]}" if len(
-                challenge) > 64 else challenge
-        )
-        logging.info(
-            f"开始验证 {client_app_host} 是否是本服务器，生成的验证码长度:  {len(challenge)}位, 预览: {challenge_preview}"
-        )
-
-        # 构造验证接口的完整URL
-        # 格式：{base_url}/api/payment/verify_challenge
-        verify_url = f"{base_url}/api/payment/verify_challenge"
+        token, challenge = _create_payment_verify_probe(ttl_seconds=15)
+        verify_url = _build_payment_verify_probe_url(base_url, token)
+        token_preview = f"{token[:8]}..." if len(token) > 8 else token
 
         try:
-
-            # 向verify_challenge接口发送POST请求
-            # json参数：以JSON格式发送验证码
-            # timeout参数：设置5秒超时，避免长时间等待
-            # 5秒对于本地服务器已经足够，如果5秒内无响应说明可能不是本服务器
             response = requests.post(
-                verify_url, json={"challenge":  challenge}, timeout=5)
+                verify_url,
+                json={"challenge": challenge},
+                timeout=5,
+            )
 
-            # 检查HTTP响应状态码
-            # 200表示请求成功
-            if response. status_code != 200:
-
-                # HTTP状态码不是200
+            if response.status_code != 200:
                 logging.warning(
-                    f"[本机验证] HTTP请求失败 - 状态码: {response.status_code}")
+                    f"[本机验证] probe 请求失败 - 状态码: {response.status_code}, token: {token_preview}"
+                )
                 return False
 
-            # HTTP状态码为200，开始处理响应
-            # 尝试解析响应的JSON数据
             try:
-                # 解析响应体中的JSON数据
-                # 新的验证机制期望格式：{"success": True}
-                # 不再从响应中获取 challenge，而是从全局变量中获取
                 response_data = response.json()
-
-                # 检查响应中的 success 字段
-                # 如果 success 不为 True，说明验证接口拒绝了请求
-                if not response_data.get("success"):
-                    # 验证接口返回失败
-                    message = response_data.get("message", "验证接口返回失败")
-                    logging.warning(f"[本机验证] 验证接口返回失败: {message}")
-                    return False
-
-                # 声明使用全局变量 payment_verify_challenge_get
-                # 这个变量在 verify_challenge 接口中被赋值
-                global payment_verify_challenge_get
-
-                # 从全局变量中获取服务器存储的 challenge
-                # 这是新的验证机制：challenge 不通过HTTP响应传递，而是通过全局变量传递
-                returned_challenge = payment_verify_challenge_get
-
-                # 记录日志：成功从全局变量获取验证码
-                # 只记录前32位和后32位，避免日志过长
-                returned_preview = (
-                    f"{returned_challenge[:32]}...{returned_challenge[-32:]}"
-                    if len(returned_challenge) > 64
-                    else returned_challenge
-                )
-                logging.info(
-                    f"[本机验证] 从全局变量获取验证码，长度: {len(returned_challenge)}位, 预览: {returned_preview}"
-                )
-
             except ValueError as e:
-                # JSON解析失败
-                # 这说明返回的响应不是有效的JSON格式，可能不是本服务器
-                logging.warning(f"[本机验证] 响应JSON解析失败: {str(e)}")
+                logging.warning(f"[本机验证] probe 响应JSON解析失败: {str(e)}")
                 return False
 
-            except Exception as e:
-                # 其他解析异常
-                logging.error(f"[本机验证] 响应处理异常: {str(e)}")
+            if not response_data.get("success"):
+                logging.warning(f"[本机验证] probe 接口返回失败: {token_preview}")
                 return False
+
+            if not _is_payment_verify_probe_consumed(token):
+                logging.warning(f"[本机验证] probe 未在本机消费成功: {token_preview}")
+                return False
+
+            logging.info(f"[本机验证] app_host probe 验证通过: {base_url}")
+            return True
 
         except requests.exceptions.Timeout:
-            # 请求超时
             logging.warning(f"[本机验证] 请求超时 - {verify_url}")
             return False
 
         except requests.exceptions.ConnectionError:
-            # 连接错误（网络不通或域名无法解析）
-            logging. warning(f"[本机验证] 连接失败 - {verify_url}")
+            logging.warning(f"[本机验证] 连接失败 - {verify_url}")
             return False
 
         except Exception as e:
-            # 其他异常
             logging.error(f"[本机验证] 验证过程异常: {str(e)}")
             return False
 
-        # 比对发送的 challenge 和从全局变量获取的 challenge
-        # 如果两者完全一致，说明这确实是本服务器
-        # 如果不一致，说明 app_host 指向的不是本服务器，验证失败
-        if challenge != returned_challenge:
-            # 验证失败：全局变量中的 challenge 与发送的不一致
-            # 这说明 app_host 指向的服务器不是本服务器
-            logging.warning(f"[本机验证] 验证码不匹配 - 验证失败")
-            logging.warning(
-                f"[本机验证] 发送的验证码长度: {len(challenge)}位，全局变量中的长度:  {len(returned_challenge)}位"
-            )
-            logging.warning(f"[本机验证] {client_app_host} 可能不是本服务器")
-            return False
-
-        return True
+        finally:
+            _cleanup_expired_payment_verify_probes()
 
     def check_host_has_scheme(self, client_app_host: str) -> bool:
         """
@@ -1454,23 +3466,32 @@ class CustomLogHandler(logging.FileHandler):
 
 def archive_old_logs():
     """
-    归档旧的日志文件。
+    归档旧的日志文件和随机背景缓存。
     """
 
     if not os.path.exists(archive_dir):
         os.makedirs(archive_dir, exist_ok=True)
         print(f"[日志归档] 创建归档目录: {archive_dir}")
 
-    log_files_to_archive = []
+    files_to_archive = []
     for filename in os.listdir(log_dir):
         if filename == "zx-slm-tool.log" or (
             filename.startswith("zx-slm-tool-") and filename.endswith(".log")
         ):
             log_path = os.path.join(log_dir, filename)
             if os.path.isfile(log_path) and os.path.getsize(log_path) > 0:
-                log_files_to_archive.append((log_path, filename))
+                files_to_archive.append((log_path, filename))
 
-    if not log_files_to_archive:
+    background_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), RANDOM_BACKGROUND_IMAGE_DIR)
+    if os.path.isdir(background_dir):
+        for filename in os.listdir(background_dir):
+            file_path = os.path.join(background_dir, filename)
+            if os.path.isfile(file_path) and os.path.getsize(file_path) > 0:
+                files_to_archive.append(
+                    (file_path, f"{RANDOM_BACKGROUND_IMAGE_DIR}/{filename}")
+                )
+
+    if not files_to_archive:
         print(f"[日志归档] 没有需要归档的日志文件")
         return
 
@@ -1480,13 +3501,13 @@ def archive_old_logs():
 
     try:
         with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-            for log_path, filename in log_files_to_archive:
-                zipf.write(log_path, filename)
-                print(f"[日志归档] 已压缩: {filename}")
+            for file_path, archive_name in files_to_archive:
+                zipf.write(file_path, archive_name)
+                print(f"[日志归档] 已压缩: {archive_name}")
 
-        for log_path, filename in log_files_to_archive:
-            os.remove(log_path)
-            print(f"[日志归档] 已删除原文件: {filename}")
+        for file_path, archive_name in files_to_archive:
+            os.remove(file_path)
+            print(f"[日志归档] 已删除原文件: {archive_name}")
 
         print(f"[日志归档] 归档完成: {archive_path}")
 
@@ -1568,7 +3589,7 @@ def setup_logging():
     配置详细的日志系统（带自定义轮转逻辑）。
     """
     log_rotation_size_mb = 10
-    archive_max_size_mb = 1024*10    # 10GB
+    archive_max_size_mb = 5120
     global log_dir, archive_dir
     log_dir = "logs"
     archive_dir = os.path.join(log_dir, "archive")
@@ -1582,7 +3603,7 @@ def setup_logging():
                     "Logging", "log_rotation_size_mb", fallback=10
                 )
                 archive_max_size_mb = config.getint(
-                    "Logging", "archive_max_size_mb", fallback=500
+                    "Logging", "archive_max_size_mb", fallback=5120
                 )
                 log_dir = config.get("Logging", "log_dir", fallback="logs")
                 archive_dir = config.get(
@@ -1842,6 +3863,10 @@ PERMISSIONS_FILE = "permissions.json"
 # 替代之前分散在各个INI文件中的auto_attendance_enabled参数
 AUTO_ATTENDANCE_CONFIG_FILE = os.path.join(
     "configs", "auto_attendance_config.json")
+THEME_DIR = "theme"
+RANDOM_BACKGROUND_IMAGE_DIR = "random_background_image"
+RANDOM_BACKGROUND_INDEX_FILE = os.path.join(RANDOM_BACKGROUND_IMAGE_DIR, "index.json")
+THEME_METADATA_FIELDS = {"id", "label", "description", "placeholder"}
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
 AUDIT_LOG_FILE = None
@@ -2556,6 +4581,7 @@ def _create_directories():
     directories = {
         "school_accounts": SCHOOL_ACCOUNTS_DIR,
         "system_accounts": SYSTEM_ACCOUNTS_DIR,
+        "theme": os.path.join(base_dir, THEME_DIR),
         "logs": LOGIN_LOGS_DIR,
         "sessions": SESSION_STORAGE_DIR,
         "tokens": TOKENS_STORAGE_DIR,
@@ -2960,7 +4986,8 @@ def _get_default_config():
 
     config["Logging"] = {
         "log_rotation_size_mb": "10",
-        "archive_max_size_mb": "500",
+        "archive_max_size_mb": "5120",
+        "random_background_cache_max_size_mb": "1024",
         "log_dir": "logs",
         "archive_dir": "logs/archive",
     }
@@ -2971,8 +4998,26 @@ def _get_default_config():
         "login_log_retention_days": "90",
     }
 
+    config["Daily_Restart"] = {
+        "enabled": "false",
+        "time": "00:00",
+    }
+
     config["Map"] = {
+        "provider": "amap",
         "amap_js_key": "",
+        "tencent_map_key": "",
+        "tianditu_token": "",
+        "baidu_map_ak": "",
+    }
+
+    config["IP_Location"] = {
+        # 查询顺序（逗号分隔）：默认 UapiPro -> 高德 -> 百度
+        "query_order": "uapipro,amap,baidu",
+        # 高德 Web API Key（IP定位）
+        "amap_web_api_key": "",
+        # UapiPro API Key（Bearer）
+        "uapipro_api_key": "",
     }
 
     config["IP_Location"] = {
@@ -3108,12 +5153,12 @@ def _get_default_config():
         # 如需修改支付方式的名称、图标、描述等信息，请直接编辑 payment_methods.json 文件
         # 支付超时时间（秒）：订单创建后多长时间内未支付视为超时
         # 格式：整数，单位为秒
-        # 默认值：30（30秒）
+        # 默认值：900（15分钟）
         # 用途：用于标记超时未支付的订单，便于系统自动关闭或提醒用户
         # 注意：
         #   1. 此配置仅用于本地订单超时判断，不影响易支付平台的订单有效期
-        #   2. 建议设置为10-60秒之间
-        "payment_timeout_minutes": "300",
+        #   2. 建议设置为10-3600秒之间
+        "payment_timeout_minutes": "900",
     }
 
     # ============================================================
@@ -3387,7 +5432,12 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# 归档目录最大大小（MB）\n")
         f.write("# 超过此大小时会删除最早的归档文件，设置为0表示不限制\n")
         f.write(
-            f"archive_max_size_mb = {config_obj.get('Logging', 'archive_max_size_mb', fallback='500')}\n"
+            f"archive_max_size_mb = {config_obj.get('Logging', 'archive_max_size_mb', fallback='5120')}\n"
+        )
+        f.write("# 主题随机背景缓存目录最大大小（MB）\n")
+        f.write("# 超过此大小时会删除 random_background_image 中最早的缓存文件，设置为0表示不限制\n")
+        f.write(
+            f"random_background_cache_max_size_mb = {config_obj.get('Logging', 'random_background_cache_max_size_mb', fallback='1024')}\n"
         )
         f.write("# 日志文件存储目录\n")
         f.write(
@@ -4296,9 +6346,42 @@ class JsonConfigAdapter:
         self._data: dict = {}
         for sec, opts in raw.items():
             if isinstance(opts, dict):
-                self._data[sec] = {k: str(v) for k, v in opts.items()}
+                self._data[sec] = {}
+                for k, v in opts.items():
+                    if sec == "Map" and k == "providers":
+                        self._data[sec][k] = self._coerce_map_providers(v)
+                    else:
+                        self._data[sec][k] = str(v)
             else:
                 self._data[sec] = {}
+
+    @staticmethod
+    def _coerce_map_providers(value):
+        if isinstance(value, dict):
+            source = value
+        elif isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return {}
+            source = {}
+            for parser in (json.loads, ast.literal_eval):
+                try:
+                    parsed = parser(text)
+                except Exception:
+                    continue
+                if isinstance(parsed, dict):
+                    source = parsed
+                    break
+        else:
+            return {}
+
+        normalized = {}
+        for provider_name, provider_values in source.items():
+            if isinstance(provider_values, dict):
+                normalized[str(provider_name)] = {
+                    key: str(value) for key, value in provider_values.items()
+                }
+        return normalized
 
     # ── 读取接口 ──────────────────────────────────────────────────────────
 
@@ -4365,7 +6448,10 @@ class JsonConfigAdapter:
     def set(self, section: str, option: str, value: str = None):
         if section not in self._data:
             self._data[section] = {}
-        self._data[section][option] = str(value) if value is not None else ""
+        if section == "Map" and option == "providers":
+            self._data[section][option] = self._coerce_map_providers(value)
+        else:
+            self._data[section][option] = str(value) if value is not None else ""
 
     def remove_option(self, section: str, option: str) -> bool:
         if section in self._data and option in self._data[section]:
@@ -4385,10 +6471,27 @@ class JsonConfigAdapter:
         parent_dir = os.path.dirname(abs_path)
         os.makedirs(parent_dir, exist_ok=True)
         with CONFIG_JSON_LOCK:
+            data = {}
+            for section, options in self._data.items():
+                if not isinstance(options, dict):
+                    data[section] = {}
+                    continue
+                section_data = {}
+                has_provider_map = section == "Map" and isinstance(options.get("providers"), dict)
+                for key, value in options.items():
+                    if has_provider_map and key in {
+                        "amap_js_key",
+                        "tencent_map_key",
+                        "tianditu_token",
+                        "baidu_map_ak",
+                    }:
+                        continue
+                    section_data[key] = value if isinstance(value, dict) else str(value)
+                data[section] = section_data
             with tempfile.NamedTemporaryFile(
                 "w", encoding="utf-8", delete=False, dir=parent_dir, suffix=".tmp"
             ) as tmpf:
-                json.dump(self._data, tmpf, indent=2, ensure_ascii=False)
+                json.dump(data, tmpf, indent=2, ensure_ascii=False)
                 tmp_path = tmpf.name
             os.replace(tmp_path, abs_path)
 
@@ -4403,7 +6506,17 @@ class JsonConfigAdapter:
         try:
             with open(filename, "r", encoding=encoding or "utf-8") as f:
                 raw = json.load(f)
-            self._data = {sec: {k: str(v) for k, v in opts.items()} for sec, opts in raw.items() if isinstance(opts, dict)}
+            self._data = {}
+            for sec, opts in raw.items():
+                if not isinstance(opts, dict):
+                    self._data[sec] = {}
+                    continue
+                self._data[sec] = {}
+                for k, v in opts.items():
+                    if sec == "Map" and k == "providers":
+                        self._data[sec][k] = self._coerce_map_providers(v)
+                    else:
+                        self._data[sec][k] = str(v)
             self._path = filename
         except Exception:
             pass
@@ -5366,6 +7479,59 @@ def get_session_file_path(session_id: str) -> str:
     return os.path.join(SESSION_STORAGE_DIR, f"{session_hash}.json")
 
 
+SESSION_UUID_V4_PATTERN = re.compile(
+    r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
+    re.IGNORECASE,
+)
+
+
+def normalize_session_uuid(session_id):
+    """返回有效 UUID v4 字符串；无效或空值返回空字符串。"""
+    normalized = str(session_id or "").strip()
+    if not normalized or normalized.lower() in {"null", "undefined", "none"}:
+        return ""
+    if not SESSION_UUID_V4_PATTERN.match(normalized):
+        return ""
+    return normalized
+
+
+AUTH_OPTIONAL_API_METHODS = {"get_initial_data"}
+
+
+def is_auth_optional_api_method(method):
+    """这些通用 API 可在尚未创建业务会话时用于只读初始化。"""
+    normalized = str(method or "").strip()
+    return normalized in AUTH_OPTIONAL_API_METHODS
+
+
+def should_use_auth_optional_api_context(
+    method, session_id="", session_exists=False, restored_state=None
+):
+    """判断通用 API 是否应降级到临时只读初始化上下文。"""
+    if not is_auth_optional_api_method(method):
+        return False
+    if not session_id:
+        return True
+    if session_exists:
+        return False
+    if restored_state and restored_state.get("login_success"):
+        return False
+    return True
+
+
+def resolve_auth_optional_api_session_id(method, session_id, api_instance):
+    """认证可选 API 使用临时上下文时，不保留不可恢复的请求会话ID。"""
+    if api_instance is None:
+        return session_id
+    if not should_use_auth_optional_api_context(method, session_id):
+        return session_id
+    if getattr(api_instance, "_is_persistent_session", True):
+        return session_id
+    if getattr(api_instance, "_web_session_id", ""):
+        return session_id
+    return ""
+
+
 # ==============================================================================
 # 彩虹易支付V2客户端 - 在线支付接口集成
 # ==============================================================================
@@ -5761,7 +7927,23 @@ class RainbowYiPayClient:
 
         # 声明使用全局 requests 变量
         # requests 已在 check_and_import_dependencies() 中导入
-        global requests, payment_verify_challenge_get
+        global requests
+
+        # 兜底客户端IP，避免易支付拒绝“clientip不能为空”
+        clientip = str(clientip or "").strip()
+        if not clientip:
+            try:
+                clientip = str(
+                    request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                    or request.environ.get("REMOTE_ADDR")
+                    or request.remote_addr
+                    or ""
+                ).strip()
+            except Exception:
+                clientip = ""
+            if not clientip:
+                clientip = "127.0.0.1"
+            logging.warning(f"[彩虹易支付] clientip 为空，已使用兜底IP: {clientip}")
 
         # 兜底客户端IP，避免易支付拒绝“clientip不能为空”
         clientip = str(clientip or "").strip()
@@ -5876,28 +8058,14 @@ class RainbowYiPayClient:
         notify_url = f"{app_host}/api/payment/yipay_notify"
 
         # 确定同步返回URL（return_url）
-        # 优先使用传入的 return_url 参数（如果提供）
-        # 如果没有传入，则使用配置文件中的 return_url（向后兼容）
-        # 用户支付完成后，浏览器会跳转到这个URL
+        # 仅允许与当前 app_host 同源的完整 URL；不允许跨站地址。
+        return_url = _normalize_payment_return_url(
+            return_url,
+            app_host=app_host,
+            notify_url=notify_url,
+        )
         if return_url is None:
             return_url = notify_url
-
-        def is_yipay_notify(url):
-            # 1. 预处理：如果 URL 不包含协议头（://），临时加上 http:// 以便解析
-            if "://" not in url:
-                url = "http://" + url
-
-            # 2. 解析 URL
-            parsed_url = urllib.parse.urlparse(url)
-
-            # 3. 获取路径部分 (path) 并进行比对
-            # parsed_url.path 会自动去除 ? 后面的参数
-            return parsed_url.path == "/api/payment/yipay_notify"
-
-        if not is_yipay_notify(return_url):
-            logging.info(
-                "[彩虹易支付] return_url 不是 /api/payment/yipay_notify，正在尝试修正...")
-            return_url = f"{app_host}/api/payment/yipay_notify?jump=" + return_url
 
         device = _normalize_yipay_device(device_get)
 
@@ -6299,6 +8467,411 @@ class AuthSystem:
         with open(PERMISSIONS_FILE, "w", encoding="utf-8") as f:
             json.dump(self.permissions, f, indent=2, ensure_ascii=False)
         logging.debug(f"_save_permissions: 权限配置已保存到 {PERMISSIONS_FILE}")
+
+    def get_user_theme_file_path(self, auth_username):
+        """获取用户主题配置文件路径（存储到 system_accounts）"""
+        return self.get_user_file_path(auth_username)
+
+    def _deep_merge_theme_config(self, base_config, override_config):
+        """递归合并主题配置"""
+        if not isinstance(base_config, dict):
+            base_config = {}
+        if not isinstance(override_config, dict):
+            return dict(base_config)
+
+        merged = dict(base_config)
+        for key, value in override_config.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = self._deep_merge_theme_config(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
+    def _read_theme_definition(self, style_id):
+        """读取主题定义文件"""
+        normalized_style = str(style_id or "default").strip() or "default"
+        file_stem = normalized_style
+        if normalized_style.startswith("theme-"):
+            file_stem = normalized_style[6:]
+
+        theme_path = os.path.join(os.path.dirname(__file__), THEME_DIR, f"{file_stem}.json")
+        if not os.path.exists(theme_path):
+            return {}
+
+        try:
+            with open(theme_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception as e:
+            logging.warning(f"读取主题定义失败 {theme_path}: {e}")
+            return {}
+
+    def _build_theme_background_image_url(self, relative_path):
+        return _build_theme_background_image_url(relative_path)
+
+    def _get_random_background_cache_limit_bytes(self):
+        try:
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            limit_mb = config.getint(
+                "Logging", "random_background_cache_max_size_mb", fallback=1024
+            )
+            if limit_mb <= 0:
+                return 0
+            return limit_mb * 1024 * 1024
+        except Exception as e:
+            logging.warning(f"[主题背景] 读取背景缓存上限失败，使用默认值 1024MB: {e}")
+            return 1024 * 1024 * 1024
+
+    def _get_cached_random_background_image_urls(self, cache_dir, image_type, limit=5):
+        try:
+            _cleanup_random_background_index(cache_dir)
+            candidates = []
+            prefix = f"{image_type}_"
+            for file_name in os.listdir(cache_dir):
+                file_path = os.path.join(cache_dir, file_name)
+                if file_name == "index.json":
+                    continue
+                if not os.path.isfile(file_path) or not file_name.startswith(prefix):
+                    continue
+                entry, normalized_name = _get_random_background_index_entry(cache_dir, file_name)
+                if not normalized_name or (entry and entry.get("expired")):
+                    continue
+                try:
+                    stat = os.stat(file_path)
+                except OSError:
+                    continue
+                created_at = entry.get("created_at") if isinstance(entry, dict) else None
+                sort_key = stat.st_mtime
+                if created_at:
+                    try:
+                        sort_key = datetime.datetime.fromisoformat(str(created_at)).timestamp()
+                    except (TypeError, ValueError):
+                        sort_key = stat.st_mtime
+                candidates.append((float(sort_key), normalized_name))
+
+            if not candidates:
+                return []
+
+            candidates.sort(key=lambda item: item[0])
+            urls = []
+            selected_candidates = candidates if int(limit or 0) <= 0 else candidates[:max(int(limit or 0), 1)]
+            for _, file_name in selected_candidates:
+                urls.append(
+                    self._build_theme_background_image_url(
+                        f"{RANDOM_BACKGROUND_IMAGE_DIR}/{file_name}"
+                    )
+                )
+            return urls
+        except Exception as e:
+            logging.warning(f"[主题背景] 读取 {image_type} 背景缓存失败: {e}")
+            return []
+
+    def _get_cached_random_background_image_url(self, cache_dir, image_type, random_pick=False):
+        cached_urls = self._get_cached_random_background_image_urls(cache_dir, image_type, limit=0)
+        if not cached_urls:
+            return ""
+        if random_pick and len(cached_urls) > 1:
+            with _BACKGROUND_SELECTION_LOCK:
+                previous_url = _BACKGROUND_SELECTION_STATE.get(image_type)
+                available_urls = [url for url in cached_urls if url != previous_url]
+                selected_url = secrets.choice(available_urls or cached_urls)
+                _BACKGROUND_SELECTION_STATE[image_type] = selected_url
+                return selected_url
+        return cached_urls[0]
+
+    def _peek_cached_random_background_image_url(self, cache_dir, image_type):
+        return self._get_cached_random_background_image_url(cache_dir, image_type, random_pick=True)
+
+    def _consume_cached_random_background_image_url(self, cache_dir, image_type):
+        selected_url = self._get_cached_random_background_image_url(cache_dir, image_type, random_pick=True)
+        if selected_url:
+            _mark_random_background_file_expired(cache_dir, selected_url, expired=True)
+        return selected_url
+
+    def _consume_default_theme_background_images(self, targets=None):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        os.makedirs(cache_dir, exist_ok=True)
+
+        normalized_targets = []
+        for target in (targets or ["pc", "mobile"]):
+            if target == "mobile":
+                normalized_targets.append(("mobile", "mb"))
+            elif target == "pc":
+                normalized_targets.append(("pc", "pc"))
+
+        if not normalized_targets:
+            normalized_targets = [("pc", "pc"), ("mobile", "mb")]
+
+        background_image_urls = {}
+        refresh_image_types = []
+        for key, image_type in normalized_targets:
+            background_image_urls[key] = self._consume_cached_random_background_image_url(cache_dir, image_type)
+            refresh_image_types.append(image_type)
+
+        self._refresh_default_theme_background_cache_async(refresh_image_types)
+        return background_image_urls
+
+    def _peek_default_theme_background_images(self, targets=None):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        os.makedirs(cache_dir, exist_ok=True)
+
+        normalized_targets = []
+        for target in (targets or ["pc", "mobile"]):
+            if target == "mobile":
+                normalized_targets.append(("mobile", "mb"))
+            elif target == "pc":
+                normalized_targets.append(("pc", "pc"))
+
+        if not normalized_targets:
+            normalized_targets = [("pc", "pc"), ("mobile", "mb")]
+
+        background_image_urls = {}
+        for key, image_type in normalized_targets:
+            background_image_urls[key] = self._peek_cached_random_background_image_url(cache_dir, image_type)
+
+        return background_image_urls
+
+    def _cleanup_random_background_cache(self, cache_dir, max_cache_size_bytes=None):
+        _cleanup_random_background_cache(cache_dir, max_cache_size_bytes)
+
+    def _fetch_random_background_image(self, cache_dir, api_key, image_type):
+        return _fetch_random_background_image(cache_dir, api_key, image_type)
+
+    def _ensure_background_cache_count(self, cache_dir, api_key, image_type, target_count=5):
+        logging.info(f"[主题背景] 确保 {image_type} 背景缓存数量至少为 {target_count} 张...")
+        target_count = max(int(target_count or 0), 0)
+        if target_count == 0:
+            logging.info(f"[主题背景] 目标缓存数量为 0，跳过 {image_type} 背景缓存检查")
+            return
+
+        cached_urls = self._get_cached_random_background_image_urls(
+            cache_dir, image_type, limit=target_count
+        )
+        missing_count = target_count - len(cached_urls)
+        logging.info(f"[主题背景] {image_type} 背景缓存缺失 {missing_count} 张")
+        for _ in range(missing_count):
+            try:
+                logging.info(f"[主题背景] 正在拉取新的 {image_type} 随机背景图以补足缓存...")
+                self._fetch_random_background_image(cache_dir, api_key, image_type)
+            except Exception as e:
+                logging.warning(f"[主题背景] 补足 {image_type} 背景缓存失败: {e}")
+                break
+            logging.info(f"[主题背景] 已完成一次 {image_type} 背景图拉取尝试以补足缓存")
+        logging.info(f"[主题背景] 已完成 {image_type} 背景缓存检查，当前缓存数量: {len(self._get_cached_random_background_image_urls(cache_dir, image_type))} 张")
+
+    def _ensure_default_theme_background_cache(self):
+        logging.info("[主题背景] 正在预下载默认主题背景缓存...")
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        os.makedirs(cache_dir, exist_ok=True)
+
+        config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+        api_key = config.get("IP_Location", "uapipro_api_key", fallback="").strip()
+        if not api_key:
+            logging.info("[主题背景] 未配置 UapiPro API Key，跳过预下载缓存")
+            return
+
+        for image_type in ("pc", "mb"):
+            self._ensure_background_cache_count(cache_dir, api_key, image_type, target_count=BACKGROUND_CACHE_TARGET_COUNT)
+
+    def _refresh_default_theme_background_cache_async(self, image_types=None):
+        global _THEME_BACKGROUND_REFRESH_IN_PROGRESS
+        with _THEME_BACKGROUND_REFRESH_LOCK:
+            if _THEME_BACKGROUND_REFRESH_IN_PROGRESS:
+                return
+            _THEME_BACKGROUND_REFRESH_IN_PROGRESS = True
+
+        normalized_image_types = []
+        for image_type in (image_types or ["pc", "mb"]):
+            normalized_type = str(image_type or "").strip().lower()
+            if normalized_type in ("pc", "mb") and normalized_type not in normalized_image_types:
+                normalized_image_types.append(normalized_type)
+        if not normalized_image_types:
+            normalized_image_types = ["pc", "mb"]
+
+        def _worker():
+            global _THEME_BACKGROUND_REFRESH_IN_PROGRESS
+            try:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+                os.makedirs(cache_dir, exist_ok=True)
+
+                config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+                api_key = config.get("IP_Location", "uapipro_api_key", fallback="").strip()
+                if not api_key:
+                    return
+
+                for image_type in normalized_image_types:
+                    self._ensure_background_cache_count(
+                        cache_dir,
+                        api_key,
+                        image_type,
+                        target_count=BACKGROUND_CACHE_TARGET_COUNT,
+                    )
+            except Exception as e:
+                logging.warning(f"[主题背景] 异步刷新背景缓存失败: {e}")
+            finally:
+                with _THEME_BACKGROUND_REFRESH_LOCK:
+                    _THEME_BACKGROUND_REFRESH_IN_PROGRESS = False
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _resolve_default_theme_background_images(self, targets=None, session_uuid="", cache_dir=None):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        effective_cache_dir = cache_dir or os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        os.makedirs(effective_cache_dir, exist_ok=True)
+
+        bound_images = _resolve_bound_theme_background_images(
+            effective_cache_dir,
+            session_uuid=session_uuid,
+            targets=targets,
+        )
+        random_images = self._peek_default_theme_background_images(targets)
+
+        resolved_images = dict(random_images) if isinstance(random_images, dict) else {}
+        for target, image_url in bound_images.items():
+            if image_url:
+                resolved_images[target] = image_url
+        return resolved_images
+
+    def _inject_default_theme_background_image(
+        self,
+        merged_config,
+        style_id,
+        targets=None,
+        session_uuid="",
+        cache_dir=None,
+    ):
+        normalized_style = str(style_id or "default").strip() or "default"
+        if normalized_style != "default":
+            return merged_config
+
+        config = dict(merged_config) if isinstance(merged_config, dict) else {}
+        env = config.get("global_environment_variables")
+        if not isinstance(env, dict):
+            env = {}
+            config["global_environment_variables"] = env
+
+        background_image_urls = self._resolve_default_theme_background_images(
+            targets,
+            session_uuid=session_uuid,
+            cache_dir=cache_dir,
+        )
+        pc_background_image_url = background_image_urls.get("pc", "")
+        mobile_background_image_url = background_image_urls.get("mobile", "")
+        if not pc_background_image_url and not mobile_background_image_url:
+            return config
+
+        if pc_background_image_url:
+            env["auth_login_container_background"] = (
+                "linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10)), "
+                f'url("{pc_background_image_url}") center / cover no-repeat fixed'
+            )
+
+        if mobile_background_image_url:
+            env["mobile_auth_login_content_background"] = (
+                "linear-gradient(rgba(255,255,255,0.12), rgba(255,255,255,0.12)), "
+                f'url("{mobile_background_image_url}") center / cover no-repeat'
+            )
+        else:
+            env.setdefault("mobile_auth_login_content_background", "")
+
+        env.setdefault("mobile_auth_login_card_background", "rgba(255,255,255,0.58)")
+
+        env.setdefault("auth_login_panel_background", "rgba(255,255,255,0.52)")
+        env.setdefault("auth_login_panel_shadow", "0 20px 60px rgba(15,23,42,0.12)")
+        env.setdefault("auth_login_panel_border", "rgba(255,255,255,0.24)")
+        env.setdefault("mobile_auth_login_card_shadow", "0 18px 48px rgba(15,23,42,0.12)")
+        return config
+
+    def get_theme_config(self, style_id, targets=None, session_uuid="", cache_dir=None):
+        """读取主题配置，默认先加载 default 再叠加目标主题"""
+        default_config = self._read_theme_definition("default")
+        normalized_style = str(style_id or "default").strip() or "default"
+        if normalized_style == "default":
+            merged_config = self._deep_merge_theme_config({}, default_config)
+        else:
+            merged_config = self._deep_merge_theme_config(
+                default_config,
+                self._read_theme_definition(normalized_style),
+            )
+
+        basic_information = merged_config.get("basic_information")
+        if not isinstance(basic_information, dict):
+            basic_information = {}
+
+        basic_information["id"] = str(basic_information.get("id") or normalized_style).strip() or "default"
+        basic_information["label"] = str(
+            basic_information.get("label") or basic_information["id"]
+        ).strip()
+        basic_information["description"] = str(
+            basic_information.get("description") or ""
+        ).strip()
+        basic_information["svg"] = str(basic_information.get("svg") or "").strip()
+        merged_config["basic_information"] = basic_information
+
+        global_environment_variables = merged_config.get("global_environment_variables")
+        if not isinstance(global_environment_variables, dict):
+            global_environment_variables = {}
+        merged_config["global_environment_variables"] = global_environment_variables
+        merged_config = self._inject_default_theme_background_image(
+            merged_config,
+            normalized_style,
+            targets,
+            session_uuid=session_uuid,
+            cache_dir=cache_dir,
+        )
+
+        return merged_config
+
+    def get_available_theme_styles(self):
+        """从 ./theme 目录扫描主题定义文件"""
+        theme_dir = os.path.join(os.path.dirname(__file__), THEME_DIR)
+
+        with self.lock:
+            if not os.path.isdir(theme_dir):
+                return []
+
+            try:
+                theme_files = sorted(
+                    file_name
+                    for file_name in os.listdir(theme_dir)
+                    if file_name.lower().endswith(".json")
+                )
+            except Exception as e:
+                logging.warning(f"读取主题目录失败 {theme_dir}: {e}")
+                return []
+
+            valid_styles = []
+            for file_name in theme_files:
+                style_id = os.path.splitext(file_name)[0]
+                if style_id != "default":
+                    style_id = f"theme-{style_id}"
+
+                merged_config = self.get_theme_config(style_id)
+                basic_information = merged_config.get("basic_information")
+                if not isinstance(basic_information, dict):
+                    continue
+
+                theme_id = str(basic_information.get("id") or style_id).strip()
+                if not theme_id:
+                    continue
+
+                valid_styles.append(
+                    {
+                        "id": theme_id,
+                        "label": str(basic_information.get("label") or theme_id).strip(),
+                        "description": str(basic_information.get("description") or "").strip(),
+                        "svg": str(basic_information.get("svg") or "").strip(),
+                        "global_environment_variables": merged_config.get(
+                            "global_environment_variables", {}
+                        ),
+                    }
+                )
+
+        return valid_styles
 
     def get_user_file_path(self, auth_username):
         """获取用户文件路径"""
@@ -7029,44 +9602,57 @@ class AuthSystem:
         """列出所有用户"""
         users = []
         for filename in os.listdir(SYSTEM_ACCOUNTS_DIR):
-            if filename.endswith(".json"):
-                user_file = os.path.join(SYSTEM_ACCOUNTS_DIR, filename)
-                try:
-                    with open(user_file, "r", encoding="utf-8") as f:
-                        user_data = json.load(f)
+            if filename == "_index.json" or not filename.endswith(".json"):
+                continue
 
-                    last_ip = user_data.get("last_login_ip", None)
-                    last_city = None
-                    if last_ip:
-                        try:
-                            last_city = get_ip_location(last_ip)
-                        except Exception as ip_e:
-                            logging.warning(f"查询IP归属地失败 {last_ip}: {ip_e}")
-                            last_city = "查询失败"
+            user_file = os.path.join(SYSTEM_ACCOUNTS_DIR, filename)
+            try:
+                with open(user_file, "r", encoding="utf-8") as f:
+                    user_data = json.load(f)
 
-                    users.append(
-                        {
-                            "auth_username": user_data["auth_username"],
-                            "nickname": user_data.get("nickname", ""),
-                            "phone": user_data.get("phone", ""),
-                            "group": user_data.get("group", "user"),
-                            "created_at": user_data.get("created_at"),
-                            "last_login": user_data.get("last_login"),
-                            "last_login_ip": last_ip,
-                            "last_login_city": last_city,
-                            "2fa_enabled": user_data.get("2fa_enabled", False),
-                            "banned": user_data.get("banned", False),
-                            "max_sessions": user_data.get("max_sessions", 1),
-                            # 添加可用执行次数字段：从用户数据中获取 available_runs，默认值为0
-                            # -1 表示无限次数，0表示无剩余次数，正数表示剩余次数
-                            "available_runs": user_data.get("available_runs", 0),
-                        }
+                auth_username = user_data.get("auth_username")
+                if not auth_username:
+                    logging.warning(
+                        f"[用户管理] 跳过缺少 auth_username 的用户文件: {user_file}"
                     )
-                except Exception as e:
-                    logging.error(
-                        f"[用户管理] 读取用户文件失败 --> 文件名: {filename}, 文件路径: {user_file}, 错误类型: {type(e).__name__}, 错误详情: {e}, 可能原因: 文件损坏、JSON格式错误或权限不足",
-                        exc_info=True,
-                    )
+                    continue
+
+                last_ip = user_data.get("last_login_ip", None)
+                last_city = None
+                if last_ip:
+                    try:
+                        last_city = get_ip_location(last_ip)
+                    except Exception as ip_e:
+                        logging.warning(f"查询IP归属地失败 {last_ip}: {ip_e}")
+                        last_city = "查询失败"
+
+                school_accounts_data = self._load_user_school_accounts(auth_username) or {}
+                school_accounts = list(school_accounts_data.keys())
+
+                users.append(
+                    {
+                        "auth_username": auth_username,
+                        "nickname": user_data.get("nickname", ""),
+                        "phone": user_data.get("phone", ""),
+                        "group": user_data.get("group", "user"),
+                        "created_at": user_data.get("created_at"),
+                        "last_login": user_data.get("last_login"),
+                        "last_login_ip": last_ip,
+                        "last_login_city": last_city,
+                        "2fa_enabled": user_data.get("2fa_enabled", False),
+                        "banned": user_data.get("banned", False),
+                        "max_sessions": user_data.get("max_sessions", 1),
+                        "school_accounts": school_accounts,
+                        # 添加可用执行次数字段：从用户数据中获取 available_runs，默认值为0
+                        # -1 表示无限次数，0表示无剩余次数，正数表示剩余次数
+                        "available_runs": user_data.get("available_runs", 0),
+                    }
+                )
+            except Exception as e:
+                logging.error(
+                    f"[用户管理] 读取用户文件失败 --> 文件名: {filename}, 文件路径: {user_file}, 错误类型: {type(e).__name__}, 错误详情: {e}, 可能原因: 文件损坏、JSON格式错误或权限不足",
+                    exc_info=True,
+                )
         return users
 
     def get_all_groups(self):
@@ -7193,7 +9779,11 @@ class AuthSystem:
             return {"success": True, "message": "头像已更新"}
 
     def update_user_theme(self, auth_username, theme):
-        """更新用户主题偏好"""
+        """更新用户主题偏好（存储到 system_accounts）"""
+        normalized_theme = str(theme).strip().lower()
+        if normalized_theme not in ["light", "dark"]:
+            return {"success": False, "message": "无效的主题值"}
+
         with self.lock:
             user_file = self.get_user_file_path(auth_username)
             if not os.path.exists(user_file):
@@ -7202,12 +9792,37 @@ class AuthSystem:
             with open(user_file, "r", encoding="utf-8") as f:
                 user_data = json.load(f)
 
-            user_data["theme"] = theme
+            user_data["theme"] = normalized_theme
 
             with open(user_file, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
 
-            return {"success": True, "message": "主题已更新"}
+            return {
+                "success": True,
+                "message": "主题已更新",
+                "theme": normalized_theme,
+            }
+
+    def get_user_theme(self, auth_username):
+        """获取用户主题偏好（从 system_accounts 读取）"""
+        user_file = self.get_user_file_path(auth_username)
+        fallback_theme = "light"
+
+        with self.lock:
+            if not os.path.exists(user_file):
+                return {"success": False, "message": "用户不存在", "theme": fallback_theme}
+
+            try:
+                with open(user_file, "r", encoding="utf-8") as f:
+                    user_data = json.load(f)
+                theme = str(user_data.get("theme", fallback_theme)).strip().lower()
+                if theme not in ["light", "dark"]:
+                    theme = fallback_theme
+            except Exception as e:
+                logging.warning(f"读取用户主题配置失败 {user_file}: {e}")
+                theme = fallback_theme
+
+            return {"success": True, "theme": theme}
 
     def update_max_sessions(self, auth_username, max_sessions):
         """更新用户最大会话数量
@@ -7641,11 +10256,12 @@ class AuthSystem:
 
             current_count = len(old_sessions)
             # 当已达到或超过最大会话数时，也应该清理最旧会话以为新会话腾出位置
+            # if current_count >= max_sessions:
             if current_count >= max_sessions:
-                sessions_to_remove = old_sessions[:
-                                                  current_count - max_sessions + 1]
-                remaining_sessions = old_sessions[current_count -
-                                                  max_sessions + 1:]
+                # sessions_to_remove = old_sessions[: current_count - max_sessions + 1]
+                sessions_to_remove = old_sessions[: current_count - max_sessions]
+                # remaining_sessions = old_sessions[current_count - max_sessions + 1:]
+                remaining_sessions = old_sessions[current_count - max_sessions:]
                 user_data["session_ids"] = remaining_sessions + \
                     [new_session_id]
 
@@ -8083,6 +10699,557 @@ class AccountSession:
     def log(self, message: str):
         """为日志自动添加账号前缀"""
         self.api_bridge.log(f"[{self.username}] {message}")
+
+
+def _load_random_background_index(cache_dir):
+    index_path = os.path.join(cache_dir, "index.json")
+    default_index = {"files": {}, "feedback": {}, "session_bindings": {}}
+    try:
+        if not os.path.exists(index_path):
+            return default_index
+        with open(index_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return default_index
+        files = data.get("files") if isinstance(data.get("files"), dict) else {}
+        feedback = data.get("feedback") if isinstance(data.get("feedback"), dict) else {}
+        session_bindings = (
+            data.get("session_bindings")
+            if isinstance(data.get("session_bindings"), dict)
+            else {}
+        )
+        return {
+            "files": files,
+            "feedback": feedback,
+            "session_bindings": session_bindings,
+        }
+    except Exception as e:
+        logging.warning(f"[主题背景] 读取背景索引失败 {index_path}: {e}")
+        return default_index
+
+
+def _save_random_background_index(cache_dir, index_data):
+    index_path = os.path.join(cache_dir, "index.json")
+    safe_index = {
+        "files": index_data.get("files", {}) if isinstance(index_data, dict) else {},
+        "feedback": index_data.get("feedback", {}) if isinstance(index_data, dict) else {},
+        "session_bindings": (
+            index_data.get("session_bindings", {}) if isinstance(index_data, dict) else {}
+        ),
+    }
+    temp_index_path = f"{index_path}.tmp"
+    try:
+        with open(temp_index_path, "w", encoding="utf-8") as f:
+            json.dump(safe_index, f, indent=2, ensure_ascii=False)
+        os.replace(temp_index_path, index_path)
+    except Exception as e:
+        try:
+            if os.path.exists(temp_index_path):
+                os.remove(temp_index_path)
+        except OSError:
+            pass
+        logging.warning(f"[主题背景] 保存背景索引失败 {index_path}: {e}")
+
+
+def _normalize_theme_background_target(target):
+    return "mobile" if str(target or "").strip().lower() == "mobile" else "pc"
+
+
+def _normalize_theme_background_session_uuid(session_uuid):
+    normalized = str(session_uuid or "").strip()
+    if not normalized:
+        return ""
+    if normalized.lower() in {"null", "undefined", "none"}:
+        return ""
+    return normalized
+
+
+def _set_session_theme_background_binding(
+    cache_dir,
+    session_uuid,
+    target,
+    image_url,
+    ttl_seconds=1800,
+):
+    normalized_session_uuid = _normalize_theme_background_session_uuid(session_uuid)
+    normalized_image_url = str(image_url or "").strip()
+    if not normalized_session_uuid or not normalized_image_url:
+        return None
+
+    normalized_target = _normalize_theme_background_target(target)
+    index_data = _load_random_background_index(cache_dir)
+    session_bindings = index_data.setdefault("session_bindings", {})
+    session_entry = session_bindings.get(normalized_session_uuid)
+    if not isinstance(session_entry, dict):
+        session_entry = {}
+        session_bindings[normalized_session_uuid] = session_entry
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    expire_seconds = max(int(ttl_seconds or 0), 1)
+    expires_at = now + datetime.timedelta(seconds=expire_seconds)
+
+    binding_entry = {
+        "image_url": normalized_image_url,
+        "bound_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
+    }
+    session_entry[normalized_target] = binding_entry
+    _save_random_background_index(cache_dir, index_data)
+    return binding_entry
+
+
+def _get_session_theme_background_binding(cache_dir, session_uuid, target):
+    normalized_session_uuid = _normalize_theme_background_session_uuid(session_uuid)
+    if not normalized_session_uuid:
+        return None
+
+    normalized_target = _normalize_theme_background_target(target)
+    index_data = _load_random_background_index(cache_dir)
+    session_bindings = index_data.get("session_bindings")
+    if not isinstance(session_bindings, dict):
+        return None
+
+    session_entry = session_bindings.get(normalized_session_uuid)
+    if not isinstance(session_entry, dict):
+        return None
+
+    binding_entry = session_entry.get(normalized_target)
+    if not isinstance(binding_entry, dict):
+        return None
+
+    expires_at_raw = binding_entry.get("expires_at")
+    try:
+        expires_at = datetime.datetime.fromisoformat(str(expires_at_raw or ""))
+    except Exception:
+        return None
+
+    if expires_at <= datetime.datetime.now(datetime.timezone.utc):
+        session_entry.pop(normalized_target, None)
+        if not session_entry:
+            session_bindings.pop(normalized_session_uuid, None)
+        _save_random_background_index(cache_dir, index_data)
+        return None
+
+    return binding_entry
+
+
+def _resolve_theme_background_binding_decision(
+    cache_dir,
+    session_uuid,
+    target,
+    current_image_url,
+    login_context=False,
+    candidate_image_url="",
+    ttl_seconds=1800,
+):
+    normalized_session_uuid = _normalize_theme_background_session_uuid(session_uuid)
+    normalized_current_image_url = str(current_image_url or "").strip()
+    normalized_candidate_image_url = str(candidate_image_url or "").strip()
+
+    if not normalized_session_uuid:
+        return {"action": "noop", "selected_image_url": normalized_current_image_url}
+
+    if login_context and normalized_candidate_image_url:
+        _set_session_theme_background_binding(
+            cache_dir,
+            session_uuid=normalized_session_uuid,
+            target=target,
+            image_url=normalized_candidate_image_url,
+            ttl_seconds=ttl_seconds,
+        )
+        return {
+            "action": "override_binding",
+            "selected_image_url": normalized_candidate_image_url,
+        }
+
+    existing_binding = _get_session_theme_background_binding(
+        cache_dir,
+        normalized_session_uuid,
+        target,
+    )
+    existing_image_url = (
+        str(existing_binding.get("image_url") or "")
+        if isinstance(existing_binding, dict)
+        else ""
+    )
+    if existing_image_url:
+        return {
+            "action": "reuse_existing",
+            "selected_image_url": existing_image_url,
+        }
+
+    if normalized_current_image_url:
+        _set_session_theme_background_binding(
+            cache_dir,
+            session_uuid=normalized_session_uuid,
+            target=target,
+            image_url=normalized_current_image_url,
+            ttl_seconds=ttl_seconds,
+        )
+        return {
+            "action": "bind_new",
+            "selected_image_url": normalized_current_image_url,
+        }
+
+    return {"action": "noop", "selected_image_url": ""}
+
+
+def _resolve_bound_theme_background_images(cache_dir, session_uuid, targets=None):
+    normalized_session_uuid = _normalize_theme_background_session_uuid(session_uuid)
+    if not normalized_session_uuid:
+        return {}
+
+    normalized_targets = []
+    for target in (targets or ["pc", "mobile"]):
+        normalized_target = _normalize_theme_background_target(target)
+        if normalized_target not in normalized_targets:
+            normalized_targets.append(normalized_target)
+
+    if not normalized_targets:
+        normalized_targets = ["pc", "mobile"]
+
+    resolved = {}
+    for target in normalized_targets:
+        binding = _get_session_theme_background_binding(
+            cache_dir,
+            normalized_session_uuid,
+            target,
+        )
+        image_url = str(binding.get("image_url") or "") if isinstance(binding, dict) else ""
+        if image_url:
+            resolved[target] = image_url
+    return resolved
+
+
+def _is_order_terminal_for_repay(order_data):
+    status = str((order_data or {}).get("status", "")).strip()
+    return status in {"paid", "refunded_partial", "refunded_full"}
+
+
+def _advance_order_status_by_timeout(order_data, now_iso=None):
+    if not isinstance(order_data, dict):
+        return False
+
+    status = str(order_data.get("status", "")).strip()
+    if status not in {ORDER_STATUS_PENDING, ORDER_STATUS_TIMEOUT}:
+        return False
+
+    expires_at = str(order_data.get("expires_at") or "").strip()
+    if not expires_at:
+        return False
+
+    now_dt = (
+        datetime.datetime.fromisoformat(now_iso)
+        if now_iso
+        else datetime.datetime.now(datetime.timezone.utc)
+    )
+    expires_dt = datetime.datetime.fromisoformat(expires_at)
+    if expires_dt.tzinfo is None:
+        expires_dt = expires_dt.replace(tzinfo=datetime.timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=datetime.timezone.utc)
+
+    if now_dt <= expires_dt:
+        return False
+
+    order_data["status"] = ORDER_STATUS_CLOSED
+    order_data["closed_at"] = now_dt.isoformat()
+    return True
+
+
+def _build_billing_qr_cache_key(school_id, billing_id, pay_type):
+    return f"{str(school_id).strip()}:{str(billing_id).strip()}:{str(pay_type).strip()}"
+
+
+def _load_qr_cache_index():
+    if not os.path.exists(QR_CACHE_INDEX_FILE):
+        return {}
+    try:
+        with open(QR_CACHE_INDEX_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_qr_cache_index(index_data):
+    os.makedirs(PAYMENT_ORDERS_DIR, exist_ok=True)
+    safe_data = index_data if isinstance(index_data, dict) else {}
+    with open(QR_CACHE_INDEX_FILE, "w", encoding="utf-8") as f:
+        json.dump(safe_data, f, ensure_ascii=False, indent=2)
+
+
+def _get_reusable_billing_qr(cache_key, now_iso=None):
+    index_data = _load_qr_cache_index()
+    item = index_data.get(str(cache_key or "").strip())
+    if not isinstance(item, dict):
+        return None
+
+    expires_at = str(item.get("expires_at") or "").strip()
+    if not expires_at:
+        return None
+
+    now_dt = (
+        datetime.datetime.fromisoformat(now_iso)
+        if now_iso
+        else datetime.datetime.now(datetime.timezone.utc)
+    )
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=datetime.timezone.utc)
+
+    try:
+        expires_dt = datetime.datetime.fromisoformat(expires_at)
+    except Exception:
+        return None
+    if expires_dt.tzinfo is None:
+        expires_dt = expires_dt.replace(tzinfo=datetime.timezone.utc)
+
+    if now_dt > expires_dt:
+        return None
+
+    return item
+
+
+def _invalidate_billing_qr_cache_by_order(order_id):
+    target_order_id = str(order_id or "").strip()
+    if not target_order_id:
+        return False
+
+    index_data = _load_qr_cache_index()
+    changed = False
+    for key, value in list(index_data.items()):
+        if isinstance(value, dict) and str(value.get("order_id") or "").strip() == target_order_id:
+            index_data.pop(key, None)
+            changed = True
+
+    if changed:
+        _save_qr_cache_index(index_data)
+    return changed
+
+
+def _resolve_billing_payment_entry(school_id, billing_id, pay_type, existing_order, now_iso=None):
+    normalized_order = existing_order if isinstance(existing_order, dict) else {}
+    _advance_order_status_by_timeout(normalized_order, now_iso=now_iso)
+    normalized_status = str(normalized_order.get("status") or "").strip()
+
+    if _is_order_terminal_for_repay(normalized_order):
+        return {
+            "decision": "reject_terminal",
+            "normalized_existing_status": normalized_status,
+            "cache_key": _build_billing_qr_cache_key(school_id, billing_id, pay_type),
+        }
+
+    cache_key = _build_billing_qr_cache_key(school_id, billing_id, pay_type)
+    reusable_item = _get_reusable_billing_qr(cache_key, now_iso=now_iso)
+    if isinstance(reusable_item, dict):
+        return {
+            "decision": "reuse_qr",
+            "normalized_existing_status": normalized_status,
+            "cache_key": cache_key,
+            "reusable_item": reusable_item,
+        }
+
+    return {
+        "decision": "create_new",
+        "normalized_existing_status": normalized_status,
+        "cache_key": cache_key,
+    }
+
+
+def _apply_payment_success_transition(order_data, paid_time=None):
+    if not isinstance(order_data, dict):
+        return order_data
+    order_data["status"] = ORDER_STATUS_PAID
+    order_data["paid_time"] = paid_time or datetime.datetime.now(datetime.timezone.utc).isoformat()
+    order_data["paid_at"] = order_data.get("paid_at") or time.time()
+    return order_data
+
+
+def _apply_refund_transition(order_data, refund_amount):
+    if not isinstance(order_data, dict):
+        return order_data
+    current_total = float(order_data.get("refund_total") or 0)
+    refund_value = float(refund_amount or 0)
+    new_total = round(current_total + refund_value, 2)
+    order_data["refund_total"] = new_total
+
+    total_amount = float(order_data.get("amount") or 0)
+    if total_amount > 0 and new_total >= total_amount:
+        order_data["status"] = ORDER_STATUS_REFUNDED_FULL
+    else:
+        order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
+    return order_data
+
+
+def _parse_random_background_file_name(file_name):
+    normalized_name = str(file_name or "").strip()
+    if not normalized_name or normalized_name == "index.json":
+        return "", ""
+    prefix, _, _ = normalized_name.partition("_")
+    image_type = prefix if prefix in ("pc", "mb") else ""
+    return normalized_name, image_type
+
+
+def _get_random_background_index_entry(cache_dir, file_name):
+    normalized_name, image_type = _parse_random_background_file_name(file_name)
+    if not normalized_name:
+        return None, ""
+    index_data = _load_random_background_index(cache_dir)
+    files = index_data.setdefault("files", {})
+    entry = files.get(normalized_name) if isinstance(files.get(normalized_name), dict) else None
+    changed = False
+    if not isinstance(entry, dict):
+        entry = {"expired": False}
+        changed = True
+    if "image_type" not in entry and image_type:
+        entry["image_type"] = image_type
+        changed = True
+    if "expired" not in entry:
+        entry["expired"] = False
+        changed = True
+    if changed:
+        files[normalized_name] = entry
+        _save_random_background_index(cache_dir, index_data)
+    return entry, normalized_name
+
+
+def _mark_random_background_file_state(cache_dir, file_name, **fields):
+    normalized_name, image_type = _parse_random_background_file_name(file_name)
+    if not normalized_name:
+        return
+    index_data = _load_random_background_index(cache_dir)
+    files = index_data.setdefault("files", {})
+    entry = files.get(normalized_name) if isinstance(files.get(normalized_name), dict) else {}
+    entry.update(fields)
+    entry.setdefault("expired", False)
+    entry.setdefault("image_type", image_type)
+    files[normalized_name] = entry
+    _save_random_background_index(cache_dir, index_data)
+
+
+def _mark_random_background_file_expired(cache_dir, image_url, expired=True):
+    normalized_url = str(image_url or "").strip()
+    prefix = f"/theme-assets/{RANDOM_BACKGROUND_IMAGE_DIR}/"
+    if not normalized_url.startswith(prefix):
+        return
+    file_name = normalized_url[len(prefix):]
+    _mark_random_background_file_state(
+        cache_dir,
+        file_name,
+        expired=bool(expired),
+        expired_at=datetime.datetime.now().isoformat(timespec="seconds") if expired else None,
+        last_used_at=datetime.datetime.now().isoformat(timespec="seconds"),
+    )
+
+
+def _reset_random_background_file_expired(cache_dir, image_url):
+    normalized_url = str(image_url or "").strip()
+    prefix = f"/theme-assets/{RANDOM_BACKGROUND_IMAGE_DIR}/"
+    if not normalized_url.startswith(prefix):
+        return
+    file_name = normalized_url[len(prefix):]
+    _mark_random_background_file_state(
+        cache_dir,
+        file_name,
+        expired=False,
+        expired_at=None,
+    )
+
+
+def _extract_background_image_url_from_value(background_value):
+    normalized_value = str(background_value or "")
+    match = re.search(r'url\(["\']?(/theme-assets/[^"\')]+)["\']?\)', normalized_value, re.IGNORECASE)
+    return match.group(1) if match else ""
+
+
+def _cleanup_random_background_index(cache_dir):
+    index_data = _load_random_background_index(cache_dir)
+    files = index_data.get("files", {}) if isinstance(index_data, dict) else {}
+    if not files:
+        return
+    existing_files = {
+        file_name
+        for file_name in os.listdir(cache_dir)
+        if os.path.isfile(os.path.join(cache_dir, file_name)) and file_name != "index.json"
+    }
+    cleaned_files = {
+        file_name: entry
+        for file_name, entry in files.items()
+        if file_name in existing_files
+    }
+    if cleaned_files != files:
+        index_data["files"] = cleaned_files
+        _save_random_background_index(cache_dir, index_data)
+
+
+def _allow_random_background_feedback(cache_dir, client_ip, target):
+    normalized_ip = str(client_ip or "-").strip() or "-"
+    normalized_target = "mobile" if str(target or "").strip().lower() == "mobile" else "pc"
+    feedback_key = f"{normalized_ip}:{normalized_target}"
+    index_data = _load_random_background_index(cache_dir)
+    feedback = index_data.setdefault("feedback", {})
+    now = time.time()
+    last_feedback_at = float(feedback.get(feedback_key) or 0)
+    if now - last_feedback_at < 5:
+        return False
+    feedback[feedback_key] = now
+    stale_keys = [key for key, value in feedback.items() if now - float(value or 0) > 3600]
+    for key in stale_keys:
+        feedback.pop(key, None)
+    _save_random_background_index(cache_dir, index_data)
+    return True
+
+
+def _cleanup_random_background_cache(cache_dir, max_cache_size_bytes=None):
+    _cleanup_random_background_index(cache_dir)
+    if max_cache_size_bytes is None:
+        try:
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            limit_mb = config.getint(
+                "Logging", "random_background_cache_max_size_mb", fallback=1024
+            )
+            max_cache_size_bytes = 0 if limit_mb <= 0 else limit_mb * 1024 * 1024
+        except Exception as e:
+            logging.warning(f"[主题背景] 读取背景缓存上限失败，使用默认值 1024MB: {e}")
+            max_cache_size_bytes = 1024 * 1024 * 1024
+    if max_cache_size_bytes == 0:
+        return
+
+    try:
+        cache_files = []
+        total_size = 0
+        for file_name in os.listdir(cache_dir):
+            file_path = os.path.join(cache_dir, file_name)
+            if file_name == "index.json":
+                continue
+            if not os.path.isfile(file_path):
+                continue
+
+            try:
+                stat = os.stat(file_path)
+            except OSError as e:
+                logging.warning(f"[主题背景] 读取缓存文件信息失败 {file_path}: {e}")
+                continue
+
+            total_size += stat.st_size
+            cache_files.append((file_path, stat.st_mtime, stat.st_size))
+
+        if total_size <= max_cache_size_bytes:
+            return
+
+        cache_files.sort(key=lambda item: item[1])
+        for file_path, _, file_size in cache_files:
+            if total_size <= max_cache_size_bytes:
+                break
+
+            try:
+                os.remove(file_path)
+                total_size -= file_size
+                logging.info(f"[主题背景] 缓存目录超过上限，已删除最早缓存文件: {file_path}")
+            except OSError as e:
+                logging.warning(f"[主题背景] 删除旧缓存文件失败 {file_path}: {e}")
+    except Exception as e:
+        logging.warning(f"[主题背景] 清理背景缓存目录失败: {e}")
 
 
 class ApiClient:
@@ -8600,10 +11767,151 @@ class ApiClient:
         )
 
 
+BACKGROUND_CACHE_TARGET_COUNT = 5
+_BACKGROUND_SELECTION_STATE = {}
+_BACKGROUND_SELECTION_LOCK = threading.Lock()
+_THEME_BACKGROUND_REFRESH_LOCK = threading.Lock()
+_THEME_BACKGROUND_REFRESH_IN_PROGRESS = False
+_THEME_BACKGROUND_WARMUP_LOCK = threading.Lock()
+_THEME_BACKGROUND_WARMUP_IN_PROGRESS = False
+
+
 # ==============================================================================
 # 3. 后端主逻辑 (Backend API Bridge)
 #    作为Python后端和WebView前端之间的桥梁，处理所有业务逻辑。
 # ==============================================================================
+
+
+def _ensure_random_background_cache_count(cache_dir, api_key, image_type, target_count=5):
+    logging.info(f"[主题背景] 确保 {image_type} 背景缓存数量至少为 {target_count} 张...")
+    target_count = max(int(target_count or 0), 0)
+    if target_count == 0:
+        logging.info(f"[主题背景] 目标缓存数量为 0，跳过 {image_type} 背景缓存检查")
+        return
+
+    available_count = len(
+        [
+            file_name
+            for file_name in os.listdir(cache_dir)
+            if os.path.isfile(os.path.join(cache_dir, file_name))
+            and file_name != "index.json"
+            and file_name.startswith(f"{image_type}_")
+        ]
+    )
+    missing_count = max(target_count - available_count, 0)
+    logging.info(f"[主题背景] {image_type} 背景缓存缺失 {missing_count} 张")
+    if missing_count == 0:
+        return
+
+    temp_api = Api(args)
+    for _ in range(missing_count):
+        try:
+            logging.info(f"[主题背景] 正在拉取新的 {image_type} 随机背景图以补足缓存...")
+            _fetch_random_background_image(cache_dir, api_key, image_type)
+        except Exception as e:
+            logging.warning(f"[主题背景] 补足 {image_type} 背景缓存失败: {e}")
+            break
+        logging.info(f"[主题背景] 已完成一次 {image_type} 背景图拉取尝试以补足缓存")
+
+
+def _start_default_theme_background_cache_warmup():
+    global _THEME_BACKGROUND_WARMUP_IN_PROGRESS
+    with _THEME_BACKGROUND_WARMUP_LOCK:
+        if _THEME_BACKGROUND_WARMUP_IN_PROGRESS:
+            logging.info("[主题背景] 启动预热线程已在执行，跳过重复启动")
+            return
+        _THEME_BACKGROUND_WARMUP_IN_PROGRESS = True
+
+    logging.info("[主题背景] 启动时预下载背景缓存线程正在启动...")
+
+    def _worker():
+        global _THEME_BACKGROUND_WARMUP_IN_PROGRESS
+        try:
+            logging.info("[主题背景] 启动时预下载背景缓存线程已启动")
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            api_key = config.get("IP_Location", "uapipro_api_key", fallback="").strip()
+            if not api_key:
+                logging.info("[主题背景] 未配置 UapiPro API Key，跳过启动预下载缓存")
+                return
+
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+            os.makedirs(cache_dir, exist_ok=True)
+
+            index_data = _load_random_background_index(cache_dir)
+            _save_random_background_index(cache_dir, index_data)
+
+            for image_type in ("pc", "mb"):
+                _ensure_random_background_cache_count(
+                    cache_dir,
+                    api_key,
+                    image_type,
+                    target_count=BACKGROUND_CACHE_TARGET_COUNT,
+                )
+
+            try:
+                _cleanup_random_background_cache(cache_dir)
+            except Exception as cleanup_error:
+                logging.warning(f"[主题背景] 启动预热后清理缓存失败: {cleanup_error}")
+        except Exception as e:
+            logging.warning(f"[主题背景] 启动时预下载背景缓存失败: {e}", exc_info=True)
+        finally:
+            with _THEME_BACKGROUND_WARMUP_LOCK:
+                _THEME_BACKGROUND_WARMUP_IN_PROGRESS = False
+
+    threading.Thread(target=_worker, name="ThemeBackgroundWarmup", daemon=True).start()
+
+
+def _fetch_random_background_image(cache_dir, api_key, image_type):
+    url = f"https://uapis.cn/api/v1/random/image?category=acg&type={image_type}"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                extension = mimetypes.guess_extension(content_type) or ".jpg"
+                if extension == ".jpe":
+                    extension = ".jpg"
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S-%f")[:-3]
+                file_name = f"{image_type}_{timestamp}{extension}"
+                file_path = os.path.join(cache_dir, file_name)
+                with open(file_path, "wb") as f:
+                    f.write(response.content)
+
+                _mark_random_background_file_state(
+                    cache_dir,
+                    file_name,
+                    image_type=image_type,
+                    expired=False,
+                    created_at=datetime.datetime.now().isoformat(timespec="seconds"),
+                    last_used_at=None,
+                    expired_at=None,
+                )
+                _cleanup_random_background_cache(cache_dir)
+                return _build_theme_background_image_url(
+                    f"{RANDOM_BACKGROUND_IMAGE_DIR}/{file_name}"
+                )
+
+            if response.status_code == 404:
+                logging.warning(f"[主题背景] 未找到类型为 {image_type} 的随机背景图")
+                return ""
+
+            logging.warning(
+                f"[主题背景] 拉取 {image_type} 随机背景图失败，状态码: {response.status_code}，第 {attempt} 次尝试"
+            )
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"[主题背景] 拉取 {image_type} 随机背景图异常，第 {attempt} 次尝试: {e}")
+
+    return ""
+
+
+def _build_theme_background_image_url(relative_path):
+    normalized_path = str(relative_path or "").replace("\\", "/").strip("/")
+    if not normalized_path:
+        return ""
+    return f"/theme-assets/{normalized_path}"
 
 
 class Api:
@@ -10175,23 +13483,10 @@ class Api:
         try:
             cfg = _read_config_ini(self.config_path) or _get_default_config()
 
-            amap_key = cfg.get("Map", "amap_js_key", fallback="")
+            amap_key = _resolve_amap_js_key(cfg)
 
             if not amap_key:
                 amap_key = cfg.get("System", "AmapJsKey", fallback="")
-                if amap_key:
-                    if not cfg.has_section("Map"):
-                        cfg.add_section("Map")
-                    cfg.set("Map", "amap_js_key", amap_key)
-                    # 将 AmapJsKey 从旧版 [System] 迁移到新版 [Map] 节（尽力写入）
-                    # 如果配置文件只读，写入失败不影响 amap_key 已加载到内存中的值
-                    try:
-                        _write_config_with_comments(cfg, self.config_path)
-                        logging.info("已将AmapJsKey从旧版[System]迁移到新版[Map]")
-                    except Exception as write_err:
-                        logging.warning(
-                            f"迁移AmapJsKey时写入配置文件失败（可忽略，键已加载到内存）: {write_err}"
-                        )
 
             self.global_params["amap_js_key"] = amap_key
 
@@ -10537,19 +13832,87 @@ class Api:
                 "scale_factor": _safe_get_int("Captcha", "scale_factor", 2),
                 "noise_level": _safe_get_float("Captcha", "noise_level", 0.08),
             }
+            try:
+                _cap_prov = get_captcha_provider_config()
+                captcha_settings["provider"] = _cap_prov["provider"]
+                captcha_settings["behavior_type"] = _cap_prov["behavior_type"]
+            except Exception:
+                captcha_settings["provider"] = "image"
+                captcha_settings["behavior_type"] = "SLIDER"
             logging.debug(f"【本地验证码】加载验证码设置: {captcha_settings}")
 
+            current_theme = "light"
+            current_theme_style = "default"
+            session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            theme_background_cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+            current_theme_config = auth_system.get_theme_config(
+                "default",
+                session_uuid=session_uuid,
+                cache_dir=theme_background_cache_dir,
+            ) if "auth_system" in globals() else {}
+            if auth_username and not is_guest and "auth_system" in globals():
+                try:
+                    theme_result = auth_system.get_user_theme(auth_username)
+                    if theme_result.get("success"):
+                        current_theme = theme_result.get("theme", "light")
+                except Exception as e:
+                    logging.warning(f"获取用户 {auth_username} 的主题失败: {e}")
+
+                current_theme_style = self.global_params.get("theme_style", "default")
+                try:
+                    current_theme_config = auth_system.get_theme_config(
+                        current_theme_style,
+                        session_uuid=session_uuid,
+                        cache_dir=theme_background_cache_dir,
+                    )
+                except Exception as e:
+                    logging.warning(f"获取主题配置失败 {current_theme_style}: {e}")
+                    current_theme_config = auth_system.get_theme_config(
+                        "default",
+                        session_uuid=session_uuid,
+                        cache_dir=theme_background_cache_dir,
+                    )
+
+            cdn_cache_status = {}
+            try:
+                with js_cache_lock:
+                    for key, config in CDN_FILES.items():
+                        cdn_cache_status[key] = {
+                            "type": config["type"],
+                            "cached": key in js_cache_storage,
+                            "last_update_time": (
+                                datetime.datetime.fromtimestamp(
+                                    js_cache_last_update[key]
+                                ).strftime("%Y-%m-%d %H:%M:%S")
+                                if key in js_cache_last_update
+                                else None
+                            ),
+                        }
+            except Exception as e:
+                logging.warning(f"[get_initial_data] 获取CDN缓存状态失败: {e}")
+
+            map_config = _get_map_provider_frontend_config(cfg)
             response_data = {
                 "success": True,
                 "users": users,
                 "lastUser": last_user,
-                "amap_key": self.global_params.get("amap_js_key", ""),
+                "amap_key": _resolve_amap_js_key(self.config_path),
+                "map_provider": map_config["map_provider"],
+                "map_providers": map_config["map_providers"],
                 "isLoggedIn": is_logged_in,
                 "userInfo": user_info,
                 "is_authenticated": is_authenticated,
                 "auth_username": auth_username,
                 "auth_group": auth_group,
                 "is_guest": is_guest,
+                "theme": current_theme,
+                "theme_styles": auth_system.get_available_theme_styles(),
+                "theme_config": current_theme_config,
+                "theme_global_environment_variables": current_theme_config.get(
+                    "global_environment_variables", {}
+                ),
+                "cdn_cache": cdn_cache_status,
                 "is_multi_account_mode": getattr(self, "is_multi_account_mode", False),
                 "captcha_settings": captcha_settings,
             }
@@ -10595,7 +13958,7 @@ class Api:
             return {
                 "success": False,
                 "offline": True,
-                "message": "后端无法连接服务器，已切换到离线模式",
+                "message": "暂时无法连接到后端服务器，请刷新重试。如果问题依旧，请联系管理员。",
             }
 
     def get_user_sessions(self):
@@ -10696,31 +14059,61 @@ class Api:
             logging.error(f"获取用户会话列表时发生错误: {e}", exc_info=True)
             return {"success": False, "message": f"服务器内部错误: {e}"}
 
-    def save_amap_key(self, api_key: str):
-        """由JS调用，保存高德地图API Key到主配置文件"""
+    def save_map_provider_key(self, provider, api_key):
+        """由JS调用，保存当前地图提供方对应的 API Key 到主配置文件。"""
         try:
-            self.global_params["amap_js_key"] = api_key
+            provider = _normalize_map_provider(provider)
+            key_field = MAP_PROVIDER_KEY_FIELDS[provider]
+            api_key = str(api_key or "").strip()
+            if not api_key:
+                return {"success": False, "message": "API Key不能为空"}
+
             cfg = _read_config_ini(self.config_path) or _get_default_config()
 
             if not cfg.has_section("Map"):
                 cfg.add_section("Map")
-            cfg.set("Map", "amap_js_key", api_key)
+            providers = cfg.get("Map", "providers", fallback={})
+            if isinstance(providers, str):
+                providers = JsonConfigAdapter._coerce_map_providers(providers)
+            if not isinstance(providers, dict):
+                providers = {}
+
+            provider_config = providers.get(provider) or {}
+            provider_config[key_field] = api_key
+            providers[provider] = provider_config
+            cfg.set("Map", "providers", providers)
+            legacy_keys = {
+                "amap": "amap_js_key",
+                "tencent": "tencent_map_key",
+                "tianditu": "tianditu_token",
+                "baidu": "baidu_map_ak",
+            }
+            legacy_key = legacy_keys.get(provider)
+            if legacy_key and cfg.has_option("Map", legacy_key):
+                cfg.remove_option("Map", legacy_key)
+            if provider == "amap":
+                self.global_params["amap_js_key"] = api_key
 
             _write_config_with_comments(cfg, self.config_path)
 
-            self.log("高德地图API Key已保存。")
-            logging.info("已成功保存新的高德地图JavaScript API密钥")
-            return {"success": True}
+            display_name = MAP_PROVIDER_DISPLAY_NAMES[provider]
+            self.log(f"{display_name} API Key已保存。")
+            logging.info(f"已成功保存新的{display_name} API Key")
+            map_config = _get_map_provider_frontend_config(cfg)
+            return {
+                "success": True,
+                "map_provider": map_config["map_provider"],
+                "map_providers": map_config["map_providers"],
+                "amap_key": _resolve_amap_js_key(cfg),
+            }
         except Exception as e:
-            self.log(f"保存高德地图API Key失败: {e}")
-            logging.error(f"保存高德地图JavaScript API密钥失败: {e}")
+            self.log(f"保存地图API Key失败: {e}")
+            logging.error(f"保存地图API Key失败: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
-        except Exception as e:
-            self.log(f"API Key保存失败: {e}")
-            logging.error(
-                f"保存高德地图JavaScript API密钥时发生异常: {e}", exc_info=True
-            )
-            return {"success": False, "message": str(e)}
+
+    def save_amap_key(self, api_key: str):
+        """由JS调用，保存高德地图API Key到主配置文件"""
+        return self.save_map_provider_key("amap", api_key)
 
     def on_user_selected(self, username):
         """
@@ -11005,11 +14398,16 @@ class Api:
         # auth_group = getattr(self, "auth_group", "guest")
         # auth_group = auth_system.get_user_group( )
 
+        login_map_config = _get_map_provider_frontend_config(
+            _read_config_ini(self.config_path) or _get_default_config()
+        )
         return {
             "success": True,
             "userInfo": user_info_dict,
             "ua": self.device_ua,
-            "amap_key": self.global_params.get("amap_js_key", ""),
+            "amap_key": _resolve_amap_js_key(self.config_path),
+            "map_provider": login_map_config["map_provider"],
+            "map_providers": login_map_config["map_providers"],
             # "auth_group": auth_group,
             "cached_notifications": cached_notifications,
         }
@@ -11287,7 +14685,7 @@ class Api:
                             not ignore_time and now < sd
                         ):
                             return f"开始于: {sd.strftime('%Y-%m-%d')}"
-                except Exception:
+                except (TypeError, ValueError):
                     pass
 
         if run.end_time:
@@ -11657,7 +15055,8 @@ class Api:
         tar_lon, tar_lat = run_data.target_points[run_data.target_sequence]
 
         dist = self._calculate_distance_m(
-            current_lon, current_lat, tar_lon, tar_lat)
+            current_lon, current_lat, tar_lon, tar_lat
+        )
 
         is_in_zone = dist < self.target_range_m
 
@@ -12497,7 +15896,7 @@ class Api:
         return (s[0] + (e[0] - s[0]) * ratio, s[1] + (e[1] - s[1]) * ratio)
 
     def auto_generate_path_with_api(self, api_path_coords, min_t_m, max_t_m, min_d_m):
-        """接收由前端JS API规划好的路径点，并生成模拟数据"""
+        """接收地图供应商规划好的路径点，并生成模拟数据"""
         logging.info(
             f"API CALL: auto_generate_path_with_api with {len(api_path_coords)} points"
         )
@@ -12505,12 +15904,12 @@ class Api:
             return {"success": False, "message": "请先选择任务"}
         run = self.all_run_data[self.current_run_idx]
 
-        self.log("收到JS API路径，正在生成模拟数据...")
+        self.log("收到地图路径规划结果，正在生成模拟数据...")
         logging.info(
-            f"Auto-generating path from {len(api_path_coords)} Amap API points."
+            f"Auto-generating path from {len(api_path_coords)} map provider points."
         )
         if not api_path_coords or len(api_path_coords) < 2:
-            return {"success": False, "message": "高德API未能返回有效路径"}
+            return {"success": False, "message": "地图服务未能返回有效路径"}
 
         final_path_dedup = []
         last_coord = None
@@ -12613,6 +16012,53 @@ class Api:
             "total_dist": d_covered,
             "total_time": t_elapsed,
         }
+
+    def auto_generate_path_with_provider(self, min_t_m, max_t_m, min_d_m):
+        """按当前地图供应商规划路线，并生成模拟数据。"""
+        logging.info("API CALL: auto_generate_path_with_provider")
+        if self.current_run_idx == -1:
+            return {"success": False, "message": "请先选择任务"}
+
+        run = self.all_run_data[self.current_run_idx]
+        if not run.target_points or len(run.target_points) < 2:
+            return {"success": False, "message": "请先选择一个有至少两个打卡点的任务"}
+
+        session_id = getattr(self, "_web_session_id", None)
+        if not session_id:
+            return {"success": False, "message": "当前会话缺少浏览器会话ID，无法执行路径规划"}
+
+        self.log("正在按当前地图供应商进行路径规划...")
+        path_result = _plan_route_path_with_provider_runtime(
+            session_id,
+            run.target_points,
+            python_params=self.params,
+            guard_label="SingleManualPathPlanning",
+            app_base_url=getattr(self, "_web_app_base_url", None),
+        )
+        notices = path_result.get("notices", [])
+        for notice in notices:
+            self.log(notice)
+
+        if "path" not in path_result:
+            return {
+                "success": False,
+                "message": path_result.get("error", "地图服务未能返回有效路径"),
+                "provider": path_result.get("provider"),
+                "notices": notices,
+            }
+
+        self.log(
+            f"路径规划成功，共 {len(path_result['path'])} 个坐标点。正在生成模拟数据..."
+        )
+        result = self.auto_generate_path_with_api(
+            path_result["path"],
+            min_t_m,
+            max_t_m,
+            min_d_m,
+        )
+        result["provider"] = path_result.get("provider")
+        result["notices"] = notices
+        return result
 
     def start_all_runs(self, ignore_completed, auto_generate):
         """开始执行所有符合条件的任务"""
@@ -12764,30 +16210,29 @@ class Api:
                     continue
 
                 try:
-                    self.log("调用高德API进行路径规划...")
-                    callback_key = f"single_{idx}_{int(time.time() * 1000)}"
-                    path_result: dict = {}
-                    completion_event = threading.Event()
-                    self.path_gen_callbacks[callback_key] = (
-                        path_result,
-                        completion_event,
-                    )
+                    self.log("正在按当前地图供应商进行路径规划...")
+                    session_id = getattr(self, "_web_session_id", None)
+                    if not session_id:
+                        self.log("错误: 当前会话缺少浏览器会话ID，无法执行路径规划。")
+                        continue
 
                     waypoints = run_data.target_points
-                    if self.window:
-                        self.window.evaluate_js(
-                            f'triggerPathGenerationForPy("{callback_key}", {json.dumps(waypoints)})'
-                        )
+                    path_result = _plan_route_path_with_provider_runtime(
+                        session_id,
+                        waypoints,
+                        python_params=self.params,
+                        guard_label="SingleRunPathPlanning",
+                        app_base_url=getattr(self, "_web_app_base_url", None),
+                    )
+                    for notice in path_result.get("notices", []):
+                        self.log(notice)
 
-                    path_received = completion_event.wait(timeout=120)
                     if "path" not in path_result:
                         error_msg = path_result.get("error", "超时或未知错误")
                         self.log(f"路径规划失败或超时：{error_msg}，跳过此任务。")
                         logging.warning(
                             f"Path planning failed for task {run_data.run_name}: {error_msg}"
                         )
-                        if callback_key in self.path_gen_callbacks:
-                            self.path_gen_callbacks.pop(callback_key, None)
                         continue
 
                     api_path_coords = path_result["path"]
@@ -13102,6 +16547,157 @@ class Api:
                 return {"success": False, "message": str(e)}
         return {"success": False, "message": "Unknown parameter"}
 
+    def get_theme_styles(self, background_target=None):
+        """获取主题样式列表和当前主题配置"""
+        current_theme_style = getattr(self, "global_params", {}).get("theme_style", "default")
+        target_list = []
+        if background_target == "mobile":
+            target_list = ["mobile"]
+        elif background_target == "pc":
+            target_list = ["pc"]
+        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        return {
+            "success": True,
+            "theme_styles": auth_system.get_available_theme_styles(),
+            "theme_config": auth_system.get_theme_config(
+                current_theme_style,
+                target_list or None,
+                session_uuid=session_uuid,
+                cache_dir=cache_dir,
+            ),
+        }
+
+    def get_public_theme_styles(self, style_id="default", background_target=None):
+        """获取公开主题样式列表和指定主题配置（无需登录）"""
+        current_theme_style = str(style_id or "default").strip() or "default"
+        target_list = []
+        if background_target == "mobile":
+            target_list = ["mobile"]
+        elif background_target == "pc":
+            target_list = ["pc"]
+        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        return {
+            "success": True,
+            "theme_styles": auth_system.get_available_theme_styles(),
+            "theme_config": auth_system.get_theme_config(
+                current_theme_style,
+                target_list or None,
+                session_uuid=session_uuid,
+                cache_dir=cache_dir,
+            ),
+        }
+
+    def get_theme_styles(self, background_target=None):
+        """获取主题样式列表和当前主题配置"""
+        current_theme_style = getattr(self, "global_params", {}).get("theme_style", "default")
+        target_list = []
+        if background_target == "mobile":
+            target_list = ["mobile"]
+        elif background_target == "pc":
+            target_list = ["pc"]
+        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        return {
+            "success": True,
+            "theme_styles": auth_system.get_available_theme_styles(),
+            "theme_config": auth_system.get_theme_config(
+                current_theme_style,
+                target_list or None,
+                session_uuid=session_uuid,
+                cache_dir=cache_dir,
+            ),
+        }
+
+    def get_public_theme_styles(self, style_id="default", background_target=None):
+        """获取公开主题样式列表和指定主题配置（无需登录）"""
+        current_theme_style = str(style_id or "default").strip() or "default"
+        target_list = []
+        if background_target == "mobile":
+            target_list = ["mobile"]
+        elif background_target == "pc":
+            target_list = ["pc"]
+        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        return {
+            "success": True,
+            "theme_styles": auth_system.get_available_theme_styles(),
+            "theme_config": auth_system.get_theme_config(
+                current_theme_style,
+                target_list or None,
+                session_uuid=session_uuid,
+                cache_dir=cache_dir,
+            ),
+        }
+
+    def mark_theme_background_consumed(
+        self,
+        target="pc",
+        image_url="",
+        login_context=False,
+        candidate_image_url="",
+    ):
+        normalized_target = _normalize_theme_background_target(target)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        os.makedirs(cache_dir, exist_ok=True)
+
+        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
+        decision = _resolve_theme_background_binding_decision(
+            cache_dir=cache_dir,
+            session_uuid=session_uuid,
+            target=normalized_target,
+            current_image_url=str(image_url or "").strip(),
+            login_context=bool(login_context),
+            candidate_image_url=str(candidate_image_url or "").strip(),
+            ttl_seconds=1800,
+        )
+
+        selected_image_url = str(decision.get("selected_image_url") or "").strip()
+        if selected_image_url:
+            _mark_random_background_file_expired(cache_dir, selected_image_url, expired=True)
+
+        next_theme_config = auth_system.get_theme_config(
+            "default",
+            [normalized_target],
+            session_uuid=session_uuid,
+            cache_dir=cache_dir,
+        )
+        next_env = (
+            next_theme_config.get("global_environment_variables")
+            if isinstance(next_theme_config, dict)
+            else {}
+        )
+        next_image_url = (
+            str(next_env.get("mobile_auth_login_content_background") or "")
+            if normalized_target == "mobile"
+            else str(next_env.get("auth_login_container_background") or "")
+        )
+        extracted_next_image_url = _extract_background_image_url_from_value(next_image_url)
+        if extracted_next_image_url:
+            _mark_random_background_file_expired(cache_dir, extracted_next_image_url, expired=True)
+        if selected_image_url and selected_image_url != extracted_next_image_url:
+            _reset_random_background_file_expired(cache_dir, selected_image_url)
+
+        image_type = "mb" if normalized_target == "mobile" else "pc"
+        self._refresh_default_theme_background_cache_async([image_type])
+
+        return {
+            "success": True,
+            "theme_config": next_theme_config,
+            "binding_action": decision.get("action", "noop"),
+        }
+
+    def _refresh_default_theme_background_cache_async(self, image_types=None):
+        refresher = getattr(globals().get("auth_system"), "_refresh_default_theme_background_cache_async", None)
+        if callable(refresher):
+            refresher(image_types)
+
     def get_params(self):
         """
         获取当前参数配置
@@ -13378,6 +16974,17 @@ class Api:
                 except Exception:
                     pass
             self.path_gen_callbacks.clear()
+            session_id = getattr(self, "_web_session_id", None)
+            if background_task_manager and session_id:
+                try:
+                    background_task_manager.stop_task(session_id)
+                except Exception:
+                    pass
+            if session_id and socketio:
+                try:
+                    socketio.emit("run_stopped", {}, room=session_id)
+                except Exception:
+                    pass
             if self.window:
                 try:
                     self.window.evaluate_js("onRunStopped()")
@@ -15002,21 +18609,12 @@ class Api:
         random.shuffle(account_list)
 
         # 步骤6：启动所有账号的任务线程
-        started_threads = 0
-        for i, acc in enumerate(account_list):
-            if acc.worker_thread and acc.worker_thread.is_alive():
-                acc.log("已在运行，本次'全部开始'将跳过此账号。")
-                continue
-
-            delay = delays[i] if use_delay else 0
-            acc.stop_event.clear()
-            acc.worker_thread = threading.Thread(
-                target=self._multi_account_worker,
-                args=(acc, delay, run_only_incomplete),
-                daemon=True,
-            )
-            acc.worker_thread.start()
-            started_threads += 1
+        started_threads = self._start_multi_account_threads(
+            account_list,
+            delays,
+            use_delay,
+            run_only_incomplete,
+        )
 
         if started_threads == 0:
 
@@ -15741,7 +19339,7 @@ class Api:
                     continue
 
                 try:
-                    acc.log("正在调用高德地图API进行路径规划...")
+                    acc.log("正在按当前地图供应商进行路径规划...")
 
                     session_id = getattr(self, "_web_session_id", None)
                     if not session_id:
@@ -15753,170 +19351,16 @@ class Api:
                         )
                         continue
 
-                    if not hasattr(self, "_amap_key_cached"):
-                        config = configparser.ConfigParser(strict=False)
-                        config = _read_config_ini(CONFIG_FILE)
-                        self._amap_key_cached = config.get(
-                            "Map", "amap_js_key", fallback=""
-                        )
-                        logging.info(f"已加载高德地图API密钥配置（缓存至实例）")
-
-                    amap_key = self._amap_key_cached
-                    if not amap_key:
-                        acc.log("错误: 未配置高德地图API密钥，请在config.ini中设置。")
-                        continue
-
-                    ctx = chrome_pool.get_context(session_id)
-                    page = ctx["page"]
-
-                    amap_loaded = False
-                    try:
-                        amap_loaded = page.evaluate(
-                            "typeof AMapLoader !== 'undefined'")
-                    except Exception as e:
-                        logging.debug(f"检查AMap SDK时出错（可能尚未加载）: {e}")
-
-                    if not amap_loaded:
-                        page.goto("about:blank")
-                        page.set_content(
-                            """
-                        <!DOCTYPE html>
-                        <html>
-                        <head>
-                            <meta charset="utf-8">
-                            <script type="text/javascript" src="https://webapi.amap.com/loader.js"></script>
-                        </head>
-                        <body></body>
-                        </html>
-                        """
-                        )
-
-                        try:
-                            page.wait_for_function(
-                                "typeof AMapLoader !== 'undefined'", timeout=10000
-                            )
-                        except Exception as e:
-                            acc.log(f"错误: 加载高德地图SDK超时或失败: {str(e)}")
-                            continue
-
-                    path_coords = chrome_pool.execute_js(
+                    path_coords = _plan_route_path_with_provider_runtime(
                         session_id,
-                        """
-                        (async (arg) => {
-                            const waypointsPy = arg[0];
-                            const apiKey = arg[1];
-                            const pythonParams = arg[2];
-
-                            async function planPath(waypointsPy, apiKey, pythonParams) {
-                                if (typeof AMapLoader === 'undefined') {
-                                    return {error: 'AMapLoader not loaded'};
-                                }
-
-                                try {
-                                    await AMapLoader.load({
-                                        "key": apiKey,
-                                        "version": "2.0",
-                                        "plugins": ["AMap.Walking"]
-                                    });
-                                } catch (e) {
-                                    return {error: 'AMapLoader.load failed: ' + (e ? e.message : 'Unknown error')};
-                                }
-
-                                if (typeof AMap.Walking === 'undefined') {
-                                    return {error: 'AMap.Walking plugin failed to load'};
-                                }
-
-                                const useFallback = pythonParams.api_fallback_line ?? false;
-                                const maxRetries = pythonParams.api_retries ?? 2;
-                                const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
-                                const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-                                const searchSegment = (start, end, walkingInstance) => new Promise((resolve) => {
-                                    walkingInstance.search(start, end, (status, result) => {
-                                        if (status === 'complete' && result.routes?.length > 0) {
-                                            const p = []; 
-                                            result.routes[0].steps.forEach(s => s.path.forEach(pt => p.push({ lng: pt.lng, lat: pt.lat })));
-                                            resolve({ path: p });
-                                        } else {
-                                            let errorInfo = 'Unknown Error';
-                                            if (status === 'error') {
-                                                errorInfo = result?.info || status;
-                                            } else if (status === 'no_data') {
-                                                errorInfo = 'No path found (no_data)';
-                                            } else {
-                                                errorInfo = status;
-                                            }
-                                            resolve({ error: 'Path planning failed: ' + errorInfo });
-                                        }
-                                    });
-                                });
-
-                                const all_path = [];
-                                const waypoints = waypointsPy.map(p => new AMap.LngLat(p[0], p[1]));
-                                const walking = new AMap.Walking({ map: null, panel: "", hideMarkers: true });
-
-                                if (waypoints.length < 2) {
-                                    return {error: 'Waypoints must be at least 2.'};
-                                }
-
-                                for (let i = 0; i < waypoints.length - 1; i++) {
-                                    const realStart = waypoints[i];
-                                    const realEnd = waypoints[i + 1];
-                                    
-                                    let attempts = 0;
-                                    let segmentResult = null;
-                                    let segmentPath = null;
-
-                                    while (attempts <= maxRetries) {
-                                        if (attempts > 0) {
-                                            await sleep(retryDelayMs);
-                                        }
-                                        
-                                        segmentResult = await searchSegment(realStart, realEnd, walking);
-                                        
-                                        if (segmentResult.path) {
-                                            segmentPath = segmentResult.path;
-                                            break;
-                                        }
-                                        
-                                        attempts++;
-                                    }
-
-                                    if (segmentPath) {
-                                        const areCoordsEqual = (c1, c2) => Math.abs(c1.lng - c2.lng) < 1e-6 && Math.abs(c1.lat - c2.lat) < 1e-6;
-                                        if (i > 0) {
-                                            all_path.push(...segmentPath.slice(1));
-                                        } else {
-                                            all_path.push(...segmentPath);
-                                        }
-                                        if (i === waypoints.length - 2) { 
-                                            if (segmentPath.length > 0 && !areCoordsEqual(segmentPath[segmentPath.length - 1], { lng: realEnd.lng, lat: realEnd.lat })) {
-                                                all_path.push({ lng: realEnd.lng, lat: realEnd.lat });
-                                            }
-                                        }
-                                    } else {
-                                        if (useFallback) {
-                                            const lastPoint = all_path.length > 0 ? all_path[all_path.length - 1] : null;
-                                            if (!lastPoint || (Math.abs(lastPoint.lng - realStart.lng) > 1e-6 || Math.abs(lastPoint.lat - realStart.lat) > 1e-6)) {
-                                                all_path.push({ lng: realStart.lng, lat: realStart.lat });
-                                            }
-                                            all_path.push({ lng: realEnd.lng, lat: realEnd.lat });
-                                        } else {
-                                            return {error: `Segment ${i+1} failed after ${maxRetries+1} attempts: ${segmentResult.error}`};
-                                        }
-                                    }
-                                }
-                                
-                                return {path: all_path};
-                            }
-
-                            return await planPath(waypointsPy, apiKey, pythonParams);
-                        })
-                        """,
                         waypoints,
-                        amap_key,
-                        acc.params,
+                        python_params=acc.params,
+                        guard_label="MultiAccountPathPlanning",
+                        app_base_url=getattr(self, "_web_app_base_url", None),
                     )
+                    for notice in path_coords.get("notices", []):
+                        acc.log(notice)
+
 
                     if path_coords and "path" in path_coords:
                         api_path_coords = path_coords["path"]
@@ -16380,6 +19824,30 @@ class Api:
                 )
             finally:
                 self._update_multi_global_buttons()
+
+    def _run_all_multi_accounts_thread(self, *args, **kwargs):
+        return self._start_multi_account_threads(*args, **kwargs)
+
+    def _start_multi_account_threads(
+        self, account_list, delays, use_delay, run_only_incomplete
+    ):
+        started_threads = 0
+        for i, acc in enumerate(account_list):
+            if acc.worker_thread and acc.worker_thread.is_alive():
+                acc.log("已在运行，本次'全部开始'将跳过此账号。")
+                continue
+
+            delay = delays[i] if use_delay else 0
+            acc.stop_event.clear()
+            acc.worker_thread = threading.Thread(
+                target=self._multi_account_worker,
+                args=(acc, delay, run_only_incomplete),
+                daemon=True,
+            )
+            acc.worker_thread.start()
+            started_threads += 1
+
+        return started_threads
 
     def _get_device_sign_code(self, username):
         """生成或获取设备标识码 (signCode)"""
@@ -17496,6 +20964,10 @@ ip_location_cache = {}
 ip_cache_lock = threading.Lock()
 CACHE_DURATION_SECONDS = 86400
 
+PHONE_CACHE_FILE = os.path.join("logs", "phone_location_cache.json")
+phone_location_cache = {}
+phone_cache_lock = threading.Lock()
+
 
 def _load_ip_cache():
     """启动时加载IP归属地缓存文件"""
@@ -17539,6 +21011,28 @@ def _save_ip_cache():
             logging.error(f"[IP缓存] 保存缓存文件失败: {e}")
         except Exception as e:
             logging.error(f"[IP缓存] 序列化缓存数据失败: {e}")
+
+
+def _load_phone_cache():
+    global phone_location_cache
+    if not os.path.exists(PHONE_CACHE_FILE):
+        return
+    with phone_cache_lock:
+        try:
+            with open(PHONE_CACHE_FILE, "r", encoding="utf-8") as f:
+                phone_location_cache = json.load(f)
+        except Exception:
+            phone_location_cache = {}
+
+
+def _save_phone_cache():
+    with phone_cache_lock:
+        try:
+            os.makedirs(os.path.dirname(PHONE_CACHE_FILE), exist_ok=True)
+            with open(PHONE_CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump(phone_location_cache.copy(), f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logging.error(f"[手机缓存] 保存失败: {e}")
 
 
 def _migrate_ip_location_config_if_needed():
@@ -17684,6 +21178,9 @@ def cleanup_inactive_session(session_id):
         with browsing_activity_lock:
             if session_id in browsing_activity:
                 del browsing_activity[session_id]
+        with session_file_locks_lock:
+            if session_hash in session_file_locks:
+                del session_file_locks[session_hash]
         index = _load_session_index()
         if session_id in index:
             del index[session_id]
@@ -17847,8 +21344,12 @@ def save_session_state(session_id, api_instance, force_save=False):
         api_instance: Api实例
         force_save: 强制保存，即使距离上次保存时间很短
     """
-    if not session_id or session_id == "null":
+    session_id = normalize_session_uuid(session_id)
+    if not session_id:
         logging.warning(f"拒绝保存会话：无效的 session_id: '{session_id}'")
+        return
+    if not getattr(api_instance, "_is_persistent_session", True):
+        logging.debug(f"跳过保存认证上下文：{session_id}")
         return
     try:
         session_hash = hashlib.sha256(session_id.encode()).hexdigest()
@@ -19133,332 +22634,127 @@ class BackgroundTaskManager:
                             if len(waypoints) > 3
                             else f"Waypoints: {waypoints}"
                         )
-                        amap_key = ""
-                        try:
-                            if os.path.exists(CONFIG_FILE):
-                                cfg = _read_config_ini(CONFIG_FILE)
-                                if cfg:
-                                    amap_key = cfg.get(
-                                        "Map", "amap_js_key", fallback="")
-                                    if not amap_key:
-                                        amap_key = cfg.get(
-                                            "System", "AmapJsKey", fallback=""
-                                        )
-
-                            if amap_key:
-                                logging.info(
-                                    f"已从 {CONFIG_FILE} 实时加载 AMap Key。")
-                            else:
-                                logging.error(
-                                    f"无法为 {run_data.run_name} 自动规划路径：实时读取 {CONFIG_FILE} 失败，[Map] -> amap_js_key 缺失或为空。"
-                                )
-                                with self.lock:
-                                    task_state["status"] = "error"
-                                    task_state["error"] = (
-                                        "缺少高德地图API Key (实时读取失败)"
-                                    )
-                                    self.save_task_state(
-                                        session_id, task_state)
-                                continue
-
-                        except Exception as e:
-                            logging.error(
-                                f"实时读取 AMap Key 时发生错误: {e}", exc_info=True
-                            )
-                            with self.lock:
-                                task_state["status"] = "error"
-                                task_state["error"] = f"读取Config.ini失败: {e}"
-                                self.save_task_state(session_id, task_state)
-                            continue
 
                         global chrome_pool
                         if not chrome_pool:
                             logging.error("Chrome浏览器池不可用，无法进行路径规划！")
                             continue
 
-                        if chrome_pool:
-                            try:
+                        try:
+                            path_coords = _plan_route_path_with_provider_runtime(
+                                session_id,
+                                waypoints,
+                                python_params=api_instance.params,
+                                guard_label="BackgroundTaskPathPlanning",
+                                app_base_url=getattr(api_instance, "_web_app_base_url", None),
+                            )
+                            for notice in path_coords.get("notices", []):
+                                logging.info(notice)
+                        except Exception as e:
+                            logging.error(
+                                f"Chrome浏览器池路径规划失败，任务名称: {run_data.run_name}，异常信息: {e}",
+                                exc_info=True,
+                            )
+                            continue
+
+                        logging.info(
+                            f"路径规划JavaScript返回结果: 类型={type(path_coords)}, 包含'path'键={'是' if (path_coords and 'path' in path_coords) else '否'}"
+                        )
+
+                        if path_coords and "path" in path_coords:
+                            api_path_coords = path_coords["path"]
+                            logging.info(
+                                f"路径规划成功，包含 {len(api_path_coords)} 个坐标点"
+                            )
+                            p = api_instance.params
+                            logging.info(
+                                f"正在生成运动模拟数据，参数: 最小时长={p.get('min_time_m', 20)}分钟, 最大时长={p.get('max_time_m', 30)}分钟, 最小距离={p.get('min_dist_m', 2000)}米"
+                            )
+                            gen_resp = api_instance.auto_generate_path_with_api(
+                                api_path_coords,
+                                p.get("min_time_m", 20),
+                                p.get("max_time_m", 30),
+                                p.get("min_dist_m", 2000),
+                            )
+
+                            logging.info(
+                                f"auto_generate_path_with_api函数返回: 成功={gen_resp.get('success')}"
+                            )
+
+                            if gen_resp.get("success"):
+                                run_data.run_coords = gen_resp["run_coords"]
+                                run_data.total_run_distance_m = gen_resp[
+                                    "total_dist"
+                                ]
+                                run_data.total_run_time_s = gen_resp[
+                                    "total_time"
+                                ]
                                 logging.info(
-                                    f"正在获取Chrome浏览器上下文，会话ID前缀: {session_id[:8]}..."
-                                )
-                                ctx = chrome_pool.get_context(session_id)
-                                page = ctx["page"]
-                                logging.info("Chrome浏览器上下文获取成功")
-                                logging.info("正在向Chrome页面加载高德地图SDK...")
-                                page.goto("about:blank")
-                                page.set_content(
-                                    """
-                                <!DOCTYPE html>
-                                <html>
-                                <head>
-                                    <meta charset="utf-8">
-                                    <script type="text/javascript" src="https://webapi.amap.com/loader.js"></script>
-                                </head>
-                                <body></body>
-                                </html>
-                                """
-                                )
-                                logging.info(
-                                    "等待高德地图加载器(AMapLoader)加载完成..."
-                                )
-                                page.wait_for_function(
-                                    "typeof AMapLoader !== 'undefined'", timeout=10000
-                                )
-                                logging.info("高德地图加载器在Chrome上下文中加载成功")
-                                logging.info(
-                                    f"正在Chrome浏览器中执行路径规划JavaScript代码..."
-                                )
-                                path_coords = chrome_pool.execute_js(
-                                    session_id,
-                                    """
-                                    (async (arg) => {
-                                        const waypointsPy = arg[0]; // 这是Python传入的 [[lon, lat], ...]
-                                        const apiKey = arg[1];
-                                        const pythonParams = arg[2]; // <--- 读取 Python 传入的参数
-
-                                        // 1. 定义辅助函数 (planPath)
-                                        async function planPath(waypointsPy, apiKey, pythonParams) {
-                                            
-                                            // 1.1 确保 AMapLoader (来自 loader.js) 存在
-                                            if (typeof AMapLoader === 'undefined') {
-                                                return {error: 'AMapLoader not loaded'};
-                                            }
-
-                                            // 1.2 调用 AMapLoader.load 并传入 key
-                                            try {
-                                                await AMapLoader.load({
-                                                    "key": apiKey,
-                                                    "version": "2.0",
-                                                    "plugins": ["AMap.Walking"]
-                                                });
-                                            } catch (e) {
-                                                return {error: 'AMapLoader.load failed: ' + (e ? e.message : 'Unknown error')};
-                                            }
-
-                                            // 1.3 检查 AMap.Walking 插件是否真的加载成功
-                                            if (typeof AMap.Walking === 'undefined') {
-                                                return {error: 'AMap.Walking plugin failed to load'};
-                                            }
-
-                                            // 1.4 ★ 步骤 2 修复：从 pythonParams 读取重试和回退设置
-                                            const useFallback = pythonParams.api_fallback_line ?? false;
-                                            const maxRetries = pythonParams.api_retries ?? 2;
-                                            const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
-                                            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-                                            // 1.5 定义分段搜索函数 (同 index.html)
-                                            const searchSegment = (start, end, walkingInstance) => new Promise((resolve) => {
-                                                walkingInstance.search(start, end, (status, result) => {
-                                                    if (status === 'complete' && result.routes?.length > 0) {
-                                                        const p = []; 
-                                                        result.routes[0].steps.forEach(s => s.path.forEach(pt => p.push({ lng: pt.lng, lat: pt.lat })));
-                                                        resolve({ path: p }); // 返回成功路径
-                                                    } else {
-                                                        let errorInfo = 'Unknown Error';
-                                                        if (status === 'error') {
-                                                            if (result && result.info) {
-                                                                errorInfo = result.info;
-                                                            } else if (result) {
-                                                                try { errorInfo = JSON.stringify(result); } catch (e) { errorInfo = result.toString(); }
-                                                            } else {
-                                                                errorInfo = status;
-                                                            }
-                                                        } else if (status === 'no_data') {
-                                                            errorInfo = 'No path found (no_data)';
-                                                        } else {
-                                                            errorInfo = status; // 如 "CUQPS_HAS_EXCEEDED_THE_LIMIT"
-                                                        }
-                                                        resolve({ error: 'Path planning failed: ' + errorInfo }); // 返回错误
-                                                    }
-                                                });
-                                            });
-
-                                            // 1.6 ★ 步骤 2 修复：迭代执行路径规划 (增加重试循环)
-                                            const all_path = [];
-                                            const waypoints = waypointsPy.map(p => new AMap.LngLat(p[0], p[1]));
-                                            const walking = new AMap.Walking({ map: null, panel: "", hideMarkers: true });
-
-                                            if (waypoints.length < 2) {
-                                                return {error: 'Waypoints must be at least 2.'};
-                                            }
-
-                                            for (let i = 0; i < waypoints.length - 1; i++) {
-                                                const realStart = waypoints[i];
-                                                const realEnd = waypoints[i + 1];
-                                                
-                                                let attempts = 0;
-                                                let segmentResult = null;
-                                                let segmentPath = null; // 存储成功的路径
-
-                                                // --- 增加重试循环 (来自 index.html) ---
-                                                while (attempts <= maxRetries) {
-                                                    if (attempts > 0) {
-                                                        await sleep(retryDelayMs); // 等待后重试
-                                                    }
-                                                    
-                                                    segmentResult = await searchSegment(realStart, realEnd, walking);
-                                                    
-                                                    if (segmentResult.path) { // 检查 .path 是否存在 (成功)
-                                                        segmentPath = segmentResult.path;
-                                                        break; // 成功，退出重试循环
-                                                    }
-                                                    
-                                                    // 失败，记录最后一次错误 (将在重试用尽时使用)
-                                                    // (不需要 console.log，Python端会记录最终错误)
-                                                    
-                                                    attempts++;
-                                                }
-                                                // --- 结束重试循环 ---
-
-                                                if (segmentPath) {
-                                                    // 成功: 拼接路径
-                                                    const areCoordsEqual = (c1, c2) => Math.abs(c1.lng - c2.lng) < 1e-6 && Math.abs(c1.lat - c2.lat) < 1e-6;
-                                                    if (i > 0) {
-                                                        all_path.push(...segmentPath.slice(1));
-                                                    } else {
-                                                        all_path.push(...segmentPath);
-                                                    }
-                                                    if (i === waypoints.length - 2) { 
-                                                        if (segmentPath.length > 0 && !areCoordsEqual(segmentPath[segmentPath.length - 1], { lng: realEnd.lng, lat: realEnd.lat })) {
-                                                            all_path.push({ lng: realEnd.lng, lat: realEnd.lat });
-                                                        }
-                                                    }
-                                                } else {
-                                                    // 失败: 检查回退
-                                                    if (useFallback) {
-                                                        // 使用直线回退 (确保连接性)
-                                                        const lastPoint = all_path.length > 0 ? all_path[all_path.length - 1] : null;
-                                                        if (!lastPoint || (Math.abs(lastPoint.lng - realStart.lng) > 1e-6 || Math.abs(lastPoint.lat - realStart.lat) > 1e-6)) {
-                                                            all_path.push({ lng: realStart.lng, lat: realStart.lat });
-                                                        }
-                                                        all_path.push({ lng: realEnd.lng, lat: realEnd.lat });
-                                                    } else {
-                                                        // 不回退，整个规划失败
-                                                        return {error: `Segment ${i+1} failed after ${maxRetries+1} attempts: ${segmentResult.error}`};
-                                                    }
-                                                }
-                                            }
-                                            
-                                            // 成功
-                                            return {path: all_path};
-                                        }
-
-                                        // 2. 调用辅助函数并返回结果
-                                        return await planPath(waypointsPy, apiKey, pythonParams);
-                                    })
-                                    """,
-                                    waypoints,
-                                    amap_key,
-                                    api_instance.params,
+                                    f"路径自动生成成功，任务: {run_data.run_name}，坐标点数: {len(gen_resp['run_coords'])}, 总距离: {gen_resp['total_dist']}米, 总时长: {gen_resp['total_time']}秒"
                                 )
 
-                                logging.info(
-                                    f"路径规划JavaScript返回结果: 类型={type(path_coords)}, 包含'path'键={'是' if (path_coords and 'path' in path_coords) else '否'}"
-                                )
-
-                                if path_coords and "path" in path_coords:
-                                    api_path_coords = path_coords["path"]
-                                    logging.info(
-                                        f"路径规划成功，包含 {len(api_path_coords)} 个坐标点"
-                                    )
-                                    p = api_instance.params
-                                    logging.info(
-                                        f"正在生成运动模拟数据，参数: 最小时长={p.get('min_time_m', 20)}分钟, 最大时长={p.get('max_time_m', 30)}分钟, 最小距离={p.get('min_dist_m', 2000)}米"
-                                    )
-                                    gen_resp = api_instance.auto_generate_path_with_api(
-                                        api_path_coords,
-                                        p.get("min_time_m", 20),
-                                        p.get("max_time_m", 30),
-                                        p.get("min_dist_m", 2000),
-                                    )
-
-                                    logging.info(
-                                        f"auto_generate_path_with_api函数返回: 成功={gen_resp.get('success')}"
-                                    )
-
-                                    if gen_resp.get("success"):
-                                        run_data.run_coords = gen_resp["run_coords"]
-                                        run_data.total_run_distance_m = gen_resp[
-                                            "total_dist"
-                                        ]
-                                        run_data.total_run_time_s = gen_resp[
-                                            "total_time"
-                                        ]
-                                        logging.info(
-                                            f"路径自动生成成功，任务: {run_data.run_name}，坐标点数: {len(gen_resp['run_coords'])}, 总距离: {gen_resp['total_dist']}米, 总时长: {gen_resp['total_time']}秒"
+                                with self.lock:
+                                    if session_id in self.tasks:
+                                        task_state = self.tasks[session_id]
+                                        task_state["last_update"] = time.time(
+                                        )
+                                        task_state["estimated_total_time_s"] = (
+                                            run_data.total_run_time_s
+                                        )
+                                        task_state[
+                                            "estimated_total_distance_m"
+                                        ] = run_data.total_run_distance_m
+                                        task_state["target_points"] = (
+                                            run_data.target_points
+                                            if hasattr(
+                                                run_data, "target_points"
+                                            )
+                                            else []
+                                        )
+                                        task_state["target_point_names"] = (
+                                            run_data.target_point_names
+                                            if hasattr(
+                                                run_data, "target_point_names"
+                                            )
+                                            else ""
+                                        )
+                                        task_state["recommended_coords"] = (
+                                            run_data.recommended_coords
+                                            if hasattr(
+                                                run_data, "recommended_coords"
+                                            )
+                                            else []
+                                        )
+                                        task_state["run_coords"] = (
+                                            run_data.run_coords
+                                            if hasattr(run_data, "run_coords")
+                                            else []
+                                        )
+                                        total_points = len(
+                                            run_data.run_coords)
+                                        task_state["singleTotalPoints"] = (
+                                            total_points
+                                        )
+                                        task_state["singleProcessedPoints"] = 0
+                                        self.save_task_state(
+                                            session_id, task_state
                                         )
 
-                                        with self.lock:
-                                            if session_id in self.tasks:
-                                                task_state = self.tasks[session_id]
-                                                task_state["last_update"] = time.time(
-                                                )
-                                                task_state["estimated_total_time_s"] = (
-                                                    run_data.total_run_time_s
-                                                )
-                                                task_state[
-                                                    "estimated_total_distance_m"
-                                                ] = run_data.total_run_distance_m
-                                                task_state["target_points"] = (
-                                                    run_data.target_points
-                                                    if hasattr(
-                                                        run_data, "target_points"
-                                                    )
-                                                    else []
-                                                )
-                                                task_state["target_point_names"] = (
-                                                    run_data.target_point_names
-                                                    if hasattr(
-                                                        run_data, "target_point_names"
-                                                    )
-                                                    else ""
-                                                )
-                                                task_state["recommended_coords"] = (
-                                                    run_data.recommended_coords
-                                                    if hasattr(
-                                                        run_data, "recommended_coords"
-                                                    )
-                                                    else []
-                                                )
-                                                task_state["run_coords"] = (
-                                                    run_data.run_coords
-                                                    if hasattr(run_data, "run_coords")
-                                                    else []
-                                                )
-                                                total_points = len(
-                                                    run_data.run_coords)
-                                                task_state["singleTotalPoints"] = (
-                                                    total_points
-                                                )
-                                                task_state["singleProcessedPoints"] = 0
-                                                self.save_task_state(
-                                                    session_id, task_state
-                                                )
-
-                                    else:
-                                        logging.error(
-                                            f"生成运动坐标序列失败: {gen_resp.get('message')}"
-                                        )
-                                        continue
-                                else:
-                                    error_msg = (
-                                        path_coords.get(
-                                            "error", "Unknown error")
-                                        if path_coords
-                                        else "No response from path planning"
-                                    )
-                                    logging.error(
-                                        f"任务路径规划失败，任务名称: {run_data.run_name}，错误信息: {error_msg}"
-                                    )
-                                    continue
-                            except Exception as e:
+                            else:
                                 logging.error(
-                                    f"Chrome浏览器池路径规划失败，任务名称: {run_data.run_name}，异常信息: {e}",
-                                    exc_info=True,
+                                    f"生成运动坐标序列失败: {gen_resp.get('message')}"
                                 )
                                 continue
                         else:
-                            logging.error("Chrome浏览器池不可用，无法进行路径规划")
+                            error_msg = (
+                                path_coords.get(
+                                    "error", "Unknown error")
+                                if path_coords
+                                else "No response from path planning"
+                            )
+                            logging.error(
+                                f"任务路径规划失败，任务名称: {run_data.run_name}，错误信息: {error_msg}"
+                            )
                             continue
 
                     except Exception as e:
@@ -21615,6 +24911,50 @@ def _send_startup_notification_to_log_forwarder(host, port):
         logging.error(f"[UDP通知] UDP通知线程发生异常: {e}", exc_info=True)
 
 
+def _billing_now_utc_string():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _billing_now_beijing_string():
+    return datetime.datetime.now(datetime.timezone.utc).astimezone(
+        datetime.timezone(datetime.timedelta(hours=8))
+    ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _billing_utc_to_beijing_string(value):
+    if not value:
+        return ""
+    raw = str(value).strip()
+    if not raw:
+        return ""
+    try:
+        normalized = raw.replace("Z", "+00:00")
+        dt = datetime.datetime.fromisoformat(normalized)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt.astimezone(datetime.timezone(datetime.timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return raw.replace("T", " ").replace("Z", "")
+
+
+def _migrate_billing_record_beijing_times(record):
+    changed = False
+    for key in ("created_at", "paid_at", "admin_cleared_at", "reason_updated_at", "updated_at"):
+        beijing_key = f"{key}_beijing"
+        if record.get(key) and not record.get(beijing_key):
+            record[beijing_key] = _billing_utc_to_beijing_string(record.get(key))
+            changed = True
+    return changed
+
+
+def _migrate_billing_file_beijing_times(filepath, record):
+    if not _migrate_billing_record_beijing_times(record):
+        return False
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(record, f, indent=2, ensure_ascii=False)
+    return True
+
+
 def _create_user_billing_record(auth_username, school_username, reason, amount):
     """
     为学校账号创建账单记录。
@@ -21645,7 +24985,8 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
             billing_id = str(uuid.uuid4())
         
         # 获取当前时间戳（ISO格式）
-        created_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        created_at = _billing_now_utc_string()
+        created_at_beijing = _billing_now_beijing_string()
         
         # 构建账单数据
         billing_data = {
@@ -21655,6 +24996,7 @@ def _create_user_billing_record(auth_username, school_username, reason, amount):
             "reason": reason,
             "amount": round(float(amount), 2),
             "created_at": created_at,
+            "created_at_beijing": created_at_beijing,
             "status": "pending",
             "payment_orders": [],
             "final_payment_order": None,
@@ -21792,11 +25134,927 @@ def _collect_overdue_accounts_from_billing(school_usernames):
     return overdue_accounts
 
 
+sms_verification_codes = {}
+sms_extended_once_keys = set()
+
+
+def _build_sms_extend_once_key(phone, code):
+    normalized_phone = str(phone or "").strip()
+    normalized_code = str(code or "").strip()
+    if not normalized_phone or not normalized_code:
+        return ""
+    return f"{normalized_phone}:{normalized_code}"
+
+
+def _is_sms_extend_allowed_once(phone, code):
+    key = _build_sms_extend_once_key(phone, code)
+    if not key:
+        return False
+    return key not in sms_extended_once_keys
+
+
+def _mark_sms_extend_used_once(phone, code):
+    key = _build_sms_extend_once_key(phone, code)
+    if key:
+        sms_extended_once_keys.add(key)
+
+
+def _reset_sms_extend_once_for_phone(phone):
+    normalized_phone = str(phone or "").strip()
+    if not normalized_phone:
+        return
+    stale_keys = [
+        key for key in sms_extended_once_keys if key.startswith(f"{normalized_phone}:")
+    ]
+    for key in stale_keys:
+        sms_extended_once_keys.discard(key)
+
+
+def _normalize_bool(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _safe_get_config_for_health():
+    try:
+        cfg = _read_config_ini(CONFIG_JSON_FILE)
+        if cfg:
+            return cfg
+    except Exception:
+        pass
+    try:
+        return _get_default_config()
+    except Exception:
+        return None
+
+
+def _collect_auth_usernames_for_token_lookup():
+    usernames = set()
+
+    try:
+        if "auth_system" in globals() and auth_system:
+            permissions = getattr(auth_system, "permissions", None)
+            if isinstance(permissions, dict):
+                user_groups = permissions.get("user_groups", {})
+                if isinstance(user_groups, dict):
+                    usernames.update(
+                        str(u).strip() for u in user_groups.keys() if str(u).strip()
+                    )
+
+            config = getattr(auth_system, "config", None)
+            if config is not None:
+                try:
+                    super_admin = config.get("Admin", "super_admin", fallback="admin")
+                    if super_admin:
+                        usernames.add(str(super_admin).strip())
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    try:
+        if os.path.isdir(SYSTEM_ACCOUNTS_DIR):
+            for filename in os.listdir(SYSTEM_ACCOUNTS_DIR):
+                if filename == "_index.json" or not filename.endswith(".json"):
+                    continue
+                file_path = os.path.join(SYSTEM_ACCOUNTS_DIR, filename)
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    auth_username = str(data.get("auth_username", "")).strip()
+                    if auth_username:
+                        usernames.add(auth_username)
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    if usernames:
+        return sorted(usernames)
+
+    try:
+        if "auth_system" in globals() and auth_system and hasattr(auth_system, "list_users"):
+            for user in auth_system.list_users() or []:
+                if isinstance(user, dict):
+                    auth_username = str(user.get("auth_username", "")).strip()
+                    if auth_username:
+                        usernames.add(auth_username)
+    except Exception:
+        pass
+
+    return sorted(usernames)
+
+
+def _get_health_token_index_path():
+    try:
+        tokens_dir = getattr(token_manager, "tokens_dir", "")
+    except Exception:
+        tokens_dir = ""
+    tokens_dir = str(tokens_dir or "").strip()
+    if not tokens_dir:
+        return None
+    return os.path.join(tokens_dir, "_health_token_index.json")
+
+
+
+def _build_health_token_index_key(token):
+    normalized_token = str(token or "").strip()
+    if not normalized_token:
+        return ""
+    return hashlib.sha256(normalized_token.encode("utf-8")).hexdigest()
+
+
+
+def _read_health_token_index():
+    index_path = _get_health_token_index_path()
+    if not index_path or not os.path.exists(index_path):
+        return {}
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {}
+        normalized_index = {}
+        for token_key, username in data.items():
+            normalized_key = str(token_key or "").strip()
+            normalized_username = str(username or "").strip()
+            if normalized_key and normalized_username:
+                normalized_index[normalized_key] = normalized_username
+        return normalized_index
+    except Exception:
+        return {}
+
+
+
+def _write_health_token_index(index_data):
+    index_path = _get_health_token_index_path()
+    if not index_path:
+        return
+    safe_index = {}
+    if isinstance(index_data, dict):
+        for token_key, username in index_data.items():
+            normalized_key = str(token_key or "").strip()
+            normalized_username = str(username or "").strip()
+            if normalized_key and normalized_username:
+                safe_index[normalized_key] = normalized_username
+    try:
+        with open(index_path, "w", encoding="utf-8") as f:
+            json.dump(safe_index, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+
+def _validate_cached_health_token_owner(username, token):
+    normalized_username = str(username or "").strip()
+    normalized_token = str(token or "").strip()
+    if not normalized_username or not normalized_token:
+        return False
+    if "token_manager" not in globals() or not token_manager:
+        return False
+    try:
+        verified = token_manager.verify_token(normalized_username, "", normalized_token)
+        if isinstance(verified, tuple):
+            return bool(verified[0])
+        return bool(verified)
+    except Exception:
+        return False
+
+
+
+def _resolve_username_by_token(token):
+    normalized_token = str(token or "").strip()
+    if not normalized_token:
+        return None
+
+    if "token_manager" not in globals() or not token_manager:
+        return None
+
+    cached_index = {}
+    token_key = _build_health_token_index_key(normalized_token)
+    try:
+        cached_index = _read_health_token_index()
+        cached_username = str(cached_index.get(token_key, "")).strip()
+        if cached_username:
+            if _validate_cached_health_token_owner(cached_username, normalized_token):
+                return cached_username
+            cached_index.pop(token_key, None)
+            _write_health_token_index(cached_index)
+    except Exception:
+        cached_index = {}
+
+    usernames = _collect_auth_usernames_for_token_lookup()
+    for username in usernames:
+        try:
+            verified = token_manager.verify_token(username, "", normalized_token)
+            if isinstance(verified, tuple):
+                is_valid = bool(verified[0])
+            else:
+                is_valid = bool(verified)
+            if is_valid:
+                try:
+                    cached_index[token_key] = username
+                    _write_health_token_index(cached_index)
+                except Exception:
+                    pass
+                return username
+        except Exception:
+            continue
+
+    return None
+
+
+def _is_admin_health_view_from_token(token=None):
+    token_value = token
+    if token_value is None:
+        try:
+            if "request" in globals():
+                token_value = request.cookies.get("auth_token")
+        except Exception:
+            token_value = None
+
+    normalized_token = str(token_value or "").strip()
+    if not normalized_token:
+        return False
+
+    username = _resolve_username_by_token(normalized_token)
+    if not username:
+        return False
+
+    try:
+        if "auth_system" not in globals() or not auth_system:
+            return False
+        user_group = auth_system.get_user_group(username)
+        return user_group in ["admin", "super_admin"]
+    except Exception:
+        return False
+
+
+def _check_running_core_health():
+    component = {
+        "name": "running_core",
+        "critical": True,
+        "status": "ok",
+        "message": "跑步执行链路正常",
+        "checks": {},
+    }
+
+    try:
+        now_ts = time.time()
+        checks = component["checks"]
+
+        manager = globals().get("background_task_manager")
+        checks["background_task_manager_exists"] = bool(manager)
+        if not manager:
+            component["status"] = "error"
+            component["message"] = "后台任务管理器未初始化"
+            return component
+
+        lock = getattr(manager, "lock", None)
+        tasks = {}
+        if lock is not None and hasattr(lock, "__enter__"):
+            with lock:
+                tasks = getattr(manager, "tasks", {}) or {}
+        else:
+            tasks = getattr(manager, "tasks", {}) or {}
+
+        web_sessions_obj = globals().get("web_sessions", {})
+        web_sessions_valid = isinstance(web_sessions_obj, dict)
+        checks["web_sessions_structure_valid"] = web_sessions_valid
+        if not web_sessions_valid:
+            component["status"] = "error"
+            component["message"] = "会话状态结构异常"
+            return component
+
+        if not isinstance(tasks, dict):
+            component["status"] = "error"
+            component["message"] = "后台任务状态结构异常"
+            return component
+
+        running_tasks = [
+            t for t in tasks.values()
+            if isinstance(t, dict) and str(t.get("status", "")).lower() == "running"
+        ]
+        checks["running_task_count"] = len(running_tasks)
+
+        stale_count = 0
+        malformed_running_count = 0
+        for task in running_tasks:
+            last_update = task.get("last_update")
+            if last_update is None:
+                malformed_running_count += 1
+                continue
+            try:
+                if (now_ts - float(last_update)) > 600:
+                    stale_count += 1
+            except Exception:
+                malformed_running_count += 1
+
+        checks["stale_running_task_count"] = stale_count
+        checks["malformed_running_task_count"] = malformed_running_count
+
+        chrome = globals().get("chrome_pool")
+        checks["chrome_pool_exists"] = bool(chrome)
+        contexts_count = 0
+        contexts_accessible = False
+        if chrome and hasattr(chrome, "_contexts"):
+            try:
+                contexts_count = len(getattr(chrome, "_contexts", {}) or {})
+                contexts_accessible = True
+            except Exception:
+                contexts_accessible = False
+        checks["chrome_contexts_accessible"] = contexts_accessible
+        checks["chrome_contexts_count"] = contexts_count
+
+        if running_tasks and (not chrome or not contexts_accessible):
+            component["status"] = "error"
+            component["message"] = "存在运行任务但浏览器执行上下文不可用"
+        elif malformed_running_count > 0:
+            component["status"] = "error"
+            component["message"] = "运行任务状态字段异常"
+        elif stale_count > 0:
+            component["status"] = "degraded"
+            component["message"] = "检测到运行任务长时间无更新，可能卡滞"
+
+    except Exception as e:
+        component["status"] = "error"
+        component["message"] = f"运行核心检查异常: {e}"
+
+    return component
+
+
+def _check_payment_system_health():
+    component = {
+        "name": "payment_system",
+        "critical": False,
+        "status": "ok",
+        "message": "支付系统配置正常",
+        "checks": {},
+    }
+
+    try:
+        config = _safe_get_config_for_health()
+        checks = component["checks"]
+        if config is None:
+            component["status"] = "degraded"
+            component["message"] = "支付配置读取失败"
+            return component
+
+        require_payment = _normalize_bool(
+            config.get("Payment_Settings", "require_payment", fallback="true"),
+            default=True,
+        )
+        checks["require_payment"] = require_payment
+
+        host = str(config.get("Rainbow_YiPay", "host", fallback="")).strip()
+        pid = str(config.get("Rainbow_YiPay", "pid", fallback="")).strip()
+        key = str(config.get("Rainbow_YiPay", "key", fallback="")).strip()
+        timeout_raw = str(
+            config.get("Rainbow_YiPay", "payment_timeout_minutes", fallback="900")
+        ).strip()
+
+        checks["has_host"] = bool(host)
+        checks["has_pid"] = bool(pid)
+        checks["has_key"] = bool(key)
+
+        timeout_valid = True
+        try:
+            timeout_value = int(timeout_raw)
+            timeout_valid = timeout_value > 0
+        except Exception:
+            timeout_valid = False
+        checks["timeout_valid"] = timeout_valid
+
+        orders_dir_exists = os.path.isdir(PAYMENT_ORDERS_DIR)
+        checks["payment_orders_dir_exists"] = orders_dir_exists
+
+        qr_cache_index_ok = True
+        qr_cache_index_size = 0
+        try:
+            qr_index = _load_qr_cache_index()
+            if isinstance(qr_index, dict):
+                qr_cache_index_size = len(qr_index)
+            else:
+                qr_cache_index_ok = False
+        except Exception:
+            qr_cache_index_ok = False
+        checks["qr_cache_index_ok"] = qr_cache_index_ok
+        checks["qr_cache_index_size"] = qr_cache_index_size
+
+        if require_payment and (not host or not pid or not key):
+            component["status"] = "degraded"
+            component["message"] = "支付开启但关键参数缺失"
+        elif require_payment and not timeout_valid:
+            component["status"] = "degraded"
+            component["message"] = "支付超时配置无效"
+        elif require_payment and not orders_dir_exists:
+            component["status"] = "degraded"
+            component["message"] = "支付订单目录不可用"
+        elif require_payment and not qr_cache_index_ok:
+            component["status"] = "degraded"
+            component["message"] = "支付二维码缓存索引异常"
+        elif not timeout_valid:
+            component["status"] = "degraded"
+            component["message"] = "支付超时配置无效"
+
+    except Exception as e:
+        component["status"] = "degraded"
+        component["message"] = f"支付系统检查异常: {e}"
+
+    return component
+
+
+def _check_sms_system_health():
+    component = {
+        "name": "sms_system",
+        "critical": False,
+        "status": "ok",
+        "message": "短信系统配置正常",
+        "checks": {},
+    }
+
+    try:
+        config = _safe_get_config_for_health()
+        checks = component["checks"]
+        if config is None:
+            component["status"] = "degraded"
+            component["message"] = "短信配置读取失败"
+            return component
+
+        enabled = _normalize_bool(
+            config.get("Features", "enable_sms_service", fallback="false"),
+            default=False,
+        )
+        checks["enable_sms_service"] = enabled
+
+        if not enabled:
+            component["message"] = "短信服务未启用"
+            return component
+
+        username = str(config.get("SMS_Service_SMSBao", "username", fallback="")).strip()
+        api_key = str(config.get("SMS_Service_SMSBao", "api_key", fallback="")).strip()
+        signature = str(config.get("SMS_Service_SMSBao", "signature", fallback="")).strip()
+        template_register = str(
+            config.get("SMS_Service_SMSBao", "template_register", fallback="")
+        ).strip()
+
+        checks["has_username"] = bool(username)
+        checks["has_api_key"] = bool(api_key)
+        checks["has_signature"] = bool(signature)
+        checks["has_template_register"] = bool(template_register)
+
+        sms_cache_accessible = "sms_verification_codes" in globals() and isinstance(
+            globals().get("sms_verification_codes"), dict
+        )
+        checks["sms_cache_accessible"] = sms_cache_accessible
+
+        send_interval_valid = True
+        code_expire_valid = True
+        try:
+            send_interval_valid = int(
+                str(config.get("SMS_Service_SMSBao", "send_interval_seconds", fallback="180")).strip()
+            ) > 0
+        except Exception:
+            send_interval_valid = False
+
+        try:
+            code_expire_valid = int(
+                str(config.get("SMS_Service_SMSBao", "code_expire_minutes", fallback="5")).strip()
+            ) > 0
+        except Exception:
+            code_expire_valid = False
+
+        checks["send_interval_valid"] = send_interval_valid
+        checks["code_expire_valid"] = code_expire_valid
+
+        if not all([username, api_key, signature, template_register]):
+            component["status"] = "degraded"
+            component["message"] = "短信服务已启用但配置不完整"
+        elif not send_interval_valid or not code_expire_valid:
+            component["status"] = "degraded"
+            component["message"] = "短信限流或验证码时效配置无效"
+        elif not sms_cache_accessible:
+            component["status"] = "degraded"
+            component["message"] = "短信验证码缓存未就绪"
+
+    except Exception as e:
+        component["status"] = "degraded"
+        component["message"] = f"短信系统检查异常: {e}"
+
+    return component
+
+
+def _aggregate_health_status(components):
+    critical_failed_count = 0
+    non_critical_failed_count = 0
+
+    for component in components or []:
+        status = str(component.get("status", "")).lower()
+        is_critical = bool(component.get("critical", False))
+
+        if is_critical and status == "error":
+            critical_failed_count += 1
+        if (not is_critical) and status in ["degraded", "error"]:
+            non_critical_failed_count += 1
+
+    if critical_failed_count > 0:
+        return (
+            "error",
+            503,
+            {
+                "critical_failed_count": critical_failed_count,
+                "non_critical_failed_count": non_critical_failed_count,
+            },
+        )
+
+    if non_critical_failed_count > 0:
+        return (
+            "degraded",
+            200,
+            {
+                "critical_failed_count": critical_failed_count,
+                "non_critical_failed_count": non_critical_failed_count,
+            },
+        )
+
+    return (
+        "ok",
+        200,
+        {
+            "critical_failed_count": 0,
+            "non_critical_failed_count": 0,
+        },
+    )
+
+
+def _build_health_comment_fields(is_admin=False):
+    base_comment = {
+        "status": "整体健康状态：ok=正常，degraded=部分非核心异常，error=核心异常",
+        "uptime_seconds": "服务启动后累计运行秒数",
+        "response_time_ms": "本次 /health 请求处理耗时（毫秒）",
+        "uptime_formatted": "运行时长的人类可读格式",
+    }
+
+    if not is_admin:
+        return {"_comment": base_comment}
+
+    return {
+        "_comment": base_comment,
+        "_meta_zh": {
+            "components": {
+                "running_core": "跑步执行主链路（核心）",
+                "payment_system": "支付系统（非核心）",
+                "sms_system": "短信系统（非核心）",
+            },
+            "summary": {
+                "critical_failed_count": "核心异常组件数量",
+                "non_critical_failed_count": "非核心异常组件数量",
+            },
+        },
+    }
+
+
+
+def _register_health_route(app):
+    @app.route("/health")
+    def health():
+        """
+        健康检查端点（分级可见性 + 组件重要性聚合）
+        """
+
+        request_start_time = time.time()
+        current_time = time.time()
+        uptime_seconds = (
+            current_time - server_start_time if "server_start_time" in globals() else 0
+        )
+
+        def format_uptime(seconds):
+            days = int(seconds // 86400)
+            seconds %= 86400
+            hours = int(seconds // 3600)
+            seconds %= 3600
+            minutes = int(seconds // 60)
+            seconds = int(seconds % 60)
+            parts = []
+            if days > 0:
+                parts.append(f"{days}天")
+            if hours > 0:
+                parts.append(f"{hours}小时")
+            if minutes > 0:
+                parts.append(f"{minutes}分钟")
+            if seconds > 0 or len(parts) == 0:
+                parts.append(f"{seconds}秒")
+            return "".join(parts)
+
+        uptime_formatted = format_uptime(uptime_seconds)
+
+        components = [
+            _check_running_core_health(),
+            _check_payment_system_health(),
+            _check_sms_system_health(),
+        ]
+        status, http_status, summary = _aggregate_health_status(components)
+
+        request_end_time = time.time()
+        response_time_ms = round((request_end_time - request_start_time) * 1000, 2)
+
+        payload = {
+            "status": status,
+            "uptime_seconds": int(uptime_seconds),
+            "response_time_ms": response_time_ms,
+            "uptime_formatted": uptime_formatted,
+        }
+
+        token = request.cookies.get("auth_token")
+        is_admin = _is_admin_health_view_from_token(token)
+        payload.update(_build_health_comment_fields(is_admin=is_admin))
+
+        if is_admin:
+            payload["components"] = {c["name"]: c for c in components}
+            payload["summary"] = summary
+
+        return jsonify(payload), http_status
+
+
+def _register_payment_routes(app, login_required):
+    _register_payment_verify_probe_route(app)
+    _register_payment_verify_host_route_for_tests(app, login_required)
+
+
+
+def _register_sms_routes(app, login_required):
+    from flask import g, jsonify, request
+
+    @app.route("/api/sms/send_code", methods=["POST"])
+    def sms_send_code():
+        try:
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            if (
+                config.get("Features", "enable_sms_service", fallback="false").lower()
+                != "true"
+            ):
+                return jsonify({"success": False, "message": "短信服务未启用"})
+
+            data = request.get_json() or {}
+            phone = data.get("phone", "").strip()
+            scene = data.get("scene", "register").strip()
+            captcha_input = data.get("captcha", "").strip()
+            captcha_id = data.get("captcha_id", "").strip()
+
+            is_captcha_valid, captcha_error_msg = verify_captcha(
+                captcha_id, captcha_input
+            )
+            if not is_captcha_valid:
+                return jsonify({"success": False, "message": captcha_error_msg})
+            if not phone or not re.match(r"^1[3-9]\d{9}$", phone):
+                return jsonify({"success": False, "message": "手机号格式不正确"})
+
+            sms_interval_seconds = int(
+                config.get("SMS_Service_SMSBao", "send_interval_seconds", fallback="180")
+            )
+            last_send_key = f"sms_last_send_{phone}"
+            last_send_time = cache.get(last_send_key, 0)
+            current_time = time.time()
+
+            if last_send_time and (current_time - last_send_time) < sms_interval_seconds:
+                remaining_seconds = int(
+                    sms_interval_seconds - (current_time - last_send_time)
+                )
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": f"发送过于频繁，请{remaining_seconds}秒后再试",
+                        "retry_after": remaining_seconds,
+                    }
+                )
+
+            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            current_date = time.strftime("%Y-%m-%d")
+            ip_limit_key = f"sms_ip_{client_ip}_{current_date}"
+            ip_count = cache.get(ip_limit_key, 0)
+            ip_limit = int(
+                config.get("SMS_Service_SMSBao", "rate_limit_per_ip_day", fallback="20")
+            )
+            if ip_count >= ip_limit:
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": f"IP每日发送次数已达上限({ip_limit}次)",
+                    }
+                )
+
+            phone_limit_key = f"sms_phone_{phone}_{current_date}"
+            phone_count = cache.get(phone_limit_key, 0)
+            phone_limit = int(
+                config.get(
+                    "SMS_Service_SMSBao", "rate_limit_per_phone_day", fallback="5"
+                )
+            )
+            if phone_count >= phone_limit:
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": f"该手机号每日发送次数已达上限({phone_limit}次)",
+                    }
+                )
+
+            code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+            username = config.get("SMS_Service_SMSBao", "username", fallback="")
+            api_key = config.get("SMS_Service_SMSBao", "api_key", fallback="")
+            signature = config.get(
+                "SMS_Service_SMSBao", "signature", fallback="【电科大跑步助手】"
+            )
+            code_expire_minutes = int(
+                config.get("SMS_Service_SMSBao", "code_expire_minutes", fallback="5")
+            )
+            template = config.get(
+                "SMS_Service_SMSBao",
+                "template_register",
+                fallback=f"您的验证码是：{{code}}，{code_expire_minutes}分钟内有效。",
+            )
+            if not username or not api_key:
+                return jsonify(
+                    {"success": False, "message": "短信服务配置不完整，请联系管理员"}
+                )
+
+            content = _build_sms_verification_content(
+                signature, template, code, code_expire_minutes
+            )
+            url = f"http://api.smsbao.com/sms?u={username}&p={api_key}&m={phone}&c={urllib.parse.quote(content)}"
+            response = urllib.request.urlopen(url, timeout=10)
+            result = response.read().decode("utf-8").strip()
+            if result == "0":
+                code_expire_seconds = code_expire_minutes * 60
+                sms_verification_codes[phone] = (code, time.time() + code_expire_seconds)
+                _reset_sms_extend_once_for_phone(phone)
+                cache[ip_limit_key] = ip_count + 1
+                cache[phone_limit_key] = phone_count + 1
+                cache[last_send_key] = current_time
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": f"验证码已发送，{code_expire_minutes}分钟内有效",
+                        "expire_minutes": code_expire_minutes,
+                        "retry_after": sms_interval_seconds,
+                    }
+                )
+
+            error_msg = _get_smsbao_error_message(result)
+            logging.error(
+                f"[SMS] 验证码发送失败: phone={phone}, scene={scene}, smsbao_result={result}, error={error_msg}"
+            )
+            return jsonify(
+                {
+                    "success": False,
+                    "message": f"发送失败：{error_msg}",
+                    "error_code": result,
+                }
+            )
+        except Exception as e:
+            logging.error(
+                f"[SMS] 验证码发送异常: phone={phone}, scene={scene}, error={e}",
+                exc_info=True,
+            )
+            return jsonify({"success": False, "message": "短信服务暂时不可用，请稍后重试"})
+
+    @app.route("/api/sms/test_send", methods=["POST"])
+    @login_required
+    def sms_test_send():
+        try:
+            current_user = g.user
+            user_group = auth_system.get_user_group(current_user)
+            if user_group not in ["admin", "super_admin"]:
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": "权限不足，仅管理员可使用测试功能",
+                        }
+                    ),
+                    403,
+                )
+
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            if (
+                config.get("Features", "enable_sms_service", fallback="false").lower()
+                != "true"
+            ):
+                return jsonify({"success": False, "message": "短信服务未启用，请先在配置中启用"})
+
+            data = request.get_json() or {}
+            phone = data.get("phone", "").strip()
+            custom_code = data.get("code", "").strip()
+            if not phone or not re.match(r"^1[3-9]\d{9}$", phone):
+                return jsonify({"success": False, "message": "手机号格式不正确"})
+            if custom_code:
+                if not re.match(r"^\d{4,8}$", custom_code):
+                    return jsonify(
+                        {
+                            "success": False,
+                            "message": "自定义验证码格式不正确，仅支持4-8位数字",
+                        }
+                    )
+                code = custom_code
+            else:
+                code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+
+            username = config.get("SMS_Service_SMSBao", "username", fallback="")
+            api_key = config.get("SMS_Service_SMSBao", "api_key", fallback="")
+            signature = config.get(
+                "SMS_Service_SMSBao", "signature", fallback="【电科大跑步助手】"
+            )
+            code_expire_minutes = int(
+                config.get("SMS_Service_SMSBao", "code_expire_minutes", fallback="5")
+            )
+            template = config.get(
+                "SMS_Service_SMSBao",
+                "template_register",
+                fallback=f"您的验证码是：{{code}}，{code_expire_minutes}分钟内有效。",
+            )
+            if not username or not api_key:
+                return jsonify(
+                    {"success": False, "message": "短信服务配置不完整，请联系管理员"}
+                )
+
+            content = _build_sms_verification_content(
+                signature, template, code, code_expire_minutes
+            )
+            url = f"http://api.smsbao.com/sms?u={username}&p={api_key}&m={phone}&c={urllib.parse.quote(content)}"
+            response = urllib.request.urlopen(url, timeout=10)
+            result = response.read().decode("utf-8").strip()
+            if result == "0":
+                return jsonify(
+                    {
+                        "success": True,
+                        "message": f"测试短信发送成功！验证码：{code}",
+                        "code": code,
+                        "phone": phone,
+                    }
+                )
+
+            error_msg = _get_smsbao_error_message(result)
+            return jsonify(
+                {
+                    "success": False,
+                    "message": f"发送失败：{error_msg}",
+                    "error_code": result,
+                }
+            )
+        except Exception as e:
+            logging.error(
+                f"[SMS] 测试短信发送异常: phone={phone}, error={e}",
+                exc_info=True,
+            )
+            return jsonify({"success": False, "message": "短信服务暂时不可用，请稍后重试"})
+
+    @app.route("/api/admin/sms/config", methods=["GET"])
+    @login_required
+    def get_sms_config():
+        try:
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": "权限不足，需要配置修改权限（modify_config）",
+                    }
+                ), 403
+
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            return jsonify({"success": True, "config": _get_sms_config_view_data(config)})
+        except Exception:
+            return jsonify({"success": False, "message": "获取配置失败"}), 500
+
+    @app.route("/api/admin/sms/config", methods=["POST"])
+    @login_required
+    def save_sms_config():
+        try:
+            if not auth_system.check_permission(g.user, "modify_config"):
+                return jsonify(
+                    {
+                        "success": False,
+                        "message": "权限不足，需要配置修改权限（modify_config）",
+                    }
+                ), 403
+
+            data = request.get_json() or {}
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            config = _apply_sms_config_updates(config, data)
+            _write_config_with_comments(config, CONFIG_JSON_FILE)
+            return jsonify({"success": True, "message": "配置已保存"})
+        except Exception:
+            return jsonify({"success": False, "message": "保存失败"}), 500
+
+
 def start_web_server(args_param):
     """
     启动Flask Web服务器主函数，集成SocketIO实时通信和Chrome浏览器自动化。
     """
     global chrome_pool, background_task_manager, web_sessions, web_sessions_lock, session_file_locks, session_file_locks_lock, session_activity, session_activity_lock, args
+    global CDN_FILES, js_cache_storage, js_cache_lock, js_cache_last_update
+    global font_cache_storage, font_cache_lock, source_map_storage, source_map_lock
     global server_start_time
     server_start_time = time.time()
     logging.info(
@@ -21805,8 +26063,9 @@ def start_web_server(args_param):
     args = args_param
     global cache
     cache = {}
-    global sms_verification_codes
+    global sms_verification_codes, sms_extended_once_keys
     sms_verification_codes = {}
+    sms_extended_once_keys = set()
     web_sessions = {}
     web_sessions_lock = threading.Lock()
     session_file_locks = {}
@@ -21886,7 +26145,13 @@ def start_web_server(args_param):
     logging.warning("[SocketIO] 这解决了由 SubmissionWorker 线程引起的 'Cannot switch to a different thread' 错误")
     current_thread = threading.current_thread()
     logging.info(f"[SocketIO] 初始化线程: Thread[{current_thread.name}, id={current_thread.ident}]")
-    socketio = SocketIO(app, async_mode="threading", cors_allowed_origins="*")
+    socketio = SocketIO(
+        app,
+        async_mode="threading",
+        cors_allowed_origins="*",
+        ping_timeout=60,
+        ping_interval=25,
+    )
     logging.info("[SocketIO] SocketIO 初始化成功，使用 threading 模式")
     logging.info("[SocketIO] 在 threading 模式下，socketio.emit() 可以从任何线程安全调用")
     app.config["SESSION_TYPE"] = "filesystem"
@@ -22262,7 +26527,315 @@ def start_web_server(args_param):
             "url": "https://cdn.jsdelivr.net/npm/sortablejs/Sortable.js",
             "filename": "sortable.min.js",
             "type": "js",
-        }
+        },
+        
+
+
+
+# ==============================
+# CodeMirror 核心依赖
+# 编辑器基础功能与核心样式
+# ==============================
+"codemirror-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.js",
+    "filename": "codemirror.js",
+    "type": "js",
+},
+# CodeMirror 编辑器核心样式表
+"codemirror-css": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.css",
+    "filename": "codemirror.css",
+    "type": "css",
+},
+# 搜索/替换弹窗对话框样式
+"codemirror-dialog-css": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.css",
+    "filename": "dialog.css",
+    "type": "css",
+},
+# 滚动条显示搜索匹配位置样式
+"codemirror-matchesonscrollbar-css": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/matchesonscrollbar.css",
+    "filename": "matchesonscrollbar.css",
+    "type": "css",
+},
+# 代码折叠侧边栏样式
+"codemirror-foldgutter-css": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.css",
+    "filename": "foldgutter.css",
+    "type": "css",
+},
+
+# ==============================
+# CodeMirror 语言语法高亮
+# 支持各种编程语言的代码着色
+# ==============================
+# 语言模式元信息，自动识别文件类型
+"codemirror-meta-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/meta.js",
+    "filename": "meta.js",
+    "type": "js",
+},
+# Markdown 语法高亮支持
+"codemirror-markdown-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/markdown/markdown.js",
+    "filename": "markdown.js",
+    "type": "js",
+},
+# XML / HTML 标签语法高亮
+"codemirror-xml-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/xml/xml.js",
+    "filename": "xml.js",
+    "type": "js",
+},
+# JavaScript 语法高亮
+"codemirror-javascript-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/javascript/javascript.js",
+    "filename": "javascript.js",
+    "type": "js",
+},
+# CSS 样式语法高亮
+"codemirror-css-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/css/css.js",
+    "filename": "css.js",
+    "type": "js",
+},
+# HTML 混合模式（内嵌 JS/CSS）高亮
+"codemirror-htmlmixed-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/htmlmixed/htmlmixed.js",
+    "filename": "htmlmixed.js",
+    "type": "js",
+},
+# GitHub Markdown 扩展语法支持
+"codemirror-gfm-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/gfm/gfm.js",
+    "filename": "gfm.js",
+    "type": "js",
+},
+# Python 语法高亮
+"codemirror-python-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/python/python.js",
+    "filename": "python.js",
+    "type": "js",
+},
+# C/C++/Java 等类 C 语言语法高亮
+"codemirror-clike-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/clike/clike.js",
+    "filename": "clike.js",
+    "type": "js",
+},
+# Shell / Bash 命令行语法高亮
+"codemirror-shell-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/shell/shell.js",
+    "filename": "shell.js",
+    "type": "js",
+},
+# SQL 数据库语句语法高亮
+"codemirror-sql-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/sql/sql.js",
+    "filename": "sql.js",
+    "type": "js",
+},
+# YAML 配置文件语法高亮
+"codemirror-yaml-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/mode/yaml/yaml.js",
+    "filename": "yaml.js",
+    "type": "js",
+},
+
+# ==============================
+# CodeMirror 编辑增强插件
+# 提升编辑体验的实用功能
+# ==============================
+# 括号匹配高亮显示
+"codemirror-matchbrackets-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/matchbrackets.js",
+    "filename": "matchbrackets.js",
+    "type": "js",
+},
+# 自动补全括号、引号
+"codemirror-closebrackets-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closebrackets.js",
+    "filename": "closebrackets.js",
+    "type": "js",
+},
+# HTML 标签自动闭合
+"codemirror-closetag-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closetag.js",
+    "filename": "closetag.js",
+    "type": "js",
+},
+# 代码折叠核心功能
+"codemirror-foldcode-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldcode.js",
+    "filename": "foldcode.js",
+    "type": "js",
+},
+# 代码折叠侧边栏交互
+"codemirror-foldgutter-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.js",
+    "filename": "foldgutter.js",
+    "type": "js",
+},
+# 大括号代码块折叠
+"codemirror-brace-fold-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/brace-fold.js",
+    "filename": "brace-fold.js",
+    "type": "js",
+},
+# XML/HTML 标签区域折叠
+"codemirror-xml-fold-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/xml-fold.js",
+    "filename": "xml-fold.js",
+    "type": "js",
+},
+# Markdown 内容区域折叠
+"codemirror-markdown-fold-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/fold/markdown-fold.js",
+    "filename": "markdown-fold.js",
+    "type": "js",
+},
+# 多语言模式叠加支持
+"codemirror-overlay-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/mode/overlay.js",
+    "filename": "overlay.js",
+    "type": "js",
+},
+# 当前光标所在行高亮
+"codemirror-active-line-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/selection/active-line.js",
+    "filename": "active-line.js",
+    "type": "js",
+},
+# 编辑器内文本搜索
+"codemirror-search-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/search.js",
+    "filename": "search.js",
+    "type": "js",
+},
+# 搜索结果光标定位遍历
+"codemirror-searchcursor-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/searchcursor.js",
+    "filename": "searchcursor.js",
+    "type": "js",
+},
+# 选中单词全文高亮
+"codemirror-match-highlighter-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/search/match-highlighter.js",
+    "filename": "match-highlighter.js",
+    "type": "js",
+},
+# 搜索/替换弹窗功能
+"codemirror-dialog-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.js",
+    "filename": "dialog.js",
+    "type": "js",
+},
+# 编辑器空内容占位提示文字
+"codemirror-placeholder-js": {
+    "url": "https://cdn.jsdelivr.net/npm/codemirror/addon/display/placeholder.js",
+    "filename": "placeholder.js",
+    "type": "js",
+},
+
+# ==============================
+# KaTeX 数学公式渲染
+# 用于快速渲染 LaTeX 数学公式
+# ==============================
+# KaTeX 核心 JS 库
+"katex-js": {
+    "url": "https://cdn.jsdelivr.net/npm/katex/dist/katex.js",
+    "filename": "katex.js",
+    "type": "js",
+},
+# 数学公式渲染样式
+"katex-css": {
+    "url": "https://cdn.jsdelivr.net/npm/katex/dist/katex.css",
+    "filename": "katex.css",
+    "type": "css",
+},
+
+# ==============================
+# 流程图 / 时序图依赖库
+# 用于绘制流程图、时序图等图形
+# ==============================
+# 矢量图形绘图基础库
+"raphael-js": {
+    "url": "https://cdn.jsdelivr.net/npm/raphael/raphael.js",
+    "filename": "raphael.js",
+    "type": "js",
+},
+# 工具函数库，图形解析依赖
+"underscore-js": {
+    "url": "https://cdn.jsdelivr.net/npm/underscore/underscore.js",
+    "filename": "underscore.js",
+    "type": "js",
+},
+# 流程图解析与渲染
+"flowchart-js": {
+    "url": "https://cdn.jsdelivr.net/npm/flowchart.js/release/flowchart.js",
+    "filename": "flowchart.js",
+    "type": "js",
+},
+# jQuery UI widget factory（jquery.flowchart 依赖）
+"jquery-ui-js": {
+    "url": "https://cdn.jsdelivr.net/npm/jquery-ui-dist/jquery-ui.min.js",
+    "filename": "jquery-ui.min.js",
+    "type": "js",
+},
+"jquery-ui-widget-js": {
+    "url": "https://cdn.jsdelivr.net/npm/jquery-ui/ui/widget.js",
+    "filename": "jquery-ui-widget.js",
+    "type": "js",
+},
+# jQuery 流程图扩展
+"jquery-flowchart-js": {
+    "url": "https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.js",
+    "filename": "jquery.flowchart.js",
+    "type": "js",
+},
+"jquery-flowchart-css": {
+    "url": "https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.css",
+    "filename": "jquery.flowchart.css",
+    "type": "css",
+},
+
+
+# 时序图/序列图渲染
+"sequence-diagram-js": {
+    # "url": "https://cdn.jsdelivr.net/npm/js-sequence-diagrams/dist/sequence-diagram.js",  # URL错误
+    "url": "https://cdn.jsdelivr.net/npm/@rokt33r/js-sequence-diagrams/dist/sequence-diagram-min.js",
+    "filename": "sequence-diagram.js",
+    "type": "js",
+},
+"sequence-diagram-css": {
+    # "url": "https://cdn.jsdelivr.net/npm/js-sequence-diagrams/dist/sequence-diagram.js",  # URL错误
+    "url": "https://cdn.jsdelivr.net/npm/@rokt33r/js-sequence-diagrams/dist/sequence-diagram-min.css",
+    "filename": "sequence-diagram.css",
+    "type": "css",
+},
+
+# ==============================
+# Markdown 解析与代码高亮
+# 解析 Markdown 并对代码着色
+# ==============================
+# Markdown 转 HTML 解析器
+"marked-js": {
+    "url": "https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.min.js",
+    "filename": "marked.js",
+    "type": "js",
+},
+# Google 代码高亮库
+"prettify-js": {
+    "url": "https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js",
+    "filename": "run_prettify.js",
+    "type": "js",
+}
+
+
+
+
+
 
     }
 
@@ -22409,7 +26982,8 @@ def start_web_server(args_param):
         # 扫描该用户的账单目录，找到payment_orders中包含本订单号的记录，更新为已支付
         try:
             _billing_base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "User_Billing", auth_username)
-            _paid_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            _paid_at = _billing_now_utc_string()
+            _paid_at_beijing = _billing_now_beijing_string()
             _order_unit_amount = None
             try:
                 _order_path = os.path.join(PAYMENT_ORDERS_DIR, f"{out_trade_no}.json")
@@ -22441,6 +27015,7 @@ def start_web_server(args_param):
                             _brec["status"] = "paid"
                             _brec["final_payment_order"] = out_trade_no
                             _brec["paid_at"] = _paid_at
+                            _brec["paid_at_beijing"] = _paid_at_beijing
                             with open(_bpath, "w", encoding="utf-8") as _f:
                                 json.dump(_brec, _f, indent=2, ensure_ascii=False)
                             logging.info(f"[账单] 账单 {_brec.get('billing_id')} 已标记为已支付")
@@ -22458,7 +27033,8 @@ def start_web_server(args_param):
         if not isinstance(billing_items, list) or not billing_items:
             return
         try:
-            _paid_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            _paid_at = _billing_now_utc_string()
+            _paid_at_beijing = _billing_now_beijing_string()
             for item in billing_items:
                 school_username = str(item.get("school_username", "")).strip()
                 billing_id = str(item.get("billing_id", "")).strip()
@@ -22483,6 +27059,7 @@ def start_web_server(args_param):
                     _brec["status"] = "paid"
                     _brec["final_payment_order"] = out_trade_no
                     _brec["paid_at"] = _paid_at
+                    _brec["paid_at_beijing"] = _paid_at_beijing
                     with open(billing_file, "w", encoding="utf-8") as _f:
                         json.dump(_brec, _f, indent=2, ensure_ascii=False)
                     logging.info(f"[账单支付] 账单 {billing_id} 已标记为已支付")
@@ -22548,6 +27125,9 @@ def start_web_server(args_param):
     def cache_google_fonts_with_ttf(css_content, key, css_url, css_filename):
         """
         缓存CSS中引用的字体文件（TTF/WOFF/WOFF2/OTF），并将URL改写为本地接口。
+        
+        优化策略：先将所有字体文件下载到临时目录，全部成功后再原子性地替换
+        CSS和字体文件夹，避免下载中断导致的不一致状态。
 
         参数:
             css_content: CSS文件内容
@@ -22561,32 +27141,122 @@ def start_web_server(args_param):
         font_urls = parse_google_fonts_css(css_content, css_url, key)
         logging.info(f"[CDN缓存] 资源 {key} 发现 {len(font_urls)} 个字体文件需要缓存")
 
+        if not font_urls:
+            return css_content
+
+        # 目录名取CSS文件基名，并去掉 .min.css 或 .css 后缀
+        css_name = os.path.basename((css_filename or f"{key}.css").strip() or f"{key}.css")
+        css_font_dir = re.sub(r"(?:\.min)?\.css$", "", css_name, flags=re.IGNORECASE).strip() or str(key)
+
+        # 创建临时目录用于存放下载的字体文件
+        temp_font_dir = os.path.join(JS_CACHE_DIR, f".tmp_{css_font_dir}_{int(time.time() * 1000)}")
+        final_font_dir = os.path.join(JS_CACHE_DIR, css_font_dir)
+        
+        try:
+            os.makedirs(temp_font_dir, exist_ok=True)
+        except Exception as e:
+            logging.error(f"[CDN缓存] 创建临时字体目录失败: {e}")
+            return css_content
+
+        # 第一阶段：下载所有字体到临时目录
+        downloaded_fonts = []  # [(font_key, font_storage_key, font_content, temp_path), ...]
+        download_success = True
         modified_css = css_content
         # 目录名取CSS文件基名，并去掉 .min.css 或 .css 后缀
         css_name = os.path.basename((css_filename or f"{key}.css").strip() or f"{key}.css")
         css_font_dir = re.sub(r"(?:\.min)?\.css$", "", css_name, flags=re.IGNORECASE).strip() or str(key)
 
         for original_ref, absolute_url, font_key in font_urls:
-            logging.info(f"[CDN缓存] 正在下载字体: {font_key}")
+            logging.info(f"[CDN缓存] 正在下载字体到临时目录: {font_key}")
             font_content = fetch_cdn_file(absolute_url, timeout=60, binary=True)
 
             if font_content:
-                # 按CSS文件名归档字体文件，如 zilla-slab.min.css/<font-file>
                 font_relative_path = os.path.join(css_font_dir, font_key)
                 font_storage_key = font_relative_path.replace("\\", "/").replace("/", "__")
-
-                with font_cache_lock:
-                    font_cache_storage[font_storage_key] = font_content
-
-                save_cached_file(font_relative_path, font_content, binary=True)
-
-                local_url = f"/api/cdn/font/{font_storage_key}"
-                modified_css = modified_css.replace(original_ref, local_url)
-                logging.info(f"[CDN缓存] 字体已缓存并改写: {font_relative_path}")
+                temp_font_path = os.path.join(temp_font_dir, font_key)
+                
+                try:
+                    # 写入临时目录
+                    with open(temp_font_path, "wb") as f:
+                        f.write(font_content)
+                    
+                    downloaded_fonts.append((font_key, font_storage_key, font_content, temp_font_path))
+                    
+                    # 预先构建修改后的CSS（但不保存）
+                    local_url = f"/api/cdn/font/{font_storage_key}"
+                    modified_css = modified_css.replace(original_ref, local_url)
+                    logging.info(f"[CDN缓存] 字体已下载到临时目录: {temp_font_path}")
+                except Exception as e:
+                    logging.error(f"[CDN缓存] 写入临时字体文件失败: {font_key}, 错误: {e}")
+                    download_success = False
+                    break
             else:
                 logging.warning(f"[CDN缓存] 字体下载失败: {absolute_url}")
+                download_success = False
+                break
 
-        return modified_css
+        # 第二阶段：如果所有字体下载成功，原子性替换
+        if download_success and downloaded_fonts:
+            try:
+                # 备份旧字体目录（如果存在）
+                backup_dir = None
+                if os.path.exists(final_font_dir):
+                    backup_dir = os.path.join(JS_CACHE_DIR, f".backup_{css_font_dir}_{int(time.time() * 1000)}")
+                    try:
+                        os.rename(final_font_dir, backup_dir)
+                        logging.info(f"[CDN缓存] 已备份旧字体目录: {backup_dir}")
+                    except Exception as e:
+                        logging.warning(f"[CDN缓存] 备份旧字体目录失败: {e}")
+                        backup_dir = None
+
+                # 将临时目录重命名为最终目录
+                os.rename(temp_font_dir, final_font_dir)
+                logging.info(f"[CDN缓存] 字体目录替换成功: {final_font_dir}")
+
+                # 更新内存缓存
+                with font_cache_lock:
+                    for font_key, font_storage_key, font_content, _ in downloaded_fonts:
+                        font_cache_storage[font_storage_key] = font_content
+                        logging.info(f"[CDN缓存] 字体已加入内存缓存: {font_storage_key}")
+
+                # 删除备份目录
+                if backup_dir and os.path.exists(backup_dir):
+                    try:
+                        shutil.rmtree(backup_dir)
+                        logging.info(f"[CDN缓存] 已删除旧字体备份: {backup_dir}")
+                    except Exception as e:
+                        logging.warning(f"[CDN缓存] 删除备份目录失败: {backup_dir}, 错误: {e}")
+
+                logging.info(f"[CDN缓存] 资源 {key} 的 {len(downloaded_fonts)} 个字体文件已全部原子性更新")
+                return modified_css
+
+            except Exception as e:
+                logging.error(f"[CDN缓存] 原子替换字体目录失败: {e}")
+                # 恢复备份
+                if backup_dir and os.path.exists(backup_dir):
+                    try:
+                        if os.path.exists(final_font_dir):
+                            shutil.rmtree(final_font_dir)
+                        os.rename(backup_dir, final_font_dir)
+                        logging.info(f"[CDN缓存] 已恢复备份字体目录")
+                    except Exception as restore_e:
+                        logging.error(f"[CDN缓存] 恢复备份失败: {restore_e}")
+                # 清理临时目录
+                try:
+                    if os.path.exists(temp_font_dir):
+                        shutil.rmtree(temp_font_dir)
+                except Exception as cleanup_e:
+                    logging.warning(f"[CDN缓存] 清理临时目录失败: {temp_font_dir}, 错误: {cleanup_e}")
+                return css_content
+        else:
+            # 下载失败，清理临时目录
+            logging.warning(f"[CDN缓存] 资源 {key} 字体下载未完全成功，保留原有CSS不做修改")
+            try:
+                if os.path.exists(temp_font_dir):
+                    shutil.rmtree(temp_font_dir)
+            except Exception as e:
+                logging.warning(f"[CDN缓存] 清理临时目录失败: {temp_font_dir}, 错误: {e}")
+            return css_content
 
     def load_cached_fonts():
         """
@@ -22916,6 +27586,9 @@ def start_web_server(args_param):
             f"{len(source_map_storage)} 个source map文件, {len(font_cache_storage)} 个字体文件"
         )
 
+    global _midnight_runtime_reload_hook
+    _midnight_runtime_reload_hook = init_cdn_cache
+
     def cdn_cache_update_worker():
         """
         CDN缓存定时更新工作线程（每小时检查一次）
@@ -23207,7 +27880,9 @@ def start_web_server(args_param):
         ):
             return None
 
-        session_id = request.headers.get("X-Session-ID", "")
+        session_id = normalize_session_uuid(
+            request.headers.get("X-Session-ID", "")
+        )
         if not session_id:
             return None
 
@@ -23445,9 +28120,9 @@ def start_web_server(args_param):
                 data = request.form.to_dict()
             auth_username = data.get("auth_username", "").strip()
             auth_password = data.get("auth_password", "").strip()
-            phone = data.get("phone", "").strip()
+            phone = _normalize_phone(data.get("phone", ""))
             nickname = data.get("nickname", "").strip()
-            sms_code = data.get("sms_code", "").strip()
+            sms_code = _normalize_sms_code(data.get("sms_code", ""))
             captcha_input = data.get("captcha", "").strip()
             captcha_id = data.get("captcha_id", "").strip()
             is_captcha_valid, captcha_error_msg = verify_captcha(
@@ -23645,10 +28320,10 @@ def start_web_server(args_param):
         config = _read_config_ini(CONFIG_FILE)
 
         data = request.get_json() or {}
-        auth_phone = (data.get("auth_phone") or "").strip()
+        auth_phone = _normalize_phone(data.get("auth_phone"))
         auth_username = (data.get("auth_username") or "").strip()
         auth_password = (data.get("auth_password") or "").strip()
-        sms_code = (data.get("auth_sms_code") or "").strip()
+        sms_code = _normalize_sms_code(data.get("auth_sms_code"))
         two_fa_code = (data.get("two_fa_code") or "").strip()
         captcha_input = (data.get("captcha") or "").strip()
         captcha_id = (data.get("captcha_id") or "").strip()
@@ -23660,7 +28335,9 @@ def start_web_server(args_param):
         if not is_captcha_valid:
             return jsonify({"success": False, "message": captcha_error_msg})
 
-        session_id = request.headers.get("X-Session-ID", "")
+        requested_session_id = normalize_session_uuid(
+            request.headers.get("X-Session-ID", "")
+        )
         # 使用统一函数获取客户端真实IP
         ip_address = request.environ.get(
             "REMOTE_ADDR") or request.remote_addr or ""
@@ -23769,52 +28446,83 @@ def start_web_server(args_param):
         if not auth_result.get("success"):
             return jsonify(auth_result)
         with web_sessions_lock:
-            if session_id in web_sessions:
-                api_instance = web_sessions[session_id]
-            else:
+            session_id = requested_session_id
+            api_instance = None
+            session_is_persistent = bool(auth_result.get("is_guest", False))
+
+            if requested_session_id:
+                if requested_session_id in web_sessions:
+                    api_instance = web_sessions[requested_session_id]
+                    session_is_persistent = getattr(
+                        api_instance, "_is_persistent_session", True
+                    )
+                else:
+                    state = load_session_state(requested_session_id)
+                    if state:
+                        api_instance = Api(args)
+                        api_instance._session_created_at = state.get(
+                            "created_at", time.time()
+                        )
+                        api_instance._web_session_id = requested_session_id
+                        api_instance._is_persistent_session = True
+                        restore_session_to_api_instance(api_instance, state)
+                        web_sessions[requested_session_id] = api_instance
+                        session_is_persistent = True
+
+            if api_instance is None:
+                session_id = str(uuid.uuid4())
                 api_instance = Api(args)
                 api_instance._session_created_at = time.time()
                 api_instance._web_session_id = session_id
+                api_instance._is_persistent_session = session_is_persistent
                 web_sessions[session_id] = api_instance
+            else:
+                session_id = getattr(api_instance, "_web_session_id", session_id) or session_id
+                api_instance._web_session_id = session_id
+                if not hasattr(api_instance, "_is_persistent_session"):
+                    api_instance._is_persistent_session = session_is_persistent
 
-            api_instance.auth_username = auth_result["auth_username"]
+            normalized_auth_username = auth_result.get("auth_username", "")
+            api_instance.auth_username = normalized_auth_username
             api_instance.auth_group = auth_result["group"]
             api_instance.is_guest = auth_result.get("is_guest", False)
             api_instance.is_authenticated = True
             cleanup_message = ""
             if not auth_result.get("is_guest", False):
                 try:
-                    old_sessions, cleanup_message = (
-                        auth_system.check_single_session_enforcement(
-                            auth_username, session_id
+                    if session_is_persistent:
+                        old_sessions, cleanup_message = (
+                            auth_system.check_single_session_enforcement(
+                                normalized_auth_username, session_id
+                            )
                         )
-                    )
-                    if old_sessions:
+                        if old_sessions:
 
-                        def cleanup_old_sessions_async():
-                            for old_sid in old_sessions:
-                                try:
-                                    cleanup_session(
-                                        old_sid, "session_limit_exceeded")
-                                except Exception as e:
-                                    logging.error(
-                                        f"后台清理旧会话失败 {old_sid[:16]}...: {e}"
-                                    )
+                            def cleanup_old_sessions_async():
+                                for old_sid in old_sessions:
+                                    try:
+                                        cleanup_session(
+                                            old_sid, "session_limit_exceeded")
+                                    except Exception as e:
+                                        logging.error(
+                                            f"后台清理旧会话失败 {old_sid[:16]}...: {e}"
+                                        )
 
-                        cleanup_thread = threading.Thread(
-                            target=cleanup_old_sessions_async, daemon=True
+                            cleanup_thread = threading.Thread(
+                                target=cleanup_old_sessions_async, daemon=True
+                            )
+                            cleanup_thread.start()
+                        auth_system.link_session_to_user(
+                            normalized_auth_username, session_id
                         )
-                        cleanup_thread.start()
-                    auth_system.link_session_to_user(auth_username, session_id)
-                    if session_id == "" or session_id is None or session_id == "null":
-                        audit_details = f"登录成功"
-                    else:
                         audit_details = f"登录成功，会话ID: {session_id}"
+                    else:
+                        audit_details = "登录成功，尚未创建业务会话"
                     if cleanup_message:
                         audit_details += f"; {cleanup_message}"
 
                     auth_system.log_audit(
-                        auth_username,
+                        normalized_auth_username,
                         "user_login",
                         audit_details,
                         ip_address,
@@ -23825,15 +28533,16 @@ def start_web_server(args_param):
                     cleanup_message = ""
 
             try:
-                save_session_state(session_id, api_instance, force_save=True)
+                if session_is_persistent or auth_result.get("is_guest", False):
+                    save_session_state(session_id, api_instance, force_save=True)
             except Exception as e:
                 logging.error(f"保存会话状态失败: {e}")
         user_sessions = []
         max_sessions = 1
         if not auth_result.get("is_guest", False):
             try:
-                user_sessions = auth_system.get_user_sessions(auth_username)
-                user_details = auth_system.get_user_details(auth_username)
+                user_sessions = auth_system.get_user_sessions(normalized_auth_username)
+                user_details = auth_system.get_user_details(normalized_auth_username)
                 if user_details:
                     max_sessions = user_details.get("max_sessions", 1)
             except Exception as e:
@@ -23849,20 +28558,23 @@ def start_web_server(args_param):
             session_limit_info = f"您的账号最多可以同时保持{max_sessions}个活跃会话，超出时将自动清理最旧的会话"
         token = None
         kicked_sessions = []
-        if auth_username is None or auth_username in ["", "null", "NULL", "undefined"]:
-            auth_username = auth_result.get("auth_username", "unknown_user")
+        if (
+            normalized_auth_username is None
+            or normalized_auth_username in ["", "null", "NULL", "undefined"]
+        ):
+            normalized_auth_username = auth_result.get("auth_username", "unknown_user")
         if not auth_result.get("is_guest", False) and session_id:
             try:
-                token = token_manager.create_token(auth_username, session_id)
+                token = token_manager.create_token(normalized_auth_username, session_id)
                 kicked_sessions = token_manager.detect_multi_device_login(
-                    auth_username, session_id
+                    normalized_auth_username, session_id
                 )
-                token_manager.cleanup_expired_tokens(auth_username)
+                token_manager.cleanup_expired_tokens(normalized_auth_username)
                 if kicked_sessions:
                     for old_sid in kicked_sessions:
-                        token_manager.invalidate_token(auth_username, old_sid)
+                        token_manager.invalidate_token(normalized_auth_username, old_sid)
                     logging.info(
-                        f"用户 {auth_username} 从新设备登录，检测到 {len(kicked_sessions)} 个其他活跃会话。"
+                        f"用户 {normalized_auth_username} 从新设备登录，检测到 {len(kicked_sessions)} 个其他活跃会话。"
                     )
             except Exception as e:
                 logging.error(f"Token管理过程出错，但继续登录流程: {e}")
@@ -23875,16 +28587,21 @@ def start_web_server(args_param):
             if not auth_result.get("is_guest", False):
                 try:
                     _cancellation_status = auth_system.get_account_cancellation_status(
-                        auth_result["auth_username"]
+                        normalized_auth_username
                     )
                     if _cancellation_status and _cancellation_status.get("status") != "pending":
                         _cancellation_status = None  # 仅在 pending 状态时通知前端
                 except Exception:
                     pass
+            try:
+                _login_theme_style = config.get("Config", "theme_style", fallback="default")
+            except Exception:
+                _login_theme_style = "default"
             response_data = {
                 "success": True,
-                "session_id": session_id,
-                "auth_username": auth_result["auth_username"],
+                "session_id": session_id if session_is_persistent else None,
+                "auth_session_id": session_id,
+                "auth_username": normalized_auth_username,
                 "group": auth_result["group"],
                 "is_guest": auth_result.get("is_guest", False),
                 "user_sessions": user_sessions,
@@ -23892,13 +28609,14 @@ def start_web_server(args_param):
                 "session_limit_info": session_limit_info,
                 "avatar_url": auth_result.get("avatar_url", ""),
                 "theme": auth_result.get("theme", "light"),
+                "theme_style": _login_theme_style,
                 "token": token,
                 "kicked_sessions_count": len(kicked_sessions),
                 "account_cancellation": _cancellation_status,
             }
             if cleanup_message:
                 response_data["cleanup_message"] = cleanup_message
-            if kicked_sessions:
+            if kicked_sessions and session_id not in kicked_sessions:
                 response_data["multi_device_warning"] = (
                     f"检测到该账号在其他 {len(kicked_sessions)} 个设备上登录，已自动登出旧设备"
                 )
@@ -23920,7 +28638,7 @@ def start_web_server(args_param):
                 {
                     "success": True,
                     "session_id": session_id,
-                    "auth_username": auth_result.get("auth_username", auth_username),
+                    "auth_username": auth_result.get("auth_username", normalized_auth_username),
                     "group": auth_result.get("group", "user"),
                     "is_guest": False,
                 }
@@ -23947,6 +28665,7 @@ def start_web_server(args_param):
                 api_instance = Api(args)
                 api_instance._session_created_at = time.time()
                 api_instance._web_session_id = session_id
+                api_instance._is_persistent_session = True
                 web_sessions[session_id] = api_instance
 
             api_instance.auth_username = "guest"
@@ -24014,9 +28733,11 @@ def start_web_server(args_param):
         """
         会话切换API - 在多标签页间切换时更新认证token和cookie。
         """
-        current_session_id = request.headers.get("X-Session-ID", "")
+        current_session_id = normalize_session_uuid(
+            request.headers.get("X-Session-ID", "")
+        )
         data = request.get_json() or {}
-        target_session_id = data.get("target_session_id", "")
+        target_session_id = normalize_session_uuid(data.get("target_session_id", ""))
 
         if not current_session_id or not target_session_id:
             return jsonify({"success": False, "message": "缺少会话ID参数"}), 400
@@ -24103,8 +28824,25 @@ def start_web_server(args_param):
         # manage_users 权限允许用户查看、创建、修改、删除用户信息
         if not auth_system.check_permission(auth_username, "manage_users"):
             return jsonify({"success": False, "message": "权限不足，需要用户管理权限（manage_users）"}), 403
+        keyword = request.args.get("keyword", "").strip().lower()
         users = auth_system.list_users()
-        return jsonify({"success": True, "users": users})
+
+        def _user_matches_keyword(user_item, keyword):
+            if not keyword:
+                return True
+            school_accounts = user_item.get("school_accounts") or []
+            if isinstance(school_accounts, dict):
+                school_accounts = list(school_accounts.keys())
+            haystack = [
+                str(user_item.get("auth_username", "")),
+                str(user_item.get("nickname", "")),
+                str(user_item.get("phone", "")),
+                "\n".join([str(item) for item in school_accounts]),
+            ]
+            return keyword in "\n".join(haystack).lower()
+
+        filtered_users = [user for user in users if _user_matches_keyword(user, keyword)]
+        return jsonify({"success": True, "users": filtered_users})
 
     @app.route("/auth/admin/update_user_group", methods=["POST"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
@@ -24666,10 +29404,39 @@ def start_web_server(args_param):
         if not auth_system.verify_2fa(auth_username, verification_code):
             logging.warning(f"2FA登录验证失败: {auth_username}")
             return jsonify({"success": False, "message": "验证码错误"})
-        session_id = str(uuid.uuid4())
-        api_instance = Api(args)
-        api_instance._session_created_at = time.time()
-        api_instance._web_session_id = session_id
+        requested_session_id = normalize_session_uuid(
+            request.headers.get("X-Session-ID", "")
+        )
+        api_instance = None
+        session_is_persistent = False
+        if requested_session_id:
+            with web_sessions_lock:
+                if requested_session_id in web_sessions:
+                    api_instance = web_sessions[requested_session_id]
+                    session_is_persistent = getattr(
+                        api_instance, "_is_persistent_session", True
+                    )
+                else:
+                    state = load_session_state(requested_session_id)
+                    if state:
+                        api_instance = Api(args)
+                        api_instance._session_created_at = state.get(
+                            "created_at", time.time()
+                        )
+                        api_instance._web_session_id = requested_session_id
+                        api_instance._is_persistent_session = True
+                        restore_session_to_api_instance(api_instance, state)
+                        web_sessions[requested_session_id] = api_instance
+                        session_is_persistent = True
+
+        session_id = requested_session_id if api_instance else str(uuid.uuid4())
+        if api_instance is None:
+            api_instance = Api(args)
+            api_instance._session_created_at = time.time()
+            api_instance._web_session_id = session_id
+            api_instance._is_persistent_session = False
+        else:
+            api_instance._web_session_id = session_id
         api_instance.is_authenticated = True
         api_instance.auth_username = auth_username
         user_group = auth_system.get_user_group(auth_username)
@@ -24685,11 +29452,6 @@ def start_web_server(args_param):
                         user_data = json.load(f)
 
                     user_data["last_login"] = time.time()
-                    if "session_ids" not in user_data:
-                        user_data["session_ids"] = []
-                    if session_id not in user_data["session_ids"]:
-                        user_data["session_ids"].append(session_id)
-
                     with open(user_file, "w", encoding="utf-8") as f:
                         json.dump(user_data, f, indent=2, ensure_ascii=False)
             except Exception as e:
@@ -24708,7 +29470,8 @@ def start_web_server(args_param):
         response_data = {
             "success": True,
             "message": "2FA验证成功",
-            "session_id": session_id,
+            "session_id": session_id if session_is_persistent else None,
+            "auth_session_id": session_id,
             "is_guest": is_guest,
             "token": token,
         }
@@ -26137,6 +30900,56 @@ def start_web_server(args_param):
             app.logger.error(f"读取备份文件失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"读取文件出错: {str(e)}"}), 500
 
+    @app.route("/api/admin/school-account-linked-users", methods=["GET"])
+    @login_required
+    @admin_required
+    def admin_school_account_linked_users():
+        if not auth_system.check_permission(g.user, "manage_users"):
+            return jsonify({"success": False, "message": "权限不足，需要用户管理权限"}), 403
+
+        student_number = request.args.get("student_number", "").strip()
+        if not student_number:
+            return jsonify({"success": False, "message": "缺少 student_number 参数"}), 400
+
+        linked_users = []
+        seen_entries = set()
+        for user in auth_system.list_users():
+            school_accounts = user.get("school_accounts") or []
+            if isinstance(school_accounts, dict):
+                school_accounts = list(school_accounts.keys())
+            for school_username in school_accounts:
+                backup_candidates = [
+                    os.path.join(SCHOOL_ACCOUNTS_DIR, str(school_username), f"{school_username}_backup.json"),
+                    os.path.join(SCHOOL_ACCOUNTS_DIR, f"{school_username}_backup.json"),
+                ]
+                backup_data = None
+                for backup_path in backup_candidates:
+                    if not os.path.exists(backup_path):
+                        continue
+                    try:
+                        with open(backup_path, "r", encoding="utf-8") as fp:
+                            backup_data = json.load(fp)
+                        break
+                    except Exception:
+                        continue
+                if not backup_data:
+                    continue
+                linked_student_number = str(((backup_data.get("deptInfo") or {}).get("studentNum") or "")).strip()
+                if linked_student_number != student_number:
+                    continue
+                entry_key = (str(user.get("auth_username", "")), str(school_username))
+                if entry_key in seen_entries:
+                    continue
+                seen_entries.add(entry_key)
+                linked_users.append({
+                    "username": user.get("auth_username", ""),
+                    "nickname": user.get("nickname", ""),
+                    "phone": user.get("phone", ""),
+                    "school_username": school_username,
+                    "student_number": linked_student_number,
+                })
+        return jsonify({"success": True, "users": linked_users})
+
     @app.route("/api/admin/school_account/delete", methods=["POST"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def api_admin_school_account_delete():
@@ -26360,6 +31173,62 @@ def start_web_server(args_param):
             page = 1
             limit = 100
 
+        keyword_expr = request.args.get("keyword", "").strip()
+        log_keyword_or_operator = chr(124)
+        log_keyword_and_operator = chr(38)
+        log_keyword_operators = {log_keyword_or_operator, log_keyword_and_operator}
+
+        def normalize_log_keyword_expr(expr):
+            return re.sub(r"\s+", "", expr or "")
+
+        def tokenize_log_keyword_expr(expr):
+            normalized = normalize_log_keyword_expr(expr)
+            if not normalized:
+                return []
+            tokens = []
+            current = []
+            for ch in normalized:
+                if ch in log_keyword_operators:
+                    if current:
+                        tokens.append("".join(current))
+                        current = []
+                    tokens.append(ch)
+                else:
+                    current.append(ch)
+            if current:
+                tokens.append("".join(current))
+            return [token for token in tokens if token]
+
+        def matches_log_keyword_expr(line, expr):
+            tokens = tokenize_log_keyword_expr(expr)
+            if not tokens:
+                return True
+
+            line_lower = line.lower()
+            or_groups = []
+            current_group = []
+
+            for token in tokens:
+                if token == log_keyword_or_operator:
+                    if current_group:
+                        or_groups.append(current_group)
+                        current_group = []
+                    continue
+                if token == log_keyword_and_operator:
+                    continue
+                current_group.append(token.lower())
+
+            if current_group:
+                or_groups.append(current_group)
+
+            if not or_groups:
+                return True
+
+            return any(
+                all(keyword and keyword in line_lower for keyword in group)
+                for group in or_groups
+            )
+
         all_log_content = []
         log_files = []
         if os.path.exists(LOGIN_LOGS_DIR):
@@ -26379,6 +31248,12 @@ def start_web_server(args_param):
             except (FileNotFoundError, PermissionError, UnicodeDecodeError) as e:
                 logging.debug(f"[日志读取] 无法读取日志文件 {log_file}: {e}")
                 continue
+
+        if keyword_expr:
+            all_log_content = [
+                line for line in all_log_content if matches_log_keyword_expr(line, keyword_expr)
+            ]
+
         total_lines = len(all_log_content)
         total_pages = (total_lines + limit - 1) // limit
         if page > total_pages and total_pages > 0:
@@ -26398,6 +31273,7 @@ def start_web_server(args_param):
                     "total_lines": total_lines,
                     "limit": limit,
                 },
+                "filters": {"keyword": keyword_expr},
             }
         )
 
@@ -26939,6 +31815,22 @@ def start_web_server(args_param):
         else:
             return jsonify(result)
 
+    @app.route("/auth/user/theme", methods=["GET"])
+    def auth_user_get_theme():
+        """获取当前登录用户主题"""
+        session_id = request.headers.get("X-Session-ID", "")
+        if not session_id or session_id not in web_sessions:
+            return jsonify({"success": False, "message": "未登录"}), 401
+
+        api_instance = web_sessions[session_id]
+        auth_username = getattr(api_instance, "auth_username", "")
+
+        if not auth_username or auth_username == "guest":
+            return jsonify({"success": False, "message": "游客无法读取主题", "theme": "light"})
+
+        result = auth_system.get_user_theme(auth_username)
+        return jsonify(result)
+
     @app.route("/auth/user/update_theme", methods=["POST"])
     def auth_user_update_theme():
         """更新用户主题"""
@@ -27294,7 +32186,7 @@ def start_web_server(args_param):
     @app.route("/auth/user/sessions", methods=["GET"])
     def auth_user_sessions():
         """获取用户的所有会话"""
-        session_id = request.headers.get("X-Session-ID", "")
+        session_id = normalize_session_uuid(request.headers.get("X-Session-ID", ""))
         api_instance = None
         is_guest = False
         auth_username = ""
@@ -27432,7 +32324,7 @@ def start_web_server(args_param):
     @app.route("/auth/user/delete_session", methods=["POST"])
     def auth_user_delete_session():
         """删除用户的一个会话"""
-        session_id = request.headers.get("X-Session-ID", "")
+        session_id = normalize_session_uuid(request.headers.get("X-Session-ID", ""))
         if not session_id or session_id not in web_sessions:
             return jsonify({"success": False, "message": "未登录"}), 401
 
@@ -27443,7 +32335,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "游客无会话管理"})
 
         data = request.json
-        target_session_id = data.get("session_id", "")
+        target_session_id = normalize_session_uuid(data.get("session_id", ""))
 
         if not target_session_id:
             return jsonify({"success": False, "message": "会话ID缺失"})
@@ -27481,7 +32373,7 @@ def start_web_server(args_param):
     @app.route("/auth/user/create_session_persistence", methods=["POST"])
     def auth_user_create_session_persistence():
         """创建会话持久化文件（登录状态下）"""
-        session_id = request.headers.get("X-Session-ID", "")
+        session_id = normalize_session_uuid(request.headers.get("X-Session-ID", ""))
 
         api_instance = None
         is_guest = True
@@ -27512,19 +32404,14 @@ def start_web_server(args_param):
         auth_username = getattr(api_instance, "auth_username", "")
         is_guest = getattr(api_instance, "is_guest", False)
         data = request.json or {}
-        new_session_id = data.get("session_id", "")
+        new_session_id = normalize_session_uuid(data.get("session_id", ""))
 
         if not new_session_id:
             return jsonify({"success": False, "message": "缺少会话ID"}), 400
-        uuid_pattern = re.compile(
-            r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
-            re.IGNORECASE,
-        )
-        if not uuid_pattern.match(new_session_id):
-            return jsonify({"success": False, "message": "无效的UUID格式"}), 400
         new_api_instance = Api(args)
         new_api_instance._session_created_at = time.time()
         new_api_instance._web_session_id = new_session_id
+        new_api_instance._is_persistent_session = True
         if hasattr(api_instance, "auth_username"):
             new_api_instance.auth_username = api_instance.auth_username
             new_api_instance.auth_group = getattr(
@@ -27851,242 +32738,6 @@ def start_web_server(args_param):
         logs = auth_system.get_audit_logs(username, action, limit)
         return jsonify({"success": True, "logs": logs})
 
-    @app.route("/api/sms/send_code", methods=["POST"])
-    def sms_send_code():
-        """
-        发送短信验证码API
-        """
-        try:
-            # [修正] 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
-            config = configparser.ConfigParser(strict=False)
-            config.optionxform = str
-            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            if (
-                config.get("Features", "enable_sms_service",
-                           fallback="false").lower()
-                != "true"
-            ):
-                return jsonify({"success": False, "message": "短信服务未启用"})
-            data = request.get_json() or {}
-            phone = data.get("phone", "").strip()
-            scene = data.get("scene", "register").strip()
-            captcha_input = data.get("captcha", "").strip()
-            captcha_id = data.get("captcha_id", "").strip()
-
-            is_captcha_valid, captcha_error_msg = verify_captcha(
-                captcha_id, captcha_input
-            )
-            if not is_captcha_valid:
-                return jsonify({"success": False, "message": captcha_error_msg})
-            if not phone or not re.match(r"^1[3-9]\d{9}$", phone):
-                return jsonify({"success": False, "message": "手机号格式不正确"})
-            sms_interval_seconds = int(
-                config.get(
-                    "SMS_Service_SMSBao", "send_interval_seconds", fallback="180"
-                )
-            )
-            last_send_key = f"sms_last_send_{phone}"
-            last_send_time = cache.get(last_send_key, 0)
-            current_time = time.time()
-
-            if (
-                last_send_time
-                and (current_time - last_send_time) < sms_interval_seconds
-            ):
-                remaining_seconds = int(
-                    sms_interval_seconds - (current_time - last_send_time)
-                )
-                return jsonify(
-                    {
-                        "success": False,
-                        "message": f"发送过于频繁，请{remaining_seconds}秒后再试",
-                        "retry_after": remaining_seconds,
-                    }
-                )
-            client_ip = request.environ.get(
-                "REMOTE_ADDR") or request.remote_addr
-            current_date = time.strftime("%Y-%m-%d")
-            ip_limit_key = f"sms_ip_{client_ip}_{current_date}"
-            ip_count = cache.get(ip_limit_key, 0)
-            ip_limit = int(
-                config.get("SMS_Service_SMSBao",
-                           "rate_limit_per_ip_day", fallback="20")
-            )
-            if ip_count >= ip_limit:
-                return jsonify(
-                    {
-                        "success": False,
-                        "message": f"IP每日发送次数已达上限({ip_limit}次)",
-                    }
-                )
-            phone_limit_key = f"sms_phone_{phone}_{current_date}"
-            phone_count = cache.get(phone_limit_key, 0)
-            phone_limit = int(
-                config.get(
-                    "SMS_Service_SMSBao", "rate_limit_per_phone_day", fallback="5"
-                )
-            )
-            if phone_count >= phone_limit:
-                return jsonify(
-                    {
-                        "success": False,
-                        "message": f"该手机号每日发送次数已达上限({phone_limit}次)",
-                    }
-                )
-            code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-            username = config.get("SMS_Service_SMSBao",
-                                  "username", fallback="")
-            api_key = config.get("SMS_Service_SMSBao", "api_key", fallback="")
-            signature = config.get(
-                "SMS_Service_SMSBao", "signature", fallback="【电科大跑步助手】"
-            )
-            code_expire_minutes = int(
-                config.get("SMS_Service_SMSBao",
-                           "code_expire_minutes", fallback="5")
-            )
-            template = config.get(
-                "SMS_Service_SMSBao",
-                "template_register",
-                fallback=f"您的验证码是：{{code}}，{code_expire_minutes}分钟内有效。",
-            )
-
-            if not username or not api_key:
-                return jsonify(
-                    {"success": False, "message": "短信服务配置不完整，请联系管理员"}
-                )
-            content = signature + template.replace("{code}", code).replace(
-                "{minutes}", str(code_expire_minutes)
-            )
-            # import urllib.parse
-            # import urllib.request
-
-            url = f"http://api.smsbao.com/sms?u={username}&p={api_key}&m={phone}&c={urllib.parse.quote(content)}"
-
-            logging.debug(f"[短信服务] 发送请求到短信宝API: {url}")
-
-            try:
-                response = urllib.request.urlopen(url, timeout=10)
-                result = response.read().decode("utf-8").strip()
-                if result == "0":
-                    code_expire_minutes = int(
-                        config.get(
-                            "SMS_Service_SMSBao", "code_expire_minutes", fallback="5"
-                        )
-                    )
-                    code_expire_seconds = code_expire_minutes * 60
-                    sms_verification_codes[phone] = (
-                        code,
-                        time.time() + code_expire_seconds,
-                    )
-                    cache[ip_limit_key] = ip_count + 1
-                    cache[phone_limit_key] = phone_count + 1
-                    cache[last_send_key] = current_time
-                    app.logger.info(
-                        f"[短信服务] 向 {phone} 发送验证码成功，场景：{scene}，有效期：{code_expire_minutes}分钟"
-                    )
-                    try:
-                        log_dir = LOGIN_LOGS_DIR
-                        os.makedirs(log_dir, exist_ok=True)
-                        session_id = request.headers.get("X-Session-ID", None)
-                        username = None
-                        if scene == "register":
-                            username = f"注册用户({phone})"
-                        elif scene == "modify":
-                            if g and hasattr(g, "user"):
-                                username = g.user
-                            else:
-                                username = "未知用户"
-                        elif scene == "admin_modify":
-                            username = data.get("target_username", "未知用户")
-                        else:
-                            if g and hasattr(g, "user"):
-                                username = g.user
-                            else:
-                                username = phone
-                        history_entry = {
-                            "username": username,
-                            "phone": phone,
-                            "scene": scene,
-                            "timestamp": time.time(),
-                            "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-                            "content": content,
-                            "ip": client_ip,
-                        }
-                        if (
-                            session_id is not None
-                            and session_id != ""
-                            and session_id != "null"
-                        ):
-                            history_entry["session_id"] = session_id
-                        history_file = os.path.join(
-                            log_dir, "sms_history.jsonl")
-                        with open(history_file, "a", encoding="utf-8") as f:
-                            f.write(
-                                json.dumps(history_entry,
-                                           ensure_ascii=False) + "\n"
-                            )
-
-                        app.logger.debug(
-                            f"[短信历史] 已记录发送历史: {phone} -> {username}"
-                        )
-                        if scene in [
-                            "admin_modify",
-                            "register",
-                        ]:
-                            session_id = getattr(g, "api_instance", None)
-                            if session_id:
-                                session_id = getattr(
-                                    session_id, "_web_session_id", None
-                                )
-
-                            if session_id:
-                                pass
-                            else:
-                                logging.debug(
-                                    "[SocketIO] sms_send_code：无法获取 session_id，跳过推送"
-                                )
-
-                    except Exception as e:
-                        app.logger.error(f"[短信历史] 记录失败: {str(e)}")
-                    return jsonify(
-                        {
-                            "success": True,
-                            "message": f"验证码已发送，{code_expire_minutes}分钟内有效",
-                            "expire_minutes": code_expire_minutes,
-                            "retry_after": sms_interval_seconds,
-                        }
-                    )
-                else:
-                    error_map = {
-                        "30": "密码错误",
-                        "40": "账号不存在",
-                        "41": "余额不足",
-                        "42": "账户已过期",
-                        "43": "IP地址限制",
-                        "50": "内容含有敏感词",
-                    }
-                    detailed_error_msg = error_map.get(
-                        result, f"未知错误(错误码:{result})"
-                    )
-                    app.logger.error(
-                        f"[短信服务] 短信宝API返回错误码: {result}, 原因: {detailed_error_msg}, 手机号: {phone}"
-                    )
-                    return jsonify(
-                        {"success": False, "message": "验证码发送失败，请稍后重试"}
-                    )
-
-            except Exception as e:
-                app.logger.error(
-                    f"[短信服务] API调用异常：{str(e)}, 手机号: {phone}", exc_info=True
-                )
-                return jsonify(
-                    {"success": False, "message": "验证码发送失败，请稍后重试"}
-                )
-
-        except Exception as e:
-            app.logger.error(f"[短信服务] 处理请求异常：{str(e)}", exc_info=True)
-            return jsonify({"success": False, "message": "验证码发送失败，请稍后重试"})
-
     @app.route("/sms-reply-webhook", methods=["GET"])
     def sms_reply_webhook():
         """
@@ -28263,177 +32914,6 @@ def start_web_server(args_param):
             # - 对外：始终表现为"成功接收"，保持接口的稳定性
             # - 对内：通过日志记录错误，由开发人员后续修复
             return "0"
-
-    @app.route("/api/sms/test_send", methods=["POST"])
-    @login_required
-    def sms_test_send():
-        """
-        短信测试发送API
-        """
-        try:
-            # 获取当前登录的用户名
-            # g.user 由 @login_required 装饰器设置，包含已验证的用户身份
-            current_user = g.user
-
-            # 使用用户组别判断而非权限判断
-            #
-            # 修复原因：
-            # 系统采用差分权限管理，允许普通用户(user组)通过配置拥有管理员权限
-            # 例如：user组的用户可能被配置为拥有 manage_users 或 god_mode 权限
-            # 因此，不能通过检查权限来判断用户是否是真正的管理员
-            # 必须直接读取用户组别（group）来准确判断用户的管理员身份
-            #
-            # 技术实现：
-            # - 使用 get_user_group() 方法直接获取用户所属的组别
-            # - 只允许 "admin" 和 "super_admin" 组的用户访问此功能
-            # - 这样确保即使普通用户拥有管理员权限，也无法访问管理员专属功能
-            #
-            # 安全考虑：
-            # - 短信测试功能是管理员专属操作，不应对普通用户开放
-            # - 通过组别判断可以严格控制访问权限，避免权限滥用
-            user_group = auth_system.get_user_group(current_user)
-
-            # 检查用户组别：只允许管理员和超级管理员访问
-            if user_group not in ["admin", "super_admin"]:
-                # 权限不足时返回403禁止访问状态码
-                return (
-                    jsonify(
-                        {
-                            "success": False,
-                            "message": "权限不足，仅管理员可使用测试功能",
-                        }
-                    ),
-                    403,
-                )
-            # 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
-            config = configparser.ConfigParser(strict=False)
-            config.optionxform = str
-            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            if (
-                config.get("Features", "enable_sms_service",
-                           fallback="false").lower()
-                != "true"
-            ):
-                return jsonify(
-                    {"success": False, "message": "短信服务未启用，请先在配置中启用"}
-                )
-            data = request.get_json() or {}
-            phone = data.get("phone", "").strip()
-            custom_code = data.get("code", "").strip()
-            if not phone or not re.match(r"^1[3-9]\d{9}$", phone):
-                return jsonify({"success": False, "message": "手机号格式不正确"})
-            if custom_code:
-                if not re.match(r"^\d{4,8}$", custom_code):
-                    return jsonify(
-                        {
-                            "success": False,
-                            "message": "自定义验证码格式不正确，仅支持4-8位数字",
-                        }
-                    )
-                code = custom_code
-            else:
-                # import random
-
-                code = "".join([str(random.randint(0, 9)) for _ in range(6)])
-            username = config.get("SMS_Service_SMSBao",
-                                  "username", fallback="")
-            api_key = config.get("SMS_Service_SMSBao", "api_key", fallback="")
-            signature = config.get(
-                "SMS_Service_SMSBao", "signature", fallback="【电科大跑步助手】"
-            )
-            code_expire_minutes = int(
-                config.get("SMS_Service_SMSBao",
-                           "code_expire_minutes", fallback="5")
-            )
-
-            if not username or not api_key:
-                return jsonify(
-                    {
-                        "success": False,
-                        "message": "短信服务配置不完整，请先完善短信宝用户名和API Key",
-                    }
-                )
-            content = (
-                signature
-                + f"【测试短信】您的验证码是：{code}，{code_expire_minutes}分钟内有效。这是一条测试短信。"
-            )
-            # import urllib.parse
-            # import urllib.request
-
-            url = f"http://api.smsbao.com/sms?u={username}&p={api_key}&m={phone}&c={urllib.parse.quote(content)}"
-
-            logging.info(f"[短信测试] 管理员 {current_user} 发送测试短信到 {phone}")
-
-            try:
-                response = urllib.request.urlopen(url, timeout=10)
-                result = response.read().decode("utf-8").strip()
-                if result == "0":
-                    try:
-                        log_dir = LOGIN_LOGS_DIR
-                        os.makedirs(log_dir, exist_ok=True)
-
-                        client_ip = request.environ.get(
-                            "REMOTE_ADDR") or request.remote_addr
-                        history_entry = {
-                            "username": f"{current_user}(测试)",
-                            "phone": phone,
-                            "scene": "admin_test",
-                            "timestamp": time.time(),
-                            "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-                            "content": content,
-                            "ip": client_ip,
-                            "test_code": code,
-                        }
-
-                        history_file = os.path.join(
-                            log_dir, "sms_history.jsonl")
-                        with open(history_file, "a", encoding="utf-8") as f:
-                            f.write(
-                                json.dumps(history_entry,
-                                           ensure_ascii=False) + "\n"
-                            )
-
-                        logging.info(
-                            f"[短信测试] 已记录测试短信历史: {phone} -> 验证码: {code}"
-                        )
-                    except Exception as e:
-                        logging.error(f"[短信测试] 记录历史失败: {str(e)}")
-                    return jsonify(
-                        {
-                            "success": True,
-                            "message": f"测试短信发送成功！验证码：{code}",
-                            "code": code,
-                            "phone": phone,
-                        }
-                    )
-                else:
-                    error_map = {
-                        "30": "密码错误",
-                        "40": "账号不存在",
-                        "41": "余额不足",
-                        "42": "账户已过期",
-                        "43": "IP地址限制",
-                        "50": "内容含有敏感词",
-                    }
-                    error_msg = error_map.get(result, f"未知错误(错误码:{result})")
-                    logging.error(
-                        f"[短信测试] 短信宝API返回错误: {result} - {error_msg}"
-                    )
-                    return jsonify(
-                        {
-                            "success": False,
-                            "message": f"发送失败：{error_msg}",
-                            "error_code": result,
-                        }
-                    )
-
-            except Exception as e:
-                logging.error(f"[短信测试] API调用异常: {str(e)}", exc_info=True)
-                return jsonify({"success": False, "message": f"网络错误：{str(e)}"})
-
-        except Exception as e:
-            logging.error(f"[短信测试] 处理请求异常: {str(e)}", exc_info=True)
-            return jsonify({"success": False, "message": f"处理失败：{str(e)}"})
 
     @app.route("/api/sms/reply-logs", methods=["GET"])
     @login_required
@@ -28790,7 +33270,15 @@ def start_web_server(args_param):
                         "Logging",
                         "archive_max_size_mb",
                         fallback=default_config.get(
-                            "Logging", "archive_max_size_mb", fallback=500
+                            "Logging", "archive_max_size_mb", fallback=5120
+                        ),
+                    ),
+                    "random_background_cache_max_size_mb": _get_config_value(
+                        config,
+                        "Logging",
+                        "random_background_cache_max_size_mb",
+                        fallback=default_config.get(
+                            "Logging", "random_background_cache_max_size_mb", fallback=1024
                         ),
                     ),
                     "log_dir": _get_config_value(
@@ -28837,13 +33325,39 @@ def start_web_server(args_param):
                     ),
                 },
                 "Map": {
-                    "amap_js_key": _get_config_value(
+                    "provider": _get_active_map_provider(config),
+                    "providers": {
+                        "amap": _get_map_provider_runtime_config(config, provider="amap"),
+                        "tencent": _get_map_provider_runtime_config(config, provider="tencent"),
+                        "tianditu": _get_map_provider_runtime_config(config, provider="tianditu"),
+                        "baidu": _get_map_provider_runtime_config(config, provider="baidu"),
+                    },
+                },
+                "IP_Location": {
+                    "query_order": _get_config_value(
                         config,
-                        "Map",
-                        "amap_js_key",
+                        "IP_Location",
+                        "query_order",
                         fallback=default_config.get(
-                            "Map", "amap_js_key", fallback=""),
-                    )
+                            "IP_Location", "query_order", fallback="uapipro,amap,baidu"
+                        ),
+                    ),
+                    "amap_web_api_key": _get_config_value(
+                        config,
+                        "IP_Location",
+                        "amap_web_api_key",
+                        fallback=default_config.get(
+                            "IP_Location", "amap_web_api_key", fallback=""
+                        ),
+                    ),
+                    "uapipro_api_key": _get_config_value(
+                        config,
+                        "IP_Location",
+                        "uapipro_api_key",
+                        fallback=default_config.get(
+                            "IP_Location", "uapipro_api_key", fallback=""
+                        ),
+                    ),
                 },
                 "IP_Location": {
                     "query_order": _get_config_value(
@@ -29024,6 +33538,8 @@ def start_web_server(args_param):
                     ),
                 },
                 # ==================== 账号功能配置加载结束 ====================
+
+                "Daily_Restart": _get_daily_restart_config_view_data(config),
             }
 
             return jsonify({"success": True, "config": config_data})
@@ -29099,6 +33615,7 @@ def start_web_server(args_param):
                 for key in [
                     "log_rotation_size_mb",
                     "archive_max_size_mb",
+                    "random_background_cache_max_size_mb",
                     "log_dir",
                     "archive_dir",
                 ]:
@@ -29137,9 +33654,56 @@ def start_web_server(args_param):
                         "login_log_retention_days",
                         str(security_data["login_log_retention_days"]),
                     )
-            if "Map" in data and "amap_js_key" in data["Map"]:
+            if "Map" in data and "provider" in data["Map"]:
                 ensure_section(config, "Map")
-                config.set("Map", "amap_js_key", data["Map"]["amap_js_key"])
+                config.set("Map", "provider", _normalize_map_provider(data["Map"].get("provider")))
+                providers = data["Map"].get("providers") or {}
+                amap_provider = providers.get("amap") or {}
+                tencent_provider = providers.get("tencent") or {}
+                tianditu_provider = providers.get("tianditu") or {}
+                baidu_provider = providers.get("baidu") or {}
+                config.set(
+                    "Map",
+                    "providers",
+                    {
+                        "amap": {
+                            "js_key": str(
+                                amap_provider.get(
+                                    "js_key", data["Map"].get("amap_js_key", "")
+                                )
+                            ).strip(),
+                        },
+                        "tencent": {
+                            "map_key": str(
+                                tencent_provider.get(
+                                    "map_key", data["Map"].get("tencent_map_key", "")
+                                )
+                            ).strip(),
+                        },
+                        "tianditu": {
+                            "token": str(
+                                tianditu_provider.get(
+                                    "token", data["Map"].get("tianditu_token", "")
+                                )
+                            ).strip(),
+                        },
+                        "baidu": {
+                            "ak": str(
+                                baidu_provider.get(
+                                    "ak", data["Map"].get("baidu_map_ak", "")
+                                )
+                            ).strip(),
+                        },
+                    },
+                )
+                for legacy_key in [
+                    "amap_js_key",
+                    "tencent_map_key",
+                    "tianditu_token",
+                    "baidu_map_ak",
+                ]:
+                    if config.has_option("Map", legacy_key):
+                        config.remove_option("Map", legacy_key)
             if "IP_Location" in data:
                 ensure_section(config, "IP_Location")
                 ip_loc_data = data["IP_Location"]
@@ -29268,6 +33832,12 @@ def start_web_server(args_param):
                     except (ValueError, TypeError):
                         wait_h = 24
                     config.set("Features", "account_cancellation_wait_hours", str(wait_h))
+
+            if "Daily_Restart" in data:
+                try:
+                    _apply_daily_restart_config_updates(config, data["Daily_Restart"])
+                except ValueError as e:
+                    return jsonify({"success": False, "message": str(e)}), 400
 
             _write_config_with_comments(config, CONFIG_FILE)
 
@@ -29464,6 +34034,88 @@ def start_web_server(args_param):
                 exc_info=True,
             )
             return jsonify({"success": False, "message": str(e)}), 500
+
+    @app.route("/api/phone_info", methods=["GET"])
+    @login_required
+    def api_phone_info():
+        """查询手机号归属地（省份、城市、运营商）"""
+        phone = str(request.args.get("phone") or "").strip()
+        if not phone:
+            return jsonify({"success": False, "message": "缺少手机号参数"}), 400
+        try:
+            with phone_cache_lock:
+                cached = phone_location_cache.get(phone)
+            if cached:
+                return jsonify({"success": True, **cached})
+            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+            api_key = config.get("IP_Location", "uapipro_api_key", fallback="").strip()
+            if not api_key:
+                return jsonify({"success": False, "message": "未配置 API Key"}), 503
+            resp = requests.get(
+                f"https://uapis.cn/api/v1/misc/phoneinfo?phone={phone}",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=8,
+            )
+            data = resp.json() if resp.headers.get("Content-Type", "").startswith("application/json") else {}
+            if resp.status_code == 200:
+                result = {
+                    "province": data.get("province", ""),
+                    "city": data.get("city", ""),
+                    "sp": data.get("sp", ""),
+                }
+                with phone_cache_lock:
+                    phone_location_cache[phone] = result
+                _save_phone_cache()
+                return jsonify({"success": True, **result})
+            return jsonify({"success": False, "message": data.get("message", "查询失败")}), resp.status_code
+        except Exception as e:
+            logging.warning(f"[手机归属地] 查询失败: {e}")
+            return jsonify({"success": False, "message": "查询失败"}), 500
+
+    # ====================
+    # 公开API：主题信息
+    # ====================
+
+    @app.route("/api/public/theme_styles", methods=["GET"])
+    def get_public_theme_styles():
+        """获取公开主题信息（无需登录，不更新任何用户状态）"""
+        try:
+            requested_style = request.args.get("style_id", "default")
+            requested_style = str(requested_style or "default").strip() or "default"
+            requested_target = str(request.args.get("background_target") or "").strip().lower()
+            if requested_target not in ("pc", "mobile"):
+                requested_target = None
+            requested_uuid = _normalize_theme_background_session_uuid(
+                request.args.get("uuid", "")
+            )
+            public_api_instance = Api(args)
+            public_api_instance._web_session_id = requested_uuid
+            return jsonify(public_api_instance.get_public_theme_styles(requested_style, requested_target))
+        except Exception as e:
+            logging.error(f"获取公开主题信息失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "获取主题信息失败"}), 500
+
+    @app.route("/api/public/theme_background/consume", methods=["POST"])
+    def consume_public_theme_background():
+        """公开接口：按前端当前视图消耗对应背景缓存"""
+        try:
+            data = request.get_json() or {}
+            target = str(data.get("target") or "pc").strip().lower()
+            image_url = str(data.get("image_url") or "").strip()
+            if target not in ("pc", "mobile"):
+                target = "pc"
+            client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "-")
+            client_ip = str(client_ip).split(",")[0].strip() or "-"
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+            os.makedirs(cache_dir, exist_ok=True)
+            if not _allow_random_background_feedback(cache_dir, client_ip, target):
+                return jsonify({"success": True, "skipped": True})
+            public_api_instance = Api(args)
+            return jsonify(public_api_instance.mark_theme_background_consumed(target, image_url))
+        except Exception as e:
+            logging.error(f"公开消耗主题背景失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "消耗主题背景失败"}), 500
 
     # ====================
     # 公开API：备案信息配置
@@ -29987,149 +34639,6 @@ def start_web_server(args_param):
             logging.error(f"[IP封禁] 检查失败：{str(e)}")
             return False
 
-    # ====================
-    # 短信服务配置API
-    # ====================
-
-    @app.route("/api/admin/sms/config", methods=["GET"])
-    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
-    def get_sms_config():
-        """
-        获取短信服务配置
-        """
-        try:
-            # 细粒度权限检查：需要 'modify_config' 权限
-            # modify_config 权限允许查看短信服务配置
-            # 短信配置包含API密钥等敏感信息，需要严格控制访问
-            if not auth_system.check_permission(g.user, "modify_config"):
-                return jsonify({
-                    "success": False,
-                    "message": "权限不足，需要配置修改权限（modify_config）"
-                }), 403
-
-            # 读取配置文件
-            config = configparser.ConfigParser(strict=False)
-            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            sms_config = {
-                "enable_sms_service": config.getboolean(
-                    "Features", "enable_sms_service", fallback=False
-                ),
-                "enable_phone_modification": config.getboolean(
-                    "Features", "enable_phone_modification", fallback=False
-                ),
-                "enable_phone_login": config.getboolean(
-                    "Features", "enable_phone_login", fallback=False
-                ),
-                "enable_phone_registration_verify": config.getboolean(
-                    "Features", "enable_phone_registration_verify", fallback=False
-                ),
-                "username": config.get("SMS_Service_SMSBao", "username", fallback=""),
-                "api_key": config.get("SMS_Service_SMSBao", "api_key", fallback=""),
-                "signature": config.get("SMS_Service_SMSBao", "signature", fallback=""),
-                "template_register": config.get(
-                    "SMS_Service_SMSBao", "template_register", fallback=""
-                ),
-                "code_expire_minutes": config.getint(
-                    "SMS_Service_SMSBao", "code_expire_minutes", fallback=5
-                ),
-                "rate_limit_per_account_day": config.getint(
-                    "SMS_Service_SMSBao", "rate_limit_per_account_day", fallback=10
-                ),
-                "rate_limit_per_ip_day": config.getint(
-                    "SMS_Service_SMSBao", "rate_limit_per_ip_day", fallback=20
-                ),
-                "rate_limit_per_phone_day": config.getint(
-                    "SMS_Service_SMSBao", "rate_limit_per_phone_day", fallback=5
-                ),
-            }
-
-            return jsonify({"success": True, "config": sms_config})
-        except Exception as e:
-            app.logger.error(f"[短信配置] 获取配置失败：{str(e)}")
-            return jsonify({"success": False, "message": "获取配置失败"}), 500
-
-    @app.route("/api/admin/sms/config", methods=["POST"])
-    @login_required  # 只需要登录即可，细粒度权限在函数内部检查
-    def save_sms_config():
-        """
-        保存短信服务配置
-        """
-        try:
-            # 细粒度权限检查：需要 'modify_config' 权限
-            # modify_config 权限允许修改短信服务配置
-            # 修改配置会影响短信发送功能，包括API密钥等敏感信息
-            if not auth_system.check_permission(g.user, "modify_config"):
-                return jsonify({
-                    "success": False,
-                    "message": "权限不足，需要配置修改权限（modify_config）"
-                }), 403
-
-            # 获取请求数据
-            data = request.get_json() or {}
-            config = configparser.ConfigParser(strict=False)
-            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            if not config.has_section("Features"):
-                config.add_section("Features")
-            config.set(
-                "Features",
-                "enable_sms_service",
-                str(data.get("enable_sms_service", False)).lower(),
-            )
-            config.set(
-                "Features",
-                "enable_phone_modification",
-                str(data.get("enable_phone_modification", False)).lower(),
-            )
-            config.set(
-                "Features",
-                "enable_phone_login",
-                str(data.get("enable_phone_login", False)).lower(),
-            )
-            config.set(
-                "Features",
-                "enable_phone_registration_verify",
-                str(data.get("enable_phone_registration_verify", False)).lower(),
-            )
-            if not config.has_section("SMS_Service_SMSBao"):
-                config.add_section("SMS_Service_SMSBao")
-            config.set("SMS_Service_SMSBao", "username",
-                       data.get("username", ""))
-            config.set("SMS_Service_SMSBao", "api_key",
-                       data.get("api_key", ""))
-            config.set("SMS_Service_SMSBao", "signature",
-                       data.get("signature", ""))
-            config.set(
-                "SMS_Service_SMSBao",
-                "template_register",
-                data.get("template_register", ""),
-            )
-            config.set(
-                "SMS_Service_SMSBao",
-                "code_expire_minutes",
-                str(data.get("code_expire_minutes", 5)),
-            )
-            config.set(
-                "SMS_Service_SMSBao",
-                "rate_limit_per_account_day",
-                str(data.get("rate_limit_per_account_day", 10)),
-            )
-            config.set(
-                "SMS_Service_SMSBao",
-                "rate_limit_per_ip_day",
-                str(data.get("rate_limit_per_ip_day", 20)),
-            )
-            config.set(
-                "SMS_Service_SMSBao",
-                "rate_limit_per_phone_day",
-                str(data.get("rate_limit_per_phone_day", 5)),
-            )
-            _write_config_with_comments(config, CONFIG_JSON_FILE)
-            app.logger.info(f"[短信配置] {g.user} 更新了短信服务配置")
-            return jsonify({"success": True, "message": "配置已保存"})
-        except Exception as e:
-            app.logger.error(f"[短信配置] 保存配置失败：{str(e)}")
-            return jsonify({"success": False, "message": "保存失败"}), 500
-
     @app.route("/api/admin/sms/check_balance", methods=["GET"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def check_sms_balance():
@@ -30220,16 +34729,7 @@ def start_web_server(args_param):
                     )
             else:
                 status_code = lines[0] if lines else response_text
-                error_codes = {
-                    "30": "密码错误",
-                    "40": "账号不存在",
-                    "41": "余额不足",
-                    "43": "IP地址限制",
-                    "50": "内容含有敏感词",
-                    "51": "手机号码不正确",
-                }
-                error_msg = error_codes.get(
-                    status_code, f"未知错误码: {status_code}")
+                error_msg = _get_smsbao_error_message(status_code)
                 return jsonify({"success": False, "message": f"查询失败：{error_msg}"})
         except Exception as e:
             app.logger.error(f"[短信配置] 查询余额失败：{str(e)}")
@@ -30371,32 +34871,46 @@ def start_web_server(args_param):
             
             code, expire_time = sms_verification_codes[phone]
             current_time = time.time()
-            
+
             # 检查验证码是否已过期
             if current_time > expire_time:
                 del sms_verification_codes[phone]
+                _reset_sms_extend_once_for_phone(phone)
                 return jsonify({"success": False, "message": "验证码已过期"})
-            
+
+            if not _is_sms_extend_allowed_once(phone, code):
+                remaining_seconds = max(0, int(expire_time - current_time))
+                return jsonify(
+                    {
+                        "success": False,
+                        "error_code": "EXTEND_LIMIT_REACHED",
+                        "message": "该验证码已延期过一次，请直接完成注册",
+                        "expires_at": int(expire_time),
+                        "remaining_seconds": remaining_seconds,
+                    }
+                )
+
             # 延长验证码有效期（额外增加5分钟）
-            config = configparser.ConfigParser(strict=False)
-            config.optionxform = str
-            config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            
-            extend_minutes = 5  # 延长5分钟
+            extend_minutes = 5
             extend_seconds = extend_minutes * 60
             new_expire_time = current_time + extend_seconds
-            
+
             sms_verification_codes[phone] = (code, new_expire_time)
-            
+            _mark_sms_extend_used_once(phone, code)
+
             app.logger.info(
                 f"[验证码延长] 手机号 {phone} 的验证码有效期已延长 {extend_minutes} 分钟"
             )
-            
-            return jsonify({
-                "success": True,
-                "message": f"验证码有效期已延长{extend_minutes}分钟",
-                "extend_minutes": extend_minutes
-            })
+
+            return jsonify(
+                {
+                    "success": True,
+                    "message": f"验证码有效期已延长{extend_minutes}分钟",
+                    "extend_minutes": extend_minutes,
+                    "expires_at": int(new_expire_time),
+                    "remaining_seconds": int(extend_seconds),
+                }
+            )
             
         except Exception as e:
             app.logger.error(f"[验证码延长] 延长失败：{str(e)}")
@@ -30435,6 +34949,7 @@ def start_web_server(args_param):
             code_expire_seconds = code_expire_minutes * 60
             expire_time = time.time() + code_expire_seconds
             sms_verification_codes[phone] = (code, expire_time)
+            _reset_sms_extend_once_for_phone(phone)
 
             app.logger.info(
                 f"[验证码管理] {g.user} 手动添加验证码: {phone} (有效期{code_expire_minutes}分钟)"
@@ -31220,6 +35735,8 @@ def start_web_server(args_param):
         except Exception:
             newbie_help_url = ""
 
+        map_config = _get_map_provider_frontend_config(config)
+
         return {
             "sms_enabled": sms_enabled,
             "reg_verify_enabled": reg_verify_enabled,
@@ -31227,6 +35744,8 @@ def start_web_server(args_param):
             "enable_phone_login": phone_login_enabled,
             "show_newbie_help": show_newbie_help,
             "newbie_help_url": newbie_help_url,
+            "map_provider": map_config["map_provider"],
+            "map_providers": map_config["map_providers"],
         }
 
     @app.route("/api/payment/yipay_notify", methods=["GET", "POST"])
@@ -31946,12 +36465,8 @@ def start_web_server(args_param):
                         # ========== 首次处理支付通知 ==========
                         # 如果代码执行到这里，说明订单状态不是"paid"，这是首次处理
 
-                        # 更新订单状态为已支付
-                        order_data["status"] = ORDER_STATUS_PAID
+                        _apply_payment_success_transition(order_data)
                         order_data["trade_no"] = trade_no          # 保存易支付订单号
-                        order_data["paid_at"] = time.time()        # 支付时间（时间戳）
-                        order_data["paid_time"] = time.strftime(
-                            "%Y-%m-%d %H:%M:%S")  # 支付时间（可读）
                         # 保存完整的回调参数（用于调试）
                         order_data["notify_params"] = params
 
@@ -31964,6 +36479,7 @@ def start_web_server(args_param):
                         # 保存更新后的订单数据（使用增量更新模式）
                         # 调用统一的订单文件保存函数
                         _save_order_file_incremental(out_trade_no, order_data)
+                        _invalidate_billing_qr_cache_by_order(out_trade_no)
 
                         # ========== 写入支付操作日志（支付成功通知） ==========
 
@@ -32310,7 +36826,7 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "未登录"}), 401
 
             # 检查管理员权限
-            if not auth_system.check_permission(auth_username, "admin_panel"):
+            if not auth_system.check_permission(auth_username, "modify_config"):
                 return jsonify({"success": False, "message": "权限不足"}), 403
 
             # 执行刷新
@@ -32390,6 +36906,23 @@ def start_web_server(args_param):
             logging.error(f"Serving style error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
 
+    @app.route("/theme-assets/<path:filename>")
+    def serve_theme_assets(filename):
+        logging.info(f"请求主题资源文件: {filename}")
+        if '/' in filename:
+            logging.warning(f"主题资源文件路径不合法，包含目录分隔符: {filename}")
+            filename = os.path.basename(filename)  # 只保留文件名部分，防止目录穿越攻击
+            logging.info(f"修正后的主题资源文件名: {filename}")
+        try:
+            base_dir = os.path.dirname(__file__)
+            assets_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+            if not os.path.exists(assets_dir):
+                return jsonify({"success": False, "message": "File not found"}), 404
+            return send_from_directory(assets_dir, filename)
+        except Exception as e:
+            logging.error(f"Serving theme asset error: {e}")
+            return jsonify({"success": False, "message": "File not found"}), 404
+
     # ========== 新增路由：Twemoji, Github_emojis, editor.md 静态资源 ==========
     @app.route("/twemoji/<path:filename>")
     def serve_twemoji(filename):
@@ -32449,7 +36982,11 @@ def start_web_server(args_param):
                     404,
                 )
 
-            return send_from_directory(ed_dir, filename)
+            response = send_from_directory(ed_dir, filename)
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            return response
         except Exception as e:
             logging.error(f"Serving editor.md error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
@@ -32649,6 +37186,16 @@ def start_web_server(args_param):
             logging.error(f"[用户登出] 处理登出请求时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"登出失败: {str(e)}"}), 500
 
+    def _is_vue_mode():
+        """检查当前前端模式是否为 Vue"""
+        try:
+            cfg = _read_config_ini(CONFIG_FILE)
+            if cfg:
+                return cfg.get("Config", "frontend_mode", fallback="original").strip().lower() == "vue"
+        except Exception:
+            pass
+        return False
+
     @app.route("/api/frontend_config.js")
     def get_frontend_config_javascript():
         """将前端配置以JavaScript形式返回，并尝试根据Referer恢复会话"""
@@ -32715,10 +37262,75 @@ def start_web_server(args_param):
         resp.mimetype = "application/javascript"
         return resp
 
+    # Vue 前端自动构建：vue 模式下若 dist/ 不存在则尝试构建
+    _vue_dist_dir = os.path.join(os.path.dirname(__file__), "dist")
+    _vue_frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
+    if _is_vue_mode() and not os.path.exists(os.path.join(_vue_dist_dir, "index.html")):
+        if os.path.exists(os.path.join(_vue_frontend_dir, "package.json")):
+            logging.info("[Vue] dist/ 不存在，尝试自动构建前端...")
+            try:
+                _npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
+                # 安装依赖
+                if not os.path.exists(os.path.join(_vue_frontend_dir, "node_modules")):
+                    subprocess.run(
+                        [_npm_cmd, "install"],
+                        cwd=_vue_frontend_dir,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+                    logging.info("[Vue] npm install 完成")
+                # 构建
+                subprocess.run(
+                    [_npm_cmd, "run", "build"],
+                    cwd=_vue_frontend_dir,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                logging.info("[Vue] 前端构建完成")
+            except FileNotFoundError:
+                logging.warning("[Vue] npm 未安装，无法自动构建前端。请手动在 frontend/ 目录运行 npm install && npm run build")
+            except subprocess.TimeoutExpired:
+                logging.warning("[Vue] 前端构建超时")
+            except subprocess.CalledProcessError as e:
+                logging.warning(f"[Vue] 前端构建失败: {e.stderr or e.stdout or e}")
+            except Exception as e:
+                logging.warning(f"[Vue] 前端构建异常: {e}")
+        else:
+            logging.warning("[Vue] frontend_mode 为 vue 但 frontend/ 目录不存在，无法提供 Vue 前端")
+
+    @app.route("/assets/<path:filename>")
+    def serve_vue_assets(filename):
+        """服务 Vue 构建产物的静态资源"""
+        if not _is_vue_mode():
+            return jsonify({"success": False, "message": "Not available"}), 404
+        assets_dir = os.path.join(_vue_dist_dir, "assets")
+        if os.path.exists(assets_dir):
+            return send_from_directory(assets_dir, filename)
+        return jsonify({"success": False, "message": "Asset not found"}), 404
+
+    def _serve_vue_index():
+        """尝试服务 Vue 构建的 index.html"""
+        vue_index = os.path.join(_vue_dist_dir, "index.html")
+        if os.path.exists(vue_index):
+            return send_from_directory(_vue_dist_dir, "index.html")
+        return None
+
     @app.route("/")
     @app.route("/uuid=<uuid>")
+    @app.route("/app")
+    @app.route("/multi")
     def index(uuid=None):
         """首页：显示应用界面（统一入口）"""
+        vue_mode = _is_vue_mode()
+
+        # original 模式下，/app 和 /multi 是 Vue SPA 专属路由，重定向回首页
+        if not vue_mode and request.path in ("/app", "/multi"):
+            return redirect(url_for("index"))
+
         # 如果提供了uuid但格式不正确，重定向到纯首页
         if uuid:
             uuid_pattern = re.compile(
@@ -32729,8 +37341,21 @@ def start_web_server(args_param):
                 logging.warning(f"无效的UUID格式: {uuid[:40]}... 重定向到首页")
                 return redirect(url_for("index"))
 
-        # 直接返回静态HTML，具体的配置和会话逻辑由 frontend_config.js 接口处理
-        return render_template_string(html_content)
+        # Vue 模式下，优先服务 Vue 构建产物
+        if vue_mode:
+            vue_response = _serve_vue_index()
+            if vue_response is not None:
+                return vue_response
+
+        # 原版 index.html
+        try:
+            with open("index.html", "r", encoding="utf-8") as file:
+                current_html_content = file.read()
+        except Exception as e:
+            logging.error(f"读取 index.html 失败: {e}", exc_info=True)
+            current_html_content = html_content
+
+        return render_template_string(current_html_content)
 
     # @app.route("/")
     # def index():
@@ -33308,6 +37933,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "未指定任务"}), 400
 
         api_instance = web_sessions[session_id]
+        api_instance._web_app_base_url = request.url_root
 
         # 接口级欠费校验（防止前端绕过）
         # - 单账号模式：优先检查请求中的 school_username；未传则检查当前账号
@@ -33546,13 +38172,27 @@ def start_web_server(args_param):
         """API调用端点：将前端调用转发到Python后端"""
         session_id = request.headers.get("X-Session-ID", "")
 
+        def _make_auth_optional_api_instance(context_reason):
+            api = Api(args)
+            api._web_session_id = ""
+            api._is_persistent_session = False
+            logging.debug(
+                f"API调用 {method} {context_reason}，使用临时只读初始化上下文"
+            )
+            return api
+
         if method.startswith("payment/yipay_notify"):
             return payment_yipay_notify()
 
         if not session_id:
-            return jsonify({"success": False, "message": "缺少会话ID"}), 401
+            if should_use_auth_optional_api_context(method):
+                api_instance = _make_auth_optional_api_instance("未携带会话ID")
+            else:
+                return jsonify({"success": False, "message": "缺少会话ID"}), 401
+        else:
+            api_instance = None
         with web_sessions_lock:
-            if session_id in web_sessions:
+            if session_id and session_id in web_sessions:
                 api_instance = web_sessions[session_id]
                 if (
                     hasattr(api_instance, "is_authenticated")
@@ -33643,10 +38283,11 @@ def start_web_server(args_param):
                             # 否则管理员操作用户界面会导致管理员自己的Token过期或无法刷新
                             token_manager.refresh_token(
                                 validated_user, session_id)
-        update_session_activity(session_id)
+        if session_id:
+            update_session_activity(session_id)
 
         with web_sessions_lock:
-            if session_id not in web_sessions:
+            if session_id and session_id not in web_sessions:
                 state = load_session_state(session_id)
                 if state and state.get("login_success"):
                     api_instance = Api(args)
@@ -33660,12 +38301,27 @@ def start_web_server(args_param):
                     restore_session_to_api_instance(api_instance, state)
                     web_sessions[session_id] = api_instance
                     logging.info(f"API调用时自动恢复会话: {session_id[:32]}...")
+                elif should_use_auth_optional_api_context(
+                    method,
+                    session_id,
+                    session_exists=False,
+                    restored_state=state,
+                ):
+                    api_instance = _make_auth_optional_api_instance(
+                        "携带的会话无法恢复"
+                    )
+                    session_id = resolve_auth_optional_api_session_id(
+                        method, session_id, api_instance
+                    )
                 else:
                     return (
                         jsonify({"success": False, "message": "会话已过期或无效"}),
                         401,
                     )
-            api_instance = web_sessions[session_id]
+            elif session_id:
+                api_instance = web_sessions[session_id]
+        if api_instance is not None:
+            api_instance._web_app_base_url = request.url_root
         if request.method == "POST":
             params = request.get_json() or {}
         else:
@@ -33726,9 +38382,11 @@ def start_web_server(args_param):
                 "clear_current_task_draft": "record_path",
                 "auto_generate_path": "auto_generate_path",
                 "auto_generate_path_with_api": "auto_generate_path",
+                "auto_generate_path_with_provider": "auto_generate_path",
                 "update_param": "modify_params",
                 "generate_new_ua": "modify_params",
                 "save_amap_key": "modify_params",
+                "save_map_provider_key": "modify_params",
                 # ===== 地图查看权限 =====
                 "get_map_data": "view_map",
                 # ===== 用户信息权限 =====
@@ -35538,6 +40196,13 @@ def start_web_server(args_param):
                 "noise_level": noise_level    # 噪声级别
             }
 
+            # 合并验证码提供方配置（本地图片 / behavior），供管理面板切换与配置
+            _prov = get_captcha_provider_config()
+            config_data["provider"] = _prov["provider"]
+            config_data["behavior_base_url"] = _prov["behavior_base_url"]
+            config_data["behavior_api_key"] = _prov["behavior_api_key"]
+            config_data["behavior_type"] = _prov["behavior_type"]
+
             # 记录调试信息：准备返回配置数据
             logging.debug(f"[验证码配置] 准备返回配置数据: {config_data}")
 
@@ -35565,6 +40230,115 @@ def start_web_server(args_param):
                 },
                 "message": "使用默认配置（配置读取失败）"  # 提示信息
             }), 200
+
+    # ============================================================
+    # 本地行为验证码 —— 后端代理（浏览器只访问本站，不暴露验证码服务地址与 key）
+    # ============================================================
+    @app.route("/api/captcha/provider", methods=["GET"])
+    def get_captcha_provider():
+        """公开：返回当前验证码提供方与 behavior 类型，供登录/注册页决定渲染哪种验证码。
+        不返回 behavior 地址与 key。"""
+        conf = get_captcha_provider_config()
+        return jsonify({
+            "success": True,
+            "provider": conf["provider"],
+            "behavior_type": conf["behavior_type"],
+        })
+
+    def _behavior_base_or_error():
+        conf = get_captcha_provider_config()
+        base = conf.get("behavior_base_url") or ""
+        return base, conf
+
+    @app.route("/api/captcha/behavior/loader.js", methods=["GET"])
+    def behavior_proxy_loader():
+        """代理 behavior 的 SDK 加载器 loader.js"""
+        import requests as _requests
+        from flask import Response
+        base, _ = _behavior_base_or_error()
+        if not base:
+            return Response("// behavior 未配置", mimetype="application/javascript", status=503)
+        try:
+            r = _requests.get(f"{base}/loader.js", timeout=5)
+            return Response(r.content, mimetype="application/javascript", status=r.status_code)
+        except Exception as e:
+            logging.error(f"[验证码-behavior] 代理 loader.js 失败: {e}")
+            return Response("// behavior loader 加载失败", mimetype="application/javascript", status=502)
+
+    @app.route("/api/captcha/behavior/tac/<path:subpath>", methods=["GET"])
+    def behavior_proxy_tac(subpath):
+        """代理 behavior 的 SDK 静态资源（tac/css、tac/js、tac/images）"""
+        import requests as _requests
+        from flask import Response
+        base, _ = _behavior_base_or_error()
+        if not base:
+            return Response("", status=503)
+        try:
+            r = _requests.get(f"{base}/tac/{subpath}", timeout=8)
+            ctype = r.headers.get("Content-Type", "application/octet-stream")
+            return Response(r.content, mimetype=ctype.split(";")[0], status=r.status_code)
+        except Exception as e:
+            logging.error(f"[验证码-behavior] 代理 tac 资源失败({subpath}): {e}")
+            return Response("", status=502)
+
+    @app.route("/api/captcha/behavior/gen", methods=["GET", "POST"])
+    def behavior_proxy_gen():
+        """代理 behavior /gen（注入 X-Captcha-Key，key 不出后端）。
+
+        验证码服务器的生成接口使用 GET；前端 SDK 统一入口会 POST
+        requestCaptchaDataUrl。本站代理同时接收 GET/POST，再统一用 GET
+        访问上游服务，避免登录页 SDK 触发时命中未授权或方法不匹配。
+        """
+        import requests as _requests
+        base, conf = _behavior_base_or_error()
+        if not base:
+            return jsonify({"code": 500, "msg": "behavior 未配置", "data": {}}), 503
+        request_json = request.get_json(silent=True) if request.method == "POST" else None
+        request_json = request_json if isinstance(request_json, dict) else {}
+        ctype = (
+            request.args.get("type")
+            or request_json.get("type")
+            or conf.get("behavior_type")
+            or "SLIDER"
+        ).strip()
+        headers = {}
+        if conf.get("behavior_api_key"):
+            headers["X-Captcha-Key"] = conf["behavior_api_key"]
+        try:
+            r = _requests.get(f"{base}/gen", params={"type": ctype},
+                              headers=headers, timeout=8)
+            try:
+                response_json = r.json()
+                if r.status_code == 200 and str(response_json.get("code", "")) == "200":
+                    captcha_payload = response_json.get("data") or {}
+                    append_behavior_captcha_history(
+                        captcha_payload.get("id"),
+                        captcha_payload.get("type") or ctype,
+                    )
+            except Exception as history_error:
+                logging.debug(f"[验证码历史-behavior] 记录 /gen 历史失败: {history_error}")
+            return (r.text, r.status_code, {"Content-Type": "application/json"})
+        except Exception as e:
+            logging.error(f"[验证码-behavior] 代理 /gen 失败: {e}")
+            return jsonify({"code": 500, "msg": "验证码服务异常", "data": {}}), 502
+
+    @app.route("/api/captcha/behavior/check", methods=["POST"])
+    def behavior_proxy_check():
+        """代理 behavior /check（注入 X-Captcha-Key）"""
+        import requests as _requests
+        base, conf = _behavior_base_or_error()
+        if not base:
+            return jsonify({"code": 500, "msg": "behavior 未配置", "data": {}}), 503
+        headers = {"Content-Type": "application/json"}
+        if conf.get("behavior_api_key"):
+            headers["X-Captcha-Key"] = conf["behavior_api_key"]
+        try:
+            r = _requests.post(f"{base}/check", data=request.get_data(),
+                               headers=headers, timeout=8)
+            return (r.text, r.status_code, {"Content-Type": "application/json"})
+        except Exception as e:
+            logging.error(f"[验证码-behavior] 代理 /check 失败: {e}")
+            return jsonify({"code": 500, "msg": "验证码服务异常", "data": {}}), 502
 
     @app.route("/api/captcha/get", methods=["GET"])
     def get_captcha():
@@ -35986,110 +40760,6 @@ def start_web_server(args_param):
                 500,
             )
 
-    def verify_captcha(captcha_id, user_input):
-        """
-        验证验证码辅助函数
-        """
-        logging.debug(f"[验证码] 开始验证: ID={captcha_id}..., 用户输入='{user_input}'")
-        if not captcha_id or not captcha_id.strip():
-            return False, "验证码ID不能为空"
-        if not user_input or not user_input.strip():
-            return False, "人机验证码不能为空"
-        captchas_dir = os.path.join("logs", "captchas")
-        captcha_file = os.path.join(captchas_dir, f"{captcha_id}.json")
-        if not os.path.exists(captcha_file):
-            logging.warning(f"[验证码] 验证码文件不存在: ID={captcha_id}...")
-            return False, "人机验证码不存在或已失效"
-
-        try:
-            with open(captcha_file, "r", encoding="utf-8") as f:
-                captcha_data = json.load(f)
-            current_time = time.time()
-            if captcha_data.get("expires_at", 0) < current_time:
-                try:
-                    os.remove(captcha_file)
-                except Exception as e:
-                    logging.warning(f"[验证码] 删除过期验证码文件失败: {e}")
-                return False, "人机验证码已过期"
-            stored_code = captcha_data.get("code", "")
-            user_input_upper = user_input.strip().upper()
-            is_correct = user_input_upper == stored_code
-
-            def update_captcha_history():
-                try:
-                    history_dir = os.path.join("logs", "captcha_history")
-                    date_str = datetime.datetime.now().strftime("%Y%m%d")
-                    history_file = os.path.join(
-                        history_dir, f"captcha_history_{date_str}.jsonl"
-                    )
-                    if os.path.exists(history_file):
-                        lines = []
-                        with open(history_file, "r", encoding="utf-8") as f:
-                            lines = f.readlines()
-                        updated = False
-                        for i, line in enumerate(lines):
-                            try:
-                                record = json.loads(line.strip())
-                                if record.get("captcha_id") == captcha_id:
-                                    record["status"] = (
-                                        "verified_success"
-                                        if is_correct
-                                        else "verified_failed"
-                                    )
-                                    record["verified_at"] = time.time()
-                                    record["verified_at_readable"] = (
-                                        datetime.datetime.fromtimestamp(
-                                            time.time()
-                                        ).strftime("%Y-%m-%d %H:%M:%S")
-                                    )
-                                    record["verified_input"] = user_input_upper
-                                    lines[i] = (
-                                        json.dumps(
-                                            record, ensure_ascii=False) + "\n"
-                                    )
-                                    updated = True
-                                    break
-                            except:
-                                pass
-
-                        if updated:
-                            with open(history_file, "w", encoding="utf-8") as f:
-                                f.writelines(lines)
-
-                            logging.debug(
-                                f"[验证码历史] 已更新验证结果: ID={captcha_id[:8]}..., 结果={'成功' if is_correct else '失败'}"
-                            )
-                except Exception as e:
-                    logging.error(f"[验证码历史] 更新验证结果失败: {e}", exc_info=True)
-
-            
-
-            threading.Thread(target=update_captcha_history,
-                             daemon=True).start()
-            try:
-                os.remove(captcha_file)
-                logging.debug(f"[验证码] 已删除验证码文件: {captcha_id}")
-            except Exception as e:
-                logging.warning(f"[验证码] 删除验证码文件失败: {e}")
-            if is_correct:
-                logging.info(f"[验证码] 验证成功: ID={captcha_id[:8]}...")
-                return True, ""
-            else:
-                logging.warning(f"[验证码] 验证失败: ID={captcha_id[:8]}...")
-                return False, "人机验证码错误"
-
-        except json.JSONDecodeError as e:
-            logging.error(f"[验证码] JSON解析失败: {e}")
-            try:
-                os.remove(captcha_file)
-            except:
-                pass
-            return False, "人机验证码数据损坏"
-
-        except Exception as e:
-            logging.error(f"[验证码] 验证过程出错: {e}", exc_info=True)
-            return False, "人机验证码验证失败"
-
     GLOBAL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=20)
 
     @app.route("/api/captcha/history", methods=["GET"])
@@ -36202,6 +40872,7 @@ def start_web_server(args_param):
                                         continue
                                         
                                 record.pop("session_id", None)
+                                normalize_captcha_history_record(record)
                                 local_records.append(record)
                                 local_count += 1
                                 
@@ -36413,6 +41084,7 @@ def start_web_server(args_param):
                                                     ).strftime("%Y-%m-%d %H:%M:%S")
                                                 )
                                         found_record.pop("session_id", None)
+                                        normalize_captcha_history_record(found_record)
                                         return jsonify(
                                             {"success": True, "data": found_record}
                                         )
@@ -36521,6 +41193,25 @@ def start_web_server(args_param):
             config.set("Captcha", "scale_factor", str(scale_factor))
             config.set("Captcha", "noise_level", str(noise_level))
 
+            # ========================================
+            # 6.1 验证码提供方配置（本地图片 / 本地行为验证码）
+            #     仅当请求携带对应字段时更新，保持向后兼容
+            # ========================================
+            if "provider" in data:
+                _provider = str(data.get("provider") or "image").strip().lower()
+                if _provider not in ("image", "behavior"):
+                    _provider = "image"
+                config.set("Captcha", "provider", _provider)
+            if "behavior_base_url" in data:
+                config.set("Captcha", "behavior_base_url",
+                           str(data.get("behavior_base_url") or "").strip().rstrip("/"))
+            if "behavior_api_key" in data:
+                config.set("Captcha", "behavior_api_key",
+                           str(data.get("behavior_api_key") or "").strip())
+            if "behavior_type" in data:
+                config.set("Captcha", "behavior_type",
+                           (str(data.get("behavior_type") or "SLIDER").strip() or "SLIDER"))
+
             _write_config_with_comments(config, config_file)
 
             logging.info(f"【本地验证码】验证码设置已成功保存到 {config_file}")
@@ -36567,6 +41258,83 @@ def start_web_server(args_param):
             data = request.get_json()
             if not data:
                 return jsonify({"success": False, "message": "请求数据为空"}), 400
+
+            if str(data.get("provider") or "").strip().lower() == "behavior":
+                import requests as _requests
+
+                behavior_base_url = str(data.get("behavior_base_url") or "").strip().rstrip("/")
+                behavior_api_key = str(data.get("behavior_api_key") or "").strip()
+                behavior_type = str(data.get("behavior_type") or "SLIDER").strip() or "SLIDER"
+                if not behavior_base_url:
+                    return jsonify({
+                        "success": False,
+                        "message": "验证码服务地址不能为空",
+                    }), 400
+                if not (
+                    behavior_base_url.startswith("http://")
+                    or behavior_base_url.startswith("https://")
+                ):
+                    return jsonify({
+                        "success": False,
+                        "message": "验证码服务地址必须以 http:// 或 https:// 开头",
+                    }), 400
+
+                headers = {}
+                if behavior_api_key:
+                    headers["X-Captcha-Key"] = behavior_api_key
+                try:
+                    upstream_response = _requests.get(
+                        f"{behavior_base_url}/gen",
+                        params={"type": behavior_type},
+                        headers=headers,
+                        timeout=8,
+                    )
+                    try:
+                        upstream_json = upstream_response.json()
+                    except Exception:
+                        logging.error(
+                            "[验证码-behavior] 测试生成返回非JSON: status=%s body=%s",
+                            upstream_response.status_code,
+                            upstream_response.text[:200],
+                        )
+                        return jsonify({
+                            "success": False,
+                            "message": "验证码服务器返回非JSON响应",
+                        }), 502
+
+                    upstream_code = str(upstream_json.get("code", ""))
+                    if upstream_response.status_code != 200 or upstream_code != "200":
+                        return jsonify({
+                            "success": False,
+                            "provider": "behavior",
+                            "message": upstream_json.get("msg")
+                            or f"验证码服务器生成失败：HTTP {upstream_response.status_code}",
+                            "upstream_status": upstream_response.status_code,
+                            "upstream_code": upstream_json.get("code"),
+                        }), 502
+
+                    captcha_payload = upstream_json.get("data") or {}
+                    captcha_id = str(captcha_payload.get("id") or "")
+                    append_behavior_captcha_history(
+                        captcha_id,
+                        captcha_payload.get("type") or behavior_type,
+                        status="test_generated",
+                    )
+                    return jsonify({
+                        "success": True,
+                        "provider": "behavior",
+                        "captcha_id": captcha_id,
+                        "behavior_type": captcha_payload.get("type") or behavior_type,
+                        "captcha": captcha_payload,
+                        "message": "验证码服务器生成成功",
+                    })
+                except Exception as e:
+                    logging.error(f"[验证码-behavior] 测试生成失败: {e}", exc_info=True)
+                    return jsonify({
+                        "success": False,
+                        "provider": "behavior",
+                        "message": f"验证码服务器请求失败: {str(e)}",
+                    }), 502
 
             # ========================================
             # 4. 提取并验证参数
@@ -36763,6 +41531,7 @@ def start_web_server(args_param):
     ORDER_STATUS_FROZEN = "frozen"                    # 已冻结
     ORDER_STATUS_PREAUTH = "preauth"                  # 预授权
     ORDER_STATUS_TIMEOUT = "timeout"                  # 支付超时
+    ORDER_STATUS_CLOSED = "closed"                    # 已关闭（超时关闭）
 
     # 订单数据存储目录常量定义
     # 用于存储所有支付订单的JSON文件
@@ -36778,9 +41547,76 @@ def start_web_server(args_param):
     # 游客使用session UUID，注册用户使用username
     PAYMENT_LOGS_DIR = "logs/payment_logs"
 
+    # 账单日志存储目录
+    BILLING_LOGS_DIR = "logs/billing_logs"
+
     # 确保支付日志根目录存在
     # 用户子目录将在记录日志时动态创建
     os.makedirs(PAYMENT_LOGS_DIR, exist_ok=True)
+    os.makedirs(BILLING_LOGS_DIR, exist_ok=True)
+
+    def _write_billing_log(event_type, billing_record, operator_username, details=None, before=None, after=None):
+        os.makedirs(BILLING_LOGS_DIR, exist_ok=True)
+        billing_record = billing_record or {}
+        payload = {
+            "log_id": str(uuid.uuid4()),
+            "event_type": str(event_type or "").strip(),
+            "billing_id": str(billing_record.get("billing_id", "")),
+            "school_username": str(billing_record.get("school_username", "")),
+            "auth_username": str(billing_record.get("auth_username", "")),
+            "nickname": str(billing_record.get("nickname", "")),
+            "phone": str(billing_record.get("phone", "")),
+            "amount": billing_record.get("amount"),
+            "status": billing_record.get("status"),
+            "reason": str(billing_record.get("reason", "")),
+            "operator_username": str(operator_username or "unknown"),
+            "before": before or {},
+            "after": after or {},
+            "details": details or "",
+            "created_at": _billing_now_utc_string(),
+            "created_at_beijing": _billing_now_beijing_string(),
+        }
+        log_path = os.path.join(BILLING_LOGS_DIR, f"{payload['log_id']}.json")
+        with open(log_path, "w", encoding="utf-8") as fp:
+            json.dump(payload, fp, indent=2, ensure_ascii=False)
+        return payload
+
+    def _read_billing_record_by_school_username(school_username, billing_id):
+        billing_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "User_Billing",
+            "School_Bills",
+            str(school_username or "").strip(),
+            f"{str(billing_id or '').strip()}.json"
+        )
+        if not os.path.exists(billing_file):
+            return None
+        with open(billing_file, "r", encoding="utf-8") as fp:
+            return json.load(fp)
+
+    def _get_billing_operator_username():
+        operator_username = getattr(g, "user", "unknown")
+        if isinstance(operator_username, dict):
+            operator_username = operator_username.get("auth_username", "unknown")
+        return str(operator_username or "unknown")
+
+    def _billing_log_matches_keyword(payload, keyword):
+        if not keyword:
+            return True
+        haystack = "\n".join([
+            str(payload.get("billing_id", "")),
+            str(payload.get("school_username", "")),
+            str(payload.get("auth_username", "")),
+            str(payload.get("nickname", "")),
+            str(payload.get("phone", "")),
+            str(payload.get("reason", "")),
+            str(payload.get("details", "")),
+            str(payload.get("operator_username", "")),
+        ]).lower()
+        return keyword.lower() in haystack
+
+    def _safe_billing_log_sort_key(payload):
+        return str(payload.get("created_at") or "")
 
     def _normalize_order_created_at(order_data):
         """
@@ -36801,6 +41637,149 @@ def start_web_server(args_param):
                 "%Y-%m-%d %H:%M:%S", time.localtime(created_at)
             )
         return order_data
+
+    def _is_order_terminal_for_repay(order_data):
+        status = str((order_data or {}).get("status", "")).strip()
+        return status in {
+            ORDER_STATUS_PAID,
+            ORDER_STATUS_REFUNDED_PARTIAL,
+            ORDER_STATUS_REFUNDED_FULL,
+        }
+
+    def _advance_order_status_by_timeout(order_data, now_iso=None):
+        if not isinstance(order_data, dict):
+            return False
+
+        status = str(order_data.get("status", "")).strip()
+        if status not in {ORDER_STATUS_PENDING, ORDER_STATUS_TIMEOUT}:
+            return False
+
+        expires_at = str(order_data.get("expires_at") or "").strip()
+        if not expires_at:
+            return False
+
+        now_dt = (
+            datetime.datetime.fromisoformat(now_iso)
+            if now_iso
+            else datetime.datetime.now(datetime.timezone.utc)
+        )
+        expires_dt = datetime.datetime.fromisoformat(expires_at)
+        if expires_dt.tzinfo is None:
+            expires_dt = expires_dt.replace(tzinfo=datetime.timezone.utc)
+        if now_dt.tzinfo is None:
+            now_dt = now_dt.replace(tzinfo=datetime.timezone.utc)
+
+        if now_dt <= expires_dt:
+            return False
+
+        order_data["status"] = ORDER_STATUS_CLOSED
+        order_data["closed_at"] = now_dt.isoformat()
+        return True
+
+    def _get_payment_timeout_minutes(config_obj=None):
+        config = config_obj or _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
+        value = config.get("Rainbow_YiPay", "payment_timeout_minutes", fallback="900")
+        try:
+            minutes = int(str(value).strip())
+        except Exception:
+            minutes = 900
+        if minutes <= 0:
+            minutes = 900
+        return minutes
+
+    def _build_order_expires_at_iso(created_dt=None, timeout_minutes=None):
+        base_dt = created_dt or datetime.datetime.now(datetime.timezone.utc)
+        if base_dt.tzinfo is None:
+            base_dt = base_dt.replace(tzinfo=datetime.timezone.utc)
+        timeout = int(timeout_minutes) if timeout_minutes is not None else _get_payment_timeout_minutes()
+        return (base_dt + datetime.timedelta(minutes=timeout)).isoformat()
+
+    def _ensure_order_timeout_fields(order_data, timeout_minutes=None):
+        if not isinstance(order_data, dict):
+            return order_data
+
+        timeout = int(timeout_minutes) if timeout_minutes is not None else _get_payment_timeout_minutes()
+        expires_at = str(order_data.get("expires_at") or "").strip()
+        if expires_at:
+            return order_data
+
+        created_at = order_data.get("created_at")
+        created_dt = None
+        if isinstance(created_at, str) and created_at.strip():
+            try:
+                created_dt = datetime.datetime.fromisoformat(created_at.strip())
+            except Exception:
+                try:
+                    created_dt = datetime.datetime.strptime(created_at.strip(), "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    created_dt = None
+        elif isinstance(created_at, (int, float)):
+            created_dt = datetime.datetime.fromtimestamp(created_at, tz=datetime.timezone.utc)
+
+        if created_dt is None:
+            created_dt = datetime.datetime.now(datetime.timezone.utc)
+
+        if created_dt.tzinfo is None:
+            created_dt = created_dt.replace(tzinfo=datetime.timezone.utc)
+
+        order_data["expires_at"] = (created_dt + datetime.timedelta(minutes=timeout)).isoformat()
+        return order_data
+
+    def _normalize_order_runtime_state(order_data, timeout_minutes=None, now_iso=None):
+        if not isinstance(order_data, dict):
+            return order_data, False
+
+        _ensure_order_timeout_fields(order_data, timeout_minutes=timeout_minutes)
+        changed = _advance_order_status_by_timeout(order_data, now_iso=now_iso)
+        return order_data, changed
+
+    def _normalize_order_status_alias(order_data):
+        if not isinstance(order_data, dict):
+            return order_data
+        status = str(order_data.get("status") or "").strip().lower()
+        if status == ORDER_STATUS_TIMEOUT:
+            order_data["status"] = ORDER_STATUS_CLOSED
+        return order_data
+
+    def _load_order_file_with_runtime_state(order_id, timeout_minutes=None, now_iso=None):
+        order_file = os.path.join(PAYMENT_ORDERS_DIR, f"{order_id}.json")
+        if not os.path.exists(order_file):
+            return None
+
+        with open(order_file, "r", encoding="utf-8") as f:
+            order_data = json.load(f)
+
+        _normalize_order_created_at(order_data)
+        _normalize_order_status_alias(order_data)
+        _, changed = _normalize_order_runtime_state(
+            order_data,
+            timeout_minutes=timeout_minutes,
+            now_iso=now_iso,
+        )
+        if changed:
+            _save_order_file_incremental(order_id, order_data)
+        return order_data
+
+    def _get_billing_scope_from_order_data(order_data):
+        if not isinstance(order_data, dict):
+            return "", ""
+
+        billing_scope = order_data.get("billing_scope")
+        if isinstance(billing_scope, dict):
+            school_id = str(billing_scope.get("school_id") or "").strip()
+            billing_id = str(billing_scope.get("billing_id") or "").strip()
+            if school_id and billing_id:
+                return school_id, billing_id
+
+        billing_items = order_data.get("billing_items")
+        if isinstance(billing_items, list) and len(billing_items) == 1:
+            item = billing_items[0] if isinstance(billing_items[0], dict) else {}
+            school_id = str(item.get("school_username") or item.get("school_id") or "").strip()
+            billing_id = str(item.get("billing_id") or "").strip()
+            if school_id and billing_id:
+                return school_id, billing_id
+
+        return "", ""
 
     def _save_order_file_incremental(order_id, order_data):
         """
@@ -38148,17 +43127,7 @@ def start_web_server(args_param):
                 # 重新计算已退款总额（包含本次退款）
                 total_refunded_new = total_refunded + refund_amount_float
 
-                # 更新订单状态
-                # 如果退款金额 >= 订单金额，则状态改为"已全额退款"
-                # 否则状态改为"已部分退款"
-                if total_refunded_new >= order_amount:
-                    # 已全额退款
-                    order_data["status"] = ORDER_STATUS_REFUNDED_FULL
-                    logging.info(f"[退款请求] 订单状态更新为：已全额退款")
-                else:
-                    # 已部分退款
-                    order_data["status"] = ORDER_STATUS_REFUNDED_PARTIAL
-                    logging.info(f"[退款请求] 订单状态更新为：已部分退款")
+                _apply_refund_transition(order_data, refund_amount_float)
 
                 # ========== 新增：更新退款次数 ==========
                 # 将退款次数设置为 1，表示该订单已退款一次
@@ -38170,6 +43139,7 @@ def start_web_server(args_param):
                 # 保存更新后的订单数据到文件（使用增量更新模式）
                 # 调用统一的订单文件保存函数，确保不丢失其他字段
                 _save_order_file_incremental(trade_no, order_data)
+                _invalidate_billing_qr_cache_by_order(trade_no)
 
                 # ========== 记录退款日志 ==========
 
@@ -38284,9 +43254,6 @@ def start_web_server(args_param):
             # 这使得不同的支付场景可以跳转到不同的页面
             # 使用 strip() 去除空白字符，空字符串会被转为 None
             return_url = data.get("return_url", "").strip() or None
-
-            if (not return_url) or return_url.strip() == '' or return_url.strip() == "null" or return_url.strip() == "undefind" or IPVerifier().is_allowed_ip(return_url):
-                return_url = None
 
             # 提取设备类型参数（web接口根据设备自动判断拉起方式）
             # device: 设备类型（pc/mobile/qq/wechat/alipay）
@@ -38625,9 +43592,15 @@ def start_web_server(args_param):
             if not os.path.exists(order_file):
                 return jsonify({"success": False, "message": "订单不存在"})
 
-            # 读取订单数据
-            with open(order_file, "r", encoding="utf-8") as f:
-                order_data = json.load(f)
+            timeout_minutes = _get_payment_timeout_minutes()
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            order_data = _load_order_file_with_runtime_state(
+                order_id,
+                timeout_minutes=timeout_minutes,
+                now_iso=now_iso,
+            )
+            if not isinstance(order_data, dict):
+                return jsonify({"success": False, "message": "订单不存在"})
 
             # 修正 created_at 字段格式（将时间戳转换为可读字符串）
             _normalize_order_created_at(order_data)
@@ -38645,7 +43618,7 @@ def start_web_server(args_param):
             # ========== 查询最新支付状态 ==========
 
             # 如果订单状态是待支付，调用易支付API查询最新状态
-            if order_data.get("status") == "pending":
+            if order_data.get("status") == ORDER_STATUS_PENDING:
                 # 创建彩虹易支付客户端
                 yipay_client = RainbowYiPayClient()
 
@@ -38761,12 +43734,17 @@ def start_web_server(args_param):
             if not os.path.exists(order_file):
                 return jsonify({"success": False, "message": "订单不存在"}), 404
 
-            with open(order_file, "r", encoding="utf-8") as f:
-                order_data = json.load(f)
+            timeout_minutes = _get_payment_timeout_minutes()
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            order_data = _load_order_file_with_runtime_state(
+                order_id,
+                timeout_minutes=timeout_minutes,
+                now_iso=now_iso,
+            )
+            if not isinstance(order_data, dict):
+                return jsonify({"success": False, "message": "订单不存在"}), 404
 
             _normalize_order_created_at(order_data)
-
-            # 订单归属权限校验：所有者或管理员
             if order_data.get("username") != g.user:
                 if not auth_system.check_permission(g.user, "manage_users"):
                     return jsonify({"success": False, "message": "无权查询此订单"}), 403
@@ -38798,12 +43776,12 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": "主动查询令牌无效"}), 403
 
             # 复用支付查询逻辑：仅 pending 状态才向易支付查询
-            if order_data.get("status") == "pending":
+            if order_data.get("status") == ORDER_STATUS_PENDING:
                 query_result = _query_yipay_order(order_id)
                 if query_result["success"] and query_result.get("data", {}).get("status") == "TRADE_SUCCESS":
-                    order_data["status"] = ORDER_STATUS_PAID
-                    order_data["paid_at"] = time.time()
-                    order_data["paid_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    _apply_payment_success_transition(order_data, paid_time=time.strftime("%Y-%m-%d %H:%M:%S"))
+                    _save_order_file_incremental(order_id, order_data)
+                    _invalidate_billing_qr_cache_by_order(order_id)
                     logging.info(f"[账单主动查询] 订单状态更新为已支付: {order_id}")
 
             # 一次性令牌：无论查询结果如何，首次主动查询后即失效
@@ -38856,11 +43834,17 @@ def start_web_server(args_param):
             if not os.path.exists(order_file):
                 return jsonify({"success": False, "message": "订单不存在"}), 404
 
-            with open(order_file, "r", encoding="utf-8") as f:
-                order_data = json.load(f)
+            timeout_minutes = _get_payment_timeout_minutes()
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            order_data = _load_order_file_with_runtime_state(
+                order_id,
+                timeout_minutes=timeout_minutes,
+                now_iso=now_iso,
+            )
+            if not isinstance(order_data, dict):
+                return jsonify({"success": False, "message": "订单不存在"}), 404
 
             _normalize_order_created_at(order_data)
-
             is_admin = auth_system.check_permission(g.user, "manage_users")
             if order_data.get("username") != g.user and not is_admin:
                 return jsonify({"success": False, "message": "无权查询此订单"}), 403
@@ -39554,6 +44538,8 @@ def start_web_server(args_param):
             if total_amount <= 0:
                 return jsonify({"success": False, "message": "订单金额无效"}), 400
 
+            amount_str = f"{round(total_amount, 2):.2f}"
+
             # 支付参数
             pay_type = str(data.get("pay_type", "alipay")).strip() or "alipay"
             payment_type = "web"
@@ -39571,6 +44557,97 @@ def start_web_server(args_param):
                 enabled_methods = ["alipay", "wxpay", "qqpay", "bank", "unionpay"]
             if pay_type not in enabled_methods:
                 pay_type = enabled_methods[0]
+
+            timeout_minutes = _get_payment_timeout_minutes(config)
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+            single_billing_item = valid_items[0] if len(valid_items) == 1 else None
+            if single_billing_item:
+                school_id = str(single_billing_item.get("school_username") or "").strip()
+                billing_id = str(single_billing_item.get("billing_id") or "").strip()
+                billing_file = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "User_Billing",
+                    "School_Bills",
+                    school_id,
+                    f"{billing_id}.json",
+                )
+                try:
+                    with open(billing_file, "r", encoding="utf-8") as f:
+                        billing_rec = json.load(f)
+                except Exception:
+                    billing_rec = {}
+
+                existing_order = None
+                existing_order_id = ""
+                for order_id in reversed(list(billing_rec.get("payment_orders", []))):
+                    order_id = str(order_id or "").strip()
+                    if not order_id:
+                        continue
+                    order_data = _load_order_file_with_runtime_state(
+                        order_id,
+                        timeout_minutes=timeout_minutes,
+                        now_iso=now_iso,
+                    )
+                    if not isinstance(order_data, dict):
+                        continue
+                    order_school_id, order_billing_id = _get_billing_scope_from_order_data(order_data)
+                    order_pay_type = str(order_data.get("pay_type") or "").strip()
+                    if order_school_id == school_id and order_billing_id == billing_id and order_pay_type == pay_type:
+                        existing_order = order_data
+                        existing_order_id = order_id
+                        break
+
+                decision = _resolve_billing_payment_entry(
+                    school_id=school_id,
+                    billing_id=billing_id,
+                    pay_type=pay_type,
+                    existing_order=existing_order,
+                    now_iso=now_iso,
+                )
+
+                if decision.get("decision") == "reject_terminal":
+                    return jsonify({
+                        "success": False,
+                        "message": "该账单已支付或已退款，不能重复支付",
+                    }), 400
+
+                if decision.get("decision") == "reuse_qr":
+                    reusable_item = decision.get("reusable_item") if isinstance(decision.get("reusable_item"), dict) else {}
+                    reusable_order_id = str(reusable_item.get("order_id") or existing_order_id).strip()
+                    reusable_order = _load_order_file_with_runtime_state(
+                        reusable_order_id,
+                        timeout_minutes=timeout_minutes,
+                        now_iso=now_iso,
+                    ) if reusable_order_id else None
+                    if isinstance(reusable_order, dict) and _is_order_terminal_for_repay(reusable_order):
+                        _invalidate_billing_qr_cache_by_order(reusable_order_id)
+                    else:
+                        active_query_token = hashlib.sha256(
+                            f"{reusable_order_id}:{g.user}:{time.time()}:{random.randint(100000, 999999)}".encode("utf-8")
+                        ).hexdigest()
+                        if isinstance(reusable_order, dict):
+                            reusable_order["active_query_token_hash"] = hashlib.sha256(active_query_token.encode("utf-8")).hexdigest()
+                            reusable_order["active_query_session_hash"] = hashlib.sha256(
+                                str(g.session_id or "").encode("utf-8")
+                            ).hexdigest()
+                            reusable_order["active_query_token_expire_at"] = int(time.time()) + 600
+                            reusable_order["active_query_token_used"] = False
+                            _save_order_file_incremental(reusable_order_id, reusable_order)
+
+                        reuse_pay_type = str(reusable_item.get("pay_type") or pay_type)
+                        return jsonify({
+                            "success": True,
+                            "message": "复用有效期内二维码",
+                            "order_id": reusable_order_id,
+                            "total_amount": amount_str,
+                            "total_count": len(valid_items),
+                            "pay_url": str(reusable_item.get("pay_url") or ""),
+                            "pay_info": str(reusable_item.get("pay_info") or ""),
+                            "pay_type": reuse_pay_type,
+                            "active_query_token": active_query_token,
+                            "reused_qr": True,
+                        })
 
             out_trade_no = f"{time.strftime('%Y%m%d')}{random.randint(100000000000000, 999999999999999)}"
             amount_str = f"{round(total_amount, 2):.2f}"
@@ -39601,6 +44678,7 @@ def start_web_server(args_param):
 
             pay_type = result.get("pay_type", pay_type)
 
+            expires_at_iso = _build_order_expires_at_iso(timeout_minutes=timeout_minutes)
             order_data = {
                 "order_id": out_trade_no,
                 "username": g.user,
@@ -39618,10 +44696,18 @@ def start_web_server(args_param):
                 "order_data": result.get("order_data", {}),
                 "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "created_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "expires_at": expires_at_iso,
+                "closed_at": None,
+                "refund_total": float(0),
                 "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
                 "user_agent": request.headers.get("User-Agent", ""),
                 "device": device,
             }
+            if len(valid_items) == 1:
+                order_data["billing_scope"] = {
+                    "school_id": valid_items[0].get("school_username"),
+                    "billing_id": valid_items[0].get("billing_id"),
+                }
             # 账单支付主动查询令牌（用于扫码后强鉴权主动查询）
             active_query_token = hashlib.sha256(
                 f"{out_trade_no}:{g.user}:{time.time()}:{random.randint(100000, 999999)}".encode("utf-8")
@@ -39637,6 +44723,27 @@ def start_web_server(args_param):
             order_data["active_query_token_expire_at"] = int(time.time()) + 600
             order_data["active_query_token_used"] = False
             _save_order_file_incremental(out_trade_no, order_data)
+
+            if len(valid_items) == 1:
+                cache_key = _build_billing_qr_cache_key(
+                    valid_items[0].get("school_username"),
+                    valid_items[0].get("billing_id"),
+                    pay_type,
+                )
+                cache_payload = {
+                    "order_id": out_trade_no,
+                    "pay_url": result.get("pay_url", ""),
+                    "pay_info": result.get("pay_info", ""),
+                    "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "expires_at": expires_at_iso,
+                    "status_snapshot": ORDER_STATUS_PENDING,
+                    "pay_type": pay_type,
+                }
+                index_data = _load_qr_cache_index()
+                index_data[cache_key] = cache_payload
+                _save_qr_cache_index(index_data)
+                order_data["last_qr_cache_key"] = cache_key
+                _save_order_file_incremental(out_trade_no, {"last_qr_cache_key": cache_key})
 
             # 关联订单号到账单 payment_orders
             for item in valid_items:
@@ -40432,277 +45539,6 @@ def start_web_server(args_param):
     # ==============================================================================
     # 支付验证接口 - 用于验证app_host的安全性
     # ==============================================================================
-
-    @app.route("/api/payment/verify_host", methods=["POST"])
-    @login_required
-    def payment_verify_host():
-        """
-        验证app_host是否为本服务器的安全接口
-
-        请求方法：POST
-        权限要求：需要登录（仅管理员应使用）
-
-        请求参数（JSON格式）：
-            - app_host (str): 需要验证的应用域名（例如："https://example.com"）
-
-        返回数据（JSON格式）：
-            - success (bool): 验证是否通过
-            - message (str): 验证结果信息
-            - verified (bool): 是否验证通过
-
-        功能说明：
-        这个接口使用随机验证码机制来验证传入的app_host是否确实是本服务器。
-        验证流程：
-        1. 生成一个6位随机字符串作为验证码（challenge）
-        2. 向 {app_host}/api/payment/verify_challenge 发送POST请求，携带验证码
-        3. 检查响应中返回的验证码是否与发送的一致
-        4. 如果一致，说明app_host指向的就是本服务器
-
-        安全意义：
-        - 防止攻击者配置错误的app_host导致支付回调被劫持
-        - 确保支付异步通知URL指向正确的服务器
-        - 使用随机验证码，每次验证都不同，防止重放攻击
-
-        使用场景：
-        - 管理员在配置彩虹易支付时，验证app_host配置是否正确
-        - 前端动态传入app_host前，先进行验证
-        """
-        # 声明使用全局 requests 变量
-        # requests 已在 check_and_import_dependencies() 中导入
-        global requests
-
-        try:
-            # 从请求体中获取JSON数据
-            data = request.get_json() or {}
-
-            # 提取需要验证的app_host参数
-            # strip() 去除首尾空白字符
-            app_host = data.get("app_host", "").strip()
-
-            # ========== 参数验证 ==========
-
-            # 验证app_host是否为空
-            if not app_host:
-                return jsonify({
-                    "success": False,
-                    "message": "app_host参数不能为空",
-                    "verified": False
-                })
-
-            # 验证app_host格式：必须以http://或https://开头
-            # 这确保了URL的基本格式正确
-            if not (app_host.startswith("http://") or app_host.startswith("https://")):
-                return jsonify({
-                    "success": False,
-                    "message": "app_host格式不正确，必须以http://或https://开头",
-                    "verified": False
-                })
-
-            # 移除app_host末尾的斜杠（如果存在）
-            # 这样可以统一URL格式，避免出现双斜杠的情况
-            # 例如：https://example.com/ -> https://example.com
-            app_host = app_host.rstrip('/')
-
-            # ========== 生成随机验证码 ==========
-
-            # 生成一个2048位的随机字符串作为验证码（challenge）
-            # 使用大小写字母和数字的组合，确保极高的安全性和随机性
-            # string.ascii_letters 包含所有大小写字母（a-z, A-Z，共52个字符）
-            # string.digits 包含所有数字（0-9，共10个字符）
-            # 总共62个字符的字符集，2048位随机字符串的组合数为 62^2048
-            # import string
-            # random.choices() 从给定字符集中随机选择k个字符
-            # k=2048 表示生成2048位验证码，提供极高的安全强度
-            # ''.join() 将字符列表拼接成字符串
-            challenge = ''.join(random.choices(
-                string.ascii_letters + string.digits, k=2048))
-
-            # 记录日志：开始验证app_host
-            # 由于验证码长度为2048位，日志中只记录前32位和后32位，避免日志过长
-            challenge_preview = f"{challenge[:32]}...{challenge[-32:]}" if len(
-                challenge) > 64 else challenge
-            logging.info(
-                f"[支付验证] 开始验证app_host: {app_host}, 验证码长度: {len(challenge)}位, 预览: {challenge_preview}")
-
-            # ========== 发送验证请求 ==========
-
-            # 构造验证接口的完整URL
-            # 格式：{app_host}/api/payment/verify_challenge
-            verify_url = f"{app_host}/api/payment/verify_challenge"
-
-            try:
-                # 向verify_challenge接口发送POST请求
-                # json参数：以JSON格式发送验证码
-                # timeout参数：设置5秒超时，避免长时间等待
-                # 5秒对于本地服务器已经足够，如果5秒内无响应说明可能不是本服务器
-                response = requests.post(
-                    verify_url,
-                    json={"challenge": challenge},
-                    timeout=5
-                )
-
-                # 检查HTTP响应状态码
-                # 200表示请求成功
-                if response.status_code == 200:
-                    # 尝试解析响应JSON
-                    try:
-                        result = response.json()
-
-                        # 从响应中提取返回的验证码
-                        returned_challenge = result.get("challenge", "")
-
-                        # 对比发送的验证码和返回的验证码
-                        # 如果完全一致，说明确实是本服务器
-                        if returned_challenge == challenge:
-                            # 验证通过
-                            logging.info(f"[支付验证] app_host验证通过: {app_host}")
-                            return jsonify({
-                                "success": True,
-                                "message": "验证通过，这是本服务器",
-                                "verified": True
-                            })
-                        else:
-                            # 验证码不匹配，验证失败
-                            logging.warning(
-                                f"[支付验证] 验证码不匹配 - 发送: {challenge}, 返回: {returned_challenge}"
-                            )
-                            return jsonify({
-                                "success": False,
-                                "message": "验证失败：返回的验证码不匹配",
-                                "verified": False
-                            })
-
-                    except json.JSONDecodeError:
-                        # 响应不是有效的JSON格式
-                        logging.warning(f"[支付验证] 响应不是有效的JSON格式")
-                        return jsonify({
-                            "success": False,
-                            "message": "验证失败：响应格式不正确",
-                            "verified": False
-                        })
-
-                else:
-                    # HTTP状态码不是200
-                    logging.warning(
-                        f"[支付验证] HTTP请求失败 - 状态码: {response.status_code}"
-                    )
-                    return jsonify({
-                        "success": False,
-                        "message": f"验证失败：HTTP状态码 {response.status_code}",
-                        "verified": False
-                    })
-
-            except requests.exceptions.Timeout:
-                # 请求超时
-                logging.warning(f"[支付验证] 请求超时 - {verify_url}")
-                return jsonify({
-                    "success": False,
-                    "message": "验证失败：请求超时（5秒）",
-                    "verified": False
-                })
-
-            except requests.exceptions.ConnectionError:
-                # 连接错误（网络不通或域名无法解析）
-                logging.warning(f"[支付验证] 连接失败 - {verify_url}")
-                return jsonify({
-                    "success": False,
-                    "message": "验证失败：无法连接到目标服务器",
-                    "verified": False
-                })
-
-            except Exception as e:
-                # 其他异常
-                logging.error(f"[支付验证] 验证过程异常: {str(e)}")
-                return jsonify({
-                    "success": False,
-                    "message": f"验证失败：{str(e)}",
-                    "verified": False
-                })
-
-        except Exception as e:
-            # 捕获最外层的所有异常
-            logging.error(f"[支付验证] verify_host接口异常: {str(e)}")
-            logging.error(traceback.format_exc())
-            return jsonify({
-                "success": False,
-                "message": f"验证失败：{str(e)}",
-                "verified": False
-            }), 500
-
-    @app.route("/api/payment/verify_challenge", methods=["POST"])
-    def payment_verify_challenge():
-        """
-        验证挑战响应接口（用于配合verify_host验证）
-
-        本接口的作用：
-        1. 接收客户端发送的 challenge（验证码）
-        2. 验证请求来源IP是否为内网或服务器自己的公网IP
-        3. 如果验证通过，将 challenge 存储到全局变量中
-        4. 返回验证成功的响应（不包含challenge，由全局变量存储）
-
-        新的验证机制：
-        - 不再在响应中返回 challenge
-        - 而是存储到全局变量 payment_verify_challenge_get 中
-        - create_order 方法会从全局变量中读取进行比对
-        """
-        try:
-            # 从请求体中获取JSON数据
-            # 使用 request.get_json() 解析请求体中的 JSON 数据
-            # 如果解析失败或请求体为空，则返回空字典
-            data = request.get_json() or {}
-
-            # 提取验证码参数
-            # 使用.get()方法安全地获取，如果不存在返回空字符串
-            # 这样可以避免 KeyError 异常
-            challenge = data.get("challenge", "")
-
-            # 记录日志：收到验证请求
-            # 记录请求来源IP，用于安全审计
-            client_ip = request.environ.get(
-                "REMOTE_ADDR") or request.remote_addr
-            logging.info(
-                f"[支付验证] 收到验证请求 - 来源IP: {client_ip}, 验证码长度: {len(challenge)}位")
-
-            # 验证请求来源IP是否被允许
-            # 使用新的 IPVerifier.is_allowed_ip() 函数，支持 IPv4/IPv6 和公网IP验证
-            if not IPVerifier().is_allowed_ip(client_ip):
-                # IP验证失败：不是内网IP，也不是服务器的公网IP
-                # 返回403 Forbidden状态码，拒绝访问
-                logging.warning(f"[支付验证] IP验证失败 - 拒绝访问: {client_ip}")
-                return jsonify({
-                    "success": False,
-                    "message": "仅允许内网IP或服务器本机IP访问此接口",
-                }), 403
-
-            # IP验证通过，将接收到的 challenge 存储到全局变量
-            # 声明使用全局变量 payment_verify_challenge_get
-            global payment_verify_challenge_get
-
-            # 将 challenge 赋值给全局变量
-            # 这个值将在 create_order 方法中被读取用于验证
-            payment_verify_challenge_get = challenge
-
-            # 记录日志：成功存储验证码
-            # 只记录验证码的长度，不记录完整内容（太长）
-            logging.info(f"[支付验证] 验证码已存储到全局变量，长度: {len(challenge)}位")
-
-            # 返回验证成功响应
-            # 注意：新的机制中不再返回 challenge
-            # 只返回 success: True，表示验证码已成功接收和存储
-            return jsonify({
-                "success": True
-            })
-
-        except Exception as e:
-            # 捕获所有异常
-            # 即使出现异常，也返回错误信息而不是让请求失败
-            # 这样可以让调用方知道发生了什么错误
-            logging.error(f"[支付验证] verify_challenge接口异常: {str(e)}")
-            logging.error(traceback.format_exc())
-            return jsonify({
-                "success": False,
-                "message": f"处理失败：{str(e)}"
-            }), 500
 
     # ==============================================================================
     # 支付管理接口 - 管理员配置支付方式
@@ -41863,7 +46699,7 @@ def start_web_server(args_param):
                 payment_timeout_minutes = config.get(
                     "Rainbow_YiPay",
                     "payment_timeout_minutes",
-                    fallback="30"  # 默认值：30秒
+                    fallback="900"  # 默认值：900秒（15分钟）
                 )
 
                 # 构造返回数据
@@ -41956,11 +46792,11 @@ def start_web_server(args_param):
 
                 # 获取新的 payment_timeout_minutes 值（支付超时时间）
                 # 单位：秒，表示订单创建后多长时间内未支付视为超时
-                # 从请求数据中获取，如果不存在则使用当前配置值，默认为30秒
+                # 从请求数据中获取，如果不存在则使用当前配置值，默认为900秒（15分钟）
                 new_payment_timeout_minutes = data.get(
                     "payment_timeout_minutes",
                     config.get("Rainbow_YiPay",
-                               "payment_timeout_minutes", fallback="30")
+                               "payment_timeout_minutes", fallback="900")
                 ).strip()
 
                 # ========== 验证参数的有效性 ==========
@@ -42514,7 +47350,7 @@ def start_web_server(args_param):
             user_filter = request.args.get("user_id", "").strip()
 
             # 操作类型筛选（可选）
-            action_filter = request.args.get("action", "").strip()
+            action_filter = request.args.get("action_type", request.args.get("action", "")).strip()
 
             # 日期范围筛选（可选）
             start_date_str = request.args.get("start_date", "").strip()
@@ -44558,9 +49394,8 @@ def start_web_server(args_param):
                                         break
                                     rec["status"] = "admin_cleared"
                                     rec["admin_cleared_by"] = admin_username
-                                    rec["admin_cleared_at"] = datetime.datetime.now(datetime.timezone.utc).strftime(
-                                        "%Y-%m-%dT%H:%M:%SZ"
-                                    )
+                                    rec["admin_cleared_at"] = _billing_now_utc_string()
+                                    rec["admin_cleared_at_beijing"] = _billing_now_beijing_string()
                                     try:
                                         with open(fpath, "w", encoding="utf-8") as _f:
                                             json.dump(rec, _f, indent=2, ensure_ascii=False)
@@ -45132,93 +49967,1181 @@ def start_web_server(args_param):
     # 健康检查和监控接口
     # ==============================================================================
 
-    @app.route("/health")
-    def health():
+    _register_health_route(app)
+    _register_payment_routes(app, login_required)
+    _register_sms_routes(app, login_required)
+
+    @app.route("/api/billing/list", methods=["GET"])
+    @login_required
+    def billing_list():
         """
-        健康检查端点
+        获取当前用户有权限学校账号的账单记录列表（按创建时间降序排列）。
+        需要用户登录。
         """
-
-        # ========== 记录请求开始时间（用于计算响应延迟） ==========
-        request_start_time = time.time()
-
-        # ========== 计算服务器运行时间 ==========
-        current_time = time.time()
-        uptime_seconds = (
-            current_time - server_start_time if "server_start_time" in globals() else 0
-        )
-
-        def format_uptime(seconds):
-            """
-            将秒数转换为人类可读的时间格式。
-            """
-            days = int(seconds // 86400)
-            seconds %= 86400
-            hours = int(seconds // 3600)
-            seconds %= 3600
-            minutes = int(seconds // 60)
-            seconds = int(seconds % 60)
-            parts = []
-            if days > 0:
-                parts.append(f"{days}天")
-            if hours > 0:
-                parts.append(f"{hours}小时")
-            if minutes > 0:
-                parts.append(f"{minutes}分钟")
-            if seconds > 0 or len(parts) == 0:
-                parts.append(f"{seconds}秒")
-
-            return "".join(parts)
-
-        uptime_formatted = format_uptime(uptime_seconds)
-
-        # ========== 获取活跃会话数 ==========
-        active_sessions = len(web_sessions) - 1 if web_sessions else 0
-        active_sessions = max(0, active_sessions)
-        # ========== 获取后台任务数 ==========
-        active_tasks = 0
-        if background_task_manager:
-            with background_task_manager.lock:
-                active_tasks = len(background_task_manager.tasks)
-        # ========== 获取Chrome上下文数（线程安全） ==========
-        contexts_count = 0
-        if chrome_pool and hasattr(chrome_pool, "_contexts"):
-            # 使用新的专用线程模式中的 _contexts 属性
-            contexts_count = len(getattr(chrome_pool, "_contexts", {}))
-        # ========== 获取CDN缓存状态 ==========
-        cdn_cache_status = {}
         try:
-            with js_cache_lock:
-                for key, config in CDN_FILES.items():
-                    cdn_cache_status[key] = {
-                        "type": config["type"],
-                        "cached": key in js_cache_storage,
-                        "last_update_time": (
-                            datetime.datetime.fromtimestamp(
-                                js_cache_last_update[key]
-                            ).strftime("%Y-%m-%d %H:%M:%S")
-                            if key in js_cache_last_update
-                            else None
-                        ),
-                    }
-        except Exception as e:
-            logging.warning(f"[健康检查] 获取CDN缓存状态失败: {e}")
-        # ========== 计算响应延迟 ==========
-        request_end_time = time.time()
-        response_time_ms = round(
-            (request_end_time - request_start_time) * 1000, 2)
-        # ========== 返回健康检查信息 ==========
-        return jsonify(
-            {
-                "status": "ok",
-                "uptime_seconds": int(uptime_seconds),
-                "uptime_formatted": uptime_formatted,
-                "active_memory_sessions": active_sessions,
-                "active_background_tasks": active_tasks,
-                "current_thread_chrome_contexts": contexts_count,
-                "cdn_cache": cdn_cache_status,
-                "response_time_ms": response_time_ms,
+            school_username = request.args.get("school_username", "").strip()
+            billing_root = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+            )
+
+            # 仅允许读取当前用户有权限的学校账号账单
+            try:
+                allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            except Exception:
+                allowed_schools = set()
+
+            if school_username:
+                if school_username not in allowed_schools:
+                    return jsonify({"success": True, "records": [], "total": 0})
+                target_schools = [school_username]
+            else:
+                target_schools = sorted(allowed_schools)
+
+            records = []
+
+            def _load_school_name(_school_username: str) -> str:
+                try:
+                    for _backup_path in [
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, _school_username, f"{_school_username}_backup.json"),
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, f"{_school_username}_backup.json"),
+                    ]:
+                        if os.path.exists(_backup_path):
+                            try:
+                                with open(_backup_path, "r", encoding="utf-8") as f:
+                                    backup_data = json.load(f)
+                                _name = (
+                                    ((backup_data.get("userInfo") or {}).get("name") or "").strip()
+                                    or ((backup_data.get("deptInfo") or {}).get("name") or "").strip()
+                                )
+                                if _name:
+                                    return _name
+                            except Exception as _name_err:
+                                logging.warning(
+                                    f"[账单列表] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                                )
+                except Exception as _name_err:
+                    logging.warning(
+                        f"[账单列表] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                    )
+                return _school_username
+
+            school_name_map = {
+                school: _load_school_name(school) for school in target_schools
             }
-        )
+
+            for school in target_schools:
+                user_billing_dir = os.path.join(billing_root, school)
+                if not os.path.isdir(user_billing_dir):
+                    continue
+                for filename in os.listdir(user_billing_dir):
+                    if not filename.endswith(".json"):
+                        continue
+                    filepath = os.path.join(user_billing_dir, filename)
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            record = json.load(f)
+                        try:
+                            _migrate_billing_file_beijing_times(filepath, record)
+                        except Exception as _migration_err:
+                            logging.warning(f"[账单列表] 迁移账单时间字段失败 {filename}: {_migration_err}")
+                        record["school_name"] = school_name_map.get(
+                            school, school
+                        )
+                        records.append(record)
+                    except Exception as e:
+                        logging.warning(f"[账单列表] 读取账单文件 {filename} 失败: {e}")
+
+            # 按创建时间降序排列
+            records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+            for _r in records:
+                if _r.get("amount") is not None:
+                    try:
+                        _r["amount"] = round(float(_r["amount"]), 2)
+                    except Exception:  # nosec B110 - 金额格式化失败保留原值
+                        pass
+            return jsonify({"success": True, "records": records, "total": len(records)})
+        except Exception as e:
+            logging.error(f"[账单列表] 获取账单列表失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取账单列表失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/list", methods=["GET"])
+    @admin_required
+    def admin_billing_list():
+        """
+        管理员接口：获取有权限学校账号的账单记录列表。
+        可选查询参数: school_username（指定学校账号）
+        """
+        try:
+            school_username = request.args.get("school_username", "").strip()
+            keyword = request.args.get("keyword", "").strip()
+            page = max(1, int(request.args.get("page", "1") or 1))
+            page_size = max(1, min(100, int(request.args.get("page_size", "50") or 50)))
+            billing_root = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+            )
+            records = []
+
+            # 仅允许读取当前管理员有权限的学校账号账单
+            try:
+                allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            except Exception:
+                allowed_schools = set()
+
+            if school_username:
+                if school_username not in allowed_schools:
+                    return jsonify({
+                        "success": True,
+                        "records": [],
+                        "total": 0,
+                        "summary": {
+                            "total_count": 0,
+                            "paid_count": 0,
+                            "pending_count": 0,
+                            "admin_cleared_count": 0,
+                            "total_amount": 0.0,
+                            "paid_amount": 0.0,
+                            "pending_amount": 0.0,
+                            "admin_cleared_amount": 0.0,
+                        },
+                        "page": page,
+                        "page_size": page_size,
+                    })
+                target_schools = [school_username]
+            else:
+                target_schools = sorted(allowed_schools)
+
+            def _load_admin_school_name(_school_username: str) -> str:
+                try:
+                    for _backup_path in [
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, _school_username, f"{_school_username}_backup.json"),
+                        os.path.join(SCHOOL_ACCOUNTS_DIR, f"{_school_username}_backup.json"),
+                    ]:
+                        if os.path.exists(_backup_path):
+                            try:
+                                with open(_backup_path, "r", encoding="utf-8") as f:
+                                    backup_data = json.load(f)
+                                _name = (
+                                    ((backup_data.get("userInfo") or {}).get("name") or "").strip()
+                                    or ((backup_data.get("deptInfo") or {}).get("name") or "").strip()
+                                )
+                                if _name:
+                                    return _name
+                            except Exception as _name_err:
+                                logging.warning(
+                                    f"[管理员账单] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                                )
+                except Exception as _name_err:
+                    logging.warning(
+                        f"[管理员账单] 读取学校账号 {_school_username} 对应姓名失败: {_name_err}"
+                    )
+                return _school_username
+
+            school_name_map = {
+                school: _load_admin_school_name(school) for school in target_schools
+            }
+
+            def _billing_matches_keyword(record, keyword):
+                if not keyword:
+                    return True
+                keyword_lower = keyword.lower()
+                haystack = [
+                    str(record.get("school_username", "")),
+                    str(record.get("school_name", "")),
+                    str(record.get("reason", "")),
+                    str(record.get("billing_id", "")),
+                    str(record.get("order_id", "")),
+                    str(record.get("payment_order_id", "")),
+                    str(record.get("payment_trace_id", "")),
+                    str(record.get("auth_username", "")),
+                    str(record.get("nickname", "")),
+                    str(record.get("phone", "")),
+                ]
+                combined = "\n".join(haystack).lower()
+                return keyword_lower in combined
+
+            for school in target_schools:
+                user_billing_dir = os.path.join(billing_root, school)
+                if not os.path.isdir(user_billing_dir):
+                    continue
+                for filename in os.listdir(user_billing_dir):
+                    if not filename.endswith(".json"):
+                        continue
+                    filepath = os.path.join(user_billing_dir, filename)
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            record = json.load(f)
+                        try:
+                            _migrate_billing_file_beijing_times(filepath, record)
+                        except Exception as _migration_err:
+                            logging.warning(f"[管理员账单] 迁移账单时间字段失败 {filename}: {_migration_err}")
+                        record["school_name"] = school_name_map.get(school, school)
+                        records.append(record)
+                    except Exception as e:
+                        logging.warning(f"[管理员账单] 读取账单文件 {filename} 失败: {e}")
+
+            records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+            for _r in records:
+                if _r.get("amount") is not None:
+                    try:
+                        _r["amount"] = round(float(_r["amount"]), 2)
+                    except Exception:  # nosec B110 - 金额格式化失败保留原值
+                        pass
+
+            filtered_records = [record for record in records if _billing_matches_keyword(record, keyword)]
+            summary = {
+                "total_count": len(filtered_records),
+                "paid_count": 0,
+                "pending_count": 0,
+                "admin_cleared_count": 0,
+                "total_amount": 0.0,
+                "paid_amount": 0.0,
+                "pending_amount": 0.0,
+                "admin_cleared_amount": 0.0,
+            }
+            for record in filtered_records:
+                amount = round(float(record.get("amount", 0) or 0), 2)
+                status = str(record.get("status", "pending")).strip().lower()
+                summary["total_amount"] += amount
+                if status == "paid":
+                    summary["paid_count"] += 1
+                    summary["paid_amount"] += amount
+                elif status == "admin_cleared":
+                    summary["admin_cleared_count"] += 1
+                    summary["admin_cleared_amount"] += amount
+                else:
+                    summary["pending_count"] += 1
+                    summary["pending_amount"] += amount
+
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            page_records = filtered_records[start_idx:end_idx]
+            total = len(filtered_records)
+            return jsonify({"success": True, "records": page_records, "total": total, "summary": summary, "page": page, "page_size": page_size})
+        except Exception as e:
+            logging.error(f"[管理员账单] 获取账单列表失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取账单列表失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/update", methods=["POST"])
+    @admin_required
+    def admin_billing_update():
+        """
+        管理员接口：修改账单信息（描述/状态/金额）。
+        请求体:
+        {
+          "billing_id": "<账单ID>",
+          "school_username": "<学校账号>",
+          "reason": "<新描述，可选>",
+          "status": "pending|paid|admin_cleared（可选）",
+          "amount": 1.23（可选）
+        }
+        """
+        try:
+            data = request.get_json() or {}
+            billing_id = data.get("billing_id", "").strip()
+            school_username = data.get("school_username", "").strip()
+
+            if not billing_id or not school_username:
+                return jsonify({"success": False, "message": "billing_id 和 school_username 不能为空"}), 400
+
+            allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            if school_username not in allowed_schools:
+                return jsonify({"success": False, "message": "无权操作该学校账号的账单"}), 403
+
+            operator_username = _get_billing_operator_username()
+            billing_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+                school_username
+            )
+            billing_file = os.path.join(billing_dir, f"{billing_id}.json")
+
+            if not os.path.exists(billing_file):
+                return jsonify({"success": False, "message": "账单记录不存在"}), 404
+
+            with open(billing_file, "r", encoding="utf-8") as f:
+                record = json.load(f)
+
+            old_reason = str(record.get("reason", ""))
+            old_amount = round(float(record.get("amount", 0) or 0), 2)
+            old_status = str(record.get("status", "pending")).strip().lower()
+            changed_fields = []
+            now_utc = _billing_now_utc_string()
+            now_beijing = _billing_now_beijing_string()
+
+            if "reason" in data:
+                new_reason = str(data.get("reason", "")).strip()
+                if new_reason != str(record.get("reason", "")):
+                    record["reason"] = new_reason
+                    record["reason_updated_at"] = now_utc
+                    record["reason_updated_at_beijing"] = now_beijing
+                    record["reason_updated_by"] = g.user
+                    changed_fields.append("reason")
+
+            if "amount" in data and str(data.get("amount", "")).strip() != "":
+                try:
+                    new_amount = round(float(data.get("amount")), 2)
+                    if new_amount <= 0:
+                        return jsonify({"success": False, "message": "金额必须大于 0"}), 400
+                except (TypeError, ValueError):
+                    return jsonify({"success": False, "message": "amount 必须是有效数字"}), 400
+                if new_amount != old_amount:
+                    record["amount"] = new_amount
+                    changed_fields.append("amount")
+
+            if "status" in data and str(data.get("status", "")).strip():
+                new_status = str(data.get("status", "")).strip().lower()
+                valid_status = {"pending", "paid", "admin_cleared"}
+                if new_status not in valid_status:
+                    return jsonify({"success": False, "message": "status 必须是 pending/paid/admin_cleared"}), 400
+
+                if new_status == "admin_cleared" and old_status != "pending":
+                    return jsonify({"success": False, "message": "只有待支付账单才能被管理员清除"}), 400
+                if old_status == "admin_cleared" and new_status == "admin_cleared":
+                    return jsonify({"success": False, "message": "该账单已被管理员清除，请勿重复操作"}), 400
+
+                if new_status != old_status:
+                    record["status"] = new_status
+                    changed_fields.append("status")
+
+                    if new_status == "paid":
+                        record["paid_at"] = now_utc
+                        record["paid_at_beijing"] = now_beijing
+                        record["paid_by"] = g.user
+                    elif old_status == "paid":
+                        record.pop("paid_by", None)
+                        record.pop("paid_at_beijing", None)
+                        record["paid_at"] = ""
+
+                    if new_status == "admin_cleared":
+                        record["admin_cleared_at"] = now_utc
+                        record["admin_cleared_at_beijing"] = now_beijing
+                        record["admin_cleared_by"] = g.user
+                    elif old_status == "admin_cleared":
+                        record.pop("admin_cleared_at", None)
+                        record.pop("admin_cleared_at_beijing", None)
+                        record.pop("admin_cleared_by", None)
+
+            if not changed_fields:
+                return jsonify({"success": False, "message": "未检测到可更新内容"}), 400
+
+            record["updated_at"] = now_utc
+            record["updated_at_beijing"] = now_beijing
+            record["updated_by"] = g.user
+
+            with open(billing_file, "w", encoding="utf-8") as f:
+                json.dump(record, f, indent=2, ensure_ascii=False)
+
+            if "amount" in changed_fields:
+                _write_billing_log(
+                    "billing_amount_changed",
+                    record,
+                    operator_username,
+                    before={"amount": old_amount},
+                    after={"amount": record.get("amount")},
+                )
+            if "status" in changed_fields:
+                event_type = "billing_admin_cleared" if record.get("status") == "admin_cleared" else "billing_status_changed"
+                _write_billing_log(
+                    event_type,
+                    record,
+                    operator_username,
+                    before={"status": old_status},
+                    after={"status": record.get("status")},
+                )
+            if "reason" in changed_fields:
+                _write_billing_log(
+                    "billing_reason_changed",
+                    record,
+                    operator_username,
+                    before={"reason": old_reason},
+                    after={"reason": record.get("reason")},
+                )
+
+            auth_system.log_audit(
+                g.user,
+                "admin_update_billing",
+                f"修改学校账号 {school_username} 账单 {billing_id} 字段: {', '.join(changed_fields)}",
+            )
+            logging.info(f"[管理员账单] 管理员 {g.user} 修改账单 {billing_id} 字段: {', '.join(changed_fields)}")
+            return jsonify({"success": True, "message": "账单已更新", "changed_fields": changed_fields})
+        except Exception as e:
+            logging.error(f"[管理员账单] 修改账单失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"修改账单失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/delete", methods=["POST"])
+    @admin_required
+    def admin_billing_delete():
+        """
+        管理员接口：删除账单（软删除，移动到 ./User_Billing/Reomve/ 目录）。
+        请求体: {"billing_id": "<账单ID>", "school_username": "<学校账号>"}
+        """
+        try:
+            data = request.get_json() or {}
+            billing_id = str(data.get("billing_id", "")).strip()
+            school_username = str(data.get("school_username", "")).strip()
+
+            if not billing_id or not school_username:
+                return jsonify({"success": False, "message": "billing_id 和 school_username 不能为空"}), 400
+
+            allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            if school_username not in allowed_schools:
+                return jsonify({"success": False, "message": "无权操作该学校账号的账单"}), 403
+
+            billing_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+                school_username,
+                f"{billing_id}.json"
+            )
+            if not os.path.exists(billing_file):
+                return jsonify({"success": False, "message": "账单记录不存在"}), 404
+
+            operator_username = _get_billing_operator_username()
+            deleted_record = _read_billing_record_by_school_username(school_username, billing_id) or {
+                "billing_id": billing_id,
+                "school_username": school_username,
+            }
+
+            remove_dir = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "Reomve",
+                school_username,
+            )
+            os.makedirs(remove_dir, exist_ok=True)
+            target_file = os.path.join(remove_dir, f"{billing_id}.json")
+            if os.path.exists(target_file):
+                suffix = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+                target_file = os.path.join(remove_dir, f"{billing_id}_{suffix}.json")
+
+            shutil.move(billing_file, target_file)
+            _write_billing_log(
+                "billing_deleted",
+                deleted_record,
+                operator_username,
+                details=f"账单已移动到 {target_file}",
+                before={"status": deleted_record.get("status")},
+                after={"status": "deleted"},
+            )
+            auth_system.log_audit(
+                g.user,
+                "admin_delete_billing",
+                f"删除学校账号 {school_username} 账单 {billing_id}，移动到 {target_file}",
+            )
+            logging.info(f"[管理员账单] 管理员 {g.user} 删除账单 {billing_id} -> {target_file}")
+            return jsonify({"success": True, "message": "账单已删除（已移动到 Reomve 目录）"})
+        except Exception as e:
+            logging.error(f"[管理员账单] 删除账单失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"删除账单失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/logs", methods=["GET"])
+    @admin_required
+    def admin_billing_logs():
+        try:
+            keyword = request.args.get("keyword", "").strip()
+            event_type = request.args.get("event_type", "").strip()
+            page = max(1, int(request.args.get("page", "1") or 1))
+            page_size = max(1, min(100, int(request.args.get("page_size", "50") or 50)))
+            logs = []
+            if os.path.exists(BILLING_LOGS_DIR):
+                for filename in os.listdir(BILLING_LOGS_DIR):
+                    if not filename.endswith(".json"):
+                        continue
+                    log_path = os.path.join(BILLING_LOGS_DIR, filename)
+                    if not os.path.isfile(log_path):
+                        continue
+                    try:
+                        with open(log_path, "r", encoding="utf-8") as fp:
+                            payload = json.load(fp)
+                    except Exception:
+                        continue
+                    if event_type and str(payload.get("event_type", "")).strip().lower() != event_type.lower():
+                        continue
+                    if not _billing_log_matches_keyword(payload, keyword):
+                        continue
+                    logs.append(payload)
+            logs.sort(key=_safe_billing_log_sort_key, reverse=True)
+            total = len(logs)
+            start_idx = (page - 1) * page_size
+            page_logs = logs[start_idx:start_idx + page_size]
+            return jsonify({"success": True, "logs": page_logs, "total": total, "page": page, "page_size": page_size})
+        except Exception as e:
+            logging.error(f"[管理员账单] 获取账单日志失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取账单日志失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/billing/add", methods=["POST"])
+    @login_required
+    @admin_required
+    def admin_billing_add():
+        """
+        管理员接口：直接为指定用户创建账单记录。
+        支持两种模式：
+          - count（次数模式，默认）：指定欠费次数，金额 = 次数 × single_run_cost
+          - amount（金额模式）：直接指定自定义金额
+
+        请求体 JSON:
+        {
+          "auth_username": "user123",      // 目标用户名（必填）
+          "school_username": "2021001",   // 学校账号（必填）
+          "mode": "count",                // "count"（默认）或 "amount"
+          "count": 1,                     // 次数（mode=count 时使用）
+          "amount": 5.0,                  // 金额（mode=amount 时使用）
+          "reason": "手动补录欠费"         // 原因（为空时自动生成）
+        }
+
+        返回:
+          {"success": true, "billing_id": "...", "message": "账单已创建"}
+        """
+        try:
+            data = request.get_json() or {}
+            school_username = str(data.get("school_username", "")).strip()
+            mode = str(data.get("mode", "count")).strip().lower()
+            reason = str(data.get("reason", "")).strip()
+
+            if not school_username:
+                return jsonify({"success": False, "message": "school_username 不能为空"}), 400
+
+            allowed_schools = set((g.api_instance._load_user_school_accounts(g.user) or {}).keys())
+            if school_username not in allowed_schools:
+                return jsonify({"success": False, "message": "无权为该学校账号创建账单"}), 403
+
+            if mode not in ("count", "amount"):
+                return jsonify({"success": False, "message": "mode 必须是 'count' 或 'amount'"}), 400
+
+            admin_username = g.user if hasattr(g, "user") else "unknown"
+            if isinstance(admin_username, dict):
+                admin_username = admin_username.get("auth_username", "unknown")
+
+            if mode == "count":
+                try:
+                    count = int(data.get("count", 1))
+                    if count < 1:
+                        return jsonify({"success": False, "message": "次数必须大于 0"}), 400
+                except (ValueError, TypeError):
+                    return jsonify({"success": False, "message": "次数必须是正整数"}), 400
+
+                # 从配置读取单次费用
+                try:
+                    _cfg = _read_config_ini(CONFIG_FILE)
+                    single_run_cost = round(float(_cfg.get("Payment_Settings", "single_run_cost", fallback="1.0")), 2) if _cfg else 1.0
+                except Exception:
+                    single_run_cost = 1.0
+
+                total_amount = round(single_run_cost * count, 2)
+                if not reason:
+                    reason = f"管理员补录：{_build_run_billing_reason(count, single_run_cost)}"
+
+            else:  # amount mode
+                try:
+                    total_amount = round(float(data.get("amount", 0)), 2)
+                    if total_amount <= 0:
+                        return jsonify({"success": False, "message": "金额必须大于 0"}), 400
+                except (ValueError, TypeError):
+                    return jsonify({"success": False, "message": "金额必须是有效数字"}), 400
+
+                if not reason:
+                    reason = f"管理员手动添加账单 ¥{total_amount}"
+
+            billing_id = _create_user_billing_record("", school_username, reason, total_amount)
+            if not billing_id:
+                return jsonify({"success": False, "message": "创建账单记录失败，请检查日志"}), 500
+
+            created_record = _read_billing_record_by_school_username(school_username, billing_id) or {
+                "billing_id": billing_id,
+                "school_username": school_username,
+                "amount": total_amount,
+                "reason": reason,
+                "status": "pending",
+            }
+            _write_billing_log(
+                "billing_created",
+                created_record,
+                admin_username,
+                details=f"管理员创建账单，模式={mode}",
+                after={
+                    "amount": created_record.get("amount"),
+                    "status": created_record.get("status"),
+                    "reason": created_record.get("reason"),
+                },
+            )
+
+            auth_system.log_audit(
+                admin_username,
+                "admin_add_billing",
+                f"为学校账号 {school_username} 创建账单: {billing_id}, "
+                f"模式={mode}, 金额=¥{total_amount}, 原因={reason!r}",
+            )
+            logging.info(
+                f"[管理员账单] {admin_username} 为 {school_username} "
+                f"创建账单 {billing_id}，模式={mode}，金额=¥{total_amount}"
+            )
+            return jsonify({
+                "success": True,
+                "billing_id": billing_id,
+                "amount": total_amount,
+                "message": f"账单已创建（¥{total_amount}）",
+            })
+        except Exception as e:
+            logging.error(f"[管理员账单] 创建账单失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"创建账单失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/restore_account", methods=["POST"])
+    @admin_required
+    def admin_restore_account():
+        """
+        管理员接口：从 Remove_Acoount 恢复已删除的用户账号。
+        请求体:
+          {
+            "auth_username": "<备份中的原用户名>",
+            "restore_as": "<恢复后使用的用户名，可选，默认同 auth_username>",
+            "phone_override": "<新手机号，可选；空字符串表示强制清空手机号>",
+            "force_phone_clear": true  // 可选，为 true 时强制清空手机号
+          }
+        冲突响应（409）：
+          {"success": false, "conflict": "username"|"phone",
+           "conflicting_user": "...", "phone": "...", "message": "..."}
+        """
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({"success": False, "message": "请求体不能为空"}), 400
+
+            auth_username = data.get("auth_username", "").strip()
+            if not auth_username:
+                return jsonify({"success": False, "message": "auth_username 不能为空"}), 400
+
+            # restore_as: 恢复后使用的用户名（默认与备份用户名相同）
+            restore_as = data.get("restore_as", "").strip() or auth_username
+            # phone_override: 覆盖手机号（None=不覆盖；""=清空；其他=新手机号）
+            phone_override = data.get("phone_override", None)
+            if phone_override is not None:
+                phone_override = str(phone_override).strip()
+            force_phone_clear = bool(data.get("force_phone_clear", False))
+
+            # 确定 Remove_Acoount 目录路径
+            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
+            index_path = os.path.join(remove_account_dir, "_index.json")
+
+            # 检查索引文件是否存在
+            if not os.path.exists(index_path):
+                return jsonify({"success": False, "message": "没有找到删除记录索引"}), 404
+
+            # 读取索引
+            with open(index_path, "r", encoding="utf-8") as f:
+                ra_index = json.load(f)
+
+            removed_accounts = ra_index.get("removed_accounts", {})
+            if auth_username not in removed_accounts:
+                return jsonify({"success": False, "message": f"未找到用户 {auth_username} 的删除记录"}), 404
+
+            # 获取备份文件名
+            entry = removed_accounts[auth_username]
+            backup_file = entry.get("backup_file", "")
+            backup_path = os.path.join(remove_account_dir, backup_file)
+
+            if not os.path.exists(backup_path):
+                return jsonify({"success": False, "message": f"备份文件不存在: {backup_file}"}), 404
+
+            # 读取备份数据
+            with open(backup_path, "r", encoding="utf-8") as f:
+                backup_data = json.load(f)
+
+            user_data = backup_data.get("user_data", {})
+            school_accounts_data = backup_data.get("school_accounts")
+            permissions_data = backup_data.get("permissions", {})
+
+            if not user_data:
+                return jsonify({"success": False, "message": "备份数据损坏：缺少用户数据"}), 500
+
+            # ── 读取 system_accounts/_index.json（用于冲突双重检测）──────────
+            sys_index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", "_index.json")
+            sys_index_data = {}
+            if os.path.exists(sys_index_path):
+                try:
+                    with open(sys_index_path, "r", encoding="utf-8") as f:
+                        sys_index_data = json.load(f)
+                except Exception:
+                    sys_index_data = {}
+            sys_accounts = sys_index_data.get("accounts", {})  # {username: hash}
+
+            # ── 冲突检测 1：用户名是否已存在（文件 + 索引双重校验）────────────
+            # 1a. 用户名已在索引中出现 → 用户名冲突
+            if restore_as in sys_accounts:
+                return jsonify({
+                    "success": False,
+                    "conflict": "username",
+                    "conflicting_username": restore_as,
+                    "message": f"用户名 {restore_as} 已存在，请更换用户名后重试"
+                }), 409
+            # 1b. 文件系统中存在对应文件（兜底，防止索引与文件不同步）
+            target_hash = hashlib.sha256(str(restore_as).encode()).hexdigest()
+            target_user_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{target_hash}.json")
+            if os.path.exists(target_user_file):
+                return jsonify({
+                    "success": False,
+                    "conflict": "username",
+                    "conflicting_username": restore_as,
+                    "message": f"用户名 {restore_as} 已存在，请更换用户名后重试"
+                }), 409
+
+            # ── UUID 冲突检测：目标 hash 是否已被另一用户名占用 ────────────────
+            # （理论上 sha256 不会碰撞，但若索引/文件不同步可能出现游离 hash）
+            assigned_hash = target_hash  # 默认使用 sha256(restore_as)
+            existing_owner = next(
+                (uname for uname, uhash in sys_accounts.items() if uhash == target_hash),
+                None
+            )
+            if existing_owner and existing_owner != restore_as:
+                # UUID 冲突：该 hash 已被另一个用户名占用，重新分配一个随机 UUID
+                new_uuid = str(uuid.uuid4())
+                while (
+                    os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{new_uuid}.json"))
+                    or new_uuid in sys_accounts.values()
+                ):
+                    new_uuid = str(uuid.uuid4())
+                assigned_hash = new_uuid
+                logging.warning(
+                    f"[恢复账号] UUID 冲突：hash {target_hash[:8]}... 已被用户 {existing_owner} 占用，"
+                    f"已为 {restore_as} 重新分配 UUID: {new_uuid[:8]}..."
+                )
+
+            # 最终目标文件路径（使用 assigned_hash，可能是重新分配的 UUID）
+            target_user_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{assigned_hash}.json"
+            )
+
+            # ── 冲突检测 2：手机号是否已被其他账号绑定 ────────────────────────
+            original_phone = user_data.get("phone", "")
+            effective_phone = original_phone  # 默认使用备份中的手机号
+
+            if phone_override is not None:
+                # 调用方已明确提供手机号覆盖（含空字符串）
+                effective_phone = phone_override
+            elif force_phone_clear:
+                effective_phone = ""
+
+            # 仅在有手机号时才检测冲突
+            if effective_phone:
+                phone_bound_to = auth_system.find_user_by_phone(effective_phone)
+                if phone_bound_to and phone_bound_to != restore_as:
+                    return jsonify({
+                        "success": False,
+                        "conflict": "phone",
+                        "conflicting_user": phone_bound_to,
+                        "phone": effective_phone,
+                    "message": f"手机号 {effective_phone} 已被用户 {phone_bound_to} 绑定"
+                }), 409
+
+            # ── 应用修改并写入 ────────────────────────────────────────────────
+            # 如果用户名有变更，更新 user_data 中的相关字段
+            user_data["auth_username"] = restore_as
+            if user_data.get("nickname") == auth_username:
+                user_data["nickname"] = restore_as
+
+            # 更新手机号
+            user_data["phone"] = effective_phone
+
+            # ── UUID 冲突处理：清理 session_ids ──────────────────────────────
+            # 备份中的 session_ids 均已过期（账号删除时会话文件同步清除）。
+            # 对仍残留的 session_id，检查是否与当前活跃会话冲突；
+            # 存在冲突或已过期的 session_id 一律移除，确保账号以无活跃会话状态恢复。
+            old_session_ids = user_data.get("session_ids", [])
+            cleaned_session_ids = []
+            reassigned_count = 0
+            for sid in old_session_ids:
+                session_file = get_session_file_path(sid)
+                if os.path.exists(session_file):
+                    # 该 UUID 与现有会话文件冲突，丢弃（重新分配 = 不保留）
+                    reassigned_count += 1
+                    logging.warning(f"[恢复账号] session UUID 冲突，已丢弃: {sid[:8]}...")
+                # 无论是否冲突，备份的 session_ids 均已失效，不再保留
+            user_data["session_ids"] = cleaned_session_ids  # 恢复为空列表
+            if old_session_ids:
+                logging.info(
+                    f"[恢复账号] 已清空 {len(old_session_ids)} 个过期 session UUID"
+                    + (f"（其中 {reassigned_count} 个存在冲突）" if reassigned_count else "")
+                )
+
+            # 恢复用户文件到 system_accounts
+            with open(target_user_file, "w", encoding="utf-8") as f:
+                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            logging.info(f"[恢复账号] 已恢复用户文件（恢复为 {restore_as}）: {target_user_file}")
+
+            # 恢复 school_accounts（如果有）
+            if school_accounts_data:
+                school_file = auth_system._get_user_accounts_file(restore_as)
+                try:
+                    with open(school_file, "w", encoding="utf-8") as f:
+                        json.dump(school_accounts_data, f, indent=2, ensure_ascii=False)
+                    logging.info(f"[恢复账号] 已恢复学校账号文件")
+                except Exception as e:
+                    logging.warning(f"[恢复账号] 恢复学校账号失败: {e}")
+
+            # 恢复权限配置
+            if permissions_data:
+                if "user_groups" in permissions_data:
+                    auth_system.permissions.setdefault("user_groups", {})[restore_as] = permissions_data["user_groups"]
+                if "user_custom_permissions" in permissions_data:
+                    auth_system.permissions.setdefault("user_custom_permissions", {})[restore_as] = permissions_data["user_custom_permissions"]
+                auth_system._save_permissions()
+                logging.info(f"[恢复账号] 已恢复权限配置")
+
+            # 更新 system_accounts/_index.json（使用 assigned_hash，可能已重新分配）
+            _update_system_accounts_index(restore_as, assigned_hash, "add")
+
+            # 从 Remove_Acoount/_index.json 中移除该记录
+            del ra_index["removed_accounts"][auth_username]
+            ra_index["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            with open(index_path, "w", encoding="utf-8") as f:
+                json.dump(ra_index, f, indent=2, ensure_ascii=False)
+
+            # 删除备份文件
+            try:
+                os.remove(backup_path)
+            except Exception as e:
+                logging.warning(f"[恢复账号] 删除备份文件失败: {e}")
+
+            restored_note = f"（原用户名: {auth_username}）" if restore_as != auth_username else ""
+            phone_note = f"，手机号已{'清空' if not effective_phone else '修改'}" if effective_phone != original_phone else ""
+            logging.info(f"[恢复账号] 用户 {restore_as}{restored_note} 已成功恢复{phone_note}")
+            return jsonify({"success": True, "message": f"用户 {restore_as} 已成功恢复{phone_note}", "restored_as": restore_as})
+
+        except Exception as e:
+            logging.error(f"[恢复账号] 恢复账号失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"恢复账号失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/removed_accounts", methods=["GET"])
+    @admin_required
+    def admin_list_removed_accounts():
+        """
+        管理员接口：列出所有已删除的账号记录。
+        从 Remove_Acoount/_index.json 读取。
+        """
+        try:
+            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
+            index_path = os.path.join(remove_account_dir, "_index.json")
+
+            if not os.path.exists(index_path):
+                return jsonify({"success": True, "removed_accounts": {}})
+
+            with open(index_path, "r", encoding="utf-8") as f:
+                ra_index = json.load(f)
+
+            removed_accounts = ra_index.get("removed_accounts", {}) or {}
+            enriched_accounts = {}
+            for auth_username, entry in removed_accounts.items():
+                item = {
+                    "backup_file": entry.get("backup_file", ""),
+                    "deleted_at": entry.get("deleted_at", ""),
+                    "nickname": auth_username,
+                    "avatar_url": "default_avatar.png",
+                    "phone": "",
+                    "created_at": None,
+                    "last_login": None,
+                    "last_login_ip": "",
+                    "last_login_city": "未知",
+                    "max_sessions": 1,
+                    "available_runs": 0,
+                    "2fa_enabled": False,
+                }
+                backup_file = entry.get("backup_file", "")
+                backup_path = os.path.join(remove_account_dir, backup_file) if backup_file else ""
+                if backup_path and os.path.exists(backup_path):
+                    try:
+                        with open(backup_path, "r", encoding="utf-8") as bf:
+                            backup_data = json.load(bf)
+                        user_data = backup_data.get("user_data", {}) or {}
+                        item["nickname"] = user_data.get("nickname", auth_username) or auth_username
+                        item["avatar_url"] = user_data.get("avatar_url", "default_avatar.png") or "default_avatar.png"
+                        item["phone"] = user_data.get("phone", "") or ""
+                        item["created_at"] = user_data.get("created_at")
+                        item["last_login"] = user_data.get("last_login")
+                        item["last_login_ip"] = user_data.get("last_login_ip", "") or ""
+                        item["last_login_city"] = user_data.get("last_login_city", "未知") or "未知"
+                        item["max_sessions"] = user_data.get("max_sessions", 1)
+                        item["available_runs"] = user_data.get("available_runs", 0)
+                        item["2fa_enabled"] = bool(user_data.get("2fa_enabled") or user_data.get("tfa_enabled"))
+                    except Exception as e:
+                        logging.warning(f"[已删除账号] 读取备份补充信息失败: {auth_username}, 错误: {e}")
+                enriched_accounts[auth_username] = item
+
+            return jsonify({"success": True, "removed_accounts": enriched_accounts, "updated_at": ra_index.get("updated_at", "")})
+        except Exception as e:
+            logging.error(f"[已删除账号] 获取列表失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取已删除账号列表失败: {str(e)}"}), 500
+
+    @app.route("/api/admin/removed_account_detail", methods=["GET"])
+    @admin_required
+    def admin_removed_account_detail():
+        """
+        管理员接口：获取单个已删除账号的详细信息。
+        """
+        try:
+            auth_username = str(request.args.get("auth_username", "")).strip()
+            if not auth_username:
+                return jsonify({"success": False, "message": "auth_username 不能为空"}), 400
+
+            remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
+            index_path = os.path.join(remove_account_dir, "_index.json")
+            if not os.path.exists(index_path):
+                return jsonify({"success": False, "message": "未找到已删除账号索引"}), 404
+
+            with open(index_path, "r", encoding="utf-8") as f:
+                ra_index = json.load(f)
+            removed_accounts = ra_index.get("removed_accounts", {}) or {}
+            if auth_username not in removed_accounts:
+                return jsonify({"success": False, "message": f"未找到用户 {auth_username} 的删除记录"}), 404
+
+            entry = removed_accounts.get(auth_username, {}) or {}
+            backup_file = entry.get("backup_file", "")
+            backup_path = os.path.join(remove_account_dir, backup_file) if backup_file else ""
+            if not backup_path or not os.path.exists(backup_path):
+                return jsonify({"success": False, "message": f"备份文件不存在: {backup_file}"}), 404
+
+            with open(backup_path, "r", encoding="utf-8") as bf:
+                backup_data = json.load(bf)
+
+            user_data = backup_data.get("user_data", {}) or {}
+            school_accounts_data = backup_data.get("school_accounts", {}) or {}
+            if not isinstance(school_accounts_data, dict):
+                school_accounts_data = {}
+            school_accounts = list(school_accounts_data.keys())
+
+            permissions_snapshot = backup_data.get("permissions", {}) or {}
+            if not isinstance(permissions_snapshot, dict):
+                permissions_snapshot = {}
+            snapshot_user_groups = permissions_snapshot.get("user_groups", {}) or {}
+            if not isinstance(snapshot_user_groups, dict):
+                snapshot_user_groups = {}
+            snapshot_user_custom = permissions_snapshot.get("user_custom_permissions", {}) or {}
+            if not isinstance(snapshot_user_custom, dict):
+                snapshot_user_custom = {}
+
+            user_group = (
+                snapshot_user_groups.get(auth_username)
+                or user_data.get("group")
+                or "guest"
+            )
+            group_info = auth_system.permissions.get("permission_groups", {}).get(user_group, {}) or {}
+            group_permissions = group_info.get("permissions", {}) or {}
+            if not isinstance(group_permissions, dict):
+                group_permissions = {}
+            user_custom_permissions = snapshot_user_custom.get(auth_username, {}) or {}
+            if not isinstance(user_custom_permissions, dict):
+                user_custom_permissions = {}
+            added_permissions = [
+                str(p).strip()
+                for p in (user_custom_permissions.get("added", []) or [])
+                if str(p).strip()
+            ]
+            removed_permissions = [
+                str(p).strip()
+                for p in (user_custom_permissions.get("removed", []) or [])
+                if str(p).strip()
+            ]
+            effective_permissions = dict(group_permissions)
+            for perm in added_permissions:
+                effective_permissions[perm] = True
+            for perm in removed_permissions:
+                effective_permissions[perm] = False
+            enabled_permissions = sorted(
+                [k for k, v in effective_permissions.items() if bool(v)],
+                key=lambda x: str(x),
+            )
+
+            current_messages = []
+            messages_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "messages.json")
+            if os.path.exists(messages_file):
+                try:
+                    with open(messages_file, "r", encoding="utf-8") as f:
+                        all_messages = json.load(f)
+                    if isinstance(all_messages, list):
+                        current_messages = [
+                            msg for msg in all_messages
+                            if isinstance(msg, dict) and str(msg.get("auth_username") or "").strip() == auth_username
+                        ]
+                except Exception as e:
+                    logging.warning(f"[已删除账号] 读取 messages.json 失败（忽略）: {e}")
+
+            deleted_messages = []
+            deleted_messages_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "logs",
+                "deleted_messages.json",
+            )
+            if os.path.exists(deleted_messages_file):
+                try:
+                    with open(deleted_messages_file, "r", encoding="utf-8") as f:
+                        deleted_log = json.load(f)
+                    if isinstance(deleted_log, list):
+                        deleted_messages = [
+                            msg for msg in deleted_log
+                            if isinstance(msg, dict) and str(msg.get("auth_username") or "").strip() == auth_username
+                        ]
+                except Exception as e:
+                    logging.warning(f"[已删除账号] 读取 deleted_messages.json 失败（忽略）: {e}")
+
+            message_items = []
+            for msg in current_messages:
+                message_items.append(
+                    {
+                        "id": msg.get("id", ""),
+                        "content": msg.get("content", ""),
+                        "timestamp": msg.get("timestamp"),
+                        "ip": msg.get("ip", ""),
+                        "source": "active",
+                        "status_text": "现存",
+                    }
+                )
+            for msg in deleted_messages:
+                message_items.append(
+                    {
+                        "id": msg.get("id", ""),
+                        "content": msg.get("content", ""),
+                        "timestamp": msg.get("timestamp"),
+                        "ip": msg.get("ip", ""),
+                        "source": "deleted",
+                        "status_text": "已删",
+                        "deleted_at": msg.get("deleted_at"),
+                        "deleted_by": msg.get("deleted_by", ""),
+                        "deletion_reason": msg.get("deletion_reason", ""),
+                    }
+                )
+
+            def _message_sort_key(item):
+                primary = item.get("timestamp")
+                if primary is None or primary == "":
+                    primary = item.get("deleted_at", "")
+                return str(primary)
+
+            message_items.sort(key=_message_sort_key, reverse=True)
+            message_items_limited = message_items[:50]
+
+            billing_records = []
+            billing_root = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "User_Billing",
+                "School_Bills",
+            )
+            if os.path.isdir(billing_root):
+                for school_username in school_accounts:
+                    school_dir = os.path.join(billing_root, school_username)
+                    if not os.path.isdir(school_dir):
+                        continue
+                    for filename in os.listdir(school_dir):
+                        if not filename.endswith(".json"):
+                            continue
+                        bill_path = os.path.join(school_dir, filename)
+                        try:
+                            with open(bill_path, "r", encoding="utf-8") as bf:
+                                bill = json.load(bf)
+                            if not isinstance(bill, dict):
+                                continue
+                            try:
+                                _migrate_billing_file_beijing_times(bill_path, bill)
+                            except Exception as _migration_err:
+                                logging.warning(
+                                    f"[已删除账号] 迁移账单时间字段失败（忽略）: {bill_path}, 错误: {_migration_err}"
+                                )
+                            amount = bill.get("amount")
+                            try:
+                                amount = round(float(amount), 2)
+                            except Exception:
+                                amount = 0.0
+                            billing_records.append(
+                                {
+                                    "billing_id": bill.get("billing_id", os.path.splitext(filename)[0]),
+                                    "school_username": bill.get("school_username", school_username) or school_username,
+                                    "reason": bill.get("reason", ""),
+                                    "amount": amount,
+                                    "status": bill.get("status", "pending"),
+                                    "created_at": bill.get("created_at"),
+                                    "created_at_beijing": bill.get("created_at_beijing"),
+                                    "paid_at": bill.get("paid_at"),
+                                    "paid_at_beijing": bill.get("paid_at_beijing"),
+                                    "payment_orders_count": len(bill.get("payment_orders", []) or []),
+                                }
+                            )
+                        except Exception as e:
+                            logging.warning(
+                                f"[已删除账号] 读取账单失败（忽略）: {bill_path}, 错误: {e}"
+                            )
+            billing_records.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
+            billing_records_limited = billing_records[:100]
+            billing_stats = {
+                "total": len(billing_records),
+                "pending": 0,
+                "paid": 0,
+                "admin_cleared": 0,
+                "other": 0,
+                "total_amount": 0.0,
+                "pending_amount": 0.0,
+            }
+            for rec in billing_records:
+                status = str(rec.get("status", "")).strip().lower()
+                if status == "pending":
+                    billing_stats["pending"] += 1
+                elif status == "paid":
+                    billing_stats["paid"] += 1
+                elif status == "admin_cleared":
+                    billing_stats["admin_cleared"] += 1
+                else:
+                    billing_stats["other"] += 1
+                amt = rec.get("amount", 0.0) or 0.0
+                try:
+                    amt = float(amt)
+                except Exception:
+                    amt = 0.0
+                billing_stats["total_amount"] += amt
+                if status == "pending":
+                    billing_stats["pending_amount"] += amt
+            billing_stats["total_amount"] = round(billing_stats["total_amount"], 2)
+            billing_stats["pending_amount"] = round(billing_stats["pending_amount"], 2)
+
+            detail = {
+                "auth_username": user_data.get("auth_username", auth_username) or auth_username,
+                "nickname": user_data.get("nickname", auth_username) or auth_username,
+                "avatar_url": user_data.get("avatar_url", "default_avatar.png") or "default_avatar.png",
+                "last_login_ip": user_data.get("last_login_ip", "") or "",
+                "last_login": user_data.get("last_login"),
+                "register_time": user_data.get("created_at"),
+                "deleted_at": backup_data.get("deleted_at") or entry.get("deleted_at", ""),
+                "school_accounts": school_accounts,
+                "permission_group": {
+                    "key": user_group,
+                    "name": group_info.get("name", user_group) or user_group,
+                },
+                "permissions": {
+                    "group_permissions": group_permissions,
+                    "user_custom_permissions": {
+                        "added": added_permissions,
+                        "removed": removed_permissions,
+                    },
+                    "effective_permissions": effective_permissions,
+                    "enabled_permissions": enabled_permissions,
+                },
+                "messages": {
+                    "total_current": len(current_messages),
+                    "total_deleted": len(deleted_messages),
+                    "records": message_items_limited,
+                },
+                "billing": {
+                    "stats": billing_stats,
+                    "records": billing_records_limited,
+                },
+            }
+
+            return jsonify({"success": True, "detail": detail})
+        except Exception as e:
+            logging.error(f"[已删除账号] 获取详情失败: {e}", exc_info=True)
+            return jsonify({"success": False, "message": f"获取已删除账号详情失败: {str(e)}"}), 500
 
     @app.route("/api/billing/list", methods=["GET"])
     @login_required
@@ -45297,10 +51220,10 @@ def start_web_server(args_param):
                         records.append(record)
                     except Exception as e:
                         logging.warning(f"[账单列表] 读取账单文件 {filename} 失败: {e}")
-            
+
             # 按创建时间降序排列
             records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-            
+
             for _r in records:
                 if _r.get("amount") is not None:
                     try:
@@ -45386,7 +51309,7 @@ def start_web_server(args_param):
                         records.append(record)
                     except Exception as e:
                         logging.warning(f"[管理员账单] 读取账单文件 {filename} 失败: {e}")
-            
+
             # 按创建时间降序排列
             records.sort(key=lambda x: x.get("created_at", ""), reverse=True)
             for _r in records:
@@ -45395,7 +51318,7 @@ def start_web_server(args_param):
                         _r["amount"] = round(float(_r["amount"]), 2)
                     except Exception:  # nosec B110 - 金额格式化失败保留原值
                         pass
-            
+
             return jsonify({"success": True, "records": records, "total": len(records)})
         except Exception as e:
             logging.error(f"[管理员账单] 获取账单列表失败: {e}", exc_info=True)
@@ -45679,11 +51602,11 @@ def start_web_server(args_param):
             data = request.get_json()
             if not data:
                 return jsonify({"success": False, "message": "请求体不能为空"}), 400
-            
+
             auth_username = data.get("auth_username", "").strip()
             if not auth_username:
                 return jsonify({"success": False, "message": "auth_username 不能为空"}), 400
-            
+
             # restore_as: 恢复后使用的用户名（默认与备份用户名相同）
             restore_as = data.get("restore_as", "").strip() or auth_username
             # phone_override: 覆盖手机号（None=不覆盖；""=清空；其他=新手机号）
@@ -45691,42 +51614,42 @@ def start_web_server(args_param):
             if phone_override is not None:
                 phone_override = str(phone_override).strip()
             force_phone_clear = bool(data.get("force_phone_clear", False))
-            
+
             # 确定 Remove_Acoount 目录路径
             remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
             index_path = os.path.join(remove_account_dir, "_index.json")
-            
+
             # 检查索引文件是否存在
             if not os.path.exists(index_path):
                 return jsonify({"success": False, "message": "没有找到删除记录索引"}), 404
-            
+
             # 读取索引
             with open(index_path, "r", encoding="utf-8") as f:
                 ra_index = json.load(f)
-            
+
             removed_accounts = ra_index.get("removed_accounts", {})
             if auth_username not in removed_accounts:
                 return jsonify({"success": False, "message": f"未找到用户 {auth_username} 的删除记录"}), 404
-            
+
             # 获取备份文件名
             entry = removed_accounts[auth_username]
             backup_file = entry.get("backup_file", "")
             backup_path = os.path.join(remove_account_dir, backup_file)
-            
+
             if not os.path.exists(backup_path):
                 return jsonify({"success": False, "message": f"备份文件不存在: {backup_file}"}), 404
-            
+
             # 读取备份数据
             with open(backup_path, "r", encoding="utf-8") as f:
                 backup_data = json.load(f)
-            
+
             user_data = backup_data.get("user_data", {})
             school_accounts_data = backup_data.get("school_accounts")
             permissions_data = backup_data.get("permissions", {})
-            
+
             if not user_data:
                 return jsonify({"success": False, "message": "备份数据损坏：缺少用户数据"}), 500
-            
+
             # ── 读取 system_accounts/_index.json（用于冲突双重检测）──────────
             sys_index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "system_accounts", "_index.json")
             sys_index_data = {}
@@ -45737,7 +51660,7 @@ def start_web_server(args_param):
                 except Exception:
                     sys_index_data = {}
             sys_accounts = sys_index_data.get("accounts", {})  # {username: hash}
-            
+
             # ── 冲突检测 1：用户名是否已存在（文件 + 索引双重校验）────────────
             # 1a. 用户名已在索引中出现 → 用户名冲突
             if restore_as in sys_accounts:
@@ -45757,7 +51680,7 @@ def start_web_server(args_param):
                     "conflicting_username": restore_as,
                     "message": f"用户名 {restore_as} 已存在，请更换用户名后重试"
                 }), 409
-            
+
             # ── UUID 冲突检测：目标 hash 是否已被另一用户名占用 ────────────────
             # （理论上 sha256 不会碰撞，但若索引/文件不同步可能出现游离 hash）
             assigned_hash = target_hash  # 默认使用 sha256(restore_as)
@@ -45778,22 +51701,22 @@ def start_web_server(args_param):
                     f"[恢复账号] UUID 冲突：hash {target_hash[:8]}... 已被用户 {existing_owner} 占用，"
                     f"已为 {restore_as} 重新分配 UUID: {new_uuid[:8]}..."
                 )
-            
+
             # 最终目标文件路径（使用 assigned_hash，可能是重新分配的 UUID）
             target_user_file = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "system_accounts", f"{assigned_hash}.json"
             )
-            
+
             # ── 冲突检测 2：手机号是否已被其他账号绑定 ────────────────────────
             original_phone = user_data.get("phone", "")
             effective_phone = original_phone  # 默认使用备份中的手机号
-            
+
             if phone_override is not None:
                 # 调用方已明确提供手机号覆盖（含空字符串）
                 effective_phone = phone_override
             elif force_phone_clear:
                 effective_phone = ""
-            
+
             # 仅在有手机号时才检测冲突
             if effective_phone:
                 phone_bound_to = auth_system.find_user_by_phone(effective_phone)
@@ -45805,16 +51728,16 @@ def start_web_server(args_param):
                         "phone": effective_phone,
                         "message": f"手机号 {effective_phone} 已被用户 {phone_bound_to} 绑定"
                     }), 409
-            
+
             # ── 应用修改并写入 ────────────────────────────────────────────────
             # 如果用户名有变更，更新 user_data 中的相关字段
             user_data["auth_username"] = restore_as
             if user_data.get("nickname") == auth_username:
                 user_data["nickname"] = restore_as
-            
+
             # 更新手机号
             user_data["phone"] = effective_phone
-            
+
             # ── UUID 冲突处理：清理 session_ids ──────────────────────────────
             # 备份中的 session_ids 均已过期（账号删除时会话文件同步清除）。
             # 对仍残留的 session_id，检查是否与当前活跃会话冲突；
@@ -45835,12 +51758,12 @@ def start_web_server(args_param):
                     f"[恢复账号] 已清空 {len(old_session_ids)} 个过期 session UUID"
                     + (f"（其中 {reassigned_count} 个存在冲突）" if reassigned_count else "")
                 )
-            
+
             # 恢复用户文件到 system_accounts
             with open(target_user_file, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
             logging.info(f"[恢复账号] 已恢复用户文件（恢复为 {restore_as}）: {target_user_file}")
-            
+
             # 恢复 school_accounts（如果有）
             if school_accounts_data:
                 school_file = auth_system._get_user_accounts_file(restore_as)
@@ -45850,7 +51773,7 @@ def start_web_server(args_param):
                     logging.info(f"[恢复账号] 已恢复学校账号文件")
                 except Exception as e:
                     logging.warning(f"[恢复账号] 恢复学校账号失败: {e}")
-            
+
             # 恢复权限配置
             if permissions_data:
                 if "user_groups" in permissions_data:
@@ -45859,27 +51782,27 @@ def start_web_server(args_param):
                     auth_system.permissions.setdefault("user_custom_permissions", {})[restore_as] = permissions_data["user_custom_permissions"]
                 auth_system._save_permissions()
                 logging.info(f"[恢复账号] 已恢复权限配置")
-            
+
             # 更新 system_accounts/_index.json（使用 assigned_hash，可能已重新分配）
             _update_system_accounts_index(restore_as, assigned_hash, "add")
-            
+
             # 从 Remove_Acoount/_index.json 中移除该记录
             del ra_index["removed_accounts"][auth_username]
             ra_index["updated_at"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             with open(index_path, "w", encoding="utf-8") as f:
                 json.dump(ra_index, f, indent=2, ensure_ascii=False)
-            
+
             # 删除备份文件
             try:
                 os.remove(backup_path)
             except Exception as e:
                 logging.warning(f"[恢复账号] 删除备份文件失败: {e}")
-            
+
             restored_note = f"（原用户名: {auth_username}）" if restore_as != auth_username else ""
             phone_note = f"，手机号已{'清空' if not effective_phone else '修改'}" if effective_phone != original_phone else ""
             logging.info(f"[恢复账号] 用户 {restore_as}{restored_note} 已成功恢复{phone_note}")
             return jsonify({"success": True, "message": f"用户 {restore_as} 已成功恢复{phone_note}", "restored_as": restore_as})
-        
+
         except Exception as e:
             logging.error(f"[恢复账号] 恢复账号失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"恢复账号失败: {str(e)}"}), 500
@@ -45894,10 +51817,10 @@ def start_web_server(args_param):
         try:
             remove_account_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Remove_Acoount")
             index_path = os.path.join(remove_account_dir, "_index.json")
-            
+
             if not os.path.exists(index_path):
                 return jsonify({"success": True, "removed_accounts": {}})
-            
+
             with open(index_path, "r", encoding="utf-8") as f:
                 ra_index = json.load(f)
 
@@ -46234,6 +52157,10 @@ def start_web_server(args_param):
                 f"WebSocket 客户端 {request.sid} 加入房间失败：缺少 session_id。"
             )
 
+    @socketio.on("heartbeat")
+    def handle_heartbeat(data):
+        emit("heartbeat_ack", {"ts": time.time()})
+
     @socketio.on("disconnect")
     def handle_disconnect():
         logging.info(f"WebSocket 客户端断开连接: {request.sid}")
@@ -46302,6 +52229,13 @@ def start_web_server(args_param):
                             with session_activity_lock:
                                 if session_id in session_activity:
                                     del session_activity[session_id]
+                            with browsing_activity_lock:
+                                if session_id in browsing_activity:
+                                    del browsing_activity[session_id]
+                            session_hash = hashlib.sha256(session_id.encode()).hexdigest()
+                            with session_file_locks_lock:
+                                if session_hash in session_file_locks:
+                                    del session_file_locks[session_hash]
                             logging.info(f"[会话清理] 已清理会话: {session_id[:8]}...")
                         except Exception as e:
                             logging.error(
@@ -46327,6 +52261,7 @@ def start_web_server(args_param):
     logging.warning("[Eventlet 警告] 会话清理线程在 eventlet.monkey_patch 之后创建 - 可能导致 greenlet 冲突")
     cleanup_thread.start()
     logging.info(f"[线程创建] 会话清理线程已启动: {cleanup_thread.name} (id={cleanup_thread.ident})")
+    start_midnight_runtime_maintenance_worker()
     logging.info("正在加载持久化会话...")
     load_all_sessions(args)
     logging.info("正在启动会话监控...")
@@ -46664,31 +52599,22 @@ def start_web_server(args_param):
         pass
 
 
-def main():
-    """主函数，启动Web服务器模式（已弃用桌面模式）"""
-    # ========== 第1步：导入内置模块 ==========
-    # ========== 第2步：初始化日志系统 ==========
+def _validate_product_name_generator_startup_config():
+    """在服务启动前校验商品名生成器行业模式配置。"""
     try:
-        setup_logging()
-    except Exception as e:
-        print(f"[错误] 日志系统初始化失败: {e}")
-        traceback.print_exc()
-    _load_ip_cache()
-    _migrate_ip_location_config_if_needed()
-    # ========== 第3步：导入所有依赖库 ==========
-    import_standard_libraries()
-    import_core_third_party()
-    check_and_import_dependencies()
-    global LoMeiGenerator
-    if os.path.exists("product_name_generator.py"):
-        from product_name_generator import LoMeiGenerator
-    else:
-        raise ImportError("缺少 product_name_generator.py 文件，无法继续运行。")
+        validate_product_name_generator_mode(PRODUCT_NAME_GENERATOR_MODE)
+        logging.info(
+            "[启动校验] 商品名生成器行业模式配置有效: %s",
+            PRODUCT_NAME_GENERATOR_MODE,
+        )
+    except ValueError as exc:
+        message = f"[启动校验] 商品名生成器行业模式配置无效: {exc}"
+        print(message)
+        logging.error(message)
+        raise SystemExit(1) from exc
 
-    # ========== 第4步：初始化系统 ==========
-    auto_init_system()
-    initialize_global_variables()
-    # ========== 第5步：解析命令行参数 ==========
+
+def _build_main_arg_parser():
     parser = argparse.ArgumentParser(description="跑步助手 - Web服务器模式")
     parser.add_argument(
         "--port", type=int, default=5000, help="Web服务器端口（默认5000）"
@@ -46713,7 +52639,61 @@ def main():
         action="store_true",
         help="启用调试日志（兼容旧参数，等同于 --log-level debug）",
     )
+    parser.add_argument("--daily-restart-helper", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-parent-pid", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-python-executable", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-main-script-path", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-cwd", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-log-path", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("--daily-restart-marker-path", type=str, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--daily-restart-forward-args-json",
+        type=str,
+        default="[]",
+        help=argparse.SUPPRESS,
+    )
+    return parser
+
+
+
+def main():
+    """主函数，启动Web服务器模式（已弃用桌面模式）"""
+    parser = _build_main_arg_parser()
     args = parser.parse_args()
+
+    if getattr(args, "daily_restart_helper", False):
+        return _run_daily_restart_helper(args)
+
+    # ========== 第1步：导入内置模块 ==========
+    # ========== 第2步：初始化日志系统 ==========
+    try:
+        setup_logging()
+    except Exception as e:
+        print(f"[错误] 日志系统初始化失败: {e}")
+        traceback.print_exc()
+    _load_ip_cache()
+    _load_phone_cache()
+    _migrate_ip_location_config_if_needed()
+    # _start_default_theme_background_cache_warmup() # 启动太早了，等核心模块加载后再启动
+    # ========== 第3步：导入所有依赖库 ==========
+    import_standard_libraries()
+    import_core_third_party()
+    check_and_import_dependencies()
+    global LoMeiGenerator, PRODUCT_NAME_GENERATOR_MODE, validate_product_name_generator_mode
+    if os.path.exists("product_name_generator.py"):
+        from product_name_generator import (
+            LoMeiGenerator,
+            PRODUCT_NAME_GENERATOR_MODE,
+            validate_product_name_generator_mode,
+        )
+        _validate_product_name_generator_startup_config()
+    else:
+        raise ImportError("缺少 product_name_generator.py 文件，无法继续运行。")
+
+    # ========== 第4步：初始化系统 ==========
+    auto_init_system()
+    initialize_global_variables()
+    # ========== 第5步：解析命令行参数 ==========
     # ========== 第6步：配置日志级别 ==========
     selected_level_name = "debug" if args.debug else args.log_level
     log_level = getattr(logging, selected_level_name.upper(), logging.DEBUG)
@@ -46799,6 +52779,8 @@ def main():
                 args.port = found_port
         else:
             logging.info(f"默认端口 {DEFAULT_PORT} 可用。")
+            
+    _start_default_theme_background_cache_warmup()
     # ========== 第9步：启动Web服务器 ==========
     logging.info("启动Web服务器模式（使用服务器端Chrome渲染）...")
     start_web_server(args)

@@ -36,6 +36,7 @@ services:
       - ./Remove_Acoount:/app/Remove_Acoount
       - ./User_Billing:/app/User_Billing
       - ./amap_watermark_control.json:/app/amap_watermark_control.json
+      - ./random_background_image:/app/random_background_image
 
     environment:
       - PYTHONUNBUFFERED=1

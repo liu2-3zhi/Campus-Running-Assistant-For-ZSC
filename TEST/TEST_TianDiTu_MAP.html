@@ -1,33 +1,990 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
-    <title>天地图 API Key 验证</title>
-    <!-- 引入天地图API脚本，替换其中的tk参数为你的API Key -->
-    <script src="https://api.tianditu.gov.cn/api?v=4.0&tk=你的APIKey"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天地图调试工具</title>
     <style>
-        #mapDiv {
+        :root {
+            --primary-color: #3b82f6;
+            --hover-color: #2563eb;
+            --bg-panel: #f8fafc;
+            --border-color: #cbd5e1;
+            --text-color: #334155;
+            --muted-color: #64748b;
+            --success-color: #10b981;
+            --warn-color: #f59e0b;
+            --error-color: #ef4444;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
             width: 100%;
-            height: 500px;
-            border: 1px solid #ccc;
+            height: 100%;
+            overflow: hidden;
+            font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+            background: #e2e8f0;
+        }
+
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        #controls {
+            padding: 12px 20px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid #e2e8f0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 15px;
+            z-index: 10;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-group.with-divider {
+            border-left: 1px solid var(--border-color);
+            padding-left: 15px;
+        }
+
+        label,
+        .control-label {
+            font-weight: 600;
+            color: var(--text-color);
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        input[type="text"] {
+            padding: 6px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            width: 280px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        button {
+            padding: 6px 14px;
+            background-color: var(--primary-color);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background-color 0.2s, transform 0.1s, border-color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        button:hover {
+            background-color: var(--hover-color);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        button.secondary {
+            background-color: #fff;
+            color: #475569;
+            border: 1px solid var(--border-color);
+        }
+
+        button.secondary:hover {
+            background-color: #f1f5f9;
+            border-color: #94a3b8;
+        }
+
+        button.secondary.active {
+            background-color: rgba(59, 130, 246, 0.1);
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        #zoom-level {
+            min-width: 24px;
+            color: var(--primary-color);
+            font-weight: 700;
+        }
+
+        #map-container {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            background-color: #dbeafe;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        #map-placeholder,
+        #loading-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #map-placeholder {
+            color: var(--muted-color);
+            background: linear-gradient(135deg, rgba(219, 234, 254, 0.95), rgba(241, 245, 249, 0.95));
+            z-index: 4;
+            pointer-events: none;
+        }
+
+        #loading-overlay {
+            background: rgba(255, 255, 255, 0.85);
+            z-index: 6;
+            color: #475569;
+            display: none;
+        }
+
+        #log-area {
+            height: 160px;
+            background: #0f172a;
+            color: #d1d5db;
+            overflow-y: auto;
+            padding: 10px 15px;
+            font-family: "Consolas", "Monaco", monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            border-top: 1px solid #334155;
+            position: relative;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            border-bottom: 1px solid #1e293b;
+            padding-bottom: 2px;
+            word-break: break-all;
+        }
+
+        .log-time {
+            color: #64748b;
+            margin-right: 8px;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .log-info {
+            color: #60a5fa;
+        }
+
+        .log-warn {
+            color: #fbbf24;
+        }
+
+        .log-error {
+            color: #f87171;
+        }
+
+        .log-success {
+            color: #34d399;
+        }
+
+        #clear-log-btn {
+            position: absolute;
+            right: 20px;
+            top: 10px;
+            padding: 4px 8px;
+            font-size: 11px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        #clear-log-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        #log-content {
+            padding-right: 90px;
+        }
+
+        .coordinate-mode-group {
+            gap: 6px;
+        }
+
+        .coordinate-mode-group .control-label {
+            margin-right: 2px;
+        }
+
+        .route-group input,
+        .locate-group input {
+            width: 220px;
+        }
+
+        @media (max-width: 1200px) {
+            .route-group input,
+            .locate-group input {
+                width: 200px;
+            }
+        }
+
+        @media (max-width: 900px) {
+            #controls {
+                padding: 10px 12px;
+                gap: 10px;
+            }
+
+            .control-group.with-divider {
+                border-left: none;
+                padding-left: 0;
+            }
+
+            input[type="text"] {
+                width: min(100%, 240px);
+            }
+
+            #log-area {
+                height: 180px;
+            }
         }
     </style>
 </head>
+
 <body>
-    <h2>天地图 API Key 验证页面</h2>
-    <div id="mapDiv"></div>
+    <div id="app">
+        <div id="controls">
+            <div class="control-group">
+                <label for="token-input">Token:</label>
+                <input type="text" id="token-input" placeholder="请输入天地图 tk，然后点击初始化地图">
+                <button type="button" id="init-btn" onclick="initMap()">🚀 初始化地图</button>
+            </div>
+
+            <div class="control-group with-divider">
+                <button type="button" id="btn-vector" class="secondary" disabled onclick="switchBaseLayer('vector')">矢量</button>
+                <button type="button" id="btn-image" class="secondary" disabled onclick="switchBaseLayer('image')">影像</button>
+                <button type="button" id="btn-terrain" class="secondary" disabled onclick="switchBaseLayer('terrain')">地形</button>
+            </div>
+
+            <div class="control-group with-divider">
+                <button type="button" id="btn-in" class="secondary" disabled onclick="mapAction('in')">放大</button>
+                <button type="button" id="btn-out" class="secondary" disabled onclick="mapAction('out')">缩小</button>
+                <button type="button" id="btn-reset" class="secondary" disabled onclick="mapAction('reset')">复位视角</button>
+                <button type="button" id="btn-clear-marker" class="secondary" disabled onclick="clearCurrentMarker()">清除标记</button>
+            </div>
+
+            <div class="control-group with-divider coordinate-mode-group">
+                <span id="coord-mode-label" class="control-label">坐标模式:</span>
+                <button type="button" id="btn-coordinate-mode-tianditu" class="secondary active" onclick="setCoordinateMode('tianditu')">天地图体系</button>
+                <button type="button" id="btn-coordinate-mode-gaode" class="secondary" onclick="setCoordinateMode('gaode')">高德体系</button>
+            </div>
+
+            <div class="control-group with-divider route-group">
+                <label for="route-start-input">起点:</label>
+                <input type="text" id="route-start-input" placeholder="lng,lat 例如 113.390342,22.527403">
+                <label for="route-end-input">终点:</label>
+                <input type="text" id="route-end-input" placeholder="lng,lat 例如 113.396000,22.520000">
+                <button type="button" id="btn-plan-route" class="secondary" disabled onclick="planDrivingRoute()">规划路线</button>
+                <button type="button" id="btn-clear-route" class="secondary" disabled onclick="clearRouteLine()">清除路线</button>
+            </div>
+
+            <div class="control-group with-divider locate-group">
+                <label for="locate-coord-input">定位:</label>
+                <input type="text" id="locate-coord-input" placeholder="lng,lat 例如 113.390342,22.527403">
+                <button type="button" id="btn-locate-coord" class="secondary" disabled onclick="locateByCoordinateInput()">按坐标定位</button>
+            </div>
+
+            <div class="control-group with-divider">
+                <span class="control-label">当前缩放：</span>
+                <strong id="zoom-level">-</strong>
+            </div>
+        </div>
+
+        <div id="map-container">
+            <div id="map"></div>
+            <div id="map-placeholder">请先输入天地图 Token，然后点击“初始化地图”。</div>
+            <div id="loading-overlay">正在加载天地图资源...</div>
+        </div>
+
+        <div id="log-area">
+            <button type="button" id="clear-log-btn" onclick="clearLogs()">清空日志</button>
+            <div id="log-content"></div>
+        </div>
+    </div>
 
     <script>
-        try {
-            // 初始化地图
-            var map = new T.Map("mapDiv");
-            // 设置中心点和缩放级别
-            map.centerAndZoom(new T.LngLat(116.40969, 39.89945), 12);
-            console.log("地图加载成功，API Key 有效！");
-        } catch (e) {
-            console.error("地图加载失败，可能是 API Key 无效或网络问题。", e);
-            document.getElementById("mapDiv").innerHTML = "<p style='color:red;'>地图加载失败，请检查 API Key 是否正确。</p>";
+        let map = null;
+        let currentClickMarker = null;
+        let currentRouteLine = null;
+        let currentLocateMarker = null;
+        let currentBaseLayer = 'vector';
+        let currentCoordinateMode = 'tianditu';
+        let currentToken = '';
+        let scriptLoadPromise = null;
+        let isInitializing = false;
+        let mapEventsBound = false;
+
+        const DEFAULT_CENTER = [113.390342, 22.527403];
+        const DEFAULT_ZOOM = 17;
+        const GCJ_A = 6378245.0;
+        const GCJ_EE = 0.00669342162296594323;
+        const GCJ_PI = Math.PI;
+        const MAP_TYPE_LABELS = {
+            vector: '矢量',
+            image: '影像',
+            terrain: '地形'
+        };
+        const COORDINATE_MODE_LABELS = {
+            tianditu: '天地图体系',
+            gaode: '高德体系（GCJ-02）'
+        };
+
+        function log(message, type = 'normal') {
+            const container = document.getElementById('log-content');
+            const div = document.createElement('div');
+            const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            const typeClass = type === 'error'
+                ? 'log-error'
+                : type === 'warn'
+                    ? 'log-warn'
+                    : type === 'info'
+                        ? 'log-info'
+                        : type === 'success'
+                            ? 'log-success'
+                            : '';
+
+            div.className = 'log-entry';
+            div.innerHTML = `<span class="log-time">[${time}]</span><span class="${typeClass}">${message}</span>`;
+            container.appendChild(div);
+            const area = document.getElementById('log-area');
+            area.scrollTop = area.scrollHeight;
         }
+
+        function clearLogs() {
+            document.getElementById('log-content').innerHTML = '';
+            log('日志已清空。', 'info');
+        }
+
+        function setLoading(visible, text = '正在加载天地图资源...') {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.textContent = text;
+            overlay.style.display = visible ? 'flex' : 'none';
+        }
+
+        function setMapPlaceholderVisible(visible, text) {
+            const placeholder = document.getElementById('map-placeholder');
+            if (typeof text === 'string') {
+                placeholder.textContent = text;
+            }
+            placeholder.style.display = visible ? 'flex' : 'none';
+        }
+
+        function setMapActionButtonsEnabled(enabled) {
+            ['btn-vector', 'btn-image', 'btn-terrain', 'btn-in', 'btn-out', 'btn-reset', 'btn-clear-marker', 'btn-plan-route', 'btn-clear-route', 'btn-locate-coord'].forEach(id => {
+                const button = document.getElementById(id);
+                if (button) {
+                    button.disabled = !enabled;
+                }
+            });
+        }
+
+        function setActiveBaseLayerButton(type) {
+            ['vector', 'image', 'terrain'].forEach(name => {
+                const button = document.getElementById(`btn-${name}`);
+                if (button) {
+                    button.classList.toggle('active', name === type);
+                }
+            });
+        }
+
+        function setActiveCoordinateModeButtons(mode) {
+            ['tianditu', 'gaode'].forEach(name => {
+                const button = document.getElementById(`btn-coordinate-mode-${name}`);
+                if (button) {
+                    button.classList.toggle('active', name === mode);
+                }
+            });
+        }
+
+        function updateCoordinateInputPlaceholders() {
+            const isGaode = currentCoordinateMode === 'gaode';
+
+            const routeStart = document.getElementById('route-start-input');
+            const routeEnd = document.getElementById('route-end-input');
+            const locateInput = document.getElementById('locate-coord-input');
+
+            if (routeStart) {
+                routeStart.placeholder = isGaode
+                    ? '输入高德坐标 lng,lat 例如 113.390342,22.527403'
+                    : 'lng,lat 例如 113.390342,22.527403';
+            }
+
+            if (routeEnd) {
+                routeEnd.placeholder = isGaode
+                    ? '输入高德坐标 lng,lat 例如 113.396000,22.520000'
+                    : 'lng,lat 例如 113.396000,22.520000';
+            }
+
+            if (locateInput) {
+                locateInput.placeholder = isGaode
+                    ? '输入高德坐标 lng,lat 例如 113.390342,22.527403'
+                    : 'lng,lat 例如 113.390342,22.527403';
+            }
+        }
+
+        function setCoordinateMode(mode, options = {}) {
+            if (!COORDINATE_MODE_LABELS[mode]) {
+                log(`未知坐标模式：${mode}`, 'warn');
+                return;
+            }
+
+            const changed = currentCoordinateMode !== mode;
+            currentCoordinateMode = mode;
+            setActiveCoordinateModeButtons(mode);
+            updateCoordinateInputPlaceholders();
+
+            if (changed && !options.silent) {
+                log(`已切换到坐标模式：${COORDINATE_MODE_LABELS[mode]}`, 'info');
+            }
+        }
+
+        function updateZoomDisplay() {
+            document.getElementById('zoom-level').textContent = map ? map.getZoom() : '-';
+        }
+
+        function buildCoordinateResult(lng, lat) {
+            return {
+                lng,
+                lat,
+                lngLat: new T.LngLat(lng, lat)
+            };
+        }
+
+        function isOutOfChina(lng, lat) {
+            return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
+        }
+
+        function transformLat(x, y) {
+            let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+            ret += (20.0 * Math.sin(6.0 * x * GCJ_PI) + 20.0 * Math.sin(2.0 * x * GCJ_PI)) * 2.0 / 3.0;
+            ret += (20.0 * Math.sin(y * GCJ_PI) + 40.0 * Math.sin(y / 3.0 * GCJ_PI)) * 2.0 / 3.0;
+            ret += (160.0 * Math.sin(y / 12.0 * GCJ_PI) + 320 * Math.sin(y * GCJ_PI / 30.0)) * 2.0 / 3.0;
+            return ret;
+        }
+
+        function transformLng(x, y) {
+            let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+            ret += (20.0 * Math.sin(6.0 * x * GCJ_PI) + 20.0 * Math.sin(2.0 * x * GCJ_PI)) * 2.0 / 3.0;
+            ret += (20.0 * Math.sin(x * GCJ_PI) + 40.0 * Math.sin(x / 3.0 * GCJ_PI)) * 2.0 / 3.0;
+            ret += (150.0 * Math.sin(x / 12.0 * GCJ_PI) + 300.0 * Math.sin(x / 30.0 * GCJ_PI)) * 2.0 / 3.0;
+            return ret;
+        }
+
+        function tdtCoordinateToGcj02(coord) {
+            const lng = Number(coord && coord.lng);
+            const lat = Number(coord && coord.lat);
+
+            if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                throw new Error('地图工作坐标无效，无法转换为高德坐标。');
+            }
+
+            if (isOutOfChina(lng, lat)) {
+                return buildCoordinateResult(lng, lat);
+            }
+
+            let dLat = transformLat(lng - 105.0, lat - 35.0);
+            let dLng = transformLng(lng - 105.0, lat - 35.0);
+            const radLat = lat / 180.0 * GCJ_PI;
+            let magic = Math.sin(radLat);
+            magic = 1 - GCJ_EE * magic * magic;
+            const sqrtMagic = Math.sqrt(magic);
+            dLat = (dLat * 180.0) / ((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic) * GCJ_PI);
+            dLng = (dLng * 180.0) / (GCJ_A / sqrtMagic * Math.cos(radLat) * GCJ_PI);
+
+            return buildCoordinateResult(lng + dLng, lat + dLat);
+        }
+
+        function gcj02ToTdtCoordinate(coord) {
+            const lng = Number(coord && coord.lng);
+            const lat = Number(coord && coord.lat);
+
+            if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                throw new Error('高德坐标无效，无法转换为地图工作坐标。');
+            }
+
+            if (isOutOfChina(lng, lat)) {
+                return buildCoordinateResult(lng, lat);
+            }
+
+            const guessed = tdtCoordinateToGcj02({ lng, lat });
+            return buildCoordinateResult(lng * 2 - guessed.lng, lat * 2 - guessed.lat);
+        }
+
+        function normalizeCoordinateForMap(coord, fieldLabel = '坐标') {
+            if (currentCoordinateMode === 'gaode') {
+                try {
+                    return gcj02ToTdtCoordinate(coord);
+                } catch (error) {
+                    throw new Error(`${fieldLabel}转换失败：${error.message || error}`);
+                }
+            }
+
+            return buildCoordinateResult(coord.lng, coord.lat);
+        }
+
+        function formatMapCoordinateForDisplay(coord) {
+            if (currentCoordinateMode === 'gaode') {
+                return tdtCoordinateToGcj02(coord);
+            }
+
+            return buildCoordinateResult(coord.lng, coord.lat);
+        }
+
+        function parseCoordinateText(text, fieldLabel = '坐标') {
+            const raw = String(text || '').trim();
+            if (!raw) {
+                throw new Error(`${fieldLabel}不能为空。`);
+            }
+
+            const match = raw.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+            if (!match) {
+                throw new Error(`${fieldLabel}格式无效，请使用 lng,lat。`);
+            }
+
+            const lng = Number(match[1]);
+            const lat = Number(match[2]);
+
+            if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                throw new Error(`${fieldLabel}包含非法数字。`);
+            }
+
+            if (lng < -180 || lng > 180) {
+                throw new Error(`${fieldLabel}经度超出范围。`);
+            }
+
+            if (lat < -90 || lat > 90) {
+                throw new Error(`${fieldLabel}纬度超出范围。`);
+            }
+
+            return buildCoordinateResult(lng, lat);
+        }
+
+        function clearRouteLine(logWhenEmpty = true) {
+            if (!map || !currentRouteLine) {
+                if (logWhenEmpty) {
+                    log('当前没有可清除的路线。', 'warn');
+                }
+                return;
+            }
+
+            map.removeOverLay(currentRouteLine);
+            currentRouteLine = null;
+            log('已清除当前路线。', 'success');
+        }
+
+        function locateByCoordinateInput() {
+            if (!map) {
+                log('请先初始化地图。', 'warn');
+                return;
+            }
+
+            try {
+                const inputCoord = parseCoordinateText(
+                    document.getElementById('locate-coord-input').value,
+                    '定位坐标'
+                );
+                const mapCoord = normalizeCoordinateForMap(inputCoord, '定位坐标');
+                const displayCoord = formatMapCoordinateForDisplay(mapCoord);
+
+                if (currentLocateMarker) {
+                    map.removeOverLay(currentLocateMarker);
+                }
+
+                currentLocateMarker = new T.Marker(mapCoord.lngLat, {
+                    title: '坐标定位点'
+                });
+                map.addOverLay(currentLocateMarker);
+                map.centerAndZoom(mapCoord.lngLat, map.getZoom());
+                log(`已按${COORDINATE_MODE_LABELS[currentCoordinateMode]}定位到：${displayCoord.lng.toFixed(6)}, ${displayCoord.lat.toFixed(6)}`, 'success');
+            } catch (error) {
+                console.error(error);
+                log(error.message || String(error), 'error');
+            }
+        }
+
+        function buildDrivingRouteUrl(startCoord, endCoord) {
+            const postStr = {
+                orig: `${startCoord.lng},${startCoord.lat}`,
+                dest: `${endCoord.lng},${endCoord.lat}`,
+                style: '0'
+            };
+
+            return `https://api.tianditu.gov.cn/drive?postStr=${encodeURIComponent(JSON.stringify(postStr))}&type=search&tk=${encodeURIComponent(currentToken)}`;
+        }
+
+        function extractRoutePathPoints(routeXmlText) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(routeXmlText, 'text/xml');
+            const parserError = xmlDoc.querySelector('parsererror');
+            if (parserError) {
+                throw new Error('路线服务返回了无法解析的 XML。');
+            }
+
+            const resultNode = xmlDoc.querySelector('result');
+            if (!resultNode) {
+                throw new Error('路线服务未返回 result 节点。');
+            }
+
+            const routeLatLonNode = resultNode.querySelector('routelatlon');
+            const rawRoute = routeLatLonNode ? routeLatLonNode.textContent.trim() : '';
+            if (!rawRoute) {
+                throw new Error('路线服务未返回可绘制的路径点。');
+            }
+
+            const points = rawRoute
+                .split(';')
+                .map(pair => pair.trim())
+                .filter(Boolean)
+                .map(pair => {
+                    const match = pair.match(/^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/);
+                    if (!match) {
+                        return null;
+                    }
+
+                    const lng = Number(match[1]);
+                    const lat = Number(match[2]);
+                    if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+                        return null;
+                    }
+
+                    return new T.LngLat(lng, lat);
+                })
+                .filter(Boolean);
+
+            if (points.length < 2) {
+                throw new Error('路线服务未返回足够的有效路径点。');
+            }
+
+            return points;
+        }
+
+        async function planDrivingRoute() {
+            if (!map) {
+                log('请先初始化地图。', 'warn');
+                return;
+            }
+
+            try {
+                const startInput = parseCoordinateText(
+                    document.getElementById('route-start-input').value,
+                    '起点坐标'
+                );
+                const endInput = parseCoordinateText(
+                    document.getElementById('route-end-input').value,
+                    '终点坐标'
+                );
+
+                const startCoord = normalizeCoordinateForMap(startInput, '起点坐标');
+                const endCoord = normalizeCoordinateForMap(endInput, '终点坐标');
+
+                log(`正在以${COORDINATE_MODE_LABELS[currentCoordinateMode]}请求驾车路线规划...`, 'info');
+                const controller = new AbortController();
+                const timeoutId = window.setTimeout(() => {
+                    controller.abort();
+                }, 15000);
+
+                let response;
+                try {
+                    response = await fetch(buildDrivingRouteUrl(startCoord, endCoord), {
+                        signal: controller.signal
+                    });
+                } catch (error) {
+                    if (error && error.name === 'AbortError') {
+                        throw new Error('地图路线服务请求超时');
+                    }
+                    throw error;
+                } finally {
+                    window.clearTimeout(timeoutId);
+                }
+
+                if (!response.ok) {
+                    throw new Error(`路线服务请求失败：HTTP ${response.status}`);
+                }
+                const xmlText = await response.text();
+                const pathPoints = extractRoutePathPoints(xmlText);
+
+                clearRouteLine(false);
+                currentRouteLine = new T.Polyline(pathPoints, {
+                    color: '#2563eb',
+                    weight: 6,
+                    opacity: 0.85,
+                    lineStyle: 'solid'
+                });
+                map.addOverLay(currentRouteLine);
+                if (typeof map.setViewport === 'function') {
+                    map.setViewport(pathPoints);
+                }
+                log(`驾车路线绘制成功，坐标模式：${COORDINATE_MODE_LABELS[currentCoordinateMode]}，路径点数：${pathPoints.length}`, 'success');
+            } catch (error) {
+                console.error(error);
+                log(error.message || String(error), 'error');
+            }
+        }
+
+        function randomSubdomain() {
+            return Math.floor(Math.random() * 8);
+        }
+
+        function buildTileUrl(layerName, tile) {
+            const token = encodeURIComponent(currentToken);
+            return `https://t${randomSubdomain()}.tianditu.gov.cn/${layerName}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${layerName}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&tk=${token}&TILECOL=${tile.x}&TILEROW=${tile.y}&TILEMATRIX=${tile.z}`;
+        }
+
+        function createTileLayer(layerName, maxZoom = 18) {
+            const layer = new T.TileLayer('', {
+                minZoom: 1,
+                maxZoom: maxZoom
+            });
+            layer.getTileUrl = function (tile) {
+                return buildTileUrl(layerName, tile);
+            };
+            return layer;
+        }
+
+        function getMapTypeByName(type) {
+            if (type === 'image') {
+                return new T.MapType([
+                    createTileLayer('img'),
+                    createTileLayer('cia')
+                ], 'TIANDITU_IMAGE_DEBUG');
+            }
+
+            if (type === 'terrain') {
+                return new T.MapType([
+                    createTileLayer('ter'),
+                    createTileLayer('cta')
+                ], 'TIANDITU_TERRAIN_DEBUG');
+            }
+
+            return new T.MapType([
+                createTileLayer('vec'),
+                createTileLayer('cva')
+            ], 'TIANDITU_VECTOR_DEBUG');
+        }
+
+        function loadTianDiTuScript(token) {
+            if (window.T && window.T.Map) {
+                return Promise.resolve();
+            }
+
+            if (scriptLoadPromise) {
+                return scriptLoadPromise;
+            }
+
+            scriptLoadPromise = new Promise((resolve, reject) => {
+                const existingScript = document.querySelector('script[data-tianditu-api="true"]');
+                if (existingScript) {
+                    existingScript.remove();
+                }
+
+                const script = document.createElement('script');
+                script.src = `https://api.tianditu.gov.cn/api?v=4.0&tk=${encodeURIComponent(token)}`;
+                script.async = true;
+                script.defer = true;
+                script.dataset.tiandituApi = 'true';
+                script.onload = () => resolve();
+                script.onerror = () => {
+                    scriptLoadPromise = null;
+                    reject(new Error('天地图脚本加载失败，请检查 Token 或网络连接。'));
+                };
+                document.head.appendChild(script);
+            });
+
+            return scriptLoadPromise;
+        }
+
+        function bindMapEvents() {
+            if (!map || mapEventsBound) {
+                return;
+            }
+
+            map.addEventListener('click', function (event) {
+                const lngLat = event && event.lnglat ? event.lnglat : null;
+                if (!lngLat) {
+                    log('点击事件未返回有效坐标。', 'warn');
+                    return;
+                }
+
+                const lng = typeof lngLat.getLng === 'function' ? lngLat.getLng() : lngLat.lng;
+                const lat = typeof lngLat.getLat === 'function' ? lngLat.getLat() : lngLat.lat;
+
+                if (typeof lng !== 'number' || typeof lat !== 'number') {
+                    log('坐标解析失败，未更新标记。', 'warn');
+                    return;
+                }
+
+                const mapCoord = buildCoordinateResult(lng, lat);
+                const displayCoord = formatMapCoordinateForDisplay(mapCoord);
+
+                if (currentClickMarker) {
+                    map.removeOverLay(currentClickMarker);
+                }
+
+                currentClickMarker = new T.Marker(mapCoord.lngLat);
+                map.addOverLay(currentClickMarker);
+                log(`点击坐标（${COORDINATE_MODE_LABELS[currentCoordinateMode]}）：${displayCoord.lng.toFixed(6)}, ${displayCoord.lat.toFixed(6)}`, 'info');
+            });
+
+            map.addEventListener('zoomend', function () {
+                updateZoomDisplay();
+                log(`当前缩放级别：${map.getZoom()}`, 'info');
+            });
+
+            mapEventsBound = true;
+        }
+
+        function applyBaseLayer(type, silent = false) {
+            if (!map) {
+                return;
+            }
+
+            map.setMapType(getMapTypeByName(type));
+            currentBaseLayer = type;
+            setActiveBaseLayerButton(type);
+
+            if (!silent) {
+                log(`已切换到底图：${MAP_TYPE_LABELS[type] || type}`, 'success');
+            }
+        }
+
+        function switchBaseLayer(type) {
+            if (!map) {
+                log('请先初始化地图后再切换底图。', 'warn');
+                return;
+            }
+
+            try {
+                applyBaseLayer(type);
+            } catch (error) {
+                console.error(error);
+                log(`底图切换失败：${error.message || error}`, 'error');
+            }
+        }
+
+        function clearCurrentMarker() {
+            if (!map || !currentClickMarker) {
+                log('当前没有可清除的标记。', 'warn');
+                return;
+            }
+
+            map.removeOverLay(currentClickMarker);
+            currentClickMarker = null;
+            log('已清除当前标记。', 'success');
+        }
+
+        function mapAction(action) {
+            if (!map) {
+                log('请先初始化地图。', 'warn');
+                return;
+            }
+
+            switch (action) {
+                case 'in':
+                    map.zoomIn();
+                    break;
+                case 'out':
+                    map.zoomOut();
+                    break;
+                case 'reset':
+                    map.centerAndZoom(new T.LngLat(DEFAULT_CENTER[0], DEFAULT_CENTER[1]), DEFAULT_ZOOM);
+                    updateZoomDisplay();
+                    log('已复位到默认视角。', 'success');
+                    break;
+                default:
+                    log(`未知地图操作：${action}`, 'warn');
+            }
+        }
+
+        async function initMap() {
+            const token = document.getElementById('token-input').value.trim();
+
+            if (!token) {
+                alert('请输入天地图 Token');
+                log('初始化失败：Token 为空。', 'warn');
+                return;
+            }
+
+            if (isInitializing) {
+                log('地图正在初始化，请勿重复点击。', 'warn');
+                return;
+            }
+
+            isInitializing = true;
+            currentToken = token;
+            document.getElementById('init-btn').disabled = true;
+            setLoading(true);
+            setMapPlaceholderVisible(true, '正在初始化天地图，请稍候...');
+
+            try {
+                await loadTianDiTuScript(token);
+
+                if (!map) {
+                    map = new T.Map('map');
+                    bindMapEvents();
+                }
+
+                applyBaseLayer(currentBaseLayer, true);
+                map.centerAndZoom(new T.LngLat(DEFAULT_CENTER[0], DEFAULT_CENTER[1]), DEFAULT_ZOOM);
+                updateZoomDisplay();
+                setMapActionButtonsEnabled(true);
+                setMapPlaceholderVisible(false);
+                log('天地图初始化成功。', 'success');
+                log(`当前底图：${MAP_TYPE_LABELS[currentBaseLayer]}`, 'info');
+                log(`默认中心点：${DEFAULT_CENTER[0]}, ${DEFAULT_CENTER[1]}；缩放级别：${DEFAULT_ZOOM}`, 'info');
+            } catch (error) {
+                console.error(error);
+                setMapActionButtonsEnabled(false);
+                setMapPlaceholderVisible(true, '地图加载失败，请检查 Token 是否有效，或稍后重试。');
+                log(`初始化失败：${error.message || error}`, 'error');
+                alert(error.message || '地图初始化失败');
+            } finally {
+                isInitializing = false;
+                document.getElementById('init-btn').disabled = false;
+                setLoading(false);
+            }
+        }
+
+        window.onload = function () {
+            setMapActionButtonsEnabled(false);
+            setActiveBaseLayerButton(currentBaseLayer);
+            setCoordinateMode(currentCoordinateMode, { silent: true });
+            updateZoomDisplay();
+            log('准备就绪，请输入天地图 Token 后点击“初始化地图”。', 'info');
+            log('支持矢量 / 影像 / 地形底图切换，点击地图可获取经纬度并打点。', 'info');
+        };
     </script>
 </body>
+
 </html>

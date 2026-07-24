@@ -220,56 +220,287 @@
       onerror="this.src = 'https://code.jquery.com/jquery-3.7.1.js'"
     ></script>
     
-    <!-- CodeMirror (CDN) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/matchesonscrollbar.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/foldgutter.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.min.js"></script>
-    <!-- CodeMirror Modes -->
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/meta.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/markdown/markdown.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/xml/xml.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/javascript/javascript.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/css/css.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/gfm/gfm.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/python/python.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/clike/clike.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/shell/shell.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/sql/sql.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/yaml/yaml.min.js"></script>
-    <!-- CodeMirror Addons -->
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/matchbrackets.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closebrackets.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/closetag.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/foldcode.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/foldgutter.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/brace-fold.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/xml-fold.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/fold/markdown-fold.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/mode/overlay.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/selection/active-line.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/search.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/searchcursor.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/search/match-highlighter.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/dialog/dialog.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/display/placeholder.min.js"></script>
+
     
-    <!-- Editor.md 其他依赖 (CDN) -->
-    <!-- KaTeX 数学公式渲染 -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-    <!-- 流程图和时序图依赖 -->
-    <script src="https://cdn.jsdelivr.net/npm/raphael@2.3.0/raphael.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/underscore@1.13.6/underscore-min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flowchart.js@1.17.1/release/flowchart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jquery-flowchart@1.0.0/jquery.flowchart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/js-sequence-diagrams@1.0.6/dist/sequence-diagram-min.js"></script>
-    <!-- Markdown 解析和代码高亮 -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
-    
+<!-- ============================== -->
+<!-- CodeMirror 核心依赖 -->
+<!-- 编辑器基础功能与核心样式 -->
+<!-- ============================== -->
+<!-- CodeMirror 编辑器核心脚本 -->
+<script
+  src="/api/cdn/codemirror-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.js'"
+></script>
+<!-- CodeMirror 编辑器核心样式表 -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/codemirror-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/lib/codemirror.css'"
+>
+<!-- 搜索/替换弹窗对话框样式 -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/codemirror-dialog-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.css'"
+>
+<!-- 滚动条显示搜索匹配位置样式 -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/codemirror-matchesonscrollbar-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/search/matchesonscrollbar.css'"
+>
+<!-- 代码折叠侧边栏样式 -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/codemirror-foldgutter-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.css'"
+>
+
+<!-- ============================== -->
+<!-- CodeMirror 语言语法高亮 -->
+<!-- 支持各种编程语言的代码着色 -->
+<!-- ============================== -->
+<!-- 语言模式元信息，自动识别文件类型 -->
+<script
+  src="/api/cdn/codemirror-meta-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/meta.js'"
+></script>
+<!-- Markdown 语法高亮支持 -->
+<script
+  src="/api/cdn/codemirror-markdown-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/markdown/markdown.js'"
+></script>
+<!-- XML / HTML 标签语法高亮 -->
+<script
+  src="/api/cdn/codemirror-xml-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/xml/xml.js'"
+></script>
+<!-- JavaScript 语法高亮 -->
+<script
+  src="/api/cdn/codemirror-javascript-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/javascript/javascript.js'"
+></script>
+<!-- CSS 样式语法高亮 -->
+<script
+  src="/api/cdn/codemirror-css-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/css/css.js'"
+></script>
+<!-- HTML 混合模式（内嵌 JS/CSS）高亮 -->
+<script
+  src="/api/cdn/codemirror-htmlmixed-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/htmlmixed/htmlmixed.js'"
+></script>
+<!-- GitHub Markdown 扩展语法支持 -->
+<script
+  src="/api/cdn/codemirror-gfm-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/gfm/gfm.js'"
+></script>
+<!-- Python 语法高亮 -->
+<script
+  src="/api/cdn/codemirror-python-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/python/python.js'"
+></script>
+<!-- C/C++/Java 等类 C 语言语法高亮 -->
+<script
+  src="/api/cdn/codemirror-clike-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/clike/clike.js'"
+></script>
+<!-- Shell / Bash 命令行语法高亮 -->
+<script
+  src="/api/cdn/codemirror-shell-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/shell/shell.js'"
+></script>
+<!-- SQL 数据库语句语法高亮 -->
+<script
+  src="/api/cdn/codemirror-sql-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/sql/sql.js'"
+></script>
+<!-- YAML 配置文件语法高亮 -->
+<script
+  src="/api/cdn/codemirror-yaml-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/mode/yaml/yaml.js'"
+></script>
+
+<!-- ============================== -->
+<!-- CodeMirror 编辑增强插件 -->
+<!-- 提升编辑体验的实用功能 -->
+<!-- ============================== -->
+<!-- 括号匹配高亮显示 -->
+<script
+  src="/api/cdn/codemirror-matchbrackets-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/matchbrackets.js'"
+></script>
+<!-- 自动补全括号、引号 -->
+<script
+  src="/api/cdn/codemirror-closebrackets-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closebrackets.js'"
+></script>
+<!-- HTML 标签自动闭合 -->
+<script
+  src="/api/cdn/codemirror-closetag-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/edit/closetag.js'"
+></script>
+<!-- 代码折叠核心功能 -->
+<script
+  src="/api/cdn/codemirror-foldcode-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldcode.js'"
+></script>
+<!-- 代码折叠侧边栏交互 -->
+<script
+  src="/api/cdn/codemirror-foldgutter-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/foldgutter.js'"
+></script>
+<!-- 大括号代码块折叠 -->
+<script
+  src="/api/cdn/codemirror-brace-fold-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/brace-fold.js'"
+></script>
+<!-- XML/HTML 标签区域折叠 -->
+<script
+  src="/api/cdn/codemirror-xml-fold-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/xml-fold.js'"
+></script>
+<!-- Markdown 内容区域折叠 -->
+<script
+  src="/api/cdn/codemirror-markdown-fold-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/fold/markdown-fold.js'"
+></script>
+<!-- 多语言模式叠加支持 -->
+<script
+  src="/api/cdn/codemirror-overlay-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/mode/overlay.js'"
+></script>
+<!-- 当前光标所在行高亮 -->
+<script
+  src="/api/cdn/codemirror-active-line-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/selection/active-line.js'"
+></script>
+<!-- 编辑器内文本搜索 -->
+<script
+  src="/api/cdn/codemirror-search-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/search.js'"
+></script>
+<!-- 搜索结果光标定位遍历 -->
+<script
+  src="/api/cdn/codemirror-searchcursor-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/searchcursor.js'"
+></script>
+<!-- 选中单词全文高亮 -->
+<script
+  src="/api/cdn/codemirror-match-highlighter-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/search/match-highlighter.js'"
+></script>
+<!-- 搜索/替换弹窗功能 -->
+<script
+  src="/api/cdn/codemirror-dialog-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/dialog/dialog.js'"
+></script>
+<!-- 编辑器空内容占位提示文字 -->
+<script
+  src="/api/cdn/codemirror-placeholder-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/codemirror/addon/display/placeholder.js'"
+></script>
+
+<!-- ============================== -->
+<!-- KaTeX 数学公式渲染 -->
+<!-- 用于快速渲染 LaTeX 数学公式 -->
+<!-- ============================== -->
+<!-- KaTeX 核心 JS 库 -->
+<script
+  src="/api/cdn/katex-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/katex/dist/katex.js'"
+></script>
+<!-- 数学公式渲染样式 -->
+<link
+  rel="stylesheet"
+  href="/api/cdn/katex-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/katex/dist/katex.css'"
+>
+
+<!-- ============================== -->
+<!-- 流程图 / 时序图依赖库 -->
+<!-- 用于绘制流程图、时序图等图形 -->
+<!-- ============================== -->
+<!-- 矢量图形绘图基础库 -->
+<script
+  src="/api/cdn/raphael-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/raphael/raphael.js'"
+></script>
+<!-- 工具函数库，图形解析依赖 -->
+<script
+  src="/api/cdn/underscore-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/underscore/underscore.js'"
+></script>
+<!-- 流程图解析与渲染 -->
+<script
+  src="/api/cdn/flowchart-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/flowchart.js/release/flowchart.js'"
+></script>
+<!-- jQuery 流程图扩展：依赖 jQuery UI widget 就绪后动态加载，避免 $.widget 未就绪时报错 -->
+<script>
+  window.__maybeLoadJqueryFlowchart = function () {
+    if (window.__jqueryFlowchartLoaded) return;
+    if (!window.jQuery || !(typeof jQuery.widget === "function")) return;
+    if (document.readyState !== "complete") {
+      if (!window.__jqueryFlowchartLoadBound) {
+        window.__jqueryFlowchartLoadBound = true;
+        window.addEventListener("load", window.__maybeLoadJqueryFlowchart, { once: true });
+      }
+      return;
+    }
+    window.__jqueryFlowchartLoaded = true;
+
+    var script = document.createElement("script");
+    script.src = "/api/cdn/jquery-flowchart-js";
+    script.onerror = function () {
+      this.onerror = null;
+      this.src = "https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.js";
+    };
+    document.head.appendChild(script);
+  };
+</script>
+<script
+  src="/api/cdn/jquery-ui-js"
+  onload="window.__maybeLoadJqueryFlowchart()"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/jquery-ui-dist/jquery-ui.min.js'"
+></script>
+<script
+  src="/api/cdn/jquery-ui-widget-js"
+  onload="window.__maybeLoadJqueryFlowchart()"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/jquery-ui/ui/widget.js'"
+></script>
+<link
+  rel="stylesheet"
+  href="/api/cdn/jquery-flowchart-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/jquery.flowchart/jquery.flowchart.css'"
+>
+
+<!-- 时序图/序列图渲染（已修复错误地址） -->
+<script
+  src="/api/cdn/sequence-diagram-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/@rokt33r/js-sequence-diagrams/dist/sequence-diagram-min.js'"
+></script>
+<link
+  rel="stylesheet"
+  href="/api/cdn/sequence-diagram-css"
+  onerror="this.href='https://cdn.jsdelivr.net/npm/@rokt33r/js-sequence-diagrams/dist/sequence-diagram-min.css'"
+>
+
+<!-- ============================== -->
+<!-- Markdown 解析与代码高亮 -->
+<!-- 解析 Markdown 并对代码着色 -->
+<!-- ============================== -->
+<!-- Markdown 转 HTML 解析器 -->
+<script
+  src="/api/cdn/marked-js"
+  onerror="this.src='https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.min.js'"
+></script>
+<!-- Google 代码高亮库 -->
+<script
+  src="/api/cdn/prettify-js"
+  onerror="this.src='https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js'"
+></script>
+
     <!-- Editor.md 核心 -->
     <script src="/editor.md/editormd.js"></script>
 
@@ -1356,6 +1587,7 @@
             class="flex justify-center gap-2 pb-2"
           >
             <button
+              type="button"
               id="auth-login-username-btn"
               class="px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm"
               title="用户名登录"
@@ -1364,6 +1596,7 @@
               用户名登录
             </button>
             <button
+              type="button"
               id="auth-login-phone-btn"
               class="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm"
               title="手机号登录"
@@ -3077,27 +3310,38 @@
       >
         <div class="absolute inset-0 bg-black/60"></div>
         <div class="panel rounded-2xl p-6 w-96 space-y-6 relative">
-          <h3 class="text-xl font-bold text-red-600 text-center">
-            缺少地图API Key
+          <h3
+            id="map-provider-key-modal-title"
+            class="text-xl font-bold text-red-600 text-center"
+          >
+            缺少地图 API Key
           </h3>
-          <p class="text-sm text-slate-600 text-center">
-            程序需要一个有效的高德地图JS API Key才能使用地图功能。请前往
+          <p
+            id="map-provider-key-modal-description"
+            class="text-sm text-slate-600 text-center"
+          >
+            当前地图提供方需要配置对应的 API Key。请前往
             <a
-              href="https://console.amap.com/dev/key/app"
+              id="map-provider-key-modal-link"
+              href="#"
               target="_blank"
               rel="noopener noreferrer"
               class="text-sky-600 hover:underline"
-              >高德开放平台</a
+              >地图开放平台</a
             >
-            申请一个Key（类型选择“Web端(JS API)”），然后粘贴到下方。
+            <span id="map-provider-key-modal-extra">申请并粘贴到下方。</span>
           </p>
           <div class="space-y-2">
-            <label class="w-full text-slate-700 font-semibold">API Key:</label>
+            <label
+              id="map-provider-key-input-label"
+              class="w-full text-slate-700 font-semibold"
+              >API Key:</label
+            >
             <input
               id="amap-key-input"
               type="text"
               class="input-field w-full"
-              placeholder="请在此处粘贴你的API Key"
+              placeholder="请在此处粘贴当前地图提供方的 API Key"
             />
           </div>
           <div class="flex justify-end gap-3 pt-4">
@@ -3379,7 +3623,7 @@
           <span class="ml-2 text-lg font-bold text-slate-800">跑步助手</span>
         </div>
       </header>
-      <main class="mobile-content">
+      <main class="mobile-content" id="mobile-content">
         <div id="mobile-auth-login-container" class="space-y-4">
           <div class="mobile-card" id="mobile-auth-login-container-card">
             <div class="text-center mb-6">
@@ -3413,12 +3657,14 @@
                 class="flex justify-center gap-2 pb-2"
               >
                 <button
+                  type="button"
                   id="mobile-login-username-btn"
                   class="px-4 py-2 rounded-lg bg-sky-100 text-sky-700 font-semibold text-sm"
                 >
                   用户名登录
                 </button>
                 <button
+                  type="button"
                   id="mobile-login-phone-btn"
                   class="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm"
                 >
@@ -4826,6 +5072,33 @@
               </label>
             </div>
 
+            <!-- ========== 路径工具 ========== -->
+            <div class="mt-4 pt-3 border-t border-slate-100">
+              <button
+                id="mobile-path-tools-toggle"
+                class="w-full flex items-center justify-between text-xs font-semibold text-slate-600 py-2 -my-1 active:bg-slate-50 rounded-lg transition-colors"
+                onclick="var a=document.getElementById('mobile-path-tools-area'),s=this.querySelector('.path-toggle-arrow');a.classList.toggle('hidden');if(s)s.style.transform=a.classList.contains('hidden')?'':'rotate(180deg)'"
+              >
+                <span class="flex items-center gap-1.5">
+                  <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                  路径工具
+                </span>
+                <svg class="w-4 h-4 path-toggle-arrow transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+              <div id="mobile-path-tools-area" class="hidden grid grid-cols-2 gap-2 mt-1">
+                <button id="mobile-record-button" class="py-2.5 px-3 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-medium active:bg-emerald-100 transition">录制路径</button>
+                <button id="mobile-auto-gen-button" class="py-2.5 px-3 bg-slate-50 text-slate-600 rounded-lg text-xs font-medium active:bg-slate-100 transition">自动生成</button>
+                <button id="mobile-process-button" class="py-2.5 px-3 bg-sky-50 text-sky-600 rounded-lg text-xs font-medium active:bg-sky-100 transition">处理路径</button>
+                <button id="mobile-clear-button" class="py-2.5 px-3 bg-amber-50 text-amber-600 rounded-lg text-xs font-medium active:bg-amber-100 transition">清除路径</button>
+                <button id="mobile-export-button" class="py-2.5 px-3 bg-violet-50 text-violet-600 rounded-lg text-xs font-medium active:bg-violet-100 col-span-2 transition">导出</button>
+              </div>
+            </div>
+
             <!-- ========== 实时状态面板 ========== -->
             <div class="mt-4 pt-3 border-t border-slate-100">
               <h4
@@ -6042,6 +6315,22 @@
                   </button>
                 </div>
               </div>
+              <div class="flex gap-2 items-center bg-white border border-slate-200 rounded-lg px-3 py-2">
+                <input
+                  id="mobile-multi-admin-users-search-input"
+                  type="text"
+                  class="input-field !text-xs !py-0 flex-1 !border-0 !shadow-none !rounded-none focus:!ring-0"
+                  placeholder="搜索昵称 / 用户名 / 手机号 / 学校账号"
+                />
+                <button
+                  id="mobile-multi-admin-users-search-btn"
+                  type="button"
+                  class="btn btn-primary !py-1 !px-2 text-xs"
+                  onclick="loadAdminUsers()"
+                >
+                  搜索
+                </button>
+              </div>
               <!-- 移动端排序控件 -->
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-xs text-slate-500">排序：</span>
@@ -6131,31 +6420,50 @@
               class="hidden space-y-3 overflow-hidden"
             >
               <!-- 面板头部：包含标题和控制选项 -->
-              <div class="flex justify-between items-center">
-                <!-- 面板标题 -->
-                <h4 class="font-semibold text-sm">系统日志</h4>
-                <!-- 控制选项组：日志行数选择和刷新按钮 -->
-                <div class="flex gap-2">
-                  <!-- 日志行数选择下拉框 -->
-                  <select
-                    id="mobile-multi-log-limit-select"
-                    class="text-xs border border-slate-300 rounded px-2 py-1"
-                    aria-label="移动日志每页限制"
-                  >
-                    <option value="100">每页100行</option>
-                    <option value="200">每页200行</option>
-                    <option value="500">每页500行</option>
-                    <option value="1000">每页1000行</option>
-                  </select>
-                  <!-- 刷新日志按钮 -->
-                  <button
-                    id="mobile-multi-admin-refresh-logs"
-                    class="btn btn-ghost !py-1 !px-2 text-xs"
-                  >
-                    刷新
-                  </button>
-                </div>
-              </div>
+<div class="flex flex-col gap-2">
+  <!-- 面板标题 -->
+  <h4 class="font-semibold text-sm">系统日志</h4>
+  <!-- 控制选项组：日志级别过滤、日志行数选择和刷新按钮 -->
+  <div class="flex flex-col gap-2">
+    <select
+      id="mobile-multi-log-level-filter"
+      class="text-xs border border-slate-300 rounded px-2 py-1"
+      aria-label="移动日志级别过滤"
+    >
+      <option value="all">全部级别</option>
+      <option value="debug">Debug</option>
+      <option value="info">Info</option>
+      <option value="warning">Warning</option>
+      <option value="error">Error</option>
+    </select>
+    <input
+      id="mobile-multi-log-keyword-filter"
+      type="text"
+      class="text-xs border border-slate-300 rounded px-2 py-1 min-w-[8rem]"
+      placeholder="输入关键词过滤"
+      aria-label="移动日志关键词过滤"
+    />
+    <!-- 日志行数选择下拉框 -->
+    <select
+      id="mobile-multi-log-limit-select"
+      class="text-xs border border-slate-300 rounded px-2 py-1"
+      aria-label="移动日志每页限制"
+    >
+      <option value="100">每页100行</option>
+      <option value="200">每页200行</option>
+      <option value="500">每页500行</option>
+      <option value="1000">每页1000行</option>
+    </select>
+    <!-- 刷新日志按钮 -->
+    <button
+      id="mobile-multi-admin-refresh-logs"
+      class="btn btn-ghost !py-1 !px-2 text-xs"
+    >
+      刷新
+    </button>
+  </div>
+</div>
+
               <!-- 日志内容显示区域：深色背景终端风格 -->
               <div
                 class="bg-slate-900 text-green-400 rounded-lg p-3 font-mono text-xs overflow-auto max-h-[100vh]"
@@ -6352,6 +6660,20 @@
                           加载中...
                         </p>
                       </div>
+                    </div>
+
+                    <div>
+                      <label
+                        class="block text-xs font-medium text-slate-600 mb-1"
+                        >用户名</label
+                      >
+                      <input
+                        type="text"
+                        id="mobile-unified-profile-auth-username"
+                        class="input-field !text-xs !py-1.5"
+                        placeholder="加载中"
+                        readonly=""
+                      />
                     </div>
 
                     <div>
@@ -6577,6 +6899,9 @@
                     id="mobile-unified-2fa-enabled-actions"
                     class="hidden flex justify-end gap-2"
                   >
+                  <button onclick="test2FA()" class="btn btn-ghost">
+                    测试2FA
+                  </button>
                     <button
                       onclick="disableMobileUnified2FA()"
                       class="btn btn-ghost border border-red-200 text-red-600 !py-1 !px-3 text-xs"
@@ -6606,33 +6931,14 @@
                     </select>
                   </div>
 
-                  <div
-                    class="space-y-1"
-                    id="mobile-unified-theme-style-presets"
-                  >
+                  <div class="space-y-1" id="mobile-unified-theme-style-presets">
                     <label class="block text-xs font-medium text-slate-600"
                       >样式预设</label
                     >
-                    <div class="grid grid-cols-3 gap-2">
-                      <button
-                        onclick="setMobileUnifiedThemeStyle('default')"
-                        class="btn btn-ghost border border-slate-300 !py-1 !px-1 text-[10px]"
-                      >
-                        默认
-                      </button>
-                      <button
-                        onclick="setMobileUnifiedThemeStyle('theme-anime')"
-                        class="btn btn-ghost border border-slate-300 !py-1 !px-1 text-[10px]"
-                      >
-                        二次元
-                      </button>
-                      <button
-                        onclick="setMobileUnifiedThemeStyle('theme-minimalist')"
-                        class="btn btn-ghost border border-slate-300 !py-1 !px-1 text-[10px]"
-                      >
-                        简约
-                      </button>
-                    </div>
+                    <div
+                      id="mobile-unified-theme-style-buttons"
+                      class="space-y-2"
+                    ></div>
                   </div>
 
                   <div class="space-y-1">
@@ -7090,11 +7396,19 @@
                   class="input-field !text-xs !py-0 flex-1 !border-0 !shadow-none !rounded-none focus:!ring-0"
                   placeholder="学校账号（留空查询有权限全部）"
                 />
+                <input
+                  type="text"
+                  id="mobile-multi-admin-billing-search-input"
+                  class="input-field !text-xs !py-0 flex-1 !border-0 !shadow-none !rounded-none focus:!ring-0"
+                  placeholder="搜索账单关键词"
+                />
                 <button
+                  id="mobile-multi-admin-billing-search-btn"
+                  type="button"
                   class="btn btn-primary !py-1 !px-2 text-xs whitespace-nowrap"
                   onclick="loadMobileMultiAdminBillingList()"
                 >
-                  查询
+                  搜索
                 </button>
               </div>
               <div id="mobile-multi-admin-billing-list">
@@ -7116,6 +7430,56 @@
                   </svg>
                   <p class="text-xs">点击查询加载账单记录</p>
                 </div>
+              </div>
+            </div>
+
+            <div id="mobile-multi-admin-billing-logs-panel" class="hidden space-y-3">
+              <div class="bg-gradient-to-r from-sky-50 to-cyan-50 rounded-xl border border-sky-200 p-3 flex items-center justify-between shadow-sm">
+                <div class="flex items-center gap-2">
+                  <div class="w-8 h-8 bg-sky-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-4 h-4 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 class="font-bold text-sm text-sky-700">账单日志</h4>
+                    <p class="text-xs text-sky-600">审计账单创建、修改、清除等记录</p>
+                  </div>
+                </div>
+                <button class="btn btn-ghost !py-2 !px-3 text-xs flex items-center gap-1" onclick="loadMobileBillingLogs(1)">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  刷新
+                </button>
+              </div>
+              <div class="bg-white border border-slate-200 rounded-xl px-3 py-2.5 shadow-sm space-y-2">
+                <div class="flex gap-2 items-center">
+                  <input type="text" id="mobile-billing-logs-search-input" class="input-field !text-xs !py-2 flex-1 min-w-0" placeholder="搜索账单号 / 用户 / 手机" />
+                  <select id="mobile-billing-logs-event-type" class="input-field !text-xs !py-2 w-28 flex-shrink-0">
+                    <option value="">全部事件</option>
+                    <option value="billing_created">创建</option>
+                    <option value="billing_amount_changed">金额变化</option>
+                    <option value="billing_status_changed">状态变化</option>
+                    <option value="billing_admin_cleared">管理员清除</option>
+                    <option value="billing_reason_changed">原因变化</option>
+                    <option value="billing_deleted">删除</option>
+                  </select>
+                </div>
+                <button type="button" class="btn btn-primary w-full !py-2 text-xs" onclick="loadMobileBillingLogs(1)">搜索</button>
+              </div>
+              <div id="mobile-billing-logs-list" class="space-y-2.5">
+                <div class="flex flex-col items-center justify-center py-10 text-slate-400 gap-2">
+                  <svg class="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <p class="text-xs">点击搜索加载账单日志</p>
+                </div>
+              </div>
+              <div class="flex justify-between items-center pt-2.5 border-t border-slate-200">
+                <button type="button" id="mobile-billing-logs-prev-btn" class="btn btn-ghost !py-2 !px-4 text-xs min-w-[4rem]" onclick="loadMobileBillingLogsPrev()">上一页</button>
+                <span id="mobile-billing-logs-page-info" class="text-xs text-slate-600 font-medium">1 / 1</span>
+                <button type="button" id="mobile-billing-logs-next-btn" class="btn btn-ghost !py-2 !px-4 text-xs min-w-[4rem]" onclick="loadMobileBillingLogsNext()">下一页</button>
               </div>
             </div>
 
@@ -7315,6 +7679,9 @@
                 </button>
               </div>
               <!-- 系统配置内容容器 -->
+              <div class="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
+                地图提供方 provider 配置入口（PC / mobile 共用同一后端配置真相源）。
+              </div>
               <div id="mobile-multi-admin-config-content" class="space-y-3">
                 <!-- 加载占位提示 -->
                 <p class="text-slate-400 text-center py-10 text-xs">
@@ -7344,64 +7711,153 @@
               </div>
               <!-- 验证码说明提示 -->
               <p class="text-xs text-blue-700 bg-blue-50 p-2 rounded">
-                💡 <strong>本地验证码生成器：</strong>使用 MicroPixelCaptcha
-                生成像素风格验证码，无需第三方API，更稳定安全。
+                💡 <strong>验证码提供方：</strong>可使用内置 MicroPixelCaptcha
+                图片验证码，或接入captcha-local API验证码服务器。
               </p>
+              <div class="bg-white border border-slate-200 rounded-lg p-3">
+                <p class="text-xs font-semibold text-slate-700 mb-2">
+                  验证码提供方
+                </p>
+                <div
+                  class="captcha-provider-segmented grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1"
+                >
+                  <label
+                    data-captcha-provider-card="image"
+                    class="flex items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-2 text-xs text-slate-600"
+                  >
+                    <input
+                      type="radio"
+                      id="mobile-captcha-provider-image"
+                      name="mobile-captcha-provider"
+                      value="image"
+                      checked
+                      class="sr-only"
+                      onchange="handleCaptchaProviderChange('mobile-')"
+                    />
+                    <span class="h-2 w-2 rounded-full border border-current"></span>
+                    <span>本地图片</span>
+                  </label>
+                  <label
+                    data-captcha-provider-card="behavior"
+                    class="flex items-center justify-center gap-1.5 rounded-md border border-transparent px-2 py-2 text-xs text-slate-600"
+                  >
+                    <input
+                      type="radio"
+                      id="mobile-captcha-provider-behavior"
+                      name="mobile-captcha-provider"
+                      value="behavior"
+                      class="sr-only"
+                      onchange="handleCaptchaProviderChange('mobile-')"
+                    />
+                    <span class="h-2 w-2 rounded-full border border-current"></span>
+                    <span>服务器</span>
+                  </label>
+                </div>
+                <div
+                  id="mobile-captcha-behavior-fields"
+                  class="hidden space-y-3 mt-3 pt-3 border-t border-slate-200"
+                >
+                  <div>
+                    <label
+                      for="mobile-captcha-behavior-base-url"
+                      class="block text-xs font-semibold text-slate-700 mb-1"
+                      >验证码服务地址（BASE_URL）</label
+                    >
+                    <input
+                      type="text"
+                      id="mobile-captcha-behavior-base-url"
+                      class="input-field text-sm w-full"
+                      placeholder="例如：http://127.0.0.1:8080"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      for="mobile-captcha-behavior-api-key"
+                      class="block text-xs font-semibold text-slate-700 mb-1"
+                      >API Key（X-Captcha-Key，可选）</label
+                    >
+                    <input
+                      type="password"
+                      id="mobile-captcha-behavior-api-key"
+                      class="input-field text-sm w-full"
+                      placeholder="留空表示匿名请求"
+                      autocomplete="new-password"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      for="mobile-captcha-behavior-type"
+                      class="block text-xs font-semibold text-slate-700 mb-1"
+                      >验证码类型</label
+                    >
+                    <select
+                      id="mobile-captcha-behavior-type"
+                      class="input-field text-sm w-full"
+                    ></select>
+                  </div>
+                  <p class="text-[11px] text-slate-500">
+                    浏览器只访问本站 /api/captcha/behavior/*，服务地址和 Key 不暴露给前端业务请求。
+                  </p>
+                </div>
+              </div>
               <!-- 验证码设置表单 -->
               <div id="mobile-multi-admin-captcha-list" class="space-y-3">
-                <!-- 验证码长度设置 -->
-                <div class="bg-white border border-slate-200 rounded-lg p-3">
-                  <label
-                    class="block text-xs font-semibold text-slate-700 mb-2"
-                  >
-                    验证码长度（3-6字符）
-                  </label>
-                  <input
-                    type="number"
-                    id="mobile-captcha-length"
-                    min="3"
-                    max="6"
-                    step="1"
-                    value="4"
-                    class="input-field text-sm w-full"
-                    placeholder="推荐值：4"
-                  />
-                </div>
-                <!-- 细分倍数设置 -->
-                <div class="bg-white border border-slate-200 rounded-lg p-3">
-                  <label
-                    class="block text-xs font-semibold text-slate-700 mb-2"
-                  >
-                    细分倍数（2-32）
-                  </label>
-                  <input
-                    type="number"
-                    id="mobile-captcha-scale-factor"
-                    min="2"
-                    max="4"
-                    step="1"
-                    value="2"
-                    class="input-field text-sm w-full"
-                    placeholder="推荐值：2或3"
-                  />
-                </div>
-                <!-- 噪点比例设置 -->
-                <div class="bg-white border border-slate-200 rounded-lg p-3">
-                  <label
-                    class="block text-xs font-semibold text-slate-700 mb-2"
-                  >
-                    噪点比例（0.00-0.30）
-                  </label>
-                  <input
-                    type="number"
-                    id="mobile-captcha-noise-level"
-                    min="0"
-                    max="0.3"
-                    step="0.01"
-                    value="0.08"
-                    class="input-field text-sm w-full"
-                    placeholder="推荐值：0.05-0.15"
-                  />
+                <div id="mobile-captcha-image-fields" class="space-y-3">
+                  <!-- 验证码长度设置 -->
+                  <div class="bg-white border border-slate-200 rounded-lg p-3">
+                    <label
+                      class="block text-xs font-semibold text-slate-700 mb-2"
+                    >
+                      验证码长度（3-6字符）
+                    </label>
+                    <input
+                      type="number"
+                      id="mobile-captcha-length"
+                      min="3"
+                      max="6"
+                      step="1"
+                      value="4"
+                      class="input-field text-sm w-full"
+                      placeholder="推荐值：4"
+                    />
+                  </div>
+                  <!-- 细分倍数设置 -->
+                  <div class="bg-white border border-slate-200 rounded-lg p-3">
+                    <label
+                      class="block text-xs font-semibold text-slate-700 mb-2"
+                    >
+                      细分倍数（2-32）
+                    </label>
+                    <input
+                      type="number"
+                      id="mobile-captcha-scale-factor"
+                      min="2"
+                      max="4"
+                      step="1"
+                      value="2"
+                      class="input-field text-sm w-full"
+                      placeholder="推荐值：2或3"
+                    />
+                  </div>
+                  <!-- 噪点比例设置 -->
+                  <div class="bg-white border border-slate-200 rounded-lg p-3">
+                    <label
+                      class="block text-xs font-semibold text-slate-700 mb-2"
+                    >
+                      噪点比例（0.00-0.30）
+                    </label>
+                    <input
+                      type="number"
+                      id="mobile-captcha-noise-level"
+                      min="0"
+                      max="0.3"
+                      step="0.01"
+                      value="0.08"
+                      class="input-field text-sm w-full"
+                      placeholder="推荐值：0.05-0.15"
+                    />
+                  </div>
                 </div>
                 <!-- 操作按钮组 -->
                 <div class="flex flex-col gap-2">
@@ -7441,7 +7897,9 @@
                     class="flex justify-center my-3"
                   ></div>
                   <p class="text-xs text-slate-500">
-                    验证码答案：<span
+                    <span id="mobile-captcha-preview-answer-label"
+                      >验证码答案：</span
+                    ><span
                       id="mobile-captcha-preview-answer"
                       class="font-mono font-bold text-slate-900"
                     ></span>
@@ -14614,6 +15072,28 @@
             账单管理
           </button>
 
+          <!-- 账单日志标签 -->
+          <button
+            id="admin-tab-billing-logs_modal"
+            class="px-5 py-3 font-semibold text-slate-400 border-b-3 border-transparent hover:bg-slate-50 hover:text-slate-600 transition-all duration-200 rounded-t-lg whitespace-nowrap"
+            onclick="switchAdminTab('admin-billing-logs')"
+          >
+            <svg
+              class="w-4 h-4 inline mr-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              ></path>
+            </svg>
+            账单日志
+          </button>
+
           <!-- 恢复账号标签 -->
           <button
             id="admin-tab-restore-account_modal"
@@ -14662,6 +15142,22 @@
                   刷新
                 </button>
               </div>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap bg-white border border-slate-200 rounded-lg px-3 py-2">
+              <input
+                id="admin-users-search-input_modal"
+                type="text"
+                class="input-field flex-1 !border-0 !shadow-none !p-0 !rounded-none focus:!ring-0 min-w-[14rem]"
+                placeholder="搜索昵称 / 用户名 / 手机号 / 学校账号"
+              />
+              <button
+                id="admin-users-search-btn_modal"
+                type="button"
+                class="btn btn-primary !py-1 !px-3 text-sm"
+                onclick="loadAdminUsers()"
+              >
+                搜索
+              </button>
             </div>
             <!-- 排序控件 -->
             <div class="flex items-center gap-2 flex-wrap">
@@ -14727,7 +15223,25 @@
           <div id="admin-logs-panel_modal" class="hidden space-y-4">
             <div class="flex justify-between items-center">
               <h4 class="font-semibold">系统日志</h4>
-              <div class="flex gap-2">
+              <div class="flex gap-2 flex-wrap justify-end">
+                <select
+                  id="log-level-filter_modal"
+                  class="text-sm border border-slate-300 rounded px-2 py-1"
+                  aria-label="日志级别过滤（对话框）"
+                >
+                  <option value="all">全部级别</option>
+                  <option value="debug">Debug</option>
+                  <option value="info">Info</option>
+                  <option value="warning">Warning</option>
+                  <option value="error">Error</option>
+                </select>
+                <input
+                  id="log-keyword-filter_modal"
+                  type="text"
+                  class="text-sm border border-slate-300 rounded px-2 py-1 min-w-[10rem]"
+                  placeholder="输入关键词过滤"
+                  aria-label="日志关键词过滤（对话框）"
+                />
                 <select
                   id="log-limit-select_modal"
                   class="text-sm border border-slate-300 rounded px-2 py-1"
@@ -14954,6 +15468,20 @@
                         加载中...
                       </p>
                     </div>
+                  </div>
+
+                  <div>
+                    <label
+                      class="block text-sm font-semibold text-slate-700 mb-1"
+                      >用户名</label
+                    >
+                    <input
+                      type="text"
+                      id="profile-auth-username"
+                      class="input-field"
+                      placeholder="加载中"
+                      readonly=""
+                    />
                   </div>
 
                   <div>
@@ -15200,26 +15728,10 @@
                   <label class="block text-sm font-semibold text-slate-700"
                     >主题样式</label
                   >
-                  <div class="grid grid-cols-3 gap-2">
-                    <button
-                      onclick="setThemeStyle('default')"
-                      class="btn btn-ghost !py-2 text-sm border border-slate-300 hover:border-sky-500"
-                    >
-                      默认
-                    </button>
-                    <button
-                      onclick="setThemeStyle('theme-anime')"
-                      class="btn btn-ghost !py-2 text-sm border border-slate-300 hover:border-sky-500"
-                    >
-                      二次元
-                    </button>
-                    <button
-                      onclick="setThemeStyle('theme-minimalist')"
-                      class="btn btn-ghost !py-2 text-sm border border-slate-300 hover:border-sky-500"
-                    >
-                      简约
-                    </button>
-                  </div>
+                  <div
+                    id="profile-theme-style-buttons"
+                    class="grid grid-cols-2 gap-2"
+                  ></div>
                 </div>
 
                 <div class="space-y-2">
@@ -15764,13 +16276,17 @@
                         ✍️ 短信签名
                       </span>
                     </label>
-                    <input
-                      type="text"
-                      id="sms-signature"
-                      class="w-full border-2 border-blue-200 rounded-lg px-3 py-2 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 transition-all"
-                      placeholder="【您的签名】"
-                      maxlength="12"
-                    />
+                    <div class="flex items-center gap-2">
+                      <span class="text-slate-500">【</span>
+                      <input
+                        type="text"
+                        id="sms-signature"
+                        class="w-full border-2 border-blue-200 rounded-lg px-3 py-2 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 transition-all"
+                        placeholder="您的签名"
+                        maxlength="10"
+                      />
+                      <span class="text-slate-500">】</span>
+                    </div>
                     <p class="text-xs text-slate-500 mt-1">
                       签名长度3-12字，需在短信宝后台审核通过
                     </p>
@@ -16045,6 +16561,10 @@
               警告：修改这些配置可能会影响系统稳定性。保存后，部分配置需要**重启程序**才能生效。
             </p>
 
+            <p class="text-xs text-sky-700 bg-sky-50 p-2 rounded-md">
+              地图提供方 provider 配置将同时覆盖 PC / mobile 管理页面，并统一持久化到后端配置真相源。
+            </p>
+
             <div id="admin-config-form" class="pr-2">
               <p class="text-slate-400 text-center py-10">加载中...</p>
             </div>
@@ -16078,75 +16598,172 @@
               </p>
             </div>
 
+            <div class="border border-slate-200 rounded-lg p-4 bg-white">
+              <div class="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <p class="text-sm font-semibold text-slate-700">
+                    验证码提供方
+                  </p>
+                  <p class="text-xs text-slate-500 mt-1">
+                    可使用内置图片验证码，或接入captcha-local API验证码服务器。
+                  </p>
+                </div>
+              </div>
+              <div
+                class="captcha-provider-segmented inline-grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-slate-100 p-1"
+              >
+                <label
+                  data-captcha-provider-card="image"
+                  class="flex items-center justify-center gap-2 rounded-md border border-transparent px-4 py-2 text-sm text-slate-600 cursor-pointer transition-colors"
+                >
+                  <input
+                    type="radio"
+                    id="captcha-provider-image"
+                    name="captcha-provider"
+                    value="image"
+                    checked
+                    class="sr-only"
+                    onchange="handleCaptchaProviderChange('')"
+                  />
+                  <span class="h-2 w-2 rounded-full border border-current"></span>
+                  <span>本地图片验证码</span>
+                </label>
+                <label
+                  data-captcha-provider-card="behavior"
+                  class="flex items-center justify-center gap-2 rounded-md border border-transparent px-4 py-2 text-sm text-slate-600 cursor-pointer transition-colors"
+                >
+                  <input
+                    type="radio"
+                    id="captcha-provider-behavior"
+                    name="captcha-provider"
+                    value="behavior"
+                    class="sr-only"
+                    onchange="handleCaptchaProviderChange('')"
+                  />
+                  <span class="h-2 w-2 rounded-full border border-current"></span>
+                  <span>验证码服务器</span>
+                </label>
+              </div>
+              <div
+                id="captcha-behavior-fields"
+                class="hidden grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-200"
+              >
+                <div class="md:col-span-2">
+                  <label
+                    for="captcha-behavior-base-url"
+                    class="block text-sm font-medium text-slate-700 mb-1"
+                    >验证码服务地址（BASE_URL）</label
+                  >
+                  <input
+                    type="text"
+                    id="captcha-behavior-base-url"
+                    class="px-3 py-2 border border-slate-300 rounded-md text-sm w-full focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    placeholder="例如：http://127.0.0.1:8080"
+                    autocomplete="off"
+                  />
+                </div>
+                <div>
+                  <label
+                    for="captcha-behavior-api-key"
+                    class="block text-sm font-medium text-slate-700 mb-1"
+                    >API Key（X-Captcha-Key，可选）</label
+                  >
+                  <input
+                    type="password"
+                    id="captcha-behavior-api-key"
+                    class="px-3 py-2 border border-slate-300 rounded-md text-sm w-full focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    placeholder="留空表示匿名请求"
+                    autocomplete="new-password"
+                  />
+                </div>
+                <div>
+                  <label
+                    for="captcha-behavior-type"
+                    class="block text-sm font-medium text-slate-700 mb-1"
+                    >验证码类型</label
+                  >
+                  <select
+                    id="captcha-behavior-type"
+                    class="px-3 py-2 border border-slate-300 rounded-md text-sm w-full focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  ></select>
+                </div>
+                <p class="md:col-span-2 text-xs text-slate-500">
+                  浏览器仅访问本站 /api/captcha/behavior/*；服务地址和 Key 只由后端代理使用。
+                </p>
+              </div>
+            </div>
+
             <div class="space-y-4">
-              <div class="flex items-center gap-4">
-                <label
-                  for="captcha-length"
-                  class="text-sm font-medium text-slate-700 w-32"
-                >
-                  验证码长度：
-                </label>
-                <input
-                  type="number"
-                  id="captcha-length"
-                  min="3"
-                  max="6"
-                  step="1"
-                  value="4"
-                  class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  aria-label="验证码长度："
-                  title="验证码长度："
-                  placeholder="验证码长度："
-                />
-                <span class="text-xs text-slate-500">字符数（3-6），推荐4</span>
-              </div>
+              <div id="captcha-image-fields" class="space-y-4">
+                <div class="flex items-center gap-4">
+                  <label
+                    for="captcha-length"
+                    class="text-sm font-medium text-slate-700 w-32"
+                  >
+                    验证码长度：
+                  </label>
+                  <input
+                    type="number"
+                    id="captcha-length"
+                    min="3"
+                    max="6"
+                    step="1"
+                    value="4"
+                    class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    aria-label="验证码长度："
+                    title="验证码长度："
+                    placeholder="验证码长度："
+                  />
+                  <span class="text-xs text-slate-500">字符数（3-6），推荐4</span>
+                </div>
 
-              <div class="flex items-center gap-4">
-                <label
-                  for="captcha-scale-factor"
-                  class="text-sm font-medium text-slate-700 w-32"
-                >
-                  细分倍数：
-                </label>
-                <input
-                  type="number"
-                  id="captcha-scale-factor"
-                  min="2"
-                  max="4"
-                  step="1"
-                  value="2"
-                  class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  aria-label="细分倍数："
-                  title="细分倍数："
-                  placeholder="细分倍数："
-                />
-                <span class="text-xs text-slate-500"
-                  >像素细分（2-32），推荐2或3</span
-                >
-              </div>
+                <div class="flex items-center gap-4">
+                  <label
+                    for="captcha-scale-factor"
+                    class="text-sm font-medium text-slate-700 w-32"
+                  >
+                    细分倍数：
+                  </label>
+                  <input
+                    type="number"
+                    id="captcha-scale-factor"
+                    min="2"
+                    max="4"
+                    step="1"
+                    value="2"
+                    class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    aria-label="细分倍数："
+                    title="细分倍数："
+                    placeholder="细分倍数："
+                  />
+                  <span class="text-xs text-slate-500"
+                    >像素细分（2-32），推荐2或3</span
+                  >
+                </div>
 
-              <div class="flex items-center gap-4">
-                <label
-                  for="captcha-noise-level"
-                  class="text-sm font-medium text-slate-700 w-32"
-                >
-                  噪点比例：
-                </label>
-                <input
-                  type="number"
-                  id="captcha-noise-level"
-                  min="0"
-                  max="0.3"
-                  step="0.01"
-                  value="0.08"
-                  class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
-                  aria-label="噪点比例："
-                  title="噪点比例："
-                  placeholder="噪点比例："
-                />
-                <span class="text-xs text-slate-500"
-                  >噪点密度（0.0-0.3），推荐0.05-0.15</span
-                >
+                <div class="flex items-center gap-4">
+                  <label
+                    for="captcha-noise-level"
+                    class="text-sm font-medium text-slate-700 w-32"
+                  >
+                    噪点比例：
+                  </label>
+                  <input
+                    type="number"
+                    id="captcha-noise-level"
+                    min="0"
+                    max="0.3"
+                    step="0.01"
+                    value="0.08"
+                    class="px-3 py-2 border border-slate-300 rounded-md text-sm w-24 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                    aria-label="噪点比例："
+                    title="噪点比例："
+                    placeholder="噪点比例："
+                  />
+                  <span class="text-xs text-slate-500"
+                    >噪点密度（0.0-0.3），推荐0.05-0.15</span
+                  >
+                </div>
               </div>
 
               <div class="flex gap-2 mt-6">
@@ -16182,7 +16799,7 @@
                   class="flex justify-center my-3"
                 ></div>
                 <p class="text-xs text-slate-500 mt-2">
-                  验证码答案：
+                  <span id="captcha-preview-answer-label">验证码答案：</span>
                   <span
                     id="captcha-preview-answer"
                     class="font-mono font-bold text-slate-900"
@@ -19834,11 +20451,19 @@
               class="input-field flex-1 !border-0 !shadow-none !p-0 !rounded-none focus:!ring-0"
               placeholder="输入学校账号筛选（留空查询有权限全部）"
             />
+            <input
+              type="text"
+              id="admin-billing-search-input"
+              class="input-field flex-1 !border-0 !shadow-none !p-0 !rounded-none focus:!ring-0"
+              placeholder="搜索昵称 / 用户名 / 手机号 / 学号 / 账单号 / 订单号 / 流水号"
+            />
             <button
+              id="admin-billing-search-btn"
+              type="button"
               onclick="loadAdminBillingList()"
               class="btn btn-primary whitespace-nowrap !py-1.5 !px-4 text-sm"
             >
-              查询
+              搜索
             </button>
           </div>
           <div id="admin-billing-list-container">
@@ -19859,6 +20484,80 @@
                 />
               </svg>
               <p class="text-sm">点击查询加载账单记录</p>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id="admin-billing-logs-panel_modal"
+          class="hidden overflow-y-auto overflow-x-hidden p-4 space-y-4"
+          style="margin-top: 0px"
+        >
+          <div class="bg-gradient-to-r from-sky-50 to-cyan-50 p-4 rounded-xl border border-sky-200 shadow-sm">
+            <div class="flex justify-between items-center gap-3 flex-wrap">
+              <div>
+                <h3 class="text-lg font-bold text-sky-700">账单日志</h3>
+                <p class="text-xs text-sky-600">查看账单创建、修改、清除与删除等审计记录</p>
+              </div>
+              <button
+                type="button"
+                onclick="loadAdminBillingLogs()"
+                class="btn btn-ghost !py-1.5 !px-3 text-sm flex items-center gap-1.5 bg-white/60 hover:bg-white/90 border border-sky-200/60"
+              >
+                刷新
+              </button>
+            </div>
+          </div>
+          <div class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-3">
+            <div class="flex gap-2 flex-wrap items-center">
+              <input
+                id="admin-billing-logs-search-input_modal"
+                type="text"
+                class="input-field flex-1 min-w-[14rem]"
+                placeholder="搜索账单号 / 用户 / 手机 / 学校账号"
+              />
+              <select
+                id="admin-billing-logs-event-type_modal"
+                class="input-field min-w-[12rem]"
+              >
+                <option value="">全部事件</option>
+                <option value="billing_created">创建</option>
+                <option value="billing_amount_changed">金额变化</option>
+                <option value="billing_status_changed">状态变化</option>
+                <option value="billing_admin_cleared">管理员清除</option>
+                <option value="billing_reason_changed">原因变化</option>
+                <option value="billing_deleted">删除</option>
+              </select>
+              <button
+                type="button"
+                id="admin-billing-logs-search-btn_modal"
+                onclick="loadAdminBillingLogs(1)"
+                class="btn btn-primary whitespace-nowrap !py-1.5 !px-4 text-sm"
+              >
+                搜索
+              </button>
+            </div>
+            <div id="admin-billing-logs-list_modal" class="space-y-3 max-h-[50vh] overflow-y-auto -mr-2 pr-2">
+              <p class="text-slate-400 text-center py-10">点击搜索加载账单日志</p>
+            </div>
+            <div class="flex justify-between items-center pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                id="admin-billing-logs-prev-btn_modal"
+                class="btn btn-ghost !py-1 !px-3"
+                onclick="loadAdminBillingLogsPrev()"
+              >
+                上一页
+              </button>
+              <span id="admin-billing-logs-page-info_modal" class="text-sm text-slate-600">第 1 页</span>
+              <button
+                type="button"
+                id="admin-billing-logs-next-btn_modal"
+                class="btn btn-ghost !py-1 !px-3"
+                onclick="loadAdminBillingLogsNext()"
+              >
+                下一页
+              </button>
             </div>
           </div>
         </div>

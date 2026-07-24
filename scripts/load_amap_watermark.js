@@ -59,12 +59,47 @@
     }
   }
 
-  /**
-   * 加载高德地图去水印脚本
-   *
-   * 此函数动态创建一个 <script> 标签，并将其添加到页面的 <head> 中。
-   * 这样可以在运行时按需加载去水印脚本，而不是在页面加载时就加载。
-   */
+  function installAmapNativeDialogGuard() {
+    if (window.__amapNativeDialogGuardInstalled) {
+      return;
+    }
+    window.__amapNativeDialogGuardInstalled = true;
+
+    const originalAlert = window.alert ? window.alert.bind(window) : null;
+    const originalConfirm = window.confirm ? window.confirm.bind(window) : null;
+    const originalPrompt = window.prompt ? window.prompt.bind(window) : null;
+
+    window.alert = function () {
+      console.warn("[水印控制] 已拦截 alert，避免 AMap 加载期间中断执行", arguments[0]);
+      return undefined;
+    };
+
+    window.confirm = function () {
+      console.warn("[水印控制] 已拦截 confirm，避免 AMap 加载期间中断执行", arguments[0]);
+      return false;
+    };
+
+    window.prompt = function () {
+      console.warn("[水印控制] 已拦截 prompt，避免 AMap 加载期间中断执行", arguments[0]);
+      return null;
+    };
+
+    window.__amapNativeDialogGuardRestore = function () {
+      if (originalAlert) {
+        window.alert = originalAlert;
+      }
+      if (originalConfirm) {
+        window.confirm = originalConfirm;
+      }
+      if (originalPrompt) {
+        window.prompt = originalPrompt;
+      }
+      window.__amapNativeDialogGuardInstalled = false;
+    };
+  }
+
+  installAmapNativeDialogGuard();
+
   function loadWatermarkRemovalScript() {
     // 防止重复注入
     if (document.querySelector('script[data-amap-watermark-removal="1"]')) {
