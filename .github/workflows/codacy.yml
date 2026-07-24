@@ -41,7 +41,7 @@ jobs:
           # 也可省略令牌，仅运行支持默认配置的工具
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
           verbose: true
-          output: results.sarif
+          output: /tmp/codacy-results.sarif
           format: sarif
           # 调整非安全问题的严重级别映射
           gh-code-scanning-compat: true
@@ -53,4 +53,4 @@ jobs:
       - name: 上传 SARIF 结果文件
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: results.sarif
+          sarif_file: /tmp/codacy-results.sarif
