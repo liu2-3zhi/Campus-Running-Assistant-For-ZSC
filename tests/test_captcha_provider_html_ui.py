@@ -6,6 +6,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_PATH = PROJECT_ROOT / "index.html"
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.new.js"
+MAIN_PATH = PROJECT_ROOT / "main.py"
+VUE_ADMIN_CAPTCHA_PATH = PROJECT_ROOT / "frontend" / "src" / "components" / "admin" / "AdminCaptcha.vue"
+VUE_AUTH_PANEL_PATH = PROJECT_ROOT / "frontend" / "src" / "components" / "login" / "AuthPanel.vue"
 
 
 def _extract_section(source: str, start_marker: str, end_marker: str) -> str:
@@ -68,6 +71,8 @@ class TestCaptchaProviderHtmlUi(unittest.TestCase):
 
         self.assertGreaterEqual(html.count('data-captcha-provider-card="image"'), 2)
         self.assertGreaterEqual(html.count('data-captcha-provider-card="behavior"'), 2)
+        self.assertIn("captcha-provider-segmented", html)
+        self.assertNotIn("grid grid-cols-1 sm:grid-cols-2 gap-3", html)
         self.assertIn("function setCaptchaProviderCardStates", source)
         self.assertIn('radio.closest("[data-captcha-provider-card]")', source)
         self.assertIn('card.classList.toggle("border-sky-400", active);', source)
@@ -101,7 +106,27 @@ class TestCaptchaProviderHtmlUi(unittest.TestCase):
         }
         actual_values = set(re.findall(r'value: "([A-Z0-9_]+)"', options_source))
         self.assertEqual(expected_api_types, actual_values)
-        self.assertIn("captcha-local API.md", source)
+        self.assertIsNone(re.search(r"[A-Za-z]:[/\\]Users[/\\]", source))
+
+    def test_captcha_provider_sources_do_not_embed_local_reference_paths(self):
+        api_doc_name = "API" + ".md"
+        repo_segment_pattern = "Documents" + r"[/\\]" + "GitHub"
+        sources = {
+            "index.html": INDEX_PATH.read_text(encoding="utf-8"),
+            "scripts/main.new.js": SCRIPT_PATH.read_text(encoding="utf-8"),
+            "main.py": MAIN_PATH.read_text(encoding="utf-8"),
+            "AdminCaptcha.vue": VUE_ADMIN_CAPTCHA_PATH.read_text(encoding="utf-8"),
+            "AuthPanel.vue": VUE_AUTH_PANEL_PATH.read_text(encoding="utf-8"),
+        }
+
+        for name, source_text in sources.items():
+            self.assertIsNone(re.search(r"[A-Za-z]:[/\\]Users[/\\]", source_text), name)
+            self.assertIsNone(re.search(repo_segment_pattern, source_text), name)
+            self.assertNotIn(api_doc_name, source_text, name)
+            self.assertIsNone(
+                re.search(r"captcha-local[^\n]*(API\s*文档|API\.md)", source_text),
+                name,
+            )
 
     def test_captcha_provider_fields_load_save_and_sync_between_pc_and_mobile(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")

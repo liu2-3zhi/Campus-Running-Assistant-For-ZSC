@@ -55,7 +55,7 @@ const registerCaptchaDims = ref({ width: 0, height: 0 })
 const loginCaptchaContainerRef = ref(null)
 const registerCaptchaContainerRef = ref(null)
 
-// 验证码提供方（本地图片 / 本地行为验证码）
+// 验证码提供方（本地图片 / 验证码服务器）
 const captchaProvider = ref('image')
 const behaviorCaptchaType = ref('SLIDER')
 let tacLoaderPromise = null
@@ -89,36 +89,74 @@ function ensureTacLoader() {
   return tacLoaderPromise
 }
 
+function createTacTriggerStyle() {
+  return {
+    triggerMode: 'click',
+    popupMode: true,
+    logoUrl: null,
+    i18n: {
+      trigger_text: '点击进行人机验证码',
+    },
+  }
+}
+
 function destroyTac(target) {
   try { tacInstances[target]?.destroyWindow?.() } catch (_) {}
   tacInstances[target] = null
 }
 
-// 在指定容器渲染本地行为验证码；校验通过后把验证过的 id 写入表单 captchaId
-async function mountTacWidget(target) {
+function resetBehaviorCaptcha(target) {
   const form = target === 'login' ? loginForm : registerForm
   form.captchaId = ''
   form.captchaCode = ''
+}
+
+// 在指定容器渲染验证码服务器入口；校验通过后把验证过的 id 写入表单 captchaId
+async function mountTacWidget(target) {
+  const form = target === 'login' ? loginForm : registerForm
+  const hasVerifiedBehaviorCaptcha = !!form.captchaId
+  if (!hasVerifiedBehaviorCaptcha) {
+    form.captchaId = ''
+    form.captchaCode = ''
+  } else {
+    form.captchaCode = 'behavior-verified'
+  }
   try {
     await ensureTacLoader()
     await nextTick()
     destroyTac(target)
     const bindEl = target === 'login' ? '#tac-login' : '#tac-register'
     if (!document.querySelector(bindEl)) return
+    const preserveSuccessOnClose = () => !!form.captchaId
     const tac = await window.initTAC('/api/captcha/behavior/tac/', {
       requestCaptchaDataUrl: '/api/captcha/behavior/gen?type=' + encodeURIComponent(behaviorCaptchaType.value),
       validCaptchaUrl: '/api/captcha/behavior/check',
       bindEl,
-      validSuccess: (res) => {
+      btnCloseFun: (event, t) => {
+        if (t && t.isClickTriggerMode?.() && t.renderTrigger) {
+          t.renderTrigger(preserveSuccessOnClose())
+        } else if (t && t.destroyWindow) {
+          t.destroyWindow()
+        }
+      },
+      validSuccess: (res, c, t) => {
         form.captchaId = res && res.data ? res.data.id : ''
         form.captchaCode = 'behavior-verified'
+        if (t && t.showTriggerSuccess) t.showTriggerSuccess()
       },
-      validFail: (res, c, t) => { if (t && t.reloadCaptcha) t.reloadCaptcha() },
-    }, { logoUrl: null })
+      validFail: (res, c, t) => {
+        if (form.captchaId) {
+          if (t && t.showTriggerSuccess) t.showTriggerSuccess()
+        } else if (t && t.reloadCaptcha) {
+          t.reloadCaptcha()
+        }
+      },
+    }, createTacTriggerStyle())
     tacInstances[target] = tac
     tac.init()
+    if (hasVerifiedBehaviorCaptcha && tac && tac.showTriggerSuccess) tac.showTriggerSuccess()
   } catch (e) {
-    console.warn('本地行为验证码加载失败:', e)
+    console.warn('验证码服务器加载失败:', e)
   }
 }
 
@@ -159,7 +197,7 @@ function getCaptchaContainerWidth(target) {
 }
 
 async function loadCaptcha(target) {
-  // 本地行为验证码提供方：渲染行为验证码组件
+  // 验证码服务器提供方：渲染行为验证码组件
   if (captchaProvider.value === 'behavior') {
     return mountTacWidget(target)
   }
@@ -332,7 +370,7 @@ function showSmsCaptchaModal(phone, type) {
   })
 }
 
-// --- SMS Captcha Modal（本地行为验证码版）---
+// --- SMS Captcha Modal（验证码服务器版）---
 function showSmsTacModal(phone, type) {
   let validatedId = ''
   Swal.fire({
@@ -352,17 +390,32 @@ function showSmsTacModal(phone, type) {
     didOpen: async () => {
       try {
         await ensureTacLoader()
+        const preserveSuccessOnClose = () => !!validatedId
         const tac = await window.initTAC('/api/captcha/behavior/tac/', {
           requestCaptchaDataUrl: '/api/captcha/behavior/gen?type=' + encodeURIComponent(behaviorCaptchaType.value),
           validCaptchaUrl: '/api/captcha/behavior/check',
           bindEl: '#swal-tac',
-          validSuccess: (res) => {
+          btnCloseFun: (event, t) => {
+            if (t && t.isClickTriggerMode?.() && t.renderTrigger) {
+              t.renderTrigger(preserveSuccessOnClose())
+            } else if (t && t.destroyWindow) {
+              t.destroyWindow()
+            }
+          },
+          validSuccess: (res, c, t) => {
             validatedId = res && res.data ? res.data.id : ''
             const st = document.getElementById('swal-tac-status')
             if (st) { st.textContent = '✓ 验证通过，请点击确认发送'; st.style.color = '#16a34a' }
+            if (t && t.showTriggerSuccess) t.showTriggerSuccess()
           },
-          validFail: (r, c, t) => { if (t && t.reloadCaptcha) t.reloadCaptcha() },
-        }, { logoUrl: null })
+          validFail: (r, c, t) => {
+            if (validatedId) {
+              if (t && t.showTriggerSuccess) t.showTriggerSuccess()
+            } else if (t && t.reloadCaptcha) {
+              t.reloadCaptcha()
+            }
+          },
+        }, createTacTriggerStyle())
         tac.init()
       } catch (e) {
         const st = document.getElementById('swal-tac-status')
@@ -428,11 +481,21 @@ async function sendRegisterSmsCode() {
 async function handleLogin() {
   errorMsg.value = ''
   successMsg.value = ''
+
+  if (captchaProvider.value === 'behavior' && !loginForm.captchaId) {
+    errorMsg.value = '请先完成人机验证'
+    return
+  }
+  if (captchaProvider.value !== 'behavior' && !loginForm.captchaCode.trim()) {
+    errorMsg.value = '请输入图形验证码'
+    return
+  }
+
   loading.value = true
   try {
     const payload = {
       captcha_id: loginForm.captchaId,
-      captcha: loginForm.captchaCode,
+      captcha: captchaProvider.value === 'behavior' ? 'behavior-verified' : loginForm.captchaCode,
     }
 
     if (loginMode.value === 'phone') {
@@ -484,6 +547,7 @@ async function handleLogin() {
         }
       }
       errorMsg.value = data.message || '登录失败'
+      if (captchaProvider.value === 'behavior') resetBehaviorCaptcha('login')
       loadCaptcha('login')
       return
     }
@@ -499,6 +563,7 @@ async function handleLogin() {
     handleLoginSuccess(data)
   } catch (e) {
     errorMsg.value = e.message || '登录失败'
+    if (captchaProvider.value === 'behavior') resetBehaviorCaptcha('login')
     loadCaptcha('login')
   } finally {
     loading.value = false
@@ -534,6 +599,15 @@ async function handleRegister() {
   errorMsg.value = ''
   successMsg.value = ''
 
+  if (captchaProvider.value === 'behavior' && !registerForm.captchaId) {
+    errorMsg.value = '请先完成人机验证'
+    return
+  }
+  if (captchaProvider.value !== 'behavior' && !registerForm.captchaCode.trim()) {
+    errorMsg.value = '请输入图形验证码'
+    return
+  }
+
   if (registerForm.password !== registerForm.confirmPassword) {
     errorMsg.value = '两次输入的密码不一致'
     return
@@ -563,7 +637,7 @@ async function handleRegister() {
       nickname: registerForm.nickname || registerForm.username,
       auth_password: registerForm.password,
       captcha_id: registerForm.captchaId,
-      captcha: registerForm.captchaCode,
+      captcha: captchaProvider.value === 'behavior' ? 'behavior-verified' : registerForm.captchaCode,
     }
 
     if (registerForm.avatarFile) {
@@ -579,6 +653,7 @@ async function handleRegister() {
     const data = await callRawAPI('/auth/register', 'POST', payload)
     if (data.success === false) {
       errorMsg.value = data.message || '注册失败'
+      if (captchaProvider.value === 'behavior') resetBehaviorCaptcha('register')
       loadCaptcha('register')
       return
     }
@@ -588,6 +663,7 @@ async function handleRegister() {
     loadCaptcha('login')
   } catch (e) {
     errorMsg.value = e.message || '注册失败'
+    if (captchaProvider.value === 'behavior') resetBehaviorCaptcha('register')
     loadCaptcha('register')
   } finally {
     loading.value = false
@@ -842,10 +918,12 @@ onUnmounted(() => {
                   </svg>
                 </button>
               </div>
-              <!-- 本地行为验证码 -->
+              <!-- 验证码服务器 -->
               <div v-else>
                 <div id="tac-login" class="min-h-[60px] w-full"></div>
-                <p class="mt-1 text-xs" style="color: var(--ink-muted)">请完成上方行为验证</p>
+                <p class="mt-1 text-xs" :style="{ color: loginForm.captchaId ? '#16a34a' : 'var(--ink-muted)' }">
+                  {{ loginForm.captchaId ? '验证通过' : '请完成上方行为验证' }}
+                </p>
               </div>
             </div>
 
@@ -1065,10 +1143,12 @@ onUnmounted(() => {
                   </svg>
                 </button>
               </div>
-              <!-- 本地行为验证码 -->
+              <!-- 验证码服务器 -->
               <div v-else>
                 <div id="tac-register" class="min-h-[60px] w-full"></div>
-                <p class="mt-1 text-xs" style="color: var(--ink-muted)">请完成上方行为验证</p>
+                <p class="mt-1 text-xs" :style="{ color: registerForm.captchaId ? '#16a34a' : 'var(--ink-muted)' }">
+                  {{ registerForm.captchaId ? '验证通过' : '请完成上方行为验证' }}
+                </p>
               </div>
             </div>
 

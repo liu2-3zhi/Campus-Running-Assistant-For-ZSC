@@ -1823,6 +1823,124 @@ def get_captcha_provider_config():
     }
 
 
+def append_behavior_captcha_history(captcha_id, behavior_type="SLIDER", status="created"):
+    """
+    记录 captcha-local 生成历史。行为验证码答案和图片不可回溯，只记录 ID、类型和状态。
+    """
+    if not captcha_id:
+        return
+    try:
+        now_ts = time.time()
+        history_dir = os.path.join(LOGIN_LOGS_DIR, "captcha_history")
+        os.makedirs(history_dir, exist_ok=True)
+        date_str = datetime.datetime.fromtimestamp(now_ts).strftime("%Y%m%d")
+        history_file = os.path.join(history_dir, f"captcha_history_{date_str}.jsonl")
+        try:
+            session_id = request.headers.get("X-Session-ID", "unknown")
+            client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+            user_agent = request.headers.get("User-Agent", "unknown")
+        except Exception:
+            session_id = "unknown"
+            client_ip = "unknown"
+            user_agent = "unknown"
+        history_entry = {
+            "captcha_id": str(captcha_id),
+            "provider": "behavior",
+            "captcha_provider": "behavior",
+            "behavior_type": str(behavior_type or "SLIDER"),
+            "display_text": "使用验证码服务器",
+            "code": "",
+            "html": "",
+            "session_id": session_id,
+            "client_ip": client_ip,
+            "user_agent": user_agent,
+            "timestamp": now_ts,
+            "timestamp_readable": datetime.datetime.fromtimestamp(now_ts).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+            "expires_at": now_ts + 120,
+            "status": status,
+            "verified_at": None,
+            "verified_input": None,
+        }
+        with open(history_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(history_entry, ensure_ascii=False) + "\n")
+        logging.debug(
+            f"[验证码历史-behavior] 已记录验证码服务器请求: ID={str(captcha_id)[:12]}..."
+        )
+    except Exception as e:
+        logging.error(f"[验证码历史-behavior] 记录历史失败: {e}", exc_info=True)
+
+
+def update_behavior_captcha_history(captcha_id, passed):
+    """
+    更新 captcha-local 二次校验结果。不可回溯答案，verified_input 固定显示服务器校验。
+    """
+    if not captcha_id:
+        return
+    try:
+        history_dir = os.path.join(LOGIN_LOGS_DIR, "captcha_history")
+        if not os.path.exists(history_dir):
+            return
+        status = "verified_success" if passed else "verified_failed"
+        now_ts = time.time()
+        for filename in sorted(os.listdir(history_dir), reverse=True):
+            if not filename.endswith(".jsonl"):
+                continue
+            history_file = os.path.join(history_dir, filename)
+            try:
+                with open(history_file, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                updated = False
+                for index, line in enumerate(lines):
+                    try:
+                        record = json.loads(line.strip())
+                    except Exception:
+                        continue
+                    if record.get("captcha_id") != captcha_id:
+                        continue
+                    record["provider"] = "behavior"
+                    record["captcha_provider"] = "behavior"
+                    record["display_text"] = "使用验证码服务器"
+                    record["code"] = ""
+                    record["html"] = ""
+                    record["status"] = status
+                    record["verified_at"] = now_ts
+                    record["verified_at_readable"] = datetime.datetime.fromtimestamp(
+                        now_ts
+                    ).strftime("%Y-%m-%d %H:%M:%S")
+                    record["verified_input"] = "验证码服务器二次校验"
+                    lines[index] = json.dumps(record, ensure_ascii=False) + "\n"
+                    updated = True
+                    break
+                if updated:
+                    with open(history_file, "w", encoding="utf-8") as f:
+                        f.writelines(lines)
+                    return
+            except Exception as e:
+                logging.warning(f"[验证码历史-behavior] 更新文件 {filename} 失败: {e}")
+    except Exception as e:
+        logging.error(f"[验证码历史-behavior] 更新历史失败: {e}", exc_info=True)
+
+
+def normalize_captcha_history_record(record):
+    if not isinstance(record, dict):
+        return record
+    provider = str(
+        record.get("provider") or record.get("captcha_provider") or ""
+    ).strip().lower()
+    if provider == "behavior":
+        record["provider"] = "behavior"
+        record["captcha_provider"] = "behavior"
+        record["display_text"] = "使用验证码服务器"
+        record["code"] = ""
+        record["captcha_code"] = ""
+        record["html"] = ""
+        if record.get("verified_input"):
+            record["verified_input"] = "验证码服务器二次校验"
+    return record
+
+
 def _verify_behavior_captcha(captcha_id):
     """
     本地行为验证码二次校验：调用行为验证码服务 GET /check2?id=<captcha_id>。
@@ -1846,6 +1964,7 @@ def _verify_behavior_captcha(captcha_id):
             timeout=5,
         )
         passed = resp.status_code == 200 and resp.text.strip().lower() == "true"
+        update_behavior_captcha_history(captcha_id, passed)
         if passed:
             logging.info(f"[验证码-behavior] 二验通过: ID={captcha_id[:12]}...")
             return True, ""
@@ -1863,14 +1982,17 @@ def verify_captcha(captcha_id, user_input):
     验证验证码辅助函数（按提供方分支：本地图片 / behavior）
     """
     logging.debug(f"[验证码] 开始验证: ID={captcha_id}..., 用户输入='{user_input}'")
-    if not captcha_id or not captcha_id.strip():
-        return False, "验证码ID不能为空"
 
     # ========================================
     # 提供方分支：behavior 走 /check2 二次校验，不依赖文本输入
     # ========================================
     if get_captcha_provider_config().get("provider") == "behavior":
+        if not captcha_id or not captcha_id.strip():
+            return False, "请先完成人机验证"
         return _verify_behavior_captcha(captcha_id.strip())
+
+    if not captcha_id or not captcha_id.strip():
+        return False, "验证码ID不能为空"
 
     if not user_input or not user_input.strip():
         return False, "人机验证码不能为空"
@@ -40102,20 +40224,42 @@ def start_web_server(args_param):
             logging.error(f"[验证码-behavior] 代理 tac 资源失败({subpath}): {e}")
             return Response("", status=502)
 
-    @app.route("/api/captcha/behavior/gen", methods=["GET"])
+    @app.route("/api/captcha/behavior/gen", methods=["GET", "POST"])
     def behavior_proxy_gen():
-        """代理 behavior /gen（注入 X-Captcha-Key，key 不出后端）"""
+        """代理 behavior /gen（注入 X-Captcha-Key，key 不出后端）。
+
+        验证码服务器的生成接口使用 GET；前端 SDK 统一入口会 POST
+        requestCaptchaDataUrl。本站代理同时接收 GET/POST，再统一用 GET
+        访问上游服务，避免登录页 SDK 触发时命中未授权或方法不匹配。
+        """
         import requests as _requests
         base, conf = _behavior_base_or_error()
         if not base:
             return jsonify({"code": 500, "msg": "behavior 未配置", "data": {}}), 503
-        ctype = (request.args.get("type") or conf.get("behavior_type") or "SLIDER").strip()
+        request_json = request.get_json(silent=True) if request.method == "POST" else None
+        request_json = request_json if isinstance(request_json, dict) else {}
+        ctype = (
+            request.args.get("type")
+            or request_json.get("type")
+            or conf.get("behavior_type")
+            or "SLIDER"
+        ).strip()
         headers = {}
         if conf.get("behavior_api_key"):
             headers["X-Captcha-Key"] = conf["behavior_api_key"]
         try:
             r = _requests.get(f"{base}/gen", params={"type": ctype},
                               headers=headers, timeout=8)
+            try:
+                response_json = r.json()
+                if r.status_code == 200 and str(response_json.get("code", "")) == "200":
+                    captcha_payload = response_json.get("data") or {}
+                    append_behavior_captcha_history(
+                        captcha_payload.get("id"),
+                        captcha_payload.get("type") or ctype,
+                    )
+            except Exception as history_error:
+                logging.debug(f"[验证码历史-behavior] 记录 /gen 历史失败: {history_error}")
             return (r.text, r.status_code, {"Content-Type": "application/json"})
         except Exception as e:
             logging.error(f"[验证码-behavior] 代理 /gen 失败: {e}")
@@ -40671,6 +40815,7 @@ def start_web_server(args_param):
                                         continue
                                         
                                 record.pop("session_id", None)
+                                normalize_captcha_history_record(record)
                                 local_records.append(record)
                                 local_count += 1
                                 
@@ -40882,6 +41027,7 @@ def start_web_server(args_param):
                                                     ).strftime("%Y-%m-%d %H:%M:%S")
                                                 )
                                         found_record.pop("session_id", None)
+                                        normalize_captcha_history_record(found_record)
                                         return jsonify(
                                             {"success": True, "data": found_record}
                                         )
@@ -41112,6 +41258,11 @@ def start_web_server(args_param):
 
                     captcha_payload = upstream_json.get("data") or {}
                     captcha_id = str(captcha_payload.get("id") or "")
+                    append_behavior_captcha_history(
+                        captcha_id,
+                        captcha_payload.get("type") or behavior_type,
+                        status="test_generated",
+                    )
                     return jsonify({
                         "success": True,
                         "provider": "behavior",

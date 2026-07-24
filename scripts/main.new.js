@@ -18700,6 +18700,11 @@ async function isBehaviorCaptchaProvider() {
   return providerConfig.provider === "behavior";
 }
 
+function isMissingCaptchaId(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return !normalized || normalized === "null" || normalized === "undefined";
+}
+
 function ensureBehaviorCaptchaLoader() {
   if (window.initTAC) {
     return Promise.resolve();
@@ -18727,6 +18732,17 @@ function ensureBehaviorCaptchaLoader() {
   return behaviorCaptchaLoaderPromise;
 }
 
+function createBehaviorCaptchaTriggerStyle() {
+  return {
+    triggerMode: "click",
+    popupMode: true,
+    logoUrl: null,
+    i18n: {
+      trigger_text: "点击进行人机验证码",
+    },
+  };
+}
+
 function getCaptchaDisplayIdForForm(formType) {
   if (formType === "login") return "auth-login-captcha-display";
   if (formType === "register") return "auth-register-captcha-display";
@@ -18752,6 +18768,27 @@ function setCaptchaIdForForm(formType, captchaId) {
     captchaIds_mobile_login = captchaId;
   } else if (formType === "mobile-register") {
     captchaIds_mobile_register = captchaId;
+  }
+}
+
+function getCaptchaIdForForm(formType) {
+  if (formType === "login") return captchaIds_login;
+  if (formType === "register") return captchaIds_register;
+  if (formType === "mobile-login") return captchaIds_mobile_login;
+  if (formType === "mobile-register") return captchaIds_mobile_register;
+  return "";
+}
+
+function resetBehaviorCaptchaForForm(formType) {
+  setCaptchaIdForForm(formType, "");
+  setCaptchaInputValueForForm(formType, "");
+}
+
+function resetBehaviorCaptchaModal() {
+  captchaIds_modal = "";
+  const modalInput = document.getElementById("captcha-modal-input");
+  if (modalInput) {
+    modalInput.value = "";
   }
 }
 
@@ -18831,8 +18868,13 @@ async function loadBehaviorCaptcha(formType) {
     return;
   }
 
-  setCaptchaIdForForm(formType, "");
-  setCaptchaInputValueForForm(formType, "");
+  const hasVerifiedBehaviorCaptcha = !isMissingCaptchaId(getCaptchaIdForForm(formType));
+  if (!hasVerifiedBehaviorCaptcha) {
+    setCaptchaIdForForm(formType, "");
+    setCaptchaInputValueForForm(formType, "");
+  } else {
+    setCaptchaInputValueForForm(formType, "behavior-verified");
+  }
   setCaptchaInputBehaviorMode(formType, true);
   setCaptchaDisplayBehaviorMode(displayElement, true);
 
@@ -18843,7 +18885,7 @@ async function loadBehaviorCaptcha(formType) {
   displayElement.innerHTML = `
     <div class="w-full" style="min-height:60px;">
       <div id="${widgetId}" style="min-height:60px;"></div>
-      <p id="${statusId}" class="mt-1 text-xs text-slate-400">请完成上方人机验证</p>
+      <p id="${statusId}" class="mt-1 text-xs ${hasVerifiedBehaviorCaptcha ? "text-green-600" : "text-slate-400"}">${hasVerifiedBehaviorCaptcha ? "验证通过" : "请完成上方人机验证"}</p>
     </div>
   `;
 
@@ -18853,12 +18895,25 @@ async function loadBehaviorCaptcha(formType) {
     destroyBehaviorCaptchaInstance(formType);
     const behaviorType =
       providerConfig.behavior_type || RUNTIME_CAPTCHA_PROVIDER_DEFAULT.behavior_type;
+    const preserveSuccessOnClose = () => !isMissingCaptchaId(getCaptchaIdForForm(formType));
     const tac = await window.initTAC("/api/captcha/behavior/tac/", {
       requestCaptchaDataUrl:
         "/api/captcha/behavior/gen?type=" + encodeURIComponent(behaviorType),
       validCaptchaUrl: "/api/captcha/behavior/check",
       bindEl: `#${widgetId}`,
-      validSuccess: (res) => {
+      btnCloseFun: (event, tacInstance) => {
+        if (
+          tacInstance &&
+          typeof tacInstance.isClickTriggerMode === "function" &&
+          tacInstance.isClickTriggerMode() &&
+          typeof tacInstance.renderTrigger === "function"
+        ) {
+          tacInstance.renderTrigger(preserveSuccessOnClose());
+        } else if (tacInstance && typeof tacInstance.destroyWindow === "function") {
+          tacInstance.destroyWindow();
+        }
+      },
+      validSuccess: (res, c, tacInstance) => {
         const captchaId = res && res.data ? res.data.id : "";
         setCaptchaIdForForm(formType, captchaId);
         setCaptchaInputValueForForm(formType, "behavior-verified");
@@ -18867,18 +18922,26 @@ async function loadBehaviorCaptcha(formType) {
           statusElement.textContent = "验证通过";
           statusElement.className = "mt-1 text-xs text-green-600";
         }
+        if (tacInstance && typeof tacInstance.showTriggerSuccess === "function") {
+          tacInstance.showTriggerSuccess();
+        }
       },
       validFail: (res, code, tacInstance) => {
-        setCaptchaIdForForm(formType, "");
-        setCaptchaInputValueForForm(formType, "");
-        if (tacInstance && typeof tacInstance.reloadCaptcha === "function") {
+        if (getCaptchaIdForForm(formType)) {
+          if (tacInstance && typeof tacInstance.showTriggerSuccess === "function") {
+            tacInstance.showTriggerSuccess();
+          }
+        } else if (tacInstance && typeof tacInstance.reloadCaptcha === "function") {
           tacInstance.reloadCaptcha();
         }
       },
-    }, { logoUrl: null });
+    }, createBehaviorCaptchaTriggerStyle());
     behaviorCaptchaInstances[formType] = tac;
     if (tac && typeof tac.init === "function") {
       tac.init();
+    }
+    if (hasVerifiedBehaviorCaptcha && tac && typeof tac.showTriggerSuccess === "function") {
+      tac.showTriggerSuccess();
     }
   } catch (error) {
     displayElement.innerHTML =
@@ -18916,15 +18979,21 @@ async function loadBehaviorCaptchaModal() {
     return;
   }
 
-  captchaIds_modal = "";
+  const hasVerifiedBehaviorCaptcha = !isMissingCaptchaId(captchaIds_modal);
+  if (!hasVerifiedBehaviorCaptcha) {
+    captchaIds_modal = "";
+  }
   setCaptchaModalInputBehaviorMode(true);
+  if (hasVerifiedBehaviorCaptcha && modalInput) {
+    modalInput.value = "behavior-verified";
+  }
   setCaptchaDisplayBehaviorMode(displayElement, true);
   displayElement.style.width = "100%";
   displayElement.style.height = "auto";
   displayElement.innerHTML = `
     <div class="w-full" style="min-height:60px;">
       <div id="captcha-modal-tac" style="min-height:60px;"></div>
-      <p id="captcha-modal-tac-status" class="mt-1 text-xs text-slate-400">请完成上方人机验证</p>
+      <p id="captcha-modal-tac-status" class="mt-1 text-xs ${hasVerifiedBehaviorCaptcha ? "text-green-600" : "text-slate-400"}">${hasVerifiedBehaviorCaptcha ? "验证通过，请点击确认发送" : "请完成上方人机验证"}</p>
     </div>
   `;
 
@@ -18934,12 +19003,25 @@ async function loadBehaviorCaptchaModal() {
     destroyBehaviorCaptchaInstance("modal");
     const behaviorType =
       providerConfig.behavior_type || RUNTIME_CAPTCHA_PROVIDER_DEFAULT.behavior_type;
+    const preserveSuccessOnClose = () => !isMissingCaptchaId(captchaIds_modal);
     const tac = await window.initTAC("/api/captcha/behavior/tac/", {
       requestCaptchaDataUrl:
         "/api/captcha/behavior/gen?type=" + encodeURIComponent(behaviorType),
       validCaptchaUrl: "/api/captcha/behavior/check",
       bindEl: "#captcha-modal-tac",
-      validSuccess: (res) => {
+      btnCloseFun: (event, tacInstance) => {
+        if (
+          tacInstance &&
+          typeof tacInstance.isClickTriggerMode === "function" &&
+          tacInstance.isClickTriggerMode() &&
+          typeof tacInstance.renderTrigger === "function"
+        ) {
+          tacInstance.renderTrigger(preserveSuccessOnClose());
+        } else if (tacInstance && typeof tacInstance.destroyWindow === "function") {
+          tacInstance.destroyWindow();
+        }
+      },
+      validSuccess: (res, c, tacInstance) => {
         const captchaId = res && res.data ? res.data.id : "";
         captchaIds_modal = captchaId;
         if (modalInput) {
@@ -18950,18 +19032,26 @@ async function loadBehaviorCaptchaModal() {
           statusElement.textContent = "验证通过，请点击确认发送";
           statusElement.className = "mt-1 text-xs text-green-600";
         }
+        if (tacInstance && typeof tacInstance.showTriggerSuccess === "function") {
+          tacInstance.showTriggerSuccess();
+        }
       },
       validFail: (res, code, tacInstance) => {
-        captchaIds_modal = "";
-        if (modalInput) modalInput.value = "";
-        if (tacInstance && typeof tacInstance.reloadCaptcha === "function") {
+        if (captchaIds_modal) {
+          if (tacInstance && typeof tacInstance.showTriggerSuccess === "function") {
+            tacInstance.showTriggerSuccess();
+          }
+        } else if (tacInstance && typeof tacInstance.reloadCaptcha === "function") {
           tacInstance.reloadCaptcha();
         }
       },
-    }, { logoUrl: null });
+    }, createBehaviorCaptchaTriggerStyle());
     behaviorCaptchaInstances.modal = tac;
     if (tac && typeof tac.init === "function") {
       tac.init();
+    }
+    if (hasVerifiedBehaviorCaptcha && tac && typeof tac.showTriggerSuccess === "function") {
+      tac.showTriggerSuccess();
     }
   } catch (error) {
     displayElement.innerHTML =
@@ -19233,8 +19323,11 @@ async function loadCaptchaModal(requestedWidth) {
   }
 }
 
-function refreshCaptchaModal() {
+function refreshCaptchaModal(options = {}) {
   console.log("[验证码模态窗] 刷新验证码");
+  if (options.resetBehaviorCaptcha === true) {
+    resetBehaviorCaptchaModal();
+  }
   // 使用上次打开模态框时记录的宽度（如果有）
   loadCaptchaModal(captchaModalRequestedWidth);
 }
@@ -19340,15 +19433,26 @@ function closeCaptchaModal() {
 
 async function confirmCaptchaAndSendSMS() {
   const captchaInput = document.getElementById("captcha-modal-input");
-  const captcha = captchaInput.value.trim();
   const isBehaviorMode = captchaInput?.dataset.behaviorCaptcha === "true";
+  const captcha = isBehaviorMode
+    ? BEHAVIOR_CAPTCHA_VERIFIED_CODE
+    : captchaInput?.value?.trim() || "";
 
-  if (!captcha) {
+  if (isBehaviorMode && isMissingCaptchaId(captchaIds_modal)) {
+    Swal.fire({
+      icon: "warning",
+      title: "请完成人机验证",
+      text: "请先完成上方人机验证",
+    });
+    return;
+  }
+
+  if (!isBehaviorMode && !captcha) {
     // showModalAlert("请输入验证码");
     Swal.fire({
       icon: "warning",
-      title: isBehaviorMode ? "请完成人机验证" : "请输入验证码",
-      text: isBehaviorMode ? "请先完成上方人机验证" : "请输入图形验证码",
+      title: "请输入验证码",
+      text: "请输入图形验证码",
     });
     return;
   }
@@ -19379,7 +19483,7 @@ async function confirmCaptchaAndSendSMS() {
     closeCaptchaModal();
   } catch (error) {
     console.error("[验证码模态窗] 发送SMS失败:", error);
-    refreshCaptchaModal();
+    refreshCaptchaModal({ resetBehaviorCaptcha: true });
     const captchaModalInput = document.getElementById("captcha-modal-input");
     if (captchaModalInput) {
       captchaModalInput.value = "";
@@ -19399,15 +19503,9 @@ async function sendSMSWithCaptcha(
   scene = null,
 ) {
   // if(captchaIds.modal===null || captchaIds.modal===undefined || captchaIds.modal==="" || captchaIds.modal=="null" || captchaIds.modal=="undefined" || captchaIds.modal=="NULL"){
-  if (
-    captchaIds_modal === null ||
-    captchaIds_modal === undefined ||
-    captchaIds_modal === "" ||
-    captchaIds_modal == "null" ||
-    captchaIds_modal == "undefined" ||
-    captchaIds_modal == "NULL"
-  ) {
+  if (isMissingCaptchaId(captchaIds_modal)) {
     const modalInput = document.getElementById("captcha-modal-input");
+    const isBehaviorMode = modalInput?.dataset.behaviorCaptcha === "true";
     if (modalInput) {
       modalInput.value = "";
       modalInput.focus();
@@ -19416,7 +19514,9 @@ async function sendSMSWithCaptcha(
     Swal.fire({
       icon: "warning",
       title: "发生失败",
-      text: "验证码未加载或已过期，请刷新后重试",
+      text: isBehaviorMode
+        ? "请先完成人机验证"
+        : "验证码未加载或已过期，请刷新后重试",
     });
 
     // document.getElementById("modal-login-captcha-refresh").click();
@@ -19491,6 +19591,7 @@ async function handleAuthLogin(isMobile_use = false) {
   const password = $("auth-password").value.trim();
   const sms_code = $("auth-sms-code").value.trim();
   const captcha = $("auth-login-captcha").value.trim();
+  const isBehaviorCaptchaMode = await isBehaviorCaptchaProvider();
 
   let login_mode = "username";
   let login_verification_method = "password";
@@ -19501,7 +19602,7 @@ async function handleAuthLogin(isMobile_use = false) {
   if (!$("auth-sms-section").classList.contains("hidden")) {
     login_verification_method = "sms";
   }
-  if (!captcha) {
+  if (!isBehaviorCaptchaMode && !captcha) {
     // showModalAlert("请输入图形验证码", "登录失败");
     Swal.fire({
       icon: "warning",
@@ -19544,6 +19645,7 @@ async function handleAuthLogin(isMobile_use = false) {
         title: "登录失败",
         text: "请输入密码",
       });
+      resetBehaviorCaptchaForForm(isMobile_use === false ? "login" : "mobile-login");
       if (isMobile_use === false) {
         refreshCaptcha("login");
       } else {
@@ -19652,7 +19754,9 @@ async function handleAuthLogin(isMobile_use = false) {
     request_body.auth_sms_code = sms_code;
   }
 
-  request_body.captcha = captcha;
+  request_body.captcha = isBehaviorCaptchaMode
+    ? BEHAVIOR_CAPTCHA_VERIFIED_CODE
+    : captcha;
 
   console.log("[登录] isMobile_use:", isMobile_use);
   console.log("[登录] captchaIds_login:", captchaIds_login);
@@ -19666,24 +19770,20 @@ async function handleAuthLogin(isMobile_use = false) {
   }
   console.log("[登录] 使用的验证码ID:", request_body.captcha_id);
 
-  if (
-    request_body.captcha_id === null ||
-    request_body.captcha_id === undefined ||
-    request_body.captcha_id === "" ||
-    request_body.captcha_id == "null" ||
-    request_body.captcha_id == "undefined" ||
-    request_body.captcha_id == "NULL"
-  ) {
+  if (isMissingCaptchaId(request_body.captcha_id)) {
     // showModalAlert("验证码未加载或已过期，请刷新后重试", "登录失败");
     Swal.fire({
       icon: "warning",
       title: "登录失败",
-      text: "验证码未加载或已过期，请刷新后重试",
+      text: isBehaviorCaptchaMode
+        ? "请先完成人机验证"
+        : "验证码未加载或已过期，请刷新后重试",
     });
 
     // document.getElementById("auth-login-captcha-refresh").click();
     // document.getElementById("mobile-login-captcha-refresh").click();
 
+    resetBehaviorCaptchaForForm(isMobile_use === false ? "login" : "mobile-login");
     if (isMobile_use === false) {
       refreshCaptcha("login");
     } else {
@@ -20267,6 +20367,7 @@ async function handleAuthRegister(isMobile_use = false) {
   const smsCode = $("auth-reg-sms-code").value.trim();
   const nickname_Raw = $("auth-reg-nickname").value.trim();
   const captcha = $("auth-register-captcha").value.trim();
+  const isBehaviorCaptchaMode = await isBehaviorCaptchaProvider();
 
   // 昵称为空时默认使用用户名
   let nickname;
@@ -20280,7 +20381,7 @@ async function handleAuthRegister(isMobile_use = false) {
   const password = $("auth-reg-password").value.trim();
   const passwordConfirm = $("auth-reg-password-confirm").value.trim();
 
-  if (!captcha) {
+  if (!isBehaviorCaptchaMode && !captcha) {
     // showModalAlert("请输入图形验证码", "注册失败");
     Swal.fire({
       icon: "warning",
@@ -20404,7 +20505,10 @@ async function handleAuthRegister(isMobile_use = false) {
   formData.append("phone", phone);
   formData.append("nickname", nickname);
   formData.append("sms_code", smsCode);
-  formData.append("captcha", captcha);
+  formData.append(
+    "captcha",
+    isBehaviorCaptchaMode ? BEHAVIOR_CAPTCHA_VERIFIED_CODE : captcha,
+  );
   console.log("isMobile_use:", isMobile_use);
   if (isMobile_use === true) {
     // formData.append("captcha_id", captchaIds["mobile-register"]);
@@ -20422,18 +20526,13 @@ async function handleAuthRegister(isMobile_use = false) {
     formData.append("avatar", avatarFile, avatarFile.name || "avatar.jpg");
   }
 
-  if (
-    formData.get("captcha_id") === null ||
-    formData.get("captcha_id") === undefined ||
-    formData.get("captcha_id") === "" ||
-    formData.get("captcha_id") == "null" ||
-    formData.get("captcha_id") == "undefined" ||
-    formData.get("captcha_id") == "NULL"
-  ) {
+  if (isMissingCaptchaId(formData.get("captcha_id"))) {
     Swal.fire({
       icon: "warning",
       title: "注册失败",
-      text: "验证码未加载或已过期，请刷新后重试",
+      text: isBehaviorCaptchaMode
+        ? "请先完成人机验证"
+        : "验证码未加载或已过期，请刷新后重试",
     });
 
     // document.getElementById("auth-register-btn").click();
@@ -20514,6 +20613,7 @@ async function handleAuthRegister(isMobile_use = false) {
         text: result.message || "注册失败",
       });
 
+      resetBehaviorCaptchaForForm(isMobile_use === false ? "register" : "mobile-register");
       if (isMobile_use === false) {
         refreshCaptcha("register");
       } else {
@@ -20536,6 +20636,7 @@ async function handleAuthRegister(isMobile_use = false) {
       text: "网络错误，请检查连接后重试",
     });
 
+    resetBehaviorCaptchaForForm(isMobile_use === false ? "register" : "mobile-register");
     if (isMobile_use === false) {
       refreshCaptcha("register");
     } else {
@@ -47141,7 +47242,7 @@ const DEFAULT_CAPTCHA_PROVIDER_SETTINGS = {
   behavior_type: "SLIDER",
 };
 
-// 本地行为验证码支持的类型，参考 captcha-local API.md（C:/Users/Zelly/Documents/GitHub/captcha-local/API.md）。
+// captcha-local API 验证码服务器支持的类型。
 const BEHAVIOR_CAPTCHA_TYPES = [
   { value: "SLIDER", label: "滑块验证码" },
   { value: "SLIDER2", label: "滑块验证码 V2（旋转图块）" },
@@ -47705,6 +47806,22 @@ document.addEventListener("DOMContentLoaded", function () {
     console.log("[验证码历史] 已注册刷新按钮事件");
   }
 });
+
+function isBehaviorCaptchaRecord(record) {
+  if (!record) return false;
+  const provider = String(
+    record.provider || record.captcha_provider || "",
+  ).toLowerCase();
+  return provider === "behavior" || !!record.behavior_type;
+}
+
+function getCaptchaHistoryDisplayText(record) {
+  if (isBehaviorCaptchaRecord(record)) {
+    return "使用验证码服务器";
+  }
+  return record.code || record.captcha_code || "N/A";
+}
+
 async function loadCaptchaHistory(need_weight = "") {
   const listContainer = $("admin-captcha-list_modal");
   if (!listContainer) {
@@ -47826,9 +47943,7 @@ async function loadCaptchaHistory(need_weight = "") {
           expired: "已过期",
           test_generated: "测试生成",
         }[record.status] || record.status;
-      // 获取验证码显示值
-      // 优先使用 code 字段，其次尝试 captcha_code（兼容旧数据），最后显示 "N/A"
-      const captchaCode = record.code || record.captcha_code || "N/A";
+      const captchaCode = getCaptchaHistoryDisplayText(record);
       // 创建列表项元素
       const itemDiv = document.createElement("div");
       itemDiv.className =
@@ -47843,7 +47958,9 @@ async function loadCaptchaHistory(need_weight = "") {
             <span class="px-2 py-0.5 text-xs rounded ${statusClass}">${statusText}</span>
           </div>
           <div class="text-xs text-slate-500 space-y-0.5">
-            <div>验证码: <span class="font-semibold text-slate-700 font-mono">${captchaCode}</span></div>
+            <div>验证码: <span class="font-semibold text-slate-700 ${
+              isBehaviorCaptchaRecord(record) ? "" : "font-mono"
+            }">${captchaCode}</span></div>
             <div>创建时间: ${
               record.timestamp_readable ||
               new Date(record.timestamp * 1000).toLocaleString("zh-CN")
@@ -47871,7 +47988,7 @@ async function loadCaptchaHistory(need_weight = "") {
         </button>
       </div>
       ${
-        record.html
+        !isBehaviorCaptchaRecord(record) && record.html
           ? `
         <div class="mt-2 pt-2 border-t border-slate-100">
           <div class="text-xs text-slate-500 mb-1">验证码图片:</div>
@@ -47924,7 +48041,7 @@ function showCaptchaDetail(captchaId) {
 }
 function populateCaptchaDetailModal(captcha) {
   $("detail-captcha-id").textContent = captcha.captcha_id || "-";
-  $("detail-code").textContent = captcha.code || "-";
+  $("detail-code").textContent = getCaptchaHistoryDisplayText(captcha);
   const statusElement = $("detail-status");
   const statusConfig = {
     created: { text: "待验证", class: "bg-yellow-100 text-yellow-800" },
@@ -47989,14 +48106,17 @@ function populateCaptchaDetailModal(captcha) {
   $("detail-user-agent").textContent = captcha.user_agent || "N/A";
   const imageCard = $("detail-captcha-image-card");
   const htmlContainer = $("detail-captcha-html");
-  if (captcha.html) {
+  if (!isBehaviorCaptchaRecord(captcha) && captcha.html) {
     htmlContainer.innerHTML = captcha.html;
     imageCard.classList.remove("hidden");
   } else {
-    htmlContainer.innerHTML = '<p class="text-slate-400">验证码图片不可用</p>';
+    htmlContainer.innerHTML = isBehaviorCaptchaRecord(captcha)
+      ? '<p class="text-slate-400">使用验证码服务器</p>'
+      : '<p class="text-slate-400">验证码图片不可用</p>';
     imageCard.classList.add("hidden");
   }
 }
+
 function closeCaptchaDetailModal() {
   const modal = $("captcha-detail-modal");
   if (modal) {
@@ -57918,16 +58038,16 @@ async function mobileLoadCaptchaHistory() {
             test_generated: "测试",
           }[record.status] || record.status;
 
-        // 获取验证码显示值
-        // 优先使用 code 字段，其次尝试 captcha_code（兼容旧数据），最后显示 "N/A"
-        const captchaCode = record.code || record.captcha_code || "N/A";
+        const captchaCode = getCaptchaHistoryDisplayText(record);
 
         // 返回单条记录的HTML模板
         return `
           <div class="bg-white border border-slate-200 rounded-lg p-3">
               <div class="flex justify-between items-start mb-1">
                   <div class="flex items-center gap-2">
-                      <span class="font-mono font-bold text-slate-700">${captchaCode}</span>
+                      <span class="${
+                        isBehaviorCaptchaRecord(record) ? "" : "font-mono"
+                      } font-bold text-slate-700">${captchaCode}</span>
                       <span class="text-[10px] px-1.5 py-0.5 rounded ${statusClass}">${statusText}</span>
                   </div>
                   <span class="text-xs text-slate-400">${
@@ -58151,7 +58271,7 @@ async function loadMobileCaptchaHistoryModal() {
           test_generated: "🧪 测试",
         }[record.status] || record.status;
 
-      const captchaCode = record.code || record.captcha_code || "N/A";
+      const captchaCode = getCaptchaHistoryDisplayText(record);
 
       const itemDiv = document.createElement("div");
       itemDiv.className =
@@ -58159,7 +58279,9 @@ async function loadMobileCaptchaHistoryModal() {
       itemDiv.innerHTML = `
         <div class="flex justify-between items-start mb-2">
           <div class="flex items-center gap-2">
-            <span class="font-mono font-bold text-lg text-slate-700">${captchaCode}</span>
+            <span class="${
+              isBehaviorCaptchaRecord(record) ? "" : "font-mono"
+            } font-bold text-lg text-slate-700">${captchaCode}</span>
             <span class="text-xs px-2 py-1 rounded-full ${statusClass}">${statusText}</span>
           </div>
           <div class="flex items-center gap-2">
@@ -58182,7 +58304,7 @@ async function loadMobileCaptchaHistoryModal() {
           </div>
           ${record.timestamp_readable ? `<span class="text-slate-400">📅 ${record.timestamp_readable}</span>` : ""}
           ${
-            record.html
+            !isBehaviorCaptchaRecord(record) && record.html
               ? `<div class="mt-2 pt-2 border-t border-slate-100 rounded overflow-hidden bg-slate-50 p-2"><div class="scale-75 origin-center">${record.html}</div></div>`
               : ""
           }

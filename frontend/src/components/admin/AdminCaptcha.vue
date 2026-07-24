@@ -15,12 +15,12 @@ const length = ref(4)
 const scaleFactor = ref(2)
 const noiseLevel = ref(0.08)
 
-// ---- 验证码提供方（本地图片 / 本地行为验证码）----
+// ---- 验证码提供方（本地图片 / 验证码服务器）----
 const provider = ref('image') // 'image' | 'behavior'
 const behaviorBaseUrl = ref('')
 const behaviorApiKey = ref('')
 const behaviorType = ref('SLIDER')
-// 本地行为验证码支持的类型（参考 captcha-local API.md）
+// captcha-local API 验证码服务器支持的类型
 const BEHAVIOR_TYPES = [
   { value: 'SLIDER', label: '滑块验证码' },
   { value: 'SLIDER2', label: '滑块验证码 V2（旋转图块）' },
@@ -115,7 +115,12 @@ function statusText(status) {
 function statusClass(status) {
   return STATUS_CLASS[status] || 'bg-gray-100 text-gray-800'
 }
+function isBehaviorCaptchaRecord(rec) {
+  const providerName = String(rec?.provider || rec?.captcha_provider || '').toLowerCase()
+  return providerName === 'behavior' || !!rec?.behavior_type
+}
 function captchaCodeOf(rec) {
+  if (isBehaviorCaptchaRecord(rec)) return '使用验证码服务器'
   return rec.code || rec.captcha_code || 'N/A'
 }
 function createdTime(rec) {
@@ -197,7 +202,7 @@ async function saveConfig() {
   const params = validateParams()
   if (!params) return
   if (provider.value === 'behavior' && !behaviorBaseUrl.value.trim()) {
-    error.value = '选择本地行为验证码时，验证码服务地址不能为空'
+    error.value = '选择验证码服务器时，验证码服务地址不能为空'
     return
   }
   const body = {
@@ -226,7 +231,7 @@ async function testGenerate() {
   success.value = ''
   error.value = ''
   if (provider.value === 'behavior' && !behaviorBaseUrl.value.trim()) {
-    error.value = '选择本地行为验证码时，验证码服务地址不能为空'
+    error.value = '选择验证码服务器时，验证码服务地址不能为空'
     return
   }
   const params = provider.value === 'behavior'
@@ -345,33 +350,29 @@ onMounted(async () => {
           </button>
         </div>
         <p class="text-xs text-[var(--ink-secondary)]">
-          切换后，登录/注册页将渲染所选验证码；后端按提供方分别校验（本地图片比对文本，本地行为验证码走行为校验 + 二次校验）。
+          切换后，登录/注册页将渲染所选验证码；后端按提供方分别校验（本地图片比对文本，验证码服务器走行为校验 + 二次校验）。
         </p>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="inline-grid grid-cols-2 gap-1 rounded-lg border border-[var(--border-color)] bg-[var(--surface-2)] p-1">
           <label
-            class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
-            :class="provider === 'image' ? 'border-[var(--accent)] bg-[var(--accent)]/5' : 'border-[var(--border-color)]'"
+            class="flex items-center justify-center gap-2 rounded-md border border-transparent px-4 py-2 text-sm cursor-pointer transition-colors"
+            :class="provider === 'image' ? 'border-[var(--accent)] bg-[var(--surface)] text-[var(--accent)] shadow-sm' : 'text-[var(--ink-secondary)]'"
           >
-            <input type="radio" value="image" v-model="provider" class="mt-1 accent-[var(--accent)]" />
-            <span>
-              <span class="block text-sm font-semibold text-[var(--ink)]">本地图片验证码</span>
-              <span class="block text-xs text-[var(--ink-secondary)]">系统内置的字符图片验证码（下方参数生效）</span>
-            </span>
+            <input type="radio" value="image" v-model="provider" class="sr-only" />
+            <span class="h-2 w-2 rounded-full border border-current"></span>
+            <span>本地图片验证码</span>
           </label>
           <label
-            class="flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
-            :class="provider === 'behavior' ? 'border-[var(--accent)] bg-[var(--accent)]/5' : 'border-[var(--border-color)]'"
+            class="flex items-center justify-center gap-2 rounded-md border border-transparent px-4 py-2 text-sm cursor-pointer transition-colors"
+            :class="provider === 'behavior' ? 'border-[var(--accent)] bg-[var(--surface)] text-[var(--accent)] shadow-sm' : 'text-[var(--ink-secondary)]'"
           >
-            <input type="radio" value="behavior" v-model="provider" class="mt-1 accent-[var(--accent)]" />
-            <span>
-              <span class="block text-sm font-semibold text-[var(--ink)]">本地行为验证码</span>
-              <span class="block text-xs text-[var(--ink-secondary)]">滑块/旋转/点选等行为验证码（后端代理生成与校验）</span>
-            </span>
+            <input type="radio" value="behavior" v-model="provider" class="sr-only" />
+            <span class="h-2 w-2 rounded-full border border-current"></span>
+            <span>验证码服务器</span>
           </label>
         </div>
 
-        <!-- 本地行为验证码配置 -->
+        <!-- 验证码服务器配置 -->
         <div v-if="provider === 'behavior'" class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-[var(--border-color)]">
           <div class="md:col-span-2">
             <label class="block text-sm text-[var(--ink-secondary)] mb-1">验证码服务地址（BASE_URL）</label>
@@ -540,7 +541,7 @@ onMounted(async () => {
                   <span class="px-2 py-0.5 text-xs rounded" :class="statusClass(record.status)">{{ statusText(record.status) }}</span>
                 </div>
                 <div class="text-xs text-[var(--ink-secondary)] space-y-0.5">
-                  <div>验证码: <span class="font-semibold text-[var(--ink)] font-mono">{{ captchaCodeOf(record) }}</span></div>
+                  <div>验证码: <span class="font-semibold text-[var(--ink)]" :class="isBehaviorCaptchaRecord(record) ? '' : 'font-mono'">{{ captchaCodeOf(record) }}</span></div>
                   <div>创建时间: {{ createdTime(record) }}</div>
                   <div v-if="record.verified_at_readable">验证时间: {{ record.verified_at_readable }}</div>
                   <div v-if="record.verified_input">
@@ -560,7 +561,7 @@ onMounted(async () => {
                 详情
               </button>
             </div>
-            <div v-if="record.html" class="mt-2 pt-2 border-t border-[var(--border)]">
+            <div v-if="!isBehaviorCaptchaRecord(record) && record.html" class="mt-2 pt-2 border-t border-[var(--border)]">
               <div class="text-xs text-[var(--ink-secondary)] mb-1">验证码图片:</div>
               <div class="flex items-center justify-center bg-white p-2 rounded overflow-hidden">
                 <div class="scale-75 origin-center" v-html="record.html"></div>
@@ -587,7 +588,7 @@ onMounted(async () => {
           <div class="p-3 rounded-lg bg-[var(--surface-2)] space-y-1 text-sm">
             <div class="font-semibold text-[var(--ink)] mb-1">📋 基本信息</div>
             <div class="flex justify-between"><span class="text-[var(--ink-secondary)]">验证码ID</span><span class="font-mono">{{ detail.captcha_id || '-' }}</span></div>
-            <div class="flex justify-between"><span class="text-[var(--ink-secondary)]">验证码</span><span class="font-mono font-bold">{{ detail.code || '-' }}</span></div>
+            <div class="flex justify-between"><span class="text-[var(--ink-secondary)]">验证码</span><span class="font-bold" :class="isBehaviorCaptchaRecord(detail) ? '' : 'font-mono'">{{ captchaCodeOf(detail) }}</span></div>
             <div class="flex justify-between items-center">
               <span class="text-[var(--ink-secondary)]">状态</span>
               <span class="px-2 py-1 text-xs rounded" :class="statusClass(detail.status)">{{ statusText(detail.status) }}</span>
@@ -628,7 +629,7 @@ onMounted(async () => {
           </div>
 
           <!-- 验证码图片 -->
-          <div v-if="detail.html" class="p-3 rounded-lg bg-[var(--surface-2)] space-y-1 text-sm">
+          <div v-if="!isBehaviorCaptchaRecord(detail) && detail.html" class="p-3 rounded-lg bg-[var(--surface-2)] space-y-1 text-sm">
             <div class="font-semibold text-[var(--ink)] mb-1">🖼️ 验证码图片</div>
             <div class="flex items-center justify-center bg-white p-2 rounded overflow-hidden">
               <div class="origin-center" v-html="detail.html"></div>
