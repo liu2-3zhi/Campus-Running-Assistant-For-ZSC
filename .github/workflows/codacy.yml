@@ -43,6 +43,7 @@ jobs:
           verbose: true
           output: /tmp/codacy-results.sarif
           format: sarif
+          tool: bandit
           # 调整非安全问题的严重级别映射
           gh-code-scanning-compat: true
           # 强制返回 0 退出码，以确保 SARIF 文件可生成
