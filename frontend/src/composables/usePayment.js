@@ -14,6 +14,7 @@
 import { callRawAPI } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
+import { sanitizeSvg } from '@/utils/sanitizeSvg'
 
 /* ============================================================================
  * 常量与工具
@@ -804,13 +805,6 @@ export async function chooseBillingPayType({ title = '选择支付方式', total
     },
   })
   return value || null
-}
-
-function sanitizeSvg(svg) {
-  if (!svg || typeof svg !== 'string') return ''
-  return svg
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
 }
 
 /**

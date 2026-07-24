@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { callAPI, callRawAPI } from '@/services/api'
 import TabPanel from '@/components/common/TabPanel.vue'
+import { sanitizeSvg } from '@/utils/sanitizeSvg'
 
 // ── 子标签 ──
 const subTabs = [
@@ -49,12 +50,6 @@ function normalizeMethods(raw) {
     return obj
   }
   return raw
-}
-function sanitizeSvg(svg) {
-  if (!svg || typeof svg !== 'string') return ''
-  return svg
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
 }
 const METHOD_LABELS = { alipay: '支付宝', wxpay: '微信支付', wechat: '微信支付', qqpay: 'QQ钱包', qq: 'QQ钱包', bank: '网银支付', unionpay: '云闪付' }
 function methodLabel(code) { return paymentMethodDefs.value[code]?.name || METHOD_LABELS[code] || code }

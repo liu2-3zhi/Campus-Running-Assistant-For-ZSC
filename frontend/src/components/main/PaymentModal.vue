@@ -6,6 +6,7 @@
 import { ref, watch } from 'vue'
 import { callRawAPI } from '@/services/api'
 import AppModal from '@/components/common/AppModal.vue'
+import { sanitizeSvg } from '@/utils/sanitizeSvg'
 import {
   METHOD_NAME_FALLBACK,
   getYiPaiDevice,
@@ -90,13 +91,6 @@ async function loadEnabledMethods() {
   } finally {
     loadingMethods.value = false
   }
-}
-
-function sanitizeSvg(svg) {
-  if (!svg || typeof svg !== 'string') return ''
-  return svg
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
 }
 
 function resetForm() {

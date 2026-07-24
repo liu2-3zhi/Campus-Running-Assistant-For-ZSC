@@ -50340,6 +50340,11 @@ async function saveSystemConfig() {
         amap_web_api_key: ($("config-IP_Location-amap_web_api_key").value || "").trim(),
         uapipro_api_key: ($("config-IP_Location-uapipro_api_key").value || "").trim(),
       },
+      IP_Location: {
+        query_order: ($("config-IP_Location-query_order").value || "").trim(),
+        amap_web_api_key: ($("config-IP_Location-amap_web_api_key").value || "").trim(),
+        uapipro_api_key: ($("config-IP_Location-uapipro_api_key").value || "").trim(),
+      },
       // ==================== 网站备案信息配置保存 ====================
       // 读取页面上的 Beian（网站备案）配置项，并保存到配置文件中
       // 这些配置项用于在网站底部显示合规的备案信息
@@ -53396,6 +53401,29 @@ function copyAdminContentToMultiPanel(tabType) {
   }, { restoreMode: "replace" });
 
   syncMobileAdminUnifiedPanelScroll(tabType, { restoreMode: "replace" });
+
+  // 【账单列表】移动端显示优化：缩小表格字号并强化横向滚动体验
+  if (tabType === "billing") {
+    mobileContainer.querySelectorAll(".overflow-x-auto").forEach((el) => {
+      el.classList.add("pb-1", "[-webkit-overflow-scrolling:touch]");
+    });
+    mobileContainer.querySelectorAll("table").forEach((tb) => {
+      tb.classList.add("text-[11px]");
+    });
+    mobileContainer.querySelectorAll("th, td").forEach((cell) => {
+      cell.classList.add("!px-1.5", "!py-1.5");
+    });
+    mobileContainer.querySelectorAll("td div").forEach((box) => {
+      if (
+        box.classList.contains("flex") &&
+        box.classList.contains("items-center") &&
+        box.classList.contains("justify-center")
+      ) {
+        box.classList.remove("justify-center");
+        box.classList.add("justify-start", "flex-wrap");
+      }
+    });
+  }
 
   // 【账单列表】移动端显示优化：缩小表格字号并强化横向滚动体验
   if (tabType === "billing") {
