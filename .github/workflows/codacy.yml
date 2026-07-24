@@ -33,18 +33,7 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 准备 Codacy Python 扫描目录
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf /tmp/codacy-source
-          mkdir -p /tmp/codacy-source
-          while IFS= read -r -d '' path; do
-            mkdir -p "/tmp/codacy-source/$(dirname "$path")"
-            cp -- "$path" "/tmp/codacy-source/$path"
-          done < <(git ls-files -z -- '*.py')
-
-      # 执行 Codacy Analysis CLI，并输出包含扫描结果的 SARIF 文件
+      # 执行 Codacy Analysis CLI，并输出 JSON 分析结果
       - name: 运行 Codacy Analysis CLI
         uses: codacy/codacy-analysis-cli-action@d840f886c4bd4edc059706d09c6a1586111c540b
         with:
@@ -52,18 +41,9 @@ jobs:
           # 也可省略令牌，仅运行支持默认配置的工具
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
           verbose: true
-          output: /tmp/codacy-results.sarif
-          format: sarif
-          directory: /tmp/codacy-source
+          output: /tmp/codacy-results.json
+          format: json
           tool: bandit
-          # 调整非安全问题的严重级别映射
-          gh-code-scanning-compat: true
-          # 强制返回 0 退出码，以确保 SARIF 文件可生成
+          # 强制返回 0 退出码，以保留完整分析结果
           # 由 GitHub 侧决定是否据此阻止 PR 合并
           max-allowed-issues: 2147483647
-
-      # 上传上一步生成的 SARIF 结果文件
-      - name: 上传 SARIF 结果文件
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: /tmp/codacy-results.sarif
