@@ -324,9 +324,12 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
 
         self.assertIn("function isRouteSegmentSeparator(", source)
         self.assertIn("function splitRouteCoordsIntoDrawableSegments(", source)
-        self.assertIn("const gcjSegments = splitRouteCoordsIntoDrawableSegments(coords);", draw_source)
+        self.assertIn("const routeSegments = Array.isArray(options.routeSegments)", draw_source)
+        self.assertIn("splitRouteCoordsIntoDrawableSegments(coords).map((segment) => ({", draw_source)
+        self.assertIn('styleId: "route"', draw_source)
+        self.assertIn("const gcjSegments = routeSegments.map((segment) => segment.coords);", draw_source)
         self.assertNotIn("const gcjCoords = normalizeRouteCoords(coords);", draw_source)
-        self.assertIn("gcjSegments.map((segment)", draw_source)
+        self.assertIn("const providerSegments = routeSegments.map((segment) => ({", draw_source)
 
     def test_non_amap_historical_track_uses_mobile_track_map_in_mobile_mode(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")

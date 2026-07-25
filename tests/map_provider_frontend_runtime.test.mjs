@@ -352,6 +352,7 @@ function createRuntime(provider, options = {}) {
     'convertGcj02ToProviderCoordinates',
     'normalizeRouteCoord',
     'isRouteSegmentSeparator',
+    'normalizeRouteCoords',
     'splitRouteCoordsIntoDrawableSegments',
     'getProviderMapInstance',
     'fitProviderMapToCoordinates',
@@ -368,6 +369,10 @@ function createRuntime(provider, options = {}) {
     'getSingleProviderMapContainerIds',
     'estimateProviderCoordDistanceMeters',
     'getProviderMarkerDisplayCoord',
+    'findNearestProviderRouteIndex',
+    'getProviderRouteProgressStatus',
+    'appendProviderRouteProgressSegment',
+    'buildProviderRouteProgressSegments',
     'drawProviderTaskOnMap',
     'drawOnMap_signature',
     'updateRunnerPosition',
@@ -572,6 +577,9 @@ test('tencent single map redraws checkpoint status while preserving current posi
     ],
     run_coords: [
       [113.38, 22.51],
+      [113.39, 22.52],
+      [113.395, 22.525],
+      [113.40, 22.53],
       [113.41, 22.54],
     ],
   });
@@ -592,6 +600,44 @@ test('tencent single map redraws checkpoint status while preserving current posi
   markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
   assert.ok(markerSvgs.some((svg) => svg.includes('教学楼') && svg.includes('#94a3b8')));
   assert.ok(markerSvgs.some((svg) => svg.includes('操场') && svg.includes('#0284c7')));
+  const routeLayer = runtime
+    .getState()
+    .providerMapOverlays['map-container']
+    .find((overlay) => overlay.options?.id === 'provider-route-map-container');
+  assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'completed'));
+  assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'active'));
+});
+
+test('tencent task route colors completed segments from checkpoint sequence', () => {
+  const runtime = createRuntime('tencent');
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+  runtime.setCurrentRunData({
+    status: 0,
+    target_sequence: 2,
+    target_point_names: '教学楼|操场',
+    target_points: [
+      [113.39, 22.52],
+      [113.40, 22.53],
+    ],
+    run_coords: [
+      [113.38, 22.51],
+      [113.39, 22.52],
+      [113.395, 22.525],
+      [113.40, 22.53],
+    ],
+  });
+
+  runtime.drawOnMap_signature();
+
+  const routeLayer = runtime
+    .getState()
+    .providerMapOverlays['map-container']
+    .find((overlay) => overlay.options?.id === 'provider-route-map-container');
+  assert.ok(routeLayer);
+  assert.equal(routeLayer.options.styles.completed.options.color, '#94a3b8');
+  assert.equal(routeLayer.options.styles.active.options.color, '#ef4444');
+  assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'completed'));
+  assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'active'));
 });
 
 test('tencent mobile single map receives route checkpoints and current position updates', () => {

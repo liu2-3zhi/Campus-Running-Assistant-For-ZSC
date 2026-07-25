@@ -35990,16 +35990,30 @@ function updateProviderRunnerMarker(containerId, coord, options = {}) {
 function drawProviderRouteOnMap(containerId, coords, options = {}) {
   const provider = getActiveMapProvider();
   const instance = getProviderMapInstance(containerId);
-  const gcjSegments = splitRouteCoordsIntoDrawableSegments(coords);
+  const routeSegments = Array.isArray(options.routeSegments)
+    ? options.routeSegments
+        .map((segment) => ({
+          styleId: segment.styleId || "route",
+          coords: normalizeRouteCoords(segment.coords || segment.path || []),
+        }))
+        .filter((segment) => segment.coords.length > 0)
+    : splitRouteCoordsIntoDrawableSegments(coords).map((segment) => ({
+        styleId: "route",
+        coords: segment,
+      }));
+  const gcjSegments = routeSegments.map((segment) => segment.coords);
   const gcjCoords = gcjSegments.flat();
   if (!instance || gcjSegments.length === 0 || gcjCoords.length === 0) return null;
 
   clearProviderMapOverlays(containerId);
 
-  const providerSegments = gcjSegments.map((segment) =>
-    segment.map((coord) => convertGcj02ToProviderCoordinates(provider, coord)),
-  );
-  const providerCoords = providerSegments.flat();
+  const providerSegments = routeSegments.map((segment) => ({
+    styleId: segment.styleId || "route",
+    coords: segment.coords.map((coord) =>
+      convertGcj02ToProviderCoordinates(provider, coord),
+    ),
+  }));
+  const providerCoords = providerSegments.flatMap((segment) => segment.coords);
   providerMapLastFitCoords[containerId] = providerCoords;
   const bucket = getProviderOverlayBucket(containerId);
   let line = null;
@@ -36008,9 +36022,9 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
   const weight = options.strokeWeight || options.weight || 5;
   try {
     if (provider === "amap" && AMapInstance) {
-      line = gcjSegments.map((segment) => {
+      line = routeSegments.map((segment) => {
         const polyline = new AMapInstance.Polyline({
-          path: segment.map((coord) => new AMapInstance.LngLat(coord.lng, coord.lat)),
+          path: segment.coords.map((coord) => new AMapInstance.LngLat(coord.lng, coord.lat)),
           strokeColor: color,
           strokeWeight: weight,
           strokeOpacity: options.strokeOpacity ?? 0.85,
@@ -36022,21 +36036,43 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
       });
       fitOverlay = line;
     } else if (provider === "tencent" && window.TMap) {
+      const styleConfigs = {
+        route: {
+          color,
+          width: weight,
+          borderWidth: 0,
+          lineCap: "round",
+        },
+        active: {
+          color,
+          width: weight,
+          borderWidth: 0,
+          lineCap: "round",
+        },
+        completed: {
+          color: options.completedStrokeColor || "#94a3b8",
+          width: Math.max(3, weight - 1),
+          borderWidth: 0,
+          lineCap: "round",
+        },
+      };
+      const styles = {};
+      providerSegments.forEach((segment) => {
+        const styleId = segment.styleId || "route";
+        if (!styles[styleId]) {
+          styles[styleId] = new TMap.PolylineStyle(
+            styleConfigs[styleId] || styleConfigs.route,
+          );
+        }
+      });
       line = new TMap.MultiPolyline({
         id: `provider-route-${containerId}`,
         map: instance,
-        styles: {
-          route: new TMap.PolylineStyle({
-            color,
-            width: weight,
-            borderWidth: 0,
-            lineCap: "round",
-          }),
-        },
+        styles,
         geometries: providerSegments.map((segment, index) => ({
           id: `route-${index}`,
-          styleId: "route",
-          paths: segment.map((coord) => new TMap.LatLng(coord.lat, coord.lng)),
+          styleId: segment.styleId || "route",
+          paths: segment.coords.map((coord) => new TMap.LatLng(coord.lat, coord.lng)),
         })),
       });
       bucket.push(line);
@@ -36044,7 +36080,7 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
     } else if (provider === "tianditu" && window.T) {
       line = providerSegments.map((segment) => {
         const polyline = new T.Polyline(
-          segment.map((coord) => new T.LngLat(coord.lng, coord.lat)),
+          segment.coords.map((coord) => new T.LngLat(coord.lng, coord.lat)),
           {
             color,
             weight,
@@ -36059,7 +36095,7 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
     } else if (provider === "baidu" && window.BMap) {
       line = providerSegments.map((segment) => {
         const polyline = new BMap.Polyline(
-          segment.map((coord) => new BMap.Point(coord.lng, coord.lat)),
+          segment.coords.map((coord) => new BMap.Point(coord.lng, coord.lat)),
           {
             strokeColor: color,
             strokeWeight: weight,
@@ -36166,6 +36202,111 @@ function getProviderMarkerDisplayCoord(coord, routeCoords, options = {}) {
   return normalized;
 }
 
+function findNearestProviderRouteIndex(routeCoords, coord, minIndex = 0) {
+  const normalized = normalizeRouteCoord(coord);
+  if (
+    !Array.isArray(routeCoords) ||
+    !Number.isFinite(normalized.lng) ||
+    !Number.isFinite(normalized.lat)
+  ) {
+    return -1;
+  }
+  let best = null;
+  const startIndex = Math.max(0, Math.min(routeCoords.length - 1, minIndex));
+  for (let index = startIndex; index < routeCoords.length; index += 1) {
+    const routeCoord = normalizeRouteCoord(routeCoords[index]);
+    if (!Number.isFinite(routeCoord.lng) || !Number.isFinite(routeCoord.lat)) {
+      continue;
+    }
+    const distanceMeters = estimateProviderCoordDistanceMeters(normalized, routeCoord);
+    if (!best || distanceMeters < best.distanceMeters) {
+      best = { index, distanceMeters };
+    }
+  }
+  return best ? best.index : -1;
+}
+
+function getProviderRouteProgressStatus(targetOrdinal, sequence, totalTargets) {
+  if (sequence > totalTargets) {
+    return "completed";
+  }
+  if (sequence > 0 && targetOrdinal < sequence) {
+    return "completed";
+  }
+  return "active";
+}
+
+function appendProviderRouteProgressSegment(segments, coords, styleId) {
+  const normalizedCoords = normalizeRouteCoords(coords);
+  if (normalizedCoords.length < 2) return;
+  const lastSegment = segments[segments.length - 1];
+  if (lastSegment && lastSegment.styleId === styleId) {
+    const lastCoord = lastSegment.coords[lastSegment.coords.length - 1];
+    const firstCoord = normalizedCoords[0];
+    const connects =
+      Math.abs(lastCoord.lng - firstCoord.lng) <= 1e-7 &&
+      Math.abs(lastCoord.lat - firstCoord.lat) <= 1e-7;
+    lastSegment.coords = lastSegment.coords.concat(
+      connects ? normalizedCoords.slice(1) : normalizedCoords,
+    );
+    return;
+  }
+  segments.push({ styleId, coords: normalizedCoords });
+}
+
+function buildProviderRouteProgressSegments(routeCoords, data) {
+  const route = normalizeRouteCoords(routeCoords);
+  const targetPoints = Array.isArray(data?.target_points)
+    ? data.target_points
+        .map(normalizeRouteCoord)
+        .filter((coord) => Number.isFinite(coord.lng) && Number.isFinite(coord.lat))
+    : [];
+  if (route.length < 2 || targetPoints.length === 0) {
+    return null;
+  }
+  const configuredSequence = Number(data?.target_sequence);
+  const sequence =
+    Number.isFinite(configuredSequence) && configuredSequence > 0
+      ? Math.floor(configuredSequence)
+      : data?.status == 1
+        ? targetPoints.length + 1
+        : 0;
+  const targetIndexes = [];
+  let minRouteIndex = 0;
+  targetPoints.forEach((point) => {
+    const routeIndex = findNearestProviderRouteIndex(route, point, minRouteIndex);
+    if (routeIndex >= 0) {
+      targetIndexes.push(routeIndex);
+      minRouteIndex = routeIndex;
+    }
+  });
+  if (targetIndexes.length === 0) {
+    return null;
+  }
+
+  const segments = [];
+  let startIndex = 0;
+  targetIndexes.forEach((targetIndex, index) => {
+    const styleId = getProviderRouteProgressStatus(
+      index + 1,
+      sequence,
+      targetPoints.length,
+    );
+    appendProviderRouteProgressSegment(
+      segments,
+      route.slice(startIndex, targetIndex + 1),
+      styleId,
+    );
+    startIndex = Math.max(startIndex, targetIndex);
+  });
+  if (startIndex < route.length - 1) {
+    const tailStyleId =
+      sequence > targetPoints.length ? "completed" : "active";
+    appendProviderRouteProgressSegment(segments, route.slice(startIndex), tailStyleId);
+  }
+  return segments.length > 0 ? segments : null;
+}
+
 function drawProviderTaskOnMap(containerId, data) {
   if (!data) return;
   const routeCoords = data.run_coords?.length
@@ -36179,6 +36320,10 @@ function drawProviderTaskOnMap(containerId, data) {
       strokeWeight: data.run_coords?.length ? 5 : 4,
       strokeStyle: data.run_coords?.length ? "dashed" : "solid",
       showEndpoints: false,
+      routeSegments:
+        getActiveMapProvider() === "tencent" && data.run_coords?.length
+          ? buildProviderRouteProgressSegments(routeCoords, data)
+          : null,
     });
   } else {
     clearProviderMapOverlays(containerId);
