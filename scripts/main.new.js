@@ -17168,6 +17168,7 @@ let polylines = {
 let markers = [];
 let runnerMarker = null;
 let drawingInfoMarker = null;
+let singleRunProgressVisualActive = false;
 let tempAttendanceMarker = null;
 let tempAttendanceCircle = null;
 let isDrawing = false;
@@ -34669,6 +34670,7 @@ async function restoreMobileTaskState() {
         }
 
         if (status.status === "running") {
+          singleRunProgressVisualActive = true;
           mobileTaskRunning = true;
           mobileTaskPaused = false;
           updateMobileTaskUI("运行中", "任务执行中...");
@@ -36064,13 +36066,19 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
           lineCap: "round",
         },
         active: {
-          color,
+          color: resolveProviderRouteSegmentColor("active", color, options),
           width: weight,
           borderWidth: 0,
           lineCap: "round",
         },
+        current: {
+          color: resolveProviderRouteSegmentColor("current", color, options),
+          width: Math.max(weight, 6),
+          borderWidth: 0,
+          lineCap: "round",
+        },
         completed: {
-          color: options.completedStrokeColor || "#94a3b8",
+          color: resolveProviderRouteSegmentColor("completed", color, options),
           width: Math.max(3, weight - 1),
           borderWidth: 0,
           lineCap: "round",
@@ -36316,6 +36324,22 @@ function resolveTaskProgressSequence(data, routeCoords = []) {
   return Math.max(0, sequence);
 }
 
+function hasActiveRouteProgress(data) {
+  if (!data) return false;
+  if (data.status == 1) return true;
+  return singleRunProgressVisualActive === true;
+}
+
+function resolveVisualTaskProgressSequence(data, routeCoords = []) {
+  const totalTargets = Array.isArray(data?.target_points)
+    ? data.target_points.length
+    : 0;
+  if (!hasActiveRouteProgress(data)) {
+    return data?.status == 1 && totalTargets > 0 ? totalTargets + 1 : 0;
+  }
+  return resolveTaskProgressSequence(data, routeCoords);
+}
+
 function getProviderRouteProgressStatus(targetOrdinal, sequence, totalTargets) {
   if (sequence > totalTargets) {
     return "completed";
@@ -36323,12 +36347,18 @@ function getProviderRouteProgressStatus(targetOrdinal, sequence, totalTargets) {
   if (sequence > 0 && targetOrdinal < sequence) {
     return "completed";
   }
+  if (sequence > 0 && targetOrdinal === sequence) {
+    return "current";
+  }
   return "active";
 }
 
 function resolveProviderRouteSegmentColor(styleId, fallbackColor, options = {}) {
   if (styleId === "completed") {
     return options.completedStrokeColor || "#94a3b8";
+  }
+  if (styleId === "current") {
+    return options.currentStrokeColor || "#0284c7";
   }
   return fallbackColor;
 }
@@ -36356,27 +36386,59 @@ function buildProviderRouteProgressSegments(routeCoords, data) {
   if (route.length < 2) {
     return null;
   }
-  const progressIndex = resolveRouteProgressIndex(data, route);
-  if (progressIndex > 0) {
-    const completedEndIndex = Math.min(progressIndex, route.length - 1);
-    const segments = [];
-    appendProviderRouteProgressSegment(
-      segments,
-      route.slice(0, completedEndIndex + 1),
-      "completed",
-    );
-    appendProviderRouteProgressSegment(
-      segments,
-      route.slice(completedEndIndex),
-      data?.status == 1 ? "completed" : "active",
-    );
-    return segments.length > 0 ? segments : null;
-  }
   const targetPoints = Array.isArray(data?.target_points)
     ? data.target_points
         .map(normalizeRouteCoord)
         .filter((coord) => Number.isFinite(coord.lng) && Number.isFinite(coord.lat))
     : [];
+  const progressIndex = resolveRouteProgressIndex(data, route);
+  if (progressIndex >= 0) {
+    const completedEndIndex = Math.min(progressIndex, route.length - 1);
+    const targetIndexes = [];
+    let minRouteIndex = 0;
+    targetPoints.forEach((point) => {
+      const routeIndex = findNearestProviderRouteIndex(route, point, minRouteIndex);
+      if (routeIndex >= 0) {
+        targetIndexes.push(routeIndex);
+        minRouteIndex = routeIndex;
+      }
+    });
+    const segments = [];
+    if (completedEndIndex > 0) {
+      appendProviderRouteProgressSegment(
+        segments,
+        route.slice(0, completedEndIndex + 1),
+        "completed",
+      );
+    }
+    if (data?.status == 1) {
+      appendProviderRouteProgressSegment(
+        segments,
+        route.slice(completedEndIndex),
+        "completed",
+      );
+      return segments.length > 0 ? segments : null;
+    }
+    const nextTargetIndex = targetIndexes.find(
+      (targetIndex) => targetIndex > completedEndIndex,
+    );
+    const currentEndIndex = Number.isFinite(nextTargetIndex)
+      ? nextTargetIndex
+      : route.length - 1;
+    appendProviderRouteProgressSegment(
+      segments,
+      route.slice(completedEndIndex, currentEndIndex + 1),
+      "current",
+    );
+    if (currentEndIndex < route.length - 1) {
+      appendProviderRouteProgressSegment(
+        segments,
+        route.slice(currentEndIndex),
+        "active",
+      );
+    }
+    return segments.length > 0 ? segments : null;
+  }
   if (targetPoints.length === 0) {
     return null;
   }
@@ -36431,7 +36493,7 @@ function drawProviderTaskOnMap(containerId, data) {
       strokeStyle: data.run_coords?.length ? "dashed" : "solid",
       showEndpoints: false,
       routeSegments:
-        data.run_coords?.length
+        data.run_coords?.length && hasActiveRouteProgress(data)
           ? buildProviderRouteProgressSegments(routeCoords, data)
           : null,
     });
@@ -36439,7 +36501,7 @@ function drawProviderTaskOnMap(containerId, data) {
     clearProviderMapOverlays(containerId);
   }
   if (Array.isArray(data.target_points)) {
-    const sequence = resolveTaskProgressSequence(data, routeCoords);
+    const sequence = resolveVisualTaskProgressSequence(data, routeCoords);
     const names = (data.target_point_names || "").split("|");
     const shouldSnapMarkerToRoute = getActiveMapProvider() === "tencent";
     data.target_points.forEach((point, index) => {
@@ -36562,10 +36624,7 @@ function forceProjectionRefresh() {
     map.setStatus({ dragEnable: false });
     map.resize();
     requestAnimationFrame(() => {
-      const overlays = [...polylines.recommended];
-      if (polylines.draft) overlays.push(polylines.draft);
-      if (polylines.run) overlays.push(polylines.run);
-      if (polylines.history) overlays.push(polylines.history);
+      const overlays = collectSingleMapFitOverlays(false);
 
       if (overlays.length > 0) {
         map.setFitView(overlays, false, [60, 60, 60, 60]);
@@ -36985,6 +37044,36 @@ async function initMap(AMap) {
   });
 }
 
+function appendSingleMapOverlay(overlays, overlay) {
+  if (!overlay) return;
+  if (Array.isArray(overlay)) {
+    overlay.forEach((item) => appendSingleMapOverlay(overlays, item));
+    return;
+  }
+  overlays.push(overlay);
+}
+
+function collectSingleMapFitOverlays(includeMarkers = true) {
+  const overlays = [];
+  appendSingleMapOverlay(overlays, polylines.recommended);
+  if (includeMarkers) {
+    appendSingleMapOverlay(overlays, markers);
+  }
+  appendSingleMapOverlay(overlays, polylines.draft);
+  appendSingleMapOverlay(overlays, polylines.run);
+  appendSingleMapOverlay(overlays, polylines.history);
+  return overlays;
+}
+
+function removeSingleMapOverlay(overlay) {
+  if (!map || !overlay) return;
+  if (Array.isArray(overlay)) {
+    overlay.forEach((item) => removeSingleMapOverlay(item));
+    return;
+  }
+  map.remove(overlay);
+}
+
 function showMainApp() {
   mapReadyPromise = new Promise((resolve) => {
     resolveMapReady = resolve;
@@ -37071,6 +37160,7 @@ function resetUI() {
   selectedTaskIndex = -1;
   currentUserData = {};
   currentRunData = {};
+  singleRunProgressVisualActive = false;
   $("task-list").innerHTML = "";
   $("history-list").innerHTML = "";
   $("target-points-text").innerHTML = "";
@@ -37116,20 +37206,20 @@ function resetUI() {
 
 function clearMapOverlays() {
   if (!map) return;
-  polylines.recommended.forEach((p) => map.remove(p));
+  removeSingleMapOverlay(polylines.recommended);
   polylines.recommended = [];
-  if (polylines.draft) map.remove(polylines.draft);
-  if (polylines.run) map.remove(polylines.run);
-  if (polylines.history) map.remove(polylines.history);
+  removeSingleMapOverlay(polylines.draft);
+  removeSingleMapOverlay(polylines.run);
+  removeSingleMapOverlay(polylines.history);
   polylines.draft = polylines.run = polylines.history = null;
-  map.remove(markers);
+  removeSingleMapOverlay(markers);
   markers = [];
   if (runnerMarker) {
-    map.remove(runnerMarker);
+    removeSingleMapOverlay(runnerMarker);
     runnerMarker = null;
   }
   if (drawingInfoMarker) {
-    map.remove(drawingInfoMarker);
+    removeSingleMapOverlay(drawingInfoMarker);
     drawingInfoMarker = null;
   }
 }
@@ -40819,10 +40909,7 @@ function centerTargetList(sequence) {
 }
 function resetMapView() {
   if (!map) return;
-  const overlays = [...polylines.recommended, ...markers];
-  if (polylines.draft) overlays.push(polylines.draft);
-  if (polylines.run) overlays.push(polylines.run);
-  if (polylines.history) overlays.push(polylines.history);
+  const overlays = collectSingleMapFitOverlays(true);
 
   if (overlays.length > 0) {
     map.setFitView(overlays, false, [60, 60, 60, 60]);
@@ -40842,10 +40929,7 @@ function forceProjectionRefresh() {
     map.setStatus({ dragEnable: false });
     map.resize();
     requestAnimationFrame(() => {
-      const overlays = [...polylines.recommended];
-      if (polylines.draft) overlays.push(polylines.draft);
-      if (polylines.run) overlays.push(polylines.run);
-      if (polylines.history) overlays.push(polylines.history);
+      const overlays = collectSingleMapFitOverlays(false);
       if (overlays.length > 0) {
         map.setFitView(overlays, false, [60, 60, 60, 60]);
       } else if (
@@ -40872,10 +40956,7 @@ function forceProjectionRefresh() {
     map.setStatus({ dragEnable: false });
     map.resize();
     requestAnimationFrame(() => {
-      const overlays = [...polylines.recommended];
-      if (polylines.draft) overlays.push(polylines.draft);
-      if (polylines.run) overlays.push(polylines.run);
-      if (polylines.history) overlays.push(polylines.history);
+      const overlays = collectSingleMapFitOverlays(false);
       if (overlays.length > 0) {
         map.setFitView(overlays, false, [60, 60, 60, 60]);
       } else if (
@@ -40895,6 +40976,42 @@ function forceProjectionRefresh() {
   } catch (e) {
     logMessage_Warning("forceProjectionRefresh warning:", e);
   }
+}
+
+function drawAmapRunRoute(data) {
+  const runCoords = normalizeRouteCoords(data?.run_coords || []);
+  if (runCoords.length < 2) return;
+  const routeSegments = hasActiveRouteProgress(data)
+    ? buildProviderRouteProgressSegments(runCoords, data)
+    : null;
+  const drawableSegments = Array.isArray(routeSegments) && routeSegments.length > 0
+    ? routeSegments
+    : splitRouteCoordsIntoDrawableSegments(runCoords).map((segment) => ({
+        styleId: "route",
+        coords: segment,
+      }));
+  const lines = drawableSegments
+    .map((segment) => {
+      const segmentCoords = normalizeRouteCoords(segment.coords);
+      if (segmentCoords.length < 2) return null;
+      return new AMapInstance.Polyline({
+        path: segmentCoords.map((p) => new AMapInstance.LngLat(p.lng, p.lat)),
+        strokeColor: resolveProviderRouteSegmentColor(
+          segment.styleId || "route",
+          "#ef4444",
+          {},
+        ),
+        strokeWeight: segment.styleId === "completed" ? 4 : 5,
+        strokeStyle: "dashed",
+        lineCap: "round",
+        strokeOpacity: 0.85,
+        zIndex: segment.styleId === "current" ? 55 : 50,
+      });
+    })
+    .filter(Boolean);
+  if (lines.length === 0) return;
+  polylines.run = routeSegments ? lines : lines[0];
+  map.add(Array.isArray(polylines.run) ? polylines.run : [polylines.run]);
 }
 
 function drawOnMap_signature() {
@@ -40955,14 +41072,7 @@ function drawOnMap_signature() {
     map.add(polylines.draft);
   }
   if (data.run_coords?.length > 0) {
-    polylines.run = new AMapInstance.Polyline({
-      path: data.run_coords.map((p) => new AMapInstance.LngLat(p[0], p[1])),
-      strokeColor: "#ef4444",
-      strokeWeight: 5,
-      strokeStyle: "dashed",
-      zIndex: 50,
-    });
-    map.add(polylines.run);
+    drawAmapRunRoute(data);
   }
   drawMarkers();
   resetMapView();
@@ -40982,7 +41092,7 @@ function drawMarkers() {
   markers = [];
   const data = currentRunData;
   if (!data?.target_points?.length) return;
-  const sequence = resolveTaskProgressSequence(
+  const sequence = resolveVisualTaskProgressSequence(
     data,
     data.run_coords?.length ? data.run_coords : data.draft_coords || [],
   );
@@ -41331,21 +41441,21 @@ async function clearCurrentPath(confirm = true, showAlert = true) {
 
   // 步骤5: 清除地图上的各种折线图层
   if (polylines.draft) {
-    map.remove(polylines.draft); // 移除草稿路径折线
+    removeSingleMapOverlay(polylines.draft); // 移除草稿路径折线
     polylines.draft = null; // 将引用置为null
   }
   if (polylines.history) {
-    map.remove(polylines.history); // 移除历史路径折线
+    removeSingleMapOverlay(polylines.history); // 移除历史路径折线
     polylines.history = null; // 将引用置为null
   }
   if (polylines.run) {
-    map.remove(polylines.run); // 移除运行路径折线
+    removeSingleMapOverlay(polylines.run); // 移除运行路径折线
     polylines.run = null; // 将引用置为null
   }
 
   // 步骤6: 删除地图上的当前位置标记（runnerMarker）
   if (runnerMarker) {
-    map.remove(runnerMarker); // 移除跑步者位置标记
+    removeSingleMapOverlay(runnerMarker); // 移除跑步者位置标记
     runnerMarker = null; // 将引用置为null
   }
 
@@ -41515,6 +41625,7 @@ async function toggleRun() {
     btn.classList.remove("btn-danger");
     btn.classList.add("btn-primary");
     stopBackgroundTaskPolling();
+    clearSingleExecutionVisuals();
   }
 }
 async function toggleAllRuns() {
@@ -41605,6 +41716,7 @@ async function toggleAllRuns() {
     btn.classList.remove("btn-danger");
     btn.classList.add("btn-secondary");
     stopBackgroundTaskPolling();
+    clearSingleExecutionVisuals();
   }
 }
 // ========== 后台任务管理函数 ==========
@@ -41635,6 +41747,13 @@ async function pollBackgroundTaskStatus() {
     );
     if (result.success && result.task_status) {
       const status = result.task_status;
+      if (status.status === "stopped") {
+        clearSingleExecutionVisuals();
+        return;
+      }
+      if (status.status === "running") {
+        singleRunProgressVisualActive = true;
+      }
       if (status.run_coords && status.run_coords.length > 0) {
         if (
           !currentRunData ||
@@ -41795,6 +41914,7 @@ async function checkBackgroundTaskOnLoad() {
     if (result.success && result.task_status) {
       const status = result.task_status;
       if (status.status === "running") {
+        singleRunProgressVisualActive = true;
         logMessage_Info("检测到后台任务正在运行，已恢复状态显示");
         const totalTasks = status.total_tasks || 0;
         if (totalTasks === 1) {
@@ -41954,6 +42074,8 @@ function updateRunnerPosition(
 ) {
   if (getActiveMapProvider() !== "amap" || !map || !AMapInstance) {
     runAccumulatedMs += duration || 0;
+    const wasVisualActive = singleRunProgressVisualActive;
+    singleRunProgressVisualActive = true;
     const previousProgressIndex = currentRunData
       ? resolveRouteProgressIndex(currentRunData, currentRunData.run_coords || [])
       : -1;
@@ -41972,7 +42094,8 @@ function updateRunnerPosition(
       : previousProgressIndex;
     const shouldRedrawProviderMarkers =
       !!currentRunData &&
-      (currentRunData.target_sequence !== jsTargetSequence ||
+      (!wasVisualActive ||
+        currentRunData.target_sequence !== jsTargetSequence ||
         previousProgressIndex !== nextProgressIndex);
     if (currentRunData) {
       currentRunData.distance_covered_m = distance || 0;
@@ -42007,16 +42130,19 @@ function updateRunnerPosition(
     updateDashboard();
     return;
   }
-  ensureRunnerMarker();
-  const pos = new AMapInstance.LngLat(lon, lat);
-  runnerMarker.setPosition(pos);
-  if (map && centerNow) map.setCenter(pos);
   runAccumulatedMs += duration || 0;
-  currentRunData.current_position = { lng: +lon, lat: +lat };
-  if (Number.isFinite(+currentPointIndex) && +currentPointIndex > 0) {
-    currentRunData.current_point_index = Math.floor(+currentPointIndex);
+  const wasVisualActive = singleRunProgressVisualActive;
+  singleRunProgressVisualActive = true;
+  const previousProgressIndex = currentRunData
+    ? resolveRouteProgressIndex(currentRunData, currentRunData.run_coords || [])
+    : -1;
+  if (currentRunData) {
+    currentRunData.current_position = { lng: +lon, lat: +lat };
+    if (Number.isFinite(+currentPointIndex) && +currentPointIndex > 0) {
+      currentRunData.current_point_index = Math.floor(+currentPointIndex);
+    }
+    currentRunData.distance_covered_m = distance || 0;
   }
-  currentRunData.distance_covered_m = distance || 0;
   $("current-location-label").textContent = `当前位置GPS坐标: ${(+lon).toFixed(
     4,
   )}, ${(+lat).toFixed(4)}`;
@@ -42027,13 +42153,29 @@ function updateRunnerPosition(
   if (mobileCurrentLocationLabel) {
     mobileCurrentLocationLabel.textContent = `当前位置: ${(+lon).toFixed(
       4,
-    )}, ${(+lat).toFixed(4)}`;
+      )}, ${(+lat).toFixed(4)}`;
   }
   const jsTargetSequence = resolveRunnerTargetSequence(targetSequence, currentRunData);
-  if (currentRunData.target_sequence !== jsTargetSequence) {
+  const nextProgressIndex = currentRunData
+    ? resolveRouteProgressIndex(currentRunData, currentRunData.run_coords || [])
+    : previousProgressIndex;
+  const shouldRedrawMap =
+    !!currentRunData &&
+    (!wasVisualActive ||
+      currentRunData.target_sequence !== jsTargetSequence ||
+      previousProgressIndex !== nextProgressIndex);
+  if (currentRunData) {
     currentRunData.target_sequence = jsTargetSequence;
-    drawMarkers();
   }
+  if (shouldRedrawMap) {
+    drawOnMap_signature();
+  }
+  ensureRunnerMarker();
+  const pos = new AMapInstance.LngLat(lon, lat);
+  if (runnerMarker) {
+    runnerMarker.setPosition(pos);
+  }
+  if (map && centerNow) map.setCenter(pos);
   updateDashboard();
   if (
     Array.isArray(currentRunData.run_coords) &&
@@ -42053,6 +42195,24 @@ function updateRunnerPosition(
     );
   }
 }
+
+function clearSingleExecutionVisuals() {
+  singleRunProgressVisualActive = false;
+  if (getActiveMapProvider() === "amap") {
+    if (runnerMarker) {
+      removeSingleMapOverlay(runnerMarker);
+      runnerMarker = null;
+    }
+  } else {
+    getSingleProviderMapContainerIds().forEach((containerId) => {
+      clearProviderRunnerMarkers(containerId);
+    });
+  }
+  if (currentRunData && Object.keys(currentRunData).length > 0) {
+    drawOnMap_signature();
+  }
+}
+
 function onTaskCompleted(taskIndex) {
   if (currentTasks[taskIndex]) {
     currentTasks[taskIndex].status = 1;
@@ -42062,6 +42222,7 @@ function onTaskCompleted(taskIndex) {
 function onRunStopped() {
   logMessage_Info("后台任务已停止（来自服务器推送）。");
   stopBackgroundTaskPolling();
+  clearSingleExecutionVisuals();
   const startBtn = $("start-run-button");
   if (startBtn) {
     startBtn.textContent = "开始执行";
@@ -44630,6 +44791,7 @@ async function syncMobileBtnStateFromBackend() {
       res.task_status &&
       res.task_status.status === "running"
     ) {
+      singleRunProgressVisualActive = true;
       mobileTaskRunning = true;
       mobileTaskPaused = false;
       updateMobileTaskUI("运行中", "任务执行中 (已恢复)");
@@ -44677,6 +44839,7 @@ async function mobileStopTask() {
       updateMobileTaskUI("已停止", "任务已停止");
       showModalAlert("任务已停止", "成功");
       stopBackgroundTaskPolling();
+      clearSingleExecutionVisuals();
     } else {
       const isRunning = await syncMobileBtnStateFromBackend();
       if (isRunning) {
@@ -44789,6 +44952,7 @@ async function exitMobileMultiAccount() {
           try {
             await callPythonAPI_raw("/api/background_task/stop", "POST", {});
             stopBackgroundTaskPolling();
+            clearSingleExecutionVisuals();
             updateMobileTaskUI("已停止", "任务已停止（退出多账号模式）");
             mobileTaskRunning = false;
             mobileTaskPaused = false;
@@ -44898,6 +45062,7 @@ async function exitMobileSingleAccountSafe() {
           try {
             await callPythonAPI_raw("/api/background_task/stop", "POST", {});
             stopBackgroundTaskPolling();
+            clearSingleExecutionVisuals();
             updateMobileTaskUI("已停止", "任务已停止（退出单账号模式）");
             mobileTaskRunning = false;
             mobileTaskPaused = false;
@@ -45308,6 +45473,7 @@ async function mobileLogout() {
           try {
             await callPythonAPI_raw("/api/background_task/stop", "POST", {});
             stopBackgroundTaskPolling();
+            clearSingleExecutionVisuals();
             updateMobileTaskUI("已停止", "任务已停止（退出登录）");
             mobileTaskRunning = false;
             mobileTaskPaused = false;

@@ -319,6 +319,72 @@ function createBaiduSdk() {
   return { Map: BaiduMap, Point, Marker, Polyline };
 }
 
+function createAmapSdk() {
+  class LngLat {
+    constructor(lng, lat) {
+      this.lng = lng;
+      this.lat = lat;
+    }
+  }
+  class AmapMap {
+    constructor(container, options) {
+      this.container = container;
+      this.options = options;
+      this.overlays = [];
+      this.removedOverlays = [];
+      this.fitViewCalls = [];
+      this.center = new LngLat(113.390342, 22.527403);
+    }
+    add(overlayOrOverlays) {
+      const overlays = Array.isArray(overlayOrOverlays) ? overlayOrOverlays : [overlayOrOverlays];
+      this.overlays.push(...overlays.filter(Boolean));
+    }
+    remove(overlayOrOverlays) {
+      const overlays = Array.isArray(overlayOrOverlays) ? overlayOrOverlays : [overlayOrOverlays];
+      this.removedOverlays.push(...overlays.filter(Boolean));
+      this.overlays = this.overlays.filter((item) => !overlays.includes(item));
+    }
+    setFitView(overlays, immediate, padding) {
+      this.fitViewCalls.push({ overlays, immediate, padding });
+    }
+    setZoomAndCenter(zoom, center) {
+      this.zoom = zoom;
+      this.center = center;
+    }
+    getCenter() {
+      return this.center;
+    }
+    setCenter(center) {
+      this.center = center;
+    }
+    setStatus(status) {
+      this.status = status;
+    }
+    resize() {
+      this.resized = true;
+    }
+  }
+  class Polyline {
+    constructor(options) {
+      this.options = options;
+    }
+  }
+  class Marker {
+    constructor(options) {
+      this.options = options;
+      this.position = options.position;
+      this.hidden = false;
+    }
+    setPosition(position) {
+      this.position = position;
+    }
+    hide() {
+      this.hidden = true;
+    }
+  }
+  return { Map: AmapMap, LngLat, Polyline, Marker, ControlBar: class {} };
+}
+
 function createRuntime(provider, options = {}) {
   const source = readFileSync(resolve('scripts/main.new.js'), 'utf8');
   const functionNames = [
@@ -368,18 +434,30 @@ function createRuntime(provider, options = {}) {
     'addProviderMarker',
     'drawProviderRouteOnMap',
     'getSingleProviderMapContainerIds',
+    'appendSingleMapOverlay',
+    'collectSingleMapFitOverlays',
+    'removeSingleMapOverlay',
     'estimateProviderCoordDistanceMeters',
     'getProviderMarkerDisplayCoord',
     'findNearestProviderRouteIndex',
     'resolveRouteProgressIndex',
     'resolveTaskProgressSequence',
+    'resolveVisualTaskProgressSequence',
     'getProviderRouteProgressStatus',
     'resolveProviderRouteSegmentColor',
     'appendProviderRouteProgressSegment',
+    'hasActiveRouteProgress',
     'buildProviderRouteProgressSegments',
     'drawProviderTaskOnMap',
+    'clearMapOverlays',
+    'resetMapView',
+    'drawAmapRunRoute',
+    'drawMarkers',
     'drawOnMap_signature',
+    'ensureRunnerMarker',
     'updateRunnerPosition',
+    'clearSingleExecutionVisuals',
+    'onRunStopped',
     'installGenericMapRuntimeGuards',
   ];
   const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
@@ -399,20 +477,24 @@ function createRuntime(provider, options = {}) {
     window.TMap = createTencentSdk();
     window.T = createTianDiTuSdk();
     window.BMap = createBaiduSdk();
+    window.AMap = createAmapSdk();
   }
 
   const factory = Function('window', 'document', `
     const TMap = window.TMap;
     const T = window.T;
     const BMap = window.BMap;
+    const AMap = window.AMap;
     let AMAP_API_KEY = 'amap-key';
-    let AMapInstance = null;
-    let map = null;
+    let AMapInstance = window.APP_CONFIG.map_provider === 'amap' ? window.AMap : null;
+    let AMapReady = !!AMapInstance;
+    let map = AMapReady ? new AMapInstance.Map(document.getElementById('map-container'), {}) : null;
     let multiAccountMap = null;
     let mobileTrackMapInstance = null;
     let tencentMapLoadingPromise = null;
     let tiandituMapLoadingPromise = null;
     let baiduMapLoadingPromise = null;
+    let amapLoadingPromise = null;
     let providerMapInstances = {};
     let providerMapInstanceProviders = {};
     let providerMapEventsBound = {};
@@ -421,6 +503,15 @@ function createRuntime(provider, options = {}) {
     let providerRunnerMarkers = {};
     let currentRunData = null;
     let runAccumulatedMs = 0;
+    let singleProcessedPoints = 0;
+    let singleTotalPoints = 0;
+    let backgroundTaskPollInterval = null;
+    let backgroundTaskStartTime = 0;
+    let singleRunProgressVisualActive = false;
+    let polylines = { recommended: [], draft: null, run: null, history: null };
+    let markers = [];
+    let runnerMarker = null;
+    let drawingInfoMarker = null;
     const $ = (id) => document.getElementById(id);
     const MAP_COORD_PI = Math.PI;
     const MAP_COORD_X_PI = Math.PI * 3000.0 / 180.0;
@@ -430,6 +521,11 @@ function createRuntime(provider, options = {}) {
     function logMessage_Warning() {}
     function logMessage_Error() {}
     function updateDashboard() {}
+    function updateSingleProgress() {}
+    function stopBackgroundTaskPolling() {
+      backgroundTaskPollInterval = null;
+      backgroundTaskStartTime = 0;
+    }
     ${functionSources.join('\n\n')}
     return {
       initProviderMap,
@@ -442,6 +538,8 @@ function createRuntime(provider, options = {}) {
       updateProviderRunnerMarker,
       drawOnMap_signature,
       updateRunnerPosition,
+      clearSingleExecutionVisuals,
+      onRunStopped,
       getProviderMapInstance,
       setCurrentRunData: (data) => {
         currentRunData = data;
@@ -452,6 +550,11 @@ function createRuntime(provider, options = {}) {
         providerMapOverlays,
         providerMapLastFitCoords,
         providerRunnerMarkers,
+        map,
+        polylines,
+        markers,
+        runnerMarker,
+        singleRunProgressVisualActive,
       }),
       getDocument: () => document,
       getWindow: () => window,
@@ -594,7 +697,7 @@ test('tencent single map redraws checkpoint status while preserving current posi
   assert.equal(runtime.getState().providerRunnerMarkers['map-container'], runnerMarker);
   let markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
   assert.equal(markerSvgs.some((svg) => svg.includes('起点') || svg.includes('终点')), false);
-  assert.ok(markerSvgs.some((svg) => svg.includes('教学楼') && svg.includes('#0284c7')));
+  assert.ok(markerSvgs.some((svg) => svg.includes('教学楼') && svg.includes('#059669')));
   assert.ok(markerSvgs.some((svg) => svg.includes('操场') && svg.includes('#059669')));
 
   runtime.updateRunnerPosition(113.392, 22.522, 100, 1, 1000);
@@ -609,7 +712,7 @@ test('tencent single map redraws checkpoint status while preserving current posi
     .providerMapOverlays['map-container']
     .find((overlay) => overlay.options?.id === 'provider-route-map-container');
   assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'completed'));
-  assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'active'));
+  assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'current'));
 });
 
 test('tencent task route colors completed segments from checkpoint sequence', () => {
@@ -631,7 +734,7 @@ test('tencent task route colors completed segments from checkpoint sequence', ()
     ],
   });
 
-  runtime.drawOnMap_signature();
+  runtime.updateRunnerPosition(113.395, 22.525, 100, 1, 1000, false, 3);
 
   const routeLayer = runtime
     .getState()
@@ -639,9 +742,9 @@ test('tencent task route colors completed segments from checkpoint sequence', ()
     .find((overlay) => overlay.options?.id === 'provider-route-map-container');
   assert.ok(routeLayer);
   assert.equal(routeLayer.options.styles.completed.options.color, '#94a3b8');
-  assert.equal(routeLayer.options.styles.active.options.color, '#ef4444');
+  assert.equal(routeLayer.options.styles.current.options.color, '#0284c7');
   assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'completed'));
-  assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'active'));
+  assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'current'));
 });
 
 test('tencent completed checkpoint marker does not regress on stale position sequence', () => {
@@ -662,8 +765,6 @@ test('tencent completed checkpoint marker does not regress on stale position seq
       [113.40, 22.53],
     ],
   });
-  runtime.drawOnMap_signature();
-
   runtime.updateRunnerPosition(113.391, 22.521, 100, 0, 1000);
 
   assert.equal(runtime.getCurrentRunData().target_sequence, 2);
@@ -696,7 +797,7 @@ test('tencent checkpoint and route progress follow executed route index when seq
     ],
   });
 
-  runtime.drawOnMap_signature();
+  runtime.updateRunnerPosition(113.400, 22.530, 100, 1, 1000, false, 6);
 
   const markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
   assert.ok(markerSvgs.some((svg) => svg.includes('南门3') && svg.includes('#94a3b8')));
@@ -709,11 +810,12 @@ test('tencent checkpoint and route progress follow executed route index when seq
     .providerMapOverlays['map-container']
     .find((overlay) => overlay.options?.id === 'provider-route-map-container');
   const completedSegment = routeLayer.options.geometries.find((geometry) => geometry.styleId === 'completed');
-  const activeSegment = routeLayer.options.geometries.find((geometry) => geometry.styleId === 'active');
+  const currentSegment = routeLayer.options.geometries.find((geometry) => geometry.styleId === 'current');
   assert.ok(completedSegment);
-  assert.ok(activeSegment);
+  assert.ok(currentSegment);
   assert.equal(completedSegment.paths.at(-1).lng, 113.400);
-  assert.equal(activeSegment.paths[0].lng, 113.400);
+  assert.equal(currentSegment.paths[0].lng, 113.400);
+  assert.equal(routeLayer.options.styles.current.options.color, '#0284c7');
 });
 
 test('generic provider task route colors completed segments from executed route index', () => {
@@ -738,7 +840,7 @@ test('generic provider task route colors completed segments from executed route 
     ],
   });
 
-  runtime.drawOnMap_signature();
+  runtime.updateRunnerPosition(113.390, 22.520, 100, 1, 1000, false, 4);
 
   const routePolylines = runtime
     .getState()
@@ -746,7 +848,123 @@ test('generic provider task route colors completed segments from executed route 
     .filter((overlay) => Array.isArray(overlay.points));
   assert.ok(routePolylines.length >= 2);
   assert.equal(routePolylines[0].options.strokeColor, '#94a3b8');
-  assert.ok(routePolylines.some((polyline) => polyline.options.strokeColor === '#ef4444'));
+  assert.ok(routePolylines.some((polyline) => polyline.options.strokeColor === '#0284c7'));
+});
+
+test('amap run route uses progress colors while execution is active', () => {
+  const runtime = createRuntime('amap');
+  runtime.setCurrentRunData({
+    status: 0,
+    target_sequence: 2,
+    current_point_index: 4,
+    target_point_names: '点1|点2|点3',
+    target_points: [
+      [113.380, 22.510],
+      [113.390, 22.520],
+      [113.400, 22.530],
+    ],
+    run_coords: [
+      [113.375, 22.505],
+      [113.380, 22.510],
+      [113.385, 22.515],
+      [113.390, 22.520],
+      [113.400, 22.530],
+      [113.405, 22.535],
+    ],
+  });
+
+  runtime.updateRunnerPosition(113.390, 22.520, 100, 1, 1000, false, 4);
+
+  const runPolylines = runtime.getState().polylines.run;
+  assert.ok(Array.isArray(runPolylines));
+  const colors = runPolylines.map((polyline) => polyline.options.strokeColor);
+  assert.ok(colors.includes('#94a3b8'));
+  assert.ok(colors.includes('#0284c7'));
+  assert.ok(colors.includes('#ef4444'));
+  assert.equal(runtime.getState().map.overlays.includes(runtime.getState().runnerMarker), true);
+});
+
+test('stopping execution resets provider map visuals without clearing realtime state', () => {
+  const runtime = createRuntime('tencent');
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+  runtime.setCurrentRunData({
+    status: 0,
+    target_sequence: 2,
+    current_point_index: 4,
+    current_position: { lng: 113.390, lat: 22.520 },
+    target_point_names: '点1|点2|点3',
+    target_points: [
+      [113.380, 22.510],
+      [113.390, 22.520],
+      [113.400, 22.530],
+    ],
+    run_coords: [
+      [113.375, 22.505],
+      [113.380, 22.510],
+      [113.385, 22.515],
+      [113.390, 22.520],
+      [113.400, 22.530],
+    ],
+  });
+
+  runtime.updateRunnerPosition(113.390, 22.520, 100, 1, 1000, false, 4);
+  assert.ok(runtime.getState().providerRunnerMarkers['map-container']);
+
+  runtime.onRunStopped();
+
+  assert.deepEqual(runtime.getCurrentRunData().current_position, { lng: 113.390, lat: 22.520 });
+  assert.equal(runtime.getCurrentRunData().current_point_index, 4);
+  assert.equal(runtime.getCurrentRunData().target_sequence, 2);
+  assert.equal(Object.keys(runtime.getState().providerRunnerMarkers).length, 0);
+  const routeLayer = runtime
+    .getState()
+    .providerMapOverlays['map-container']
+    .find((overlay) => overlay.options?.id === 'provider-route-map-container');
+  assert.ok(routeLayer);
+  assert.equal(routeLayer.options.styles.route.options.color, '#ef4444');
+  assert.equal(routeLayer.options.styles.current, undefined);
+  const markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
+  assert.ok(markerSvgs.every((svg) => !svg.includes('#94a3b8') && !svg.includes('#0284c7')));
+  assert.equal(runtime.getState().singleRunProgressVisualActive, false);
+});
+
+test('stopping execution resets amap visuals without clearing realtime state', () => {
+  const runtime = createRuntime('amap');
+  runtime.setCurrentRunData({
+    status: 0,
+    target_sequence: 2,
+    current_point_index: 4,
+    current_position: { lng: 113.390, lat: 22.520 },
+    target_point_names: '点1|点2|点3',
+    target_points: [
+      [113.380, 22.510],
+      [113.390, 22.520],
+      [113.400, 22.530],
+    ],
+    run_coords: [
+      [113.375, 22.505],
+      [113.380, 22.510],
+      [113.385, 22.515],
+      [113.390, 22.520],
+      [113.400, 22.530],
+      [113.405, 22.535],
+    ],
+  });
+
+  runtime.updateRunnerPosition(113.390, 22.520, 100, 1, 1000, false, 4);
+  assert.ok(runtime.getState().runnerMarker);
+
+  runtime.onRunStopped();
+
+  assert.deepEqual(runtime.getCurrentRunData().current_position, { lng: 113.390, lat: 22.520 });
+  assert.equal(runtime.getCurrentRunData().current_point_index, 4);
+  assert.equal(runtime.getCurrentRunData().target_sequence, 2);
+  assert.equal(runtime.getState().runnerMarker, null);
+  const runPolylines = runtime.getState().polylines.run;
+  assert.equal(Array.isArray(runPolylines), false);
+  assert.equal(runPolylines.options.strokeColor, '#ef4444');
+  assert.ok(runtime.getState().markers.every((marker) => marker.options.content.includes('bg-emerald-600')));
+  assert.equal(runtime.getState().singleRunProgressVisualActive, false);
 });
 
 test('tencent mobile single map receives route checkpoints and current position updates', () => {
@@ -771,7 +989,7 @@ test('tencent mobile single map receives route checkpoints and current position 
 
   let mobileMarkerSvgs = collectTencentMarkerSvgs(runtime, 'mobile-map-container');
   assert.equal(mobileMarkerSvgs.some((svg) => svg.includes('起点') || svg.includes('终点')), false);
-  assert.ok(mobileMarkerSvgs.some((svg) => svg.includes('图书馆') && svg.includes('#0284c7')));
+  assert.ok(mobileMarkerSvgs.some((svg) => svg.includes('图书馆') && svg.includes('#059669')));
   assert.ok(mobileMarkerSvgs.some((svg) => svg.includes('操场') && svg.includes('#059669')));
 
   runtime.updateRunnerPosition(113.392, 22.522, 100, 1, 1000, true);
