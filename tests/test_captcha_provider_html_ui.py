@@ -65,6 +65,23 @@ class TestCaptchaProviderHtmlUi(unittest.TestCase):
         self.assertIn('serverFields.classList.toggle("hidden", provider !== "behavior");', source)
         self.assertIn('imageFields.classList.toggle("hidden", provider === "behavior");', source)
 
+    def test_local_captcha_fields_have_white_parameter_containers(self):
+        html = INDEX_PATH.read_text(encoding="utf-8")
+
+        for fields_id in ("captcha-image-fields", "mobile-captcha-image-fields"):
+            fields_tag_match = re.search(
+                rf'<div\s+id="{fields_id}"\s+class="([^"]*)"',
+                html,
+            )
+            self.assertIsNotNone(fields_tag_match, fields_id)
+            class_names = fields_tag_match.group(1).split()
+            for expected_class in ("bg-white", "border", "border-slate-200", "rounded-lg"):
+                self.assertIn(expected_class, class_names, fields_id)
+            self.assertTrue(
+                any(name.startswith("p-") for name in class_names),
+                f"{fields_id} should include padding on the white container",
+            )
+
     def test_captcha_provider_switch_updates_card_state_and_test_button_text(self):
         html = INDEX_PATH.read_text(encoding="utf-8")
         source = SCRIPT_PATH.read_text(encoding="utf-8")

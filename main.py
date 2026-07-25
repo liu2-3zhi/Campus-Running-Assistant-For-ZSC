@@ -1170,12 +1170,18 @@ def _plan_route_path_with_provider_runtime(
     ctx = chrome_pool.get_context(session_id)
     page = ctx["page"]
     _install_map_runtime_guard(page, provider=provider, guard_label=guard_label)
-    _ensure_map_backend_page_origin(
+    if app_base_url and not _ensure_map_backend_page_origin(
         page,
         session_id,
         app_base_url,
         guard_label=guard_label,
-    )
+    ):
+        return {
+            "error": "后端地图页面来源初始化失败，无法执行地图路径规划。",
+            "provider": provider,
+            "provider_plan": provider_plan,
+            "notices": provider_plan.get("notices", []),
+        }
 
     if provider == "amap":
         result = _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_plan, python_params)
@@ -8888,6 +8894,33 @@ class AuthSystem:
         """获取用户的 school_accounts 文件路径"""
         user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
         return os.path.join(user_accounts_dir, f"{auth_username}.json")
+
+    def _load_user_school_accounts(self, auth_username):
+        """加载认证用户绑定的学校账号。"""
+        if not auth_username or auth_username == "guest":
+            return {}
+
+        user_accounts_file = self._get_user_accounts_file(auth_username)
+        if not os.path.exists(user_accounts_file):
+            return {}
+
+        try:
+            with open(user_accounts_file, "r", encoding="utf-8") as f:
+                accounts = json.load(f)
+        except Exception as e:
+            logging.error(
+                f"[用户学校账号] 读取用户 {auth_username} 的学校账号文件失败: {e}",
+                exc_info=True,
+            )
+            return {}
+
+        if isinstance(accounts, dict):
+            return accounts
+
+        logging.warning(
+            f"[用户学校账号] 用户 {auth_username} 的学校账号文件格式无效，已按空账号处理"
+        )
+        return {}
 
     def _update_user_file_group(self, username, new_group):
         """
@@ -23449,6 +23482,7 @@ class ChromeBrowserPool:
                 context = self._browser.new_context(
                     viewport={"width": 1920, "height": 1080},
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    ignore_https_errors=True,
                 )
                 # 在上下文中创建新页面（标签页）
                 page = context.new_page()
