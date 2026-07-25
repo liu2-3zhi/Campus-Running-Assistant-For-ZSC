@@ -371,7 +371,10 @@ function createRuntime(provider, options = {}) {
     'estimateProviderCoordDistanceMeters',
     'getProviderMarkerDisplayCoord',
     'findNearestProviderRouteIndex',
+    'resolveRouteProgressIndex',
+    'resolveTaskProgressSequence',
     'getProviderRouteProgressStatus',
+    'resolveProviderRouteSegmentColor',
     'appendProviderRouteProgressSegment',
     'buildProviderRouteProgressSegments',
     'drawProviderTaskOnMap',
@@ -667,6 +670,83 @@ test('tencent completed checkpoint marker does not regress on stale position seq
   const markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
   assert.ok(markerSvgs.some((svg) => svg.includes('求知路3') && svg.includes('#94a3b8')));
   assert.equal(markerSvgs.some((svg) => svg.includes('求知路3') && svg.includes('#0284c7')), false);
+});
+
+test('tencent checkpoint and route progress follow executed route index when sequence lags', () => {
+  const runtime = createRuntime('tencent');
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+  runtime.setCurrentRunData({
+    status: 0,
+    target_sequence: 2,
+    current_point_index: 6,
+    target_point_names: '求知路1|南门3|田径场3',
+    target_points: [
+      [113.380, 22.510],
+      [113.390, 22.520],
+      [113.400, 22.530],
+    ],
+    run_coords: [
+      [113.375, 22.505],
+      [113.380, 22.510],
+      [113.385, 22.515],
+      [113.390, 22.520],
+      [113.395, 22.525],
+      [113.400, 22.530],
+      [113.405, 22.535],
+    ],
+  });
+
+  runtime.drawOnMap_signature();
+
+  const markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
+  assert.ok(markerSvgs.some((svg) => svg.includes('南门3') && svg.includes('#94a3b8')));
+  assert.ok(markerSvgs.some((svg) => svg.includes('田径场3') && svg.includes('#0284c7')));
+  assert.equal(markerSvgs.some((svg) => svg.includes('南门3') && svg.includes('#0284c7')), false);
+  assert.equal(markerSvgs.some((svg) => svg.includes('田径场3') && svg.includes('#059669')), false);
+
+  const routeLayer = runtime
+    .getState()
+    .providerMapOverlays['map-container']
+    .find((overlay) => overlay.options?.id === 'provider-route-map-container');
+  const completedSegment = routeLayer.options.geometries.find((geometry) => geometry.styleId === 'completed');
+  const activeSegment = routeLayer.options.geometries.find((geometry) => geometry.styleId === 'active');
+  assert.ok(completedSegment);
+  assert.ok(activeSegment);
+  assert.equal(completedSegment.paths.at(-1).lng, 113.400);
+  assert.equal(activeSegment.paths[0].lng, 113.400);
+});
+
+test('generic provider task route colors completed segments from executed route index', () => {
+  const runtime = createRuntime('baidu');
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+  runtime.setCurrentRunData({
+    status: 0,
+    target_sequence: 2,
+    current_point_index: 4,
+    target_point_names: '点1|点2|点3',
+    target_points: [
+      [113.380, 22.510],
+      [113.390, 22.520],
+      [113.400, 22.530],
+    ],
+    run_coords: [
+      [113.375, 22.505],
+      [113.380, 22.510],
+      [113.385, 22.515],
+      [113.390, 22.520],
+      [113.400, 22.530],
+    ],
+  });
+
+  runtime.drawOnMap_signature();
+
+  const routePolylines = runtime
+    .getState()
+    .providerMapOverlays['map-container']
+    .filter((overlay) => Array.isArray(overlay.points));
+  assert.ok(routePolylines.length >= 2);
+  assert.equal(routePolylines[0].options.strokeColor, '#94a3b8');
+  assert.ok(routePolylines.some((polyline) => polyline.options.strokeColor === '#ef4444'));
 });
 
 test('tencent mobile single map receives route checkpoints and current position updates', () => {
