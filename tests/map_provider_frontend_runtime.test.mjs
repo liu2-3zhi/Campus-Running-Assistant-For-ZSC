@@ -180,12 +180,17 @@ function createTencentSdk() {
     }
   }
   class MultiPolyline extends MultiMarker {}
+  class MarkerStyle {
+    constructor(options) {
+      this.options = options;
+    }
+  }
   class PolylineStyle {
     constructor(options) {
       this.options = options;
     }
   }
-  return { Map: TencentMap, LatLng, LatLngBounds, MultiMarker, MultiPolyline, PolylineStyle };
+  return { Map: TencentMap, LatLng, LatLngBounds, MultiMarker, MultiPolyline, MarkerStyle, PolylineStyle };
 }
 
 function createTianDiTuSdk() {
@@ -333,6 +338,7 @@ function createRuntime(provider, options = {}) {
     'applyTianDiTuDefaultMapType',
     'destroyProviderMapInstance',
     'getProviderOverlayBucket',
+    'clearProviderRunnerMarkers',
     'clearProviderMapOverlays',
     'getProviderMapDefaultZoom',
     'initProviderMap',
@@ -352,9 +358,17 @@ function createRuntime(provider, options = {}) {
     'zoomProviderMap',
     'fitProviderMapToLastRoute',
     'removeProviderOverlayFromMap',
+    'escapeProviderSvgText',
+    'normalizeProviderMarkerLabel',
+    'resolveProviderMarkerColor',
+    'createTencentMarkerStyleOptions',
     'updateProviderRunnerMarker',
     'addProviderMarker',
     'drawProviderRouteOnMap',
+    'getSingleProviderMapContainerIds',
+    'drawProviderTaskOnMap',
+    'drawOnMap_signature',
+    'updateRunnerPosition',
     'installGenericMapRuntimeGuards',
   ];
   const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
@@ -394,6 +408,9 @@ function createRuntime(provider, options = {}) {
     let providerMapOverlays = {};
     let providerMapLastFitCoords = {};
     let providerRunnerMarkers = {};
+    let currentRunData = null;
+    let runAccumulatedMs = 0;
+    const $ = (id) => document.getElementById(id);
     const MAP_COORD_PI = Math.PI;
     const MAP_COORD_X_PI = Math.PI * 3000.0 / 180.0;
     const MAP_COORD_A = 6378245.0;
@@ -401,6 +418,7 @@ function createRuntime(provider, options = {}) {
     function logMessage_Info() {}
     function logMessage_Warning() {}
     function logMessage_Error() {}
+    function updateDashboard() {}
     ${functionSources.join('\n\n')}
     return {
       initProviderMap,
@@ -411,7 +429,13 @@ function createRuntime(provider, options = {}) {
       zoomProviderMap,
       fitProviderMapToLastRoute,
       updateProviderRunnerMarker,
+      drawOnMap_signature,
+      updateRunnerPosition,
       getProviderMapInstance,
+      setCurrentRunData: (data) => {
+        currentRunData = data;
+      },
+      getCurrentRunData: () => currentRunData,
       getState: () => ({
         providerMapInstances,
         providerMapOverlays,
@@ -424,6 +448,19 @@ function createRuntime(provider, options = {}) {
   `);
 
   return factory(window, document);
+}
+
+function decodeTencentMarkerStyleSvg(marker) {
+  const style = marker?.options?.styles?.marker;
+  assert.ok(style, 'Tencent markers should include a MarkerStyle named marker');
+  assert.match(style.options.src, /^data:image\/svg\+xml;charset=UTF-8,/);
+  return decodeURIComponent(style.options.src.split(',')[1] || '');
+}
+
+function collectTencentMarkerSvgs(runtime, containerId) {
+  return (runtime.getState().providerMapOverlays[containerId] || [])
+    .filter((overlay) => overlay?.options?.geometries?.[0]?.styleId === 'marker')
+    .map((marker) => decodeTencentMarkerStyleSvg(marker));
 }
 
 test('provider maps initialize and expose marker-only viewport controls without network SDKs', () => {
@@ -490,6 +527,96 @@ test('provider runner marker does not overwrite route fit coordinates', () => {
 
   assert.deepEqual(runtime.getState().providerMapLastFitCoords['map-container'], before);
   assert.equal(runtime.getState().providerMapOverlays['map-container'].length, overlayCountBefore);
+});
+
+test('tencent provider markers use styled marker geometry for custom labels', () => {
+  const runtime = createRuntime('tencent');
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+
+  const marker = runtime.addProviderMarker(
+    'map-container',
+    { lng: 113.39, lat: 22.52 },
+    {
+      title: '教学楼',
+      content: '<div>教学楼</div>',
+      anchor: 'bottom-center',
+      zIndex: 110,
+    },
+  );
+
+  assert.ok(marker);
+  assert.equal(marker.options.zIndex, 110);
+  assert.equal(marker.options.geometries[0].styleId, 'marker');
+  assert.equal(marker.options.geometries[0].content, '教学楼');
+  assert.ok(marker.options.styles.marker instanceof runtime.getWindow().TMap.MarkerStyle);
+  assert.match(decodeTencentMarkerStyleSvg(marker), /教学楼/);
+});
+
+test('tencent single map redraws checkpoint status while preserving current position marker', () => {
+  const runtime = createRuntime('tencent');
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+  runtime.setCurrentRunData({
+    status: 0,
+    target_sequence: 1,
+    target_point_names: '教学楼|操场',
+    target_points: [
+      [113.39, 22.52],
+      [113.40, 22.53],
+    ],
+    run_coords: [
+      [113.38, 22.51],
+      [113.41, 22.54],
+    ],
+  });
+
+  const runnerMarker = runtime.updateProviderRunnerMarker('map-container', { lng: 113.385, lat: 22.515 });
+  runtime.drawOnMap_signature();
+
+  assert.equal(runtime.getState().providerRunnerMarkers['map-container'], runnerMarker);
+  let markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
+  assert.ok(markerSvgs.some((svg) => svg.includes('教学楼') && svg.includes('#0284c7')));
+  assert.ok(markerSvgs.some((svg) => svg.includes('操场') && svg.includes('#059669')));
+
+  runtime.updateRunnerPosition(113.392, 22.522, 100, 1, 1000);
+
+  assert.equal(runtime.getCurrentRunData().target_sequence, 2);
+  assert.ok(runtime.getState().providerRunnerMarkers['map-container']);
+  markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
+  assert.ok(markerSvgs.some((svg) => svg.includes('教学楼') && svg.includes('#94a3b8')));
+  assert.ok(markerSvgs.some((svg) => svg.includes('操场') && svg.includes('#0284c7')));
+});
+
+test('tencent mobile single map receives route checkpoints and current position updates', () => {
+  const runtime = createRuntime('tencent');
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+  assert.equal(runtime.initProviderMap('mobile-map-container', false), true);
+  runtime.setCurrentRunData({
+    status: 0,
+    target_sequence: 1,
+    target_point_names: '图书馆|操场',
+    target_points: [
+      [113.39, 22.52],
+      [113.40, 22.53],
+    ],
+    run_coords: [
+      [113.38, 22.51],
+      [113.41, 22.54],
+    ],
+  });
+
+  runtime.drawOnMap_signature();
+
+  let mobileMarkerSvgs = collectTencentMarkerSvgs(runtime, 'mobile-map-container');
+  assert.ok(mobileMarkerSvgs.some((svg) => svg.includes('图书馆') && svg.includes('#0284c7')));
+  assert.ok(mobileMarkerSvgs.some((svg) => svg.includes('操场') && svg.includes('#059669')));
+
+  runtime.updateRunnerPosition(113.392, 22.522, 100, 1, 1000, true);
+
+  assert.ok(runtime.getState().providerRunnerMarkers['mobile-map-container']);
+  mobileMarkerSvgs = collectTencentMarkerSvgs(runtime, 'mobile-map-container');
+  assert.ok(mobileMarkerSvgs.some((svg) => svg.includes('图书馆') && svg.includes('#94a3b8')));
+  assert.ok(mobileMarkerSvgs.some((svg) => svg.includes('操场') && svg.includes('#0284c7')));
+  assert.ok(runtime.getProviderMapInstance('mobile-map-container').fitBoundsCalls.length >= 2);
 });
 
 test('initProviderMap renders real map not placeholder for non-amap providers', () => {

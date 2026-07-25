@@ -157,6 +157,10 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             source.index("function clearProviderMapOverlays("):
             source.index("function getProviderMapDefaultZoom(", source.index("function clearProviderMapOverlays("))
         ]
+        runner_clear_source = source[
+            source.index("function clearProviderRunnerMarkers("):
+            source.index("function clearProviderMapOverlays(", source.index("function clearProviderRunnerMarkers("))
+        ]
 
         self.assertIn("let providerMapInstanceProviders = {};", source)
         self.assertIn("providerMapInstanceProviders[containerId]", provider_map_source)
@@ -164,8 +168,12 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("providerMapInstanceProviders[containerId] = provider;", provider_map_source)
         self.assertIn("delete providerMapInstanceProviders[containerId];", destroy_source)
         self.assertIn("providerMapInstanceProviders[containerId] || getActiveMapProvider()", clear_source)
+        self.assertIn("clearProviderMapOverlays(containerId, { clearRunnerMarkers: true });", destroy_source)
+        self.assertIn("if (options.clearRunnerMarkers === true)", clear_source)
+        self.assertIn("clearProviderRunnerMarkers(containerId);", clear_source)
+        self.assertIn("delete providerRunnerMarkers[markerKey];", runner_clear_source)
         self.assertIn("delete providerRunnerMarkers[containerId];", destroy_source)
-        self.assertIn("delete providerRunnerMarkers[containerId];", clear_source)
+        self.assertNotIn("delete providerRunnerMarkers[containerId];", clear_source)
 
     def test_manual_auto_generation_uses_backend_provider_dispatch(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
@@ -223,6 +231,10 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             source.index("function drawOnMap_signature("):
             source.index("function drawOnMap(", source.index("function drawOnMap_signature("))
         ]
+        task_draw_source = source[
+            source.index("function drawProviderTaskOnMap("):
+            source.index("function installGenericMapRuntimeGuards(", source.index("function drawProviderTaskOnMap("))
+        ]
         history_source = source[
             source.index("async function showHistoricalTrack("):
             source.index("function updateSingleProgress(", source.index("async function showHistoricalTrack("))
@@ -235,7 +247,12 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("function drawProviderRouteOnMap(", source)
         self.assertIn("function clearProviderMapOverlays(", source)
         self.assertIn("function convertGcj02ToProviderCoordinates(", source)
-        self.assertIn('drawProviderRouteOnMap("map-container"', draw_source)
+        self.assertIn("function getSingleProviderMapContainerIds(", source)
+        self.assertIn("function drawProviderTaskOnMap(", source)
+        self.assertIn("getSingleProviderMapContainerIds().forEach", draw_source)
+        self.assertIn("drawProviderTaskOnMap(containerId, data)", draw_source)
+        self.assertIn("drawProviderRouteOnMap(containerId", task_draw_source)
+        self.assertIn("addProviderMarker(containerId", task_draw_source)
         self.assertNotIn('renderMapProviderFrontendPlaceholder("map-container", false)', draw_source)
         self.assertIn('drawProviderRouteOnMap("map-container"', history_source)
         self.assertNotIn("前端历史轨迹绘制暂仅支持高德地图", history_source)
@@ -263,7 +280,9 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
 
         self.assertIn('if (getActiveMapProvider() !== "amap" || !map || !AMapInstance)', manual_attendance_source)
         self.assertIn('if (getActiveMapProvider() !== "amap" || !map || !AMapInstance)', manual_makeup_source)
-        self.assertIn('updateProviderRunnerMarker("map-container"', runner_source)
+        self.assertIn("getSingleProviderMapContainerIds()", runner_source)
+        self.assertIn("updateProviderRunnerMarker(containerId", runner_source)
+        self.assertIn("fitProviderMapToCoordinates(containerId", runner_source)
         self.assertIn('updateProviderRunnerMarker("multi-map-container"', multi_runner_source)
         self.assertIn('providerRunnerMarkers', source)
 

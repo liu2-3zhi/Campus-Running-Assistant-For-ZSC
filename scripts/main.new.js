@@ -35323,7 +35323,7 @@ async function loadActiveMapProviderRuntime(provider = getActiveMapProvider()) {
 }
 
 function destroyProviderMapInstance(containerId) {
-  clearProviderMapOverlays(containerId);
+  clearProviderMapOverlays(containerId, { clearRunnerMarkers: true });
   const instance = providerMapInstances[containerId];
   if (!instance) return;
   try {
@@ -35353,14 +35353,25 @@ function getProviderOverlayBucket(containerId) {
   return providerMapOverlays[containerId];
 }
 
-function clearProviderMapOverlays(containerId) {
+function clearProviderRunnerMarkers(containerId) {
+  Object.keys(providerRunnerMarkers).forEach((markerKey) => {
+    if (markerKey === containerId || markerKey.startsWith(`${containerId}:`)) {
+      removeProviderOverlayFromMap(containerId, providerRunnerMarkers[markerKey]);
+      delete providerRunnerMarkers[markerKey];
+    }
+  });
+}
+
+function clearProviderMapOverlays(containerId, options = {}) {
   const overlays = providerMapOverlays[containerId] || [];
   overlays.forEach((overlay) => {
     removeProviderOverlayFromMap(containerId, overlay);
   });
   providerMapOverlays[containerId] = [];
   providerMapLastFitCoords[containerId] = [];
-  delete providerRunnerMarkers[containerId];
+  if (options.clearRunnerMarkers === true) {
+    clearProviderRunnerMarkers(containerId);
+  }
 }
 
 function removeProviderOverlayFromMap(containerId, overlay) {
@@ -35803,6 +35814,87 @@ function fitProviderMapToLastRoute(containerId) {
   return false;
 }
 
+function escapeProviderSvgText(value) {
+  return String(value || "").replace(/[&<>\u0022\u0027]/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  })[char]);
+}
+
+function normalizeProviderMarkerLabel(options = {}) {
+  const label = typeof options.label === "string" ? options.label.trim() : "";
+  if (label) return label;
+  const title = typeof options.title === "string" ? options.title.trim() : "";
+  if (title) return title;
+  return "";
+}
+
+function resolveProviderMarkerColor(options = {}) {
+  if (typeof options.markerColor === "string" && options.markerColor.trim()) {
+    return options.markerColor.trim();
+  }
+  if (options.markerStatus === "completed") return "#94a3b8";
+  if (options.markerStatus === "current") return "#0284c7";
+  if (options.markerStatus === "start") return "#10b981";
+  if (options.markerStatus === "end") return "#ef4444";
+
+  const content = String(options.content || "");
+  const inlineColor = content.match(/background-color:\s*([^;\u0022\u0027]+)/i);
+  if (inlineColor && inlineColor[1]) {
+    return inlineColor[1].trim();
+  }
+  if (content.includes("bg-slate-400")) return "#94a3b8";
+  if (content.includes("bg-sky-600")) return "#0284c7";
+  if (content.includes("bg-emerald-600")) return "#059669";
+
+  return options.anchor === "center" ? "#2563eb" : "#059669";
+}
+
+function createTencentMarkerStyleOptions(label, options = {}) {
+  const markerKind = options.markerKind || (options.anchor === "center" ? "runner" : "label");
+  const color = resolveProviderMarkerColor(options);
+  if (markerKind === "runner") {
+    const svg = [
+      '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">',
+      '<circle cx="14" cy="14" r="10" fill="#ffffff" opacity="0.95"/>',
+      '<circle cx="14" cy="14" r="7" fill="' + color + '"/>',
+      '<circle cx="14" cy="14" r="12" fill="none" stroke="' + color + '" stroke-width="2" opacity="0.32"/>',
+      '</svg>',
+    ].join("");
+    return {
+      width: 28,
+      height: 28,
+      anchor: { x: 14, y: 14 },
+      src: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    };
+  }
+
+  const visibleLabel = Array.from(label || "标记").slice(0, 10).join("");
+  const safeLabel = escapeProviderSvgText(visibleLabel);
+  const textLength = Math.max(2, Array.from(visibleLabel).length);
+  const width = Math.min(144, Math.max(48, 26 + textLength * 14));
+  const height = 38;
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+    '<defs><filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.22"/></filter></defs>',
+    '<g filter="url(#shadow)">',
+    `<rect x="1" y="1" width="${width - 2}" height="26" rx="13" fill="${color}"/>`,
+    `<path d="M ${width / 2 - 5} 27 L ${width / 2} 36 L ${width / 2 + 5} 27 Z" fill="${color}"/>`,
+    '</g>',
+    `<text x="${width / 2}" y="18" text-anchor="middle" font-size="12" font-weight="700" font-family="Arial, sans-serif" fill="#ffffff">${safeLabel}</text>`,
+    '</svg>',
+  ].join("");
+  return {
+    width,
+    height,
+    anchor: { x: width / 2, y: height },
+    src: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+  };
+}
+
 function addProviderMarker(containerId, coord, options = {}) {
   const provider = getActiveMapProvider();
   const instance = getProviderMapInstance(containerId);
@@ -35820,13 +35912,23 @@ function addProviderMarker(containerId, coord, options = {}) {
         map: instance,
       });
     } else if (provider === "tencent" && window.TMap) {
+      const label = normalizeProviderMarkerLabel(options);
+      const markerStyleOptions = createTencentMarkerStyleOptions(label, options);
+      const styleId = "marker";
       marker = new TMap.MultiMarker({
         id: `provider-marker-${containerId}-${Date.now()}-${bucket.length}`,
         map: instance,
+        zIndex: options.zIndex || 100,
+        styles: {
+          [styleId]: new TMap.MarkerStyle(markerStyleOptions),
+        },
         geometries: [{
-          id: "marker",
+          id: `marker-${Date.now()}-${bucket.length}`,
+          styleId,
           position: new TMap.LatLng(providerCoord.lat, providerCoord.lng),
-          properties: { title: options.title || "" },
+          rank: options.zIndex || 100,
+          content: label,
+          properties: { title: options.title || label },
         }],
       });
     } else if (provider === "tianditu" && window.T) {
@@ -35869,9 +35971,12 @@ function updateProviderRunnerMarker(containerId, coord, options = {}) {
   const content = options.content || '<div class="w-5 h-5 rounded-full border-2 border-white shadow-lg" style="background:linear-gradient(135deg,var(--base-color-300),var(--base-color-600));"></div>';
   const marker = addProviderMarker(containerId, normalized, {
     title,
+    label: options.label,
     content,
     anchor: options.anchor || "center",
     zIndex: options.zIndex || 200,
+    markerColor: options.markerColor,
+    markerKind: options.markerKind,
     trackFit: false,
     trackOverlay: false,
   });
@@ -35970,9 +36075,19 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
 
     if (line) {
       if (options.showEndpoints !== false && gcjCoords.length > 0) {
-        addProviderMarker(containerId, gcjCoords[0], { title: "起点" });
+        addProviderMarker(containerId, gcjCoords[0], {
+          title: "起点",
+          label: "起点",
+          markerStatus: "start",
+          markerColor: "#10b981",
+        });
         if (gcjCoords.length > 1) {
-          addProviderMarker(containerId, gcjCoords[gcjCoords.length - 1], { title: "终点" });
+          addProviderMarker(containerId, gcjCoords[gcjCoords.length - 1], {
+            title: "终点",
+            label: "终点",
+            markerStatus: "end",
+            markerColor: "#ef4444",
+          });
         }
       }
       fitProviderMapToCoordinates(containerId, providerCoords, fitOverlay);
@@ -35981,6 +36096,79 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
   } catch (e) {
     logMessage_Error(`[地图] 绘制${getMapProviderDisplayName(provider)}路线失败:`, e);
     return null;
+  }
+}
+
+function getSingleProviderMapContainerIds() {
+  const containerIds = [];
+  if (getProviderMapInstance("map-container")) {
+    containerIds.push("map-container");
+  }
+  if (getProviderMapInstance("mobile-map-container")) {
+    containerIds.push("mobile-map-container");
+  }
+  if (containerIds.length === 0) {
+    containerIds.push("map-container");
+  }
+  return containerIds;
+}
+
+function drawProviderTaskOnMap(containerId, data) {
+  if (!data) return;
+  const routeCoords = data.run_coords?.length
+    ? data.run_coords
+    : data.draft_coords?.length
+      ? data.draft_coords
+      : data.recommended_coords || [];
+  if (routeCoords.length > 0) {
+    drawProviderRouteOnMap(containerId, routeCoords, {
+      strokeColor: data.run_coords?.length ? "#ef4444" : "#10b981",
+      strokeWeight: data.run_coords?.length ? 5 : 4,
+      strokeStyle: data.run_coords?.length ? "dashed" : "solid",
+    });
+  } else {
+    clearProviderMapOverlays(containerId);
+  }
+  if (Array.isArray(data.target_points)) {
+    const sequence =
+      data.target_sequence ||
+      (data.status == 1 ? data.target_points.length + 1 : 0);
+    const names = (data.target_point_names || "").split("|");
+    data.target_points.forEach((point, index) => {
+      const coord = normalizeRouteCoord(point);
+      if (Number.isFinite(coord.lng) && Number.isFinite(coord.lat)) {
+        let bgColor = "bg-emerald-600",
+          markerColor = "#059669",
+          markerStatus = "pending",
+          zIndex = 100,
+          pulseClass = "";
+        if (index + 1 < sequence) {
+          bgColor = "bg-slate-400";
+          markerColor = "#94a3b8";
+          markerStatus = "completed";
+        } else if (index + 1 === sequence) {
+          bgColor = "bg-sky-600";
+          markerColor = "#0284c7";
+          markerStatus = "current";
+          zIndex = 110;
+          pulseClass = "pulsing-marker";
+        }
+        const pointName = names[index] || `点 ${index + 1}`;
+        const markerContent = `<div class="relative flex flex-col items-center pointer-events-none"><div class="${pulseClass} text-xs font-bold whitespace-nowrap px-2 py-1 rounded-full shadow-lg ${bgColor} text-white">${pointName}</div><div class="w-0 h-0 border-x-4 border-x-transparent border-t-4 ${bgColor.replace(
+          "bg-",
+          "border-t-",
+        )}"></div></div>`;
+        addProviderMarker(containerId, coord, {
+          title: pointName,
+          label: pointName,
+          content: markerContent,
+          anchor: "bottom-center",
+          zIndex,
+          markerColor,
+          markerStatus,
+        });
+      }
+    });
   }
 }
 
@@ -40084,9 +40272,12 @@ function multi_updateRunnerPosition(username, lon, lat, name) {
     updateProviderRunnerMarker("multi-map-container", { lng: lon, lat }, {
       markerKey: `multi-map-container:${username}`,
       title: `${name} (${username})`,
+      label: name,
       content: markerContent,
       anchor: "bottom-center",
       zIndex: 110,
+      markerColor: color,
+      markerKind: "label",
     });
     return;
   }
@@ -40396,28 +40587,9 @@ function drawOnMap_signature() {
   if (getActiveMapProvider() !== "amap") {
     const data = currentRunData;
     if (!data) return;
-    const routeCoords = data.run_coords?.length
-      ? data.run_coords
-      : data.draft_coords?.length
-        ? data.draft_coords
-        : data.recommended_coords || [];
-    if (routeCoords.length > 0) {
-      drawProviderRouteOnMap("map-container", routeCoords, {
-        strokeColor: data.run_coords?.length ? "#ef4444" : "#10b981",
-        strokeWeight: data.run_coords?.length ? 5 : 4,
-        strokeStyle: data.run_coords?.length ? "dashed" : "solid",
-      });
-    } else {
-      clearProviderMapOverlays("map-container");
-    }
-    if (Array.isArray(data.target_points)) {
-      data.target_points.forEach((point, index) => {
-        const coord = normalizeRouteCoord(point);
-        if (Number.isFinite(coord.lng) && Number.isFinite(coord.lat)) {
-          addProviderMarker("map-container", coord, { title: `打卡点 ${index + 1}` });
-        }
-      });
-    }
+    getSingleProviderMapContainerIds().forEach((containerId) => {
+      drawProviderTaskOnMap(containerId, data);
+    });
     return;
   }
   if (!AMapInstance) return;
@@ -41463,9 +41635,30 @@ function updateRunnerPosition(
   centerNow = false,
 ) {
   if (getActiveMapProvider() !== "amap" || !map || !AMapInstance) {
-    updateProviderRunnerMarker("map-container", { lng: lon, lat });
+    runAccumulatedMs += duration || 0;
+    const jsTargetSequence = Number.isFinite(+targetSequence)
+      ? +targetSequence + 1
+      : 1;
+    const shouldRedrawProviderMarkers =
+      !!currentRunData && currentRunData.target_sequence !== jsTargetSequence;
+    if (currentRunData) {
+      currentRunData.distance_covered_m = distance || 0;
+      currentRunData.target_sequence = jsTargetSequence;
+    }
+    if (getActiveMapProvider() !== "amap" && !getProviderMapInstance("map-container")) {
+      initProviderMap("map-container", false);
+    }
+    if (shouldRedrawProviderMarkers) {
+      drawOnMap_signature();
+    }
+    const providerContainerIds = getSingleProviderMapContainerIds();
+    providerContainerIds.forEach((containerId) => {
+      updateProviderRunnerMarker(containerId, { lng: lon, lat });
+    });
     if (centerNow) {
-      fitProviderMapToCoordinates("map-container", [{ lng: lon, lat }]);
+      providerContainerIds.forEach((containerId) => {
+        fitProviderMapToCoordinates(containerId, [{ lng: lon, lat }]);
+      });
     }
     $("current-location-label").textContent = `当前位置GPS坐标: ${(+lon).toFixed(
       4,
@@ -41477,11 +41670,6 @@ function updateRunnerPosition(
       mobileCurrentLocationLabel.textContent = `当前位置: ${(+lon).toFixed(
         4,
       )}, ${(+lat).toFixed(4)}`;
-    }
-    runAccumulatedMs += duration || 0;
-    if (currentRunData) {
-      currentRunData.distance_covered_m = distance || 0;
-      currentRunData.target_sequence = targetSequence + 1;
     }
     updateDashboard();
     return;
