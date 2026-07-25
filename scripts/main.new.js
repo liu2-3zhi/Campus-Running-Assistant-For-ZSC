@@ -35987,6 +35987,23 @@ function updateProviderRunnerMarker(containerId, coord, options = {}) {
   return marker;
 }
 
+function resolveRunnerTargetSequence(targetSequence, data = currentRunData) {
+  const incomingSequence = Number.isFinite(+targetSequence)
+    ? Math.floor(+targetSequence) + 1
+    : 1;
+  const existingSequence = Number.isFinite(+data?.target_sequence)
+    ? Math.floor(+data.target_sequence)
+    : 0;
+  const totalTargets = Array.isArray(data?.target_points)
+    ? data.target_points.length
+    : 0;
+  let nextSequence = Math.max(incomingSequence, existingSequence || incomingSequence);
+  if (totalTargets > 0) {
+    nextSequence = Math.min(nextSequence, totalTargets + 1);
+  }
+  return Math.max(1, nextSequence);
+}
+
 function drawProviderRouteOnMap(containerId, coords, options = {}) {
   const provider = getActiveMapProvider();
   const instance = getProviderMapInstance(containerId);
@@ -41842,9 +41859,10 @@ function updateRunnerPosition(
 ) {
   if (getActiveMapProvider() !== "amap" || !map || !AMapInstance) {
     runAccumulatedMs += duration || 0;
-    const jsTargetSequence = Number.isFinite(+targetSequence)
-      ? +targetSequence + 1
-      : 1;
+    const jsTargetSequence = resolveRunnerTargetSequence(
+      targetSequence,
+      currentRunData,
+    );
     const shouldRedrawProviderMarkers =
       !!currentRunData && currentRunData.target_sequence !== jsTargetSequence;
     if (currentRunData) {
@@ -41898,7 +41916,7 @@ function updateRunnerPosition(
       4,
     )}, ${(+lat).toFixed(4)}`;
   }
-  const jsTargetSequence = targetSequence + 1;
+  const jsTargetSequence = resolveRunnerTargetSequence(targetSequence, currentRunData);
   if (currentRunData.target_sequence !== jsTargetSequence) {
     currentRunData.target_sequence = jsTargetSequence;
     drawMarkers();

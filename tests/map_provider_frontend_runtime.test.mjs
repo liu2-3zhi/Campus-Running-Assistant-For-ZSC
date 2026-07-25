@@ -364,6 +364,7 @@ function createRuntime(provider, options = {}) {
     'resolveProviderMarkerColor',
     'createTencentMarkerStyleOptions',
     'updateProviderRunnerMarker',
+    'resolveRunnerTargetSequence',
     'addProviderMarker',
     'drawProviderRouteOnMap',
     'getSingleProviderMapContainerIds',
@@ -638,6 +639,34 @@ test('tencent task route colors completed segments from checkpoint sequence', ()
   assert.equal(routeLayer.options.styles.active.options.color, '#ef4444');
   assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'completed'));
   assert.ok(routeLayer.options.geometries.some((geometry) => geometry.styleId === 'active'));
+});
+
+test('tencent completed checkpoint marker does not regress on stale position sequence', () => {
+  const runtime = createRuntime('tencent');
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+  runtime.setCurrentRunData({
+    status: 0,
+    target_sequence: 2,
+    target_point_names: '求知路3|操场',
+    target_points: [
+      [113.39, 22.52],
+      [113.40, 22.53],
+    ],
+    run_coords: [
+      [113.38, 22.51],
+      [113.39, 22.52],
+      [113.395, 22.525],
+      [113.40, 22.53],
+    ],
+  });
+  runtime.drawOnMap_signature();
+
+  runtime.updateRunnerPosition(113.391, 22.521, 100, 0, 1000);
+
+  assert.equal(runtime.getCurrentRunData().target_sequence, 2);
+  const markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
+  assert.ok(markerSvgs.some((svg) => svg.includes('求知路3') && svg.includes('#94a3b8')));
+  assert.equal(markerSvgs.some((svg) => svg.includes('求知路3') && svg.includes('#0284c7')), false);
 });
 
 test('tencent mobile single map receives route checkpoints and current position updates', () => {
