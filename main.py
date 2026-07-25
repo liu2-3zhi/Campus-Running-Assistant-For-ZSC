@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import ast
+import math
 import tempfile
 _import_failures = []
 _log_buffer = []
@@ -1140,6 +1141,94 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
     )
 
 
+def _normalize_provider_route_point(point):
+    try:
+        if isinstance(point, dict):
+            lng = float(point.get("lng"))
+            lat = float(point.get("lat"))
+        elif isinstance(point, (list, tuple)) and len(point) >= 2:
+            lng = float(point[0])
+            lat = float(point[1])
+        else:
+            return None
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(lng) and math.isfinite(lat)):
+        return None
+    return {"lng": lng, "lat": lat}
+
+
+def _route_points_are_close(left, right, tolerance=1e-6):
+    if not left or not right:
+        return False
+    return (
+        abs(float(left["lng"]) - float(right["lng"])) <= tolerance
+        and abs(float(left["lat"]) - float(right["lat"])) <= tolerance
+    )
+
+
+def _route_point_distance_sq(left, right):
+    if not left or not right:
+        return float("inf")
+    return (float(left["lng"]) - float(right["lng"])) ** 2 + (
+        float(left["lat"]) - float(right["lat"])
+    ) ** 2
+
+
+def _complete_route_path_with_waypoint_endpoints(path, waypoints):
+    if not isinstance(path, list) or not isinstance(waypoints, list) or len(waypoints) < 2:
+        return path
+    normalized_waypoints = [
+        _normalize_provider_route_point(point)
+        for point in waypoints
+    ]
+    normalized_waypoints = [point for point in normalized_waypoints if point]
+    if len(normalized_waypoints) < 2:
+        return path
+
+    completed_path = list(path)
+    if not completed_path:
+        return normalized_waypoints
+
+    start = normalized_waypoints[0]
+    first_point = _normalize_provider_route_point(completed_path[0])
+    if not _route_points_are_close(first_point, start):
+        completed_path.insert(0, start)
+
+    insert_after_index = 0
+    for waypoint in normalized_waypoints[1:-1]:
+        existing_index = next(
+            (
+                index
+                for index, point in enumerate(completed_path[insert_after_index:], start=insert_after_index)
+                if _route_points_are_close(_normalize_provider_route_point(point), waypoint)
+            ),
+            None,
+        )
+        if existing_index is not None:
+            insert_after_index = existing_index
+            continue
+
+        nearest_index = min(
+            range(insert_after_index, len(completed_path)),
+            key=lambda index: _route_point_distance_sq(
+                _normalize_provider_route_point(completed_path[index]),
+                waypoint,
+            ),
+        )
+        insert_index = max(insert_after_index + 1, nearest_index + 1)
+        insert_index = min(insert_index, len(completed_path))
+        completed_path.insert(insert_index, waypoint)
+        insert_after_index = insert_index
+
+    end = normalized_waypoints[-1]
+    last_point = _normalize_provider_route_point(completed_path[-1])
+    if not _route_points_are_close(last_point, end):
+        completed_path.append(end)
+
+    return completed_path
+
+
 
 def _plan_route_path_with_provider_runtime(
     session_id,
@@ -1196,6 +1285,8 @@ def _plan_route_path_with_provider_runtime(
 
     if not isinstance(result, dict):
         result = {"error": "路径规划执行器未返回有效结果。"}
+    if provider == "tencent" and isinstance(result.get("path"), list):
+        result["path"] = _complete_route_path_with_waypoint_endpoints(result["path"], waypoints)
     result["provider"] = provider
     result["provider_plan"] = provider_plan
     result["notices"] = provider_plan.get("notices", [])

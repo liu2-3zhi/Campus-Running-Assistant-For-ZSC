@@ -35927,7 +35927,6 @@ function addProviderMarker(containerId, coord, options = {}) {
           styleId,
           position: new TMap.LatLng(providerCoord.lat, providerCoord.lng),
           rank: options.zIndex || 100,
-          content: label,
           properties: { title: options.title || label },
         }],
       });
@@ -36113,6 +36112,60 @@ function getSingleProviderMapContainerIds() {
   return containerIds;
 }
 
+function estimateProviderCoordDistanceMeters(firstCoord, secondCoord) {
+  const first = normalizeRouteCoord(firstCoord);
+  const second = normalizeRouteCoord(secondCoord);
+  if (
+    !Number.isFinite(first.lng) ||
+    !Number.isFinite(first.lat) ||
+    !Number.isFinite(second.lng) ||
+    !Number.isFinite(second.lat)
+  ) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const avgLatRad = ((first.lat + second.lat) / 2) * Math.PI / 180;
+  const lngMeters = (first.lng - second.lng) * Math.cos(avgLatRad) * 111320;
+  const latMeters = (first.lat - second.lat) * 110540;
+  return Math.sqrt(lngMeters * lngMeters + latMeters * latMeters);
+}
+
+function getProviderMarkerDisplayCoord(coord, routeCoords, options = {}) {
+  const normalized = normalizeRouteCoord(coord);
+  if (!Number.isFinite(normalized.lng) || !Number.isFinite(normalized.lat)) {
+    return normalized;
+  }
+  if (!Array.isArray(routeCoords) || routeCoords.length === 0) {
+    return normalized;
+  }
+  const maxDistanceMeters = Number.isFinite(+options.maxDistanceMeters)
+    ? +options.maxDistanceMeters
+    : 80;
+  const avoidExactRouteEndpoint = options.avoidExactRouteEndpoint === true;
+  let best = null;
+  routeCoords.forEach((routeCoordRaw, routeIndex) => {
+    const routeCoord = normalizeRouteCoord(routeCoordRaw);
+    if (!Number.isFinite(routeCoord.lng) || !Number.isFinite(routeCoord.lat)) {
+      return;
+    }
+    const isRouteEndpoint =
+      routeIndex === 0 || routeIndex === routeCoords.length - 1;
+    const isExactSame =
+      Math.abs(routeCoord.lng - normalized.lng) <= 1e-7 &&
+      Math.abs(routeCoord.lat - normalized.lat) <= 1e-7;
+    if (avoidExactRouteEndpoint && isRouteEndpoint && isExactSame) {
+      return;
+    }
+    const distanceMeters = estimateProviderCoordDistanceMeters(normalized, routeCoord);
+    if (!best || distanceMeters < best.distanceMeters) {
+      best = { coord: routeCoord, distanceMeters };
+    }
+  });
+  if (best && best.distanceMeters <= maxDistanceMeters) {
+    return best.coord;
+  }
+  return normalized;
+}
+
 function drawProviderTaskOnMap(containerId, data) {
   if (!data) return;
   const routeCoords = data.run_coords?.length
@@ -36125,6 +36178,7 @@ function drawProviderTaskOnMap(containerId, data) {
       strokeColor: data.run_coords?.length ? "#ef4444" : "#10b981",
       strokeWeight: data.run_coords?.length ? 5 : 4,
       strokeStyle: data.run_coords?.length ? "dashed" : "solid",
+      showEndpoints: false,
     });
   } else {
     clearProviderMapOverlays(containerId);
@@ -36134,6 +36188,7 @@ function drawProviderTaskOnMap(containerId, data) {
       data.target_sequence ||
       (data.status == 1 ? data.target_points.length + 1 : 0);
     const names = (data.target_point_names || "").split("|");
+    const shouldSnapMarkerToRoute = getActiveMapProvider() === "tencent";
     data.target_points.forEach((point, index) => {
       const coord = normalizeRouteCoord(point);
       if (Number.isFinite(coord.lng) && Number.isFinite(coord.lat)) {
@@ -36158,7 +36213,13 @@ function drawProviderTaskOnMap(containerId, data) {
           "bg-",
           "border-t-",
         )}"></div></div>`;
-        addProviderMarker(containerId, coord, {
+        const markerCoord = shouldSnapMarkerToRoute
+          ? getProviderMarkerDisplayCoord(coord, routeCoords, {
+              avoidExactRouteEndpoint:
+                index === 0 || index === data.target_points.length - 1,
+            })
+          : coord;
+        addProviderMarker(containerId, markerCoord, {
           title: pointName,
           label: pointName,
           content: markerContent,

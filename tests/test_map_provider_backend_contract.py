@@ -256,6 +256,76 @@ class TestMapProviderBackendContract(unittest.TestCase):
         self.assertEqual(result["provider"], "tianditu")
         self.assertIn("当前地图供应商不支持步行规划，已自动使用驾车规划代替", result["notices"])
 
+    def test_tencent_provider_runtime_completes_snapped_route_endpoints(self):
+        runtime_config = self._runtime_config_with_map("tencent", {
+            "tencent": {"map_key": "tencent-key"},
+        })
+
+        class ChromePoolStub:
+            def get_context(self, session_id):
+                return {"page": mock.Mock(on=mock.Mock())}
+
+        snapped_path = [
+            {"lng": 113.391, "lat": 22.521},
+            {"lng": 113.399, "lat": 22.529},
+        ]
+
+        def tencent_helper(session_id, page, waypoints, provider_plan, python_params):
+            return {"path": snapped_path.copy()}
+
+        with mock.patch.object(main_module, "chrome_pool", ChromePoolStub(), create=True), \
+             mock.patch.object(main_module, "_plan_route_path_with_tencent_runtime", side_effect=tencent_helper):
+            result = main_module._plan_route_path_with_provider_runtime(
+                "session-1",
+                [[113.39, 22.52], [113.40, 22.53]],
+                runtime_config=runtime_config,
+            )
+
+        self.assertEqual(result["provider"], "tencent")
+        self.assertEqual(result["path"][0], {"lng": 113.39, "lat": 22.52})
+        self.assertEqual(result["path"][1], snapped_path[0])
+        self.assertEqual(result["path"][-2], snapped_path[-1])
+        self.assertEqual(result["path"][-1], {"lng": 113.40, "lat": 22.53})
+
+    def test_tencent_provider_runtime_preserves_intermediate_waypoint_coordinates(self):
+        runtime_config = self._runtime_config_with_map("tencent", {
+            "tencent": {"map_key": "tencent-key"},
+        })
+
+        class ChromePoolStub:
+            def get_context(self, session_id):
+                return {"page": mock.Mock(on=mock.Mock())}
+
+        waypoints = [
+            [113.3900, 22.5200],
+            [113.3950, 22.5250],
+            [113.4000, 22.5300],
+        ]
+        snapped_path = [
+            {"lng": 113.3902, "lat": 22.5202},
+            {"lng": 113.3948, "lat": 22.5248},
+            {"lng": 113.3952, "lat": 22.5252},
+            {"lng": 113.3998, "lat": 22.5298},
+        ]
+
+        def tencent_helper(session_id, page, helper_waypoints, provider_plan, python_params):
+            self.assertEqual(helper_waypoints, waypoints)
+            return {"path": snapped_path.copy()}
+
+        with mock.patch.object(main_module, "chrome_pool", ChromePoolStub(), create=True), \
+             mock.patch.object(main_module, "_plan_route_path_with_tencent_runtime", side_effect=tencent_helper):
+            result = main_module._plan_route_path_with_provider_runtime(
+                "session-1",
+                waypoints,
+                runtime_config=runtime_config,
+            )
+
+        self.assertIn({"lng": 113.395, "lat": 22.525}, result["path"])
+        self.assertLess(
+            result["path"].index({"lng": 113.395, "lat": 22.525}),
+            result["path"].index({"lng": 113.4, "lat": 22.53}),
+        )
+
     def test_provider_route_helpers_report_missing_keys_before_external_js_calls(self):
         page = mock.Mock(goto=mock.Mock())
         waypoints = [[113.39, 22.52], [113.40, 22.53]]

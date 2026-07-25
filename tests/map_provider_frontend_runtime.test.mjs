@@ -366,6 +366,8 @@ function createRuntime(provider, options = {}) {
     'addProviderMarker',
     'drawProviderRouteOnMap',
     'getSingleProviderMapContainerIds',
+    'estimateProviderCoordDistanceMeters',
+    'getProviderMarkerDisplayCoord',
     'drawProviderTaskOnMap',
     'drawOnMap_signature',
     'updateRunnerPosition',
@@ -463,6 +465,11 @@ function collectTencentMarkerSvgs(runtime, containerId) {
     .map((marker) => decodeTencentMarkerStyleSvg(marker));
 }
 
+function findTencentMarkerByTitle(runtime, containerId, title) {
+  return (runtime.getState().providerMapOverlays[containerId] || [])
+    .find((overlay) => overlay?.options?.geometries?.[0]?.properties?.title === title);
+}
+
 test('provider maps initialize and expose marker-only viewport controls without network SDKs', () => {
   const providers = ['tencent', 'tianditu', 'baidu'];
 
@@ -547,7 +554,7 @@ test('tencent provider markers use styled marker geometry for custom labels', ()
   assert.ok(marker);
   assert.equal(marker.options.zIndex, 110);
   assert.equal(marker.options.geometries[0].styleId, 'marker');
-  assert.equal(marker.options.geometries[0].content, '教学楼');
+  assert.equal(marker.options.geometries[0].content, undefined);
   assert.ok(marker.options.styles.marker instanceof runtime.getWindow().TMap.MarkerStyle);
   assert.match(decodeTencentMarkerStyleSvg(marker), /教学楼/);
 });
@@ -574,6 +581,7 @@ test('tencent single map redraws checkpoint status while preserving current posi
 
   assert.equal(runtime.getState().providerRunnerMarkers['map-container'], runnerMarker);
   let markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
+  assert.equal(markerSvgs.some((svg) => svg.includes('起点') || svg.includes('终点')), false);
   assert.ok(markerSvgs.some((svg) => svg.includes('教学楼') && svg.includes('#0284c7')));
   assert.ok(markerSvgs.some((svg) => svg.includes('操场') && svg.includes('#059669')));
 
@@ -607,6 +615,7 @@ test('tencent mobile single map receives route checkpoints and current position 
   runtime.drawOnMap_signature();
 
   let mobileMarkerSvgs = collectTencentMarkerSvgs(runtime, 'mobile-map-container');
+  assert.equal(mobileMarkerSvgs.some((svg) => svg.includes('起点') || svg.includes('终点')), false);
   assert.ok(mobileMarkerSvgs.some((svg) => svg.includes('图书馆') && svg.includes('#0284c7')));
   assert.ok(mobileMarkerSvgs.some((svg) => svg.includes('操场') && svg.includes('#059669')));
 
@@ -617,6 +626,40 @@ test('tencent mobile single map receives route checkpoints and current position 
   assert.ok(mobileMarkerSvgs.some((svg) => svg.includes('图书馆') && svg.includes('#94a3b8')));
   assert.ok(mobileMarkerSvgs.some((svg) => svg.includes('操场') && svg.includes('#0284c7')));
   assert.ok(runtime.getProviderMapInstance('mobile-map-container').fitBoundsCalls.length >= 2);
+});
+
+test('tencent task marker display snaps to nearby route without mutating task coordinates', () => {
+  const runtime = createRuntime('tencent');
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+  const taskData = {
+    status: 0,
+    target_sequence: 1,
+    target_point_names: '求知路3|终点楼',
+    target_points: [
+      [113.390000, 22.520000],
+      [113.400000, 22.530000],
+    ],
+    run_coords: [
+      [113.390000, 22.520000],
+      [113.390180, 22.520160],
+      [113.399820, 22.529840],
+      [113.400000, 22.530000],
+    ],
+  };
+  runtime.setCurrentRunData(taskData);
+
+  runtime.drawOnMap_signature();
+
+  const startMarker = findTencentMarkerByTitle(runtime, 'map-container', '求知路3');
+  const endMarker = findTencentMarkerByTitle(runtime, 'map-container', '终点楼');
+  assert.ok(startMarker);
+  assert.ok(endMarker);
+  assert.equal(startMarker.options.geometries[0].position.lng, 113.390180);
+  assert.equal(startMarker.options.geometries[0].position.lat, 22.520160);
+  assert.equal(endMarker.options.geometries[0].position.lng, 113.399820);
+  assert.equal(endMarker.options.geometries[0].position.lat, 22.529840);
+  assert.deepEqual(taskData.target_points[0], [113.390000, 22.520000]);
+  assert.deepEqual(taskData.target_points[1], [113.400000, 22.530000]);
 });
 
 test('initProviderMap renders real map not placeholder for non-amap providers', () => {
