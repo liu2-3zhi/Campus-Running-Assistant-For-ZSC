@@ -14464,12 +14464,14 @@ function switchUIContainer() {
       switchMobilePanel("mobile-multi-control-panel", "multi");
       console.log("[UI切换] 已默认激活mobile-multi-control-panel");
     } else if (desktopLoginVisible) {
+      clearLogoutElsewhereOverlay();
       $("mobile-login-container").classList.remove("hidden");
       updateMobileNavVisibility(false);
       console.log(
         "[UI切换] PC端login-container可见，显示移动端mobile-login-container",
       );
     } else if (desktopAuthVisible) {
+      clearLogoutElsewhereOverlay();
       $("mobile-auth-login-container").classList.remove("hidden");
       updateMobileNavVisibility(false);
       console.log(
@@ -14583,11 +14585,13 @@ function switchUIContainer() {
         "[UI切换] 移动端mobile-multi-account-app可见，显示PC端multi-account-app",
       );
     } else if (mobileLoginVisible) {
+      clearLogoutElsewhereOverlay();
       $("login-container").classList.remove("hidden");
       console.log(
         "[UI切换] 移动端mobile-login-container可见，显示PC端login-container",
       );
     } else if (mobileAuthVisible) {
+      clearLogoutElsewhereOverlay();
       $("auth-login-container").classList.remove("hidden");
       console.log(
         "[UI切换] 移动端mobile-auth-login-container可见，显示PC端auth-login-container",
@@ -16442,11 +16446,78 @@ function shouldSuppressLoggedOutElsewhereNotice(
   const requestSessionUUID = normalizeSession(requestContext.sessionUUID);
   const currentSessionUUID = normalizeSession(currentContext.sessionUUID);
 
+  if (currentContext.authLoginVisible) {
+    return true;
+  }
+
+  if (!requestSessionUUID || !currentSessionUUID) {
+    return true;
+  }
+
   return Boolean(
     requestSessionUUID &&
       currentSessionUUID &&
       requestSessionUUID !== currentSessionUUID,
   );
+}
+
+function shouldSuppressSessionExpiredNotice(
+  method,
+  requestContext,
+  currentContext,
+) {
+  requestContext = requestContext || {};
+  currentContext = currentContext || {};
+
+  if (currentContext.authLoginInProgress || currentContext.authLoginVisible) {
+    return true;
+  }
+
+  const normalizedMethod = String(method || "").trim();
+  if (normalizedMethod === "get_theme_styles" && !requestContext.sessionUUID) {
+    return true;
+  }
+
+  const normalizeSession = (value) => {
+    const normalized = String(value || "").trim();
+    if (!normalized) {
+      return "";
+    }
+    if (["null", "undefined", "none"].includes(normalized.toLowerCase())) {
+      return "";
+    }
+    return normalized;
+  };
+
+  const requestSessionUUID = normalizeSession(requestContext.sessionUUID);
+  const currentSessionUUID = normalizeSession(currentContext.sessionUUID);
+  if (!requestSessionUUID || !currentSessionUUID) {
+    return true;
+  }
+
+  return requestSessionUUID !== currentSessionUUID;
+}
+
+function clearLogoutElsewhereOverlay() {
+  const overlay = document.getElementById("logout-elsewhere-overlay");
+  if (overlay && overlay.parentNode) {
+    overlay.parentNode.removeChild(overlay);
+  }
+}
+
+function isAuthLoginViewVisible() {
+  const visibleIds = [
+    "auth-login-container",
+    "mobile-auth-login-container",
+    "mobile-auth-container",
+    "login-container",
+    "mobile-login-container",
+  ];
+
+  return visibleIds.some((id) => {
+    const element = document.getElementById(id);
+    return element && !element.classList.contains("hidden");
+  });
 }
 
 function getServerConnectionGuidanceMessage() {
@@ -16715,10 +16786,18 @@ async function callPythonAPI(method, ...args) {
       errorData.message &&
       errorData.message.includes("会话已过期或无效")
     ) {
-      const shouldSuppressSessionExpiredModal =
-        (method === "get_theme_styles" && !sessionUUID) ||
-        authLoginInProgress;
+      const shouldSuppressSessionExpiredModal = shouldSuppressSessionExpiredNotice(
+        method,
+        requestAuthContext,
+        {
+          authGeneration: authRequestGeneration,
+          sessionUUID,
+          authLoginInProgress,
+          authLoginVisible: isAuthLoginViewVisible(),
+        },
+      );
       if (shouldSuppressSessionExpiredModal) {
+        clearLogoutElsewhereOverlay();
         logMessage_Info(
           `[API调用] ${method} 返回会话失效，但当前处于登录流程中或未登录状态，跳过弹窗`,
         );
@@ -16862,9 +16941,11 @@ async function callPythonAPI(method, ...args) {
               authGeneration: authRequestGeneration,
               sessionUUID,
               authLoginInProgress,
+              authLoginVisible: isAuthLoginViewVisible(),
             },
           )
         ) {
+          clearLogoutElsewhereOverlay();
           logMessage_Info(
             "[安全提示] 已忽略登录过程中的旧多设备登出响应",
           );
@@ -18491,6 +18572,7 @@ async function checkAuthStatus() {
 }
 
 function showAuthLogin() {
+  clearLogoutElsewhereOverlay();
   $("loading-overlay").classList.add("hidden");
   $("auth-login-container").classList.remove("hidden");
   $("login-container").classList.add("hidden");
@@ -33637,7 +33719,7 @@ async function checkSessionValidity() {
 
       const text = document.createElement("p");
       text.textContent =
-        "UUID不存在 (文件未找到)\n您的会话已过期或不存在，请重新登录";
+        "UUID不存在\n您的会话已过期或不存在，请重新登录";
       text.style.cssText = `
               font-size: 16px;
               line-height: 1.6;
@@ -34133,6 +34215,7 @@ async function initializeApp() {
       HiddenMobileLoadingOverlay();
       if (isMobileMode) {
         console.log("[Mobile Init] 无UUID，显示移动端认证页面");
+        clearLogoutElsewhereOverlay();
         $("mobile-auth-login-container").classList.remove("hidden");
         $("mobile-login-container").classList.add("hidden");
         $("auth-login-container").classList.add("hidden");
@@ -34154,6 +34237,7 @@ async function initializeApp() {
 
       if (isMobileMode) {
         console.log("[Mobile Init] 未认证，显示移动端认证页面");
+        clearLogoutElsewhereOverlay();
         $("mobile-auth-login-container").classList.remove("hidden");
         $("mobile-login-container").classList.add("hidden");
         $("auth-login-container").classList.add("hidden");

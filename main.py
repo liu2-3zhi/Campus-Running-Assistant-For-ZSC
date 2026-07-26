@@ -29352,7 +29352,7 @@ def start_web_server(args_param):
                 {
                     "success": True,
                     "uuid_type": "unknown",
-                    "message": "UUID不存在 (文件未找到)",
+                    "message": "UUID不存在",
                 }
             )
         max_retries = 3

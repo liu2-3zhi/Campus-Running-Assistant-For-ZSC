@@ -164,7 +164,55 @@ test('stale logged-out-elsewhere API responses are suppressed after a fresh logi
     shouldSuppressLoggedOutElsewhereNotice(
       { logged_out_elsewhere: true },
       { authGeneration: 2, sessionUUID: 'new-session' },
-      { authGeneration: 2, sessionUUID: 'new-session', authLoginInProgress: false },
+      { authGeneration: 2, sessionUUID: '', authLoginInProgress: false },
+    ),
+    true,
+  );
+});
+
+test('session expired notices are suppressed on the login screen and for empty sessions', () => {
+  const shouldSuppressSessionExpiredNotice = loadFunction(
+    'shouldSuppressSessionExpiredNotice',
+  );
+
+  assert.equal(
+    shouldSuppressSessionExpiredNotice(
+      'get_initial_data',
+      { authGeneration: 4, sessionUUID: '11111111-1111-4111-8111-111111111111' },
+      {
+        authGeneration: 4,
+        sessionUUID: '11111111-1111-4111-8111-111111111111',
+        authLoginInProgress: false,
+        authLoginVisible: true,
+      },
+    ),
+    true,
+  );
+
+  assert.equal(
+    shouldSuppressSessionExpiredNotice(
+      'get_initial_data',
+      { authGeneration: 4, sessionUUID: '11111111-1111-4111-8111-111111111111' },
+      {
+        authGeneration: 4,
+        sessionUUID: '',
+        authLoginInProgress: false,
+        authLoginVisible: false,
+      },
+    ),
+    true,
+  );
+
+  assert.equal(
+    shouldSuppressSessionExpiredNotice(
+      'get_initial_data',
+      { authGeneration: 4, sessionUUID: '11111111-1111-4111-8111-111111111111' },
+      {
+        authGeneration: 4,
+        sessionUUID: '11111111-1111-4111-8111-111111111111',
+        authLoginInProgress: false,
+        authLoginVisible: false,
+      },
     ),
     false,
   );
@@ -192,4 +240,49 @@ test('logged-out-elsewhere API responses are suppressed while login is in progre
     ),
     false,
   );
+});
+
+test('showAuthLogin clears stale session notices before displaying the auth view', () => {
+  const showAuthLogin = loadFunction('showAuthLogin');
+  const clearCalls = [];
+
+  const elements = new Map();
+  function createElement(initialHidden = false) {
+    const classes = new Set(initialHidden ? ['hidden'] : []);
+    return {
+      classList: {
+        add: (...tokens) => tokens.forEach((token) => classes.add(token)),
+        remove: (...tokens) => tokens.forEach((token) => classes.delete(token)),
+        contains: (token) => classes.has(token),
+      },
+    };
+  }
+
+  elements.set('loading-overlay', createElement(false));
+  elements.set('auth-login-container', createElement(true));
+  elements.set('login-container', createElement(false));
+  elements.set('main-app', createElement(false));
+  elements.set('exit-app-btn', createElement(false));
+
+  globalThis.$ = (id) => elements.get(id) || null;
+  globalThis.checkGuestLoginEnabled = () => {
+    clearCalls.push('guest');
+  };
+  globalThis.clearLogoutElsewhereOverlay = () => {
+    clearCalls.push('clear');
+  };
+
+  try {
+    showAuthLogin();
+
+    assert.equal(elements.get('auth-login-container').classList.contains('hidden'), false);
+    assert.equal(elements.get('login-container').classList.contains('hidden'), true);
+    assert.equal(elements.get('main-app').classList.contains('hidden'), true);
+    assert.equal(elements.get('exit-app-btn').classList.contains('hidden'), true);
+    assert.deepEqual(clearCalls, ['clear', 'guest']);
+  } finally {
+    delete globalThis.$;
+    delete globalThis.checkGuestLoginEnabled;
+    delete globalThis.clearLogoutElsewhereOverlay;
+  }
 });
