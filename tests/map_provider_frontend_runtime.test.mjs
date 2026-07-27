@@ -185,12 +185,34 @@ function createTencentSdk() {
       this.fitBoundsCalls = [];
       this.zoomByCalls = [];
       this.events = [];
+      this.controls = [];
     }
     setCenter(center) {
       this.center = center;
     }
     setZoom(zoom) {
       this.zoom = zoom;
+    }
+    setPitch(pitch) {
+      this.pitch = pitch;
+    }
+    setRotation(rotation) {
+      this.rotation = rotation;
+    }
+    setViewMode(viewMode) {
+      this.viewMode = viewMode;
+    }
+    setDraggable(draggable) {
+      this.draggable = draggable;
+    }
+    setScrollable(scrollable) {
+      this.scrollable = scrollable;
+    }
+    setPitchable(pitchable) {
+      this.pitchable = pitchable;
+    }
+    setRotatable(rotatable) {
+      this.rotatable = rotatable;
     }
     on(eventName, handler) {
       this.events.push({ eventName, handler });
@@ -240,12 +262,14 @@ function createTianDiTuSdk() {
       this.containerId = containerId;
       this.overlays = [];
       this.setViewportCalls = [];
+      this.centerAndZoomCalls = [];
       this.zoomInCalls = 0;
       this.zoomOutCalls = 0;
     }
     centerAndZoom(center, zoom) {
       this.center = center;
       this.zoom = zoom;
+      this.centerAndZoomCalls.push({ center, zoom });
     }
     addEventListener(eventName, handler) {
       this.eventName = eventName;
@@ -308,19 +332,38 @@ function createBaiduSdk() {
     }
   }
   class BaiduMap {
-    constructor(containerId) {
+    constructor(containerId, options = {}) {
       this.containerId = containerId;
+      this.options = options;
       this.overlays = [];
+      this.controls = [];
       this.setViewportCalls = [];
+      this.centerAndZoomCalls = [];
       this.zoomInCalls = 0;
       this.zoomOutCalls = 0;
     }
     centerAndZoom(center, zoom) {
       this.center = center;
       this.zoom = zoom;
+      this.centerAndZoomCalls.push({ center, zoom });
     }
     enableScrollWheelZoom(enabled) {
       this.scrollWheelEnabled = enabled;
+    }
+    enableRotateGestures() {
+      this.rotateGesturesEnabled = true;
+    }
+    enableTiltGestures() {
+      this.tiltGesturesEnabled = true;
+    }
+    enableTilt() {
+      this.tiltEnabled = true;
+    }
+    enableRotate() {
+      this.rotateEnabled = true;
+    }
+    addControl(control) {
+      this.controls.push(control);
     }
     setTilt(tilt) {
       this.tilt = tilt;
@@ -379,7 +422,12 @@ function createBaiduSdk() {
       this.options = options;
     }
   }
-  return { Map: BaiduMap, Point, Marker, Label, Size, Polyline };
+  class NavigationControl3D {
+    constructor(options = {}) {
+      this.options = options;
+    }
+  }
+  return { Map: BaiduMap, Point, Marker, Label, Size, Polyline, NavigationControl3D };
 }
 
 function createAmapSdk() {
@@ -470,6 +518,12 @@ function createRuntime(provider, options = {}) {
     'clearProviderRunnerMarkers',
     'clearProviderMapOverlays',
     'getProviderMapDefaultZoom',
+    'getProviderMapDefaultCenter',
+    'applyProviderMapDefaultOrientation',
+    'applyProviderMapDefaultView',
+    'addBaiduProvider3DControl',
+    'enableProviderMapInteractions',
+    'ensureProviderMapContextMenuGuard',
     'initProviderMap',
     'renderMapProviderFrontendPlaceholder',
     'ensureSingleControls',
@@ -541,6 +595,7 @@ function createRuntime(provider, options = {}) {
         baidu: { provider: 'baidu', display_name: '百度地图', ak: 'baidu-ak' },
       },
     },
+    BMAP_ANCHOR_TOP_LEFT: 'top-left',
   };
   if (options.preloadSdks !== false) {
     window.TMap = createTencentSdk();
@@ -559,6 +614,7 @@ function createRuntime(provider, options = {}) {
     const T = window.T;
     const BMap = window.BMap;
     const BMapGL = window.BMapGL;
+    const BMAP_ANCHOR_TOP_LEFT = window.BMAP_ANCHOR_TOP_LEFT;
     const AMap = window.AMap;
     let AMAP_API_KEY = 'amap-key';
     let AMapInstance = window.APP_CONFIG.map_provider === 'amap' ? window.AMap : null;
@@ -726,9 +782,97 @@ test('baidu provider initializes BMapGL with 3d view controls', () => {
 
   const instance = runtime.getProviderMapInstance('map-container');
   assert.ok(instance instanceof runtime.getWindow().BMapGL.Map);
+  assert.equal(instance.options.forceRenderType, 'webgl');
+  assert.equal(instance.options.showControls, false);
+  assert.equal(instance.options.enableRotate, true);
+  assert.equal(instance.options.enableTilt, true);
+  assert.equal(instance.options.displayOptions.building, true);
   assert.equal(instance.scrollWheelEnabled, true);
-  assert.equal(instance.tilt, 45);
+  assert.equal(instance.rotateGesturesEnabled, true);
+  assert.equal(instance.tiltGesturesEnabled, true);
+  assert.equal(instance.rotateEnabled, true);
+  assert.equal(instance.tiltEnabled, true);
+  assert.equal(instance.tilt, 55);
   assert.equal(instance.heading, 0);
+  assert.ok(
+    instance.controls.some(
+      (control) => control instanceof runtime.getWindow().BMapGL.NavigationControl3D,
+    ),
+  );
+});
+
+test('provider maps hide native controls and keep app controls at the amap position', () => {
+  const cases = [
+    ['tencent', 'showControl'],
+    ['baidu', 'showControls'],
+  ];
+
+  for (const [provider, optionName] of cases) {
+    const runtime = createRuntime(provider, {
+      baiduGlOnly: provider === 'baidu',
+      strictDocumentIds: true,
+    });
+    const doc = runtime.getDocument();
+    assert.equal(runtime.initProviderMap('map-container', false), true, provider);
+    const instance = runtime.getProviderMapInstance('map-container');
+    assert.equal(instance.options[optionName], false, provider);
+    const controlOverlay = doc
+      .getElementById('map-container')
+      .children.find((child) => String(child.innerHTML).includes('reset-view-btn'));
+    assert.ok(controlOverlay, provider);
+    assert.match(controlOverlay.className, /top-4 right-3/, provider);
+    assert.match(controlOverlay.className, /z-\[1000\]/, provider);
+  }
+});
+
+test('fitProviderMapToLastRoute resets provider maps to the default view without a drawn route', () => {
+  const providers = ['tencent', 'tianditu', 'baidu'];
+
+  for (const provider of providers) {
+    const runtime = createRuntime(provider, { baiduGlOnly: provider === 'baidu' });
+    assert.equal(runtime.initProviderMap('map-container', false), true, provider);
+    const instance = runtime.getProviderMapInstance('map-container');
+
+    assert.equal(runtime.fitProviderMapToLastRoute('map-container'), true, provider);
+
+    if (provider === 'tencent') {
+      assert.equal(instance.zoom, 17);
+      assert.equal(instance.pitch, 55);
+      assert.equal(instance.rotation, 0);
+      assert.equal(instance.center.lng, 113.390342);
+      assert.equal(instance.center.lat, 22.527403);
+    } else if (provider === 'tianditu') {
+      assert.equal(instance.centerAndZoomCalls.length, 2);
+      assert.equal(instance.zoom, 16);
+      assert.ok(Math.abs(instance.center.lng - 113.390342) > 0.0001);
+      assert.ok(Math.abs(instance.center.lat - 22.527403) > 0.0001);
+    } else {
+      assert.equal(instance.centerAndZoomCalls.length, 2);
+      assert.equal(instance.zoom, 17);
+      assert.equal(instance.tilt, 55);
+      assert.equal(instance.heading, 0);
+    }
+  }
+});
+
+test('provider maps suppress the browser context menu so right drag reaches the sdk', () => {
+  const providers = ['tencent', 'tianditu', 'baidu'];
+
+  for (const provider of providers) {
+    const runtime = createRuntime(provider, { baiduGlOnly: provider === 'baidu' });
+    const container = runtime.getDocument().getElementById('map-container');
+    assert.equal(runtime.initProviderMap('map-container', false), true, provider);
+    const contextMenuEvent = container.events.find((event) => event.eventName === 'contextmenu');
+    assert.ok(contextMenuEvent, provider);
+
+    let prevented = false;
+    contextMenuEvent.handler({
+      preventDefault() {
+        prevented = true;
+      },
+    });
+    assert.equal(prevented, true, provider);
+  }
 });
 
 test('provider runner marker updates current position on non-amap maps', () => {

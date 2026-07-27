@@ -426,6 +426,27 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn('zoomProviderMap("multi-map-container", -1)', mobile_control_source)
         self.assertIn('fitProviderMapToLastRoute("multi-map-container")', mobile_control_source)
 
+    def test_provider_frontend_maps_hide_native_controls_and_enable_3d_interactions(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        init_provider_source = source[
+            source.index("function initProviderMap("):
+            source.index("const MAP_COORD_PI", source.index("function initProviderMap("))
+        ]
+
+        self.assertIn("function applyProviderMapDefaultView(", source)
+        self.assertIn("function applyProviderMapDefaultOrientation(", source)
+        self.assertIn("function ensureProviderMapContextMenuGuard(", source)
+        self.assertIn("function addBaiduProvider3DControl(", source)
+        self.assertIn('showControl: false', init_provider_source)
+        self.assertIn('forceRenderType: "webgl"', init_provider_source)
+        self.assertIn('showControls: false', init_provider_source)
+        self.assertIn("enableRotateGestures", source)
+        self.assertIn("enableTiltGestures", source)
+        self.assertIn("NavigationControl3D", source)
+        self.assertIn("ensureProviderMapContextMenuGuard(containerId);", init_provider_source)
+        self.assertIn("applyProviderMapDefaultView(containerId);", init_provider_source)
+        self.assertIn("z-[1000]", source)
+
     def test_saving_provider_key_refreshes_non_amap_map_instances(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
         key_source = source[
