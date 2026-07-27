@@ -437,9 +437,12 @@ class TestMapProviderBackendContract(unittest.TestCase):
                 "signal: controller.signal",
             ],
             "_plan_route_path_with_baidu_runtime": [
-                "https://api.map.baidu.com/api?v=3.0&ak=",
+                "https://api.map.baidu.com/api?v=1.0&type=webgl&ak=",
                 "function gcj02ToBd09(",
                 "function bd09ToGcj02(",
+                "BMapGL.Map",
+                "BMapGL.WalkingRoute",
+                "BMapGL.DrivingRoute",
                 "百度地图脚本加载完成但运行时不可用",
                 "地图路线服务请求超时",
                 "window.setTimeout",
@@ -473,6 +476,78 @@ class TestMapProviderBackendContract(unittest.TestCase):
                     )
                 for snippet in snippets:
                     self.assertIn(snippet, js_source)
+
+    def test_provider_route_helpers_queue_segment_requests_for_rate_limits(self):
+        expected_snippets = [
+            "api_queue_interval_s ??0.1",
+            "const maxFailedWaves =2",
+            "let consecutiveFailedWaves =0",
+            "const pendingIndexes = Array.from",
+            "await sleep(queueIntervalMs * order)",
+            "Promise.all(waveIndexes.map",
+            "waveSuccessCount ===0",
+            "consecutiveFailedWaves >= maxFailedWaves",
+            "pendingIndexes.length >0",
+        ]
+
+        for helper_name in [
+            "_plan_route_path_with_amap_runtime",
+            "_plan_route_path_with_tencent_runtime",
+            "_plan_route_path_with_tianditu_runtime",
+            "_plan_route_path_with_baidu_runtime",
+        ]:
+            with self.subTest(helper=helper_name):
+                js_source = self._route_helper_execute_js_source(helper_name)
+                for snippet in expected_snippets:
+                    self.assertIn(snippet, js_source)
+
+    def test_provider_runtime_completes_snapped_route_endpoints_for_baidu_and_tianditu(self):
+        waypoints = [
+            [113.3900, 22.5200],
+            [113.3950, 22.5250],
+            [113.4000, 22.5300],
+        ]
+        snapped_path = [
+            {"lng": 113.3902, "lat": 22.5202},
+            {"lng": 113.3948, "lat": 22.5248},
+            {"lng": 113.3998, "lat": 22.5298},
+        ]
+        cases = [
+            (
+                "baidu",
+                {"baidu": {"ak": "baidu-ak"}},
+                "_plan_route_path_with_baidu_runtime",
+            ),
+            (
+                "tianditu",
+                {"tianditu": {"token": "tianditu-token"}},
+                "_plan_route_path_with_tianditu_runtime",
+            ),
+        ]
+
+        class ChromePoolStub:
+            def get_context(self, session_id):
+                return {"page": mock.Mock(on=mock.Mock())}
+
+        for provider, providers, helper_name in cases:
+            runtime_config = self._runtime_config_with_map(provider, providers)
+
+            def helper(session_id, page, helper_waypoints, provider_plan, python_params):
+                self.assertEqual(helper_waypoints, waypoints)
+                return {"path": snapped_path.copy()}
+
+            with self.subTest(provider=provider), \
+                 mock.patch.object(main_module, "chrome_pool", ChromePoolStub(), create=True), \
+                 mock.patch.object(main_module, helper_name, side_effect=helper):
+                result = main_module._plan_route_path_with_provider_runtime(
+                    "session-1",
+                    waypoints,
+                    runtime_config=runtime_config,
+                )
+
+            self.assertEqual(result["path"][0], {"lng": 113.39, "lat": 22.52})
+            self.assertIn({"lng": 113.395, "lat": 22.525}, result["path"])
+            self.assertEqual(result["path"][-1], {"lng": 113.4, "lat": 22.53})
 
 
 if __name__ == "__main__":

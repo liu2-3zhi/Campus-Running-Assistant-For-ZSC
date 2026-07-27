@@ -75,49 +75,84 @@ function extractFunctionSource(source, functionName) {
   throw new Error(`Failed to extract ${functionName}`);
 }
 
-function createDocument() {
+function createDocument(options = {}) {
   const elements = new Map();
   const appendedScripts = [];
-  const createElementObject = (id = '') => ({
-    id,
-    children: [],
-    dataset: {},
-    style: {},
-    innerHTML: '',
-    appendChild(child) {
-      child.parentNode = this;
-      this.children.push(child);
-      if (child.tagName === 'script') {
-        appendedScripts.push(child);
-      }
-    },
-    removeChild(child) {
-      this.children = this.children.filter((item) => item !== child);
-      child.parentNode = null;
-    },
-    classList: {
-      add() {},
-      remove() {},
-    },
-  });
+  const strictIds = options.strictIds === true;
+  const createElementObject = (id = '') => {
+    const element = {
+      id,
+      children: [],
+      dataset: {},
+      style: {},
+      events: [],
+      _innerHTML: '',
+      appendChild(child) {
+        child.parentNode = this;
+        this.children.push(child);
+        if (child.id) {
+          elements.set(child.id, child);
+        }
+        if (child.tagName === 'script') {
+          appendedScripts.push(child);
+        }
+      },
+      removeChild(child) {
+        this.children = this.children.filter((item) => item !== child);
+        child.parentNode = null;
+      },
+      addEventListener(eventName, handler) {
+        this.events.push({ eventName, handler });
+      },
+      classList: {
+        add() {},
+        remove() {},
+      },
+    };
+    Object.defineProperty(element, 'innerHTML', {
+      get() {
+        return this._innerHTML;
+      },
+      set(value) {
+        this._innerHTML = String(value || '');
+        const idPattern = /id="([^"]+)"/g;
+        let match = idPattern.exec(this._innerHTML);
+        while (match) {
+          if (!elements.has(match[1])) {
+            elements.set(match[1], createElementObject(match[1]));
+          }
+          match = idPattern.exec(this._innerHTML);
+        }
+      },
+    });
+    return element;
+  };
+  [
+    'map-container',
+    'mobile-map-container',
+    'multi-map-container',
+    'mobile-track-map-container',
+  ].forEach((id) => elements.set(id, createElementObject(id)));
 
   return {
     getElementById(id) {
       if (!elements.has(id)) {
+        if (strictIds) {
+          return null;
+        }
         elements.set(id, createElementObject(id));
       }
       return elements.get(id);
     },
     createElement(tagName) {
-      return {
-        ...createElementObject(''),
-        tagName,
-        async: false,
-        defer: false,
-        onload: null,
-        onerror: null,
-        src: '',
-      };
+      const element = createElementObject('');
+      element.tagName = tagName;
+      element.async = false;
+      element.defer = false;
+      element.onload = null;
+      element.onerror = null;
+      element.src = '';
+      return element;
     },
     querySelector() {
       return null;
@@ -244,6 +279,11 @@ function createTianDiTuSdk() {
       this.options = options;
     }
   }
+  class Icon {
+    constructor(options = {}) {
+      this.options = options;
+    }
+  }
   class Polyline extends Marker {}
   class TileLayer {
     constructor(url, options) {
@@ -257,7 +297,7 @@ function createTianDiTuSdk() {
       this.name = name;
     }
   }
-  return { Map: TianDiTuMap, LngLat, Marker, Polyline, TileLayer, MapType };
+  return { Map: TianDiTuMap, LngLat, Marker, Icon, Polyline, TileLayer, MapType };
 }
 
 function createBaiduSdk() {
@@ -281,6 +321,12 @@ function createBaiduSdk() {
     }
     enableScrollWheelZoom(enabled) {
       this.scrollWheelEnabled = enabled;
+    }
+    setTilt(tilt) {
+      this.tilt = tilt;
+    }
+    setHeading(heading) {
+      this.heading = heading;
     }
     addEventListener(eventName, handler) {
       this.eventName = eventName;
@@ -306,8 +352,25 @@ function createBaiduSdk() {
     }
   }
   class Marker {
-    constructor(position) {
+    constructor(position, options = {}) {
       this.position = position;
+      this.options = options;
+      this.label = null;
+    }
+    setLabel(label) {
+      this.label = label;
+    }
+  }
+  class Label {
+    constructor(content, options = {}) {
+      this.content = content;
+      this.options = options;
+    }
+  }
+  class Size {
+    constructor(width, height) {
+      this.width = width;
+      this.height = height;
     }
   }
   class Polyline {
@@ -316,7 +379,7 @@ function createBaiduSdk() {
       this.options = options;
     }
   }
-  return { Map: BaiduMap, Point, Marker, Polyline };
+  return { Map: BaiduMap, Point, Marker, Label, Size, Polyline };
 }
 
 function createAmapSdk() {
@@ -408,6 +471,11 @@ function createRuntime(provider, options = {}) {
     'clearProviderMapOverlays',
     'getProviderMapDefaultZoom',
     'initProviderMap',
+    'renderMapProviderFrontendPlaceholder',
+    'ensureSingleControls',
+    'attachSingleControlHandlers',
+    'ensureMultiControls',
+    'attachMultiControlHandlers',
     'isCoordinateOutOfChina',
     'transformMapCoordLat',
     'transformMapCoordLng',
@@ -429,6 +497,7 @@ function createRuntime(provider, options = {}) {
     'normalizeProviderMarkerLabel',
     'resolveProviderMarkerColor',
     'createTencentMarkerStyleOptions',
+    'createProviderLabelMarkerSvgOptions',
     'updateProviderRunnerMarker',
     'resolveRunnerTargetSequence',
     'addProviderMarker',
@@ -461,7 +530,7 @@ function createRuntime(provider, options = {}) {
     'installGenericMapRuntimeGuards',
   ];
   const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
-  const document = createDocument();
+  const document = createDocument({ strictIds: options.strictDocumentIds });
   const window = {
     APP_CONFIG: {
       map_provider: provider,
@@ -476,7 +545,12 @@ function createRuntime(provider, options = {}) {
   if (options.preloadSdks !== false) {
     window.TMap = createTencentSdk();
     window.T = createTianDiTuSdk();
-    window.BMap = createBaiduSdk();
+    if (options.baiduGlOnly) {
+      window.BMapGL = createBaiduSdk();
+    } else {
+      window.BMap = createBaiduSdk();
+      window.BMapGL = createBaiduSdk();
+    }
     window.AMap = createAmapSdk();
   }
 
@@ -484,6 +558,7 @@ function createRuntime(provider, options = {}) {
     const TMap = window.TMap;
     const T = window.T;
     const BMap = window.BMap;
+    const BMapGL = window.BMapGL;
     const AMap = window.AMap;
     let AMAP_API_KEY = 'amap-key';
     let AMapInstance = window.APP_CONFIG.map_provider === 'amap' ? window.AMap : null;
@@ -577,6 +652,11 @@ function collectTencentMarkerSvgs(runtime, containerId) {
     .map((marker) => decodeTencentMarkerStyleSvg(marker));
 }
 
+function decodeProviderDataSvg(src) {
+  assert.match(src || '', /^data:image\/svg\+xml;charset=UTF-8,/);
+  return decodeURIComponent(String(src).split(',')[1] || '');
+}
+
 function findTencentMarkerByTitle(runtime, containerId, title) {
   return (runtime.getState().providerMapOverlays[containerId] || [])
     .find((overlay) => overlay?.options?.geometries?.[0]?.properties?.title === title);
@@ -614,6 +694,43 @@ test('provider maps initialize and expose marker-only viewport controls without 
   }
 });
 
+test('initProviderMap restores desktop controls after provider map replaces static content', () => {
+  const providers = ['tencent', 'tianditu', 'baidu'];
+
+  for (const provider of providers) {
+    const runtime = createRuntime(provider, {
+      strictDocumentIds: true,
+      baiduGlOnly: provider === 'baidu',
+    });
+    const doc = runtime.getDocument();
+    const mapContainer = doc.getElementById('map-container');
+
+    assert.equal(doc.getElementById('zoom-in'), null, provider);
+    assert.equal(runtime.initProviderMap('map-container', false), true, provider);
+
+    const controlOverlay = mapContainer.children.find(
+      (child) => String(child.innerHTML).includes('reset-view-btn'),
+    );
+    assert.ok(controlOverlay, `${provider} should append the top-right reset/zoom controls`);
+    assert.match(controlOverlay.className, /top-4 right-3/, provider);
+    assert.ok(doc.getElementById('zoom-in'), provider);
+    assert.ok(doc.getElementById('zoom-out'), provider);
+    assert.ok(doc.getElementById('reset-view-btn'), provider);
+  }
+});
+
+test('baidu provider initializes BMapGL with 3d view controls', () => {
+  const runtime = createRuntime('baidu', { baiduGlOnly: true });
+
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+
+  const instance = runtime.getProviderMapInstance('map-container');
+  assert.ok(instance instanceof runtime.getWindow().BMapGL.Map);
+  assert.equal(instance.scrollWheelEnabled, true);
+  assert.equal(instance.tilt, 45);
+  assert.equal(instance.heading, 0);
+});
+
 test('provider runner marker updates current position on non-amap maps', () => {
   const providers = ['tencent', 'tianditu', 'baidu'];
 
@@ -629,6 +746,77 @@ test('provider runner marker updates current position on non-amap maps', () => {
     assert.notEqual(firstMarker, secondMarker, `${provider} runner marker should be replaced when position changes`);
     assert.equal(Object.keys(runtime.getState().providerRunnerMarkers).length, 1, provider);
   }
+});
+
+test('tianditu and baidu checkpoint markers expose visible point names', () => {
+  const providers = ['tianditu', 'baidu'];
+
+  for (const provider of providers) {
+    const runtime = createRuntime(provider);
+    assert.equal(runtime.initProviderMap('map-container', false), true, provider);
+    runtime.setCurrentRunData({
+      status: 0,
+      target_sequence: 1,
+      target_point_names: '教学楼|操场',
+      target_points: [
+        [113.39, 22.52],
+        [113.40, 22.53],
+      ],
+      run_coords: [
+        [113.38, 22.51],
+        [113.39, 22.52],
+        [113.40, 22.53],
+      ],
+    });
+
+    runtime.drawOnMap_signature();
+
+    const overlays = runtime.getState().providerMapOverlays['map-container'] || [];
+    if (provider === 'tianditu') {
+      const marker = overlays.find((overlay) => overlay?.options?.title === '教学楼');
+      assert.ok(marker, 'tianditu marker should retain title metadata');
+      assert.match(
+        decodeProviderDataSvg(marker.options.icon?.options?.iconUrl),
+        /教学楼/,
+      );
+    } else {
+      const marker = overlays.find((overlay) => overlay?.options?.title === '教学楼');
+      assert.ok(marker, 'baidu marker should retain title metadata');
+      assert.match(marker.label?.content || '', /教学楼/);
+    }
+  }
+});
+
+test('amap execution route keeps a single current segment', () => {
+  const runtime = createRuntime('amap');
+  runtime.setCurrentRunData({
+    status: 0,
+    target_sequence: 1,
+    current_point_index: 3,
+    target_point_names: '点1|点2|点3',
+    target_points: [
+      [113.380, 22.510],
+      [113.390, 22.520],
+      [113.400, 22.530],
+    ],
+    run_coords: [
+      [113.375, 22.505],
+      [113.380, 22.510],
+      [113.385, 22.515],
+      [113.390, 22.520],
+      [113.395, 22.525],
+      [113.400, 22.530],
+    ],
+  });
+
+  runtime.updateRunnerPosition(113.385, 22.515, 100, 1, 1000, false, 3);
+
+  const runPolylines = runtime.getState().polylines.run;
+  assert.ok(Array.isArray(runPolylines));
+  const colors = runPolylines.map((polyline) => polyline.options.strokeColor);
+  assert.equal(colors.filter((color) => color === '#0284c7').length, 1);
+  assert.ok(colors.includes('#94a3b8'));
+  assert.ok(colors.includes('#ef4444'));
 });
 
 test('provider runner marker does not overwrite route fit coordinates', () => {
@@ -1093,14 +1281,14 @@ test('provider runtime loaders inject the active provider sdk script and resolve
     },
     {
       provider: 'baidu',
-      expectedSrc: 'https://api.map.baidu.com/api?v=3.0&ak=baidu-ak&callback=__onBaiduMapApiLoaded',
+      expectedSrc: 'https://api.map.baidu.com/api?v=1.0&type=webgl&ak=baidu-ak&callback=__onBaiduMapApiLoaded',
       datasetKey: 'baiduMapApi',
       installSdk(window) {
-        window.BMap = createBaiduSdk();
+        window.BMapGL = createBaiduSdk();
       },
       finish(window) {
         window.__onBaiduMapApiLoaded();
-        return window.BMap;
+        return window.BMapGL;
       },
     },
   ];

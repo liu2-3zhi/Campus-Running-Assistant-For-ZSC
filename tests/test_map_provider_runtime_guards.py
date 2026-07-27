@@ -126,7 +126,7 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("腾讯地图脚本加载完成但运行时不可用", runtime_source)
         self.assertIn("window.T && window.T.Map", runtime_source)
         self.assertIn("天地图脚本加载完成但运行时不可用", runtime_source)
-        self.assertIn('window.BMap && typeof window.BMap.Map === "function"', runtime_source)
+        self.assertIn('window.BMapGL && typeof window.BMapGL.Map === "function"', runtime_source)
         self.assertIn("百度地图脚本加载完成但运行时不可用", runtime_source)
 
     def test_provider_map_reinit_does_not_clear_existing_sdk_dom(self):
@@ -208,6 +208,10 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn('if (getActiveMapProvider() !== "amap")', walking_source)
         self.assertIn("getWalkingPath 仅支持高德地图", walking_source)
         self.assertIn("new AMap.Walking", walking_source)
+        self.assertIn("api_queue_interval_s ??0.1", walking_source)
+        self.assertIn("const pendingIndexes = Array.from", walking_source)
+        self.assertIn("Promise.all(waveIndexes.map", walking_source)
+        self.assertIn("consecutiveFailedWaves >= maxFailedWaves", walking_source)
 
     def test_mobile_auxiliary_maps_use_provider_map_or_guard_amap_only_pick(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")

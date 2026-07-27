@@ -17343,6 +17343,11 @@ const paramDefs = {
     unit: "s",
     help: "步行路径失败后发起下一次重试前的等待时间。",
   },
+  api_queue_interval_s: {
+    label: "API排队间隔",
+    unit: "s",
+    help: "批量规划多段路径时，相邻请求发起之间的排队间隔。",
+  },
   ignore_task_time: {
     label: "忽略任务时间仅对比日期",
     unit: "",
@@ -17412,7 +17417,12 @@ const paramGroups = [
   },
   {
     title: "路径规划重试策略",
-    keys: ["api_fallback_line", "api_retries", "api_retry_delay_s"],
+    keys: [
+      "api_fallback_line",
+      "api_retries",
+      "api_retry_delay_s",
+      "api_queue_interval_s",
+    ],
   },
   {
     title: "自动生成目标",
@@ -35361,14 +35371,14 @@ function loadTianDiTuMapOnce(token) {
 }
 
 function loadBaiduMapOnce(ak) {
-  if (window.BMap && typeof window.BMap.Map === "function") {
-    return Promise.resolve(window.BMap);
+  if (window.BMapGL && typeof window.BMapGL.Map === "function") {
+    return Promise.resolve(window.BMapGL);
   }
   if (baiduMapLoadingPromise) return baiduMapLoadingPromise;
 
   baiduMapLoadingPromise = loadScriptOnce(
     'script[data-baidu-map-api="true"]',
-    `https://api.map.baidu.com/api?v=3.0&ak=${encodeURIComponent(ak)}&callback=__onBaiduMapApiLoaded`,
+    `https://api.map.baidu.com/api?v=1.0&type=webgl&ak=${encodeURIComponent(ak)}&callback=__onBaiduMapApiLoaded`,
     (script, resolve, reject) => {
       script.dataset.baiduMapApi = "true";
       window.__onBaiduMapApiLoaded = function () {
@@ -35377,8 +35387,8 @@ function loadBaiduMapOnce(ak) {
         } catch (_) {
           window.__onBaiduMapApiLoaded = undefined;
         }
-        if (window.BMap && typeof window.BMap.Map === "function") {
-          resolve(window.BMap);
+        if (window.BMapGL && typeof window.BMapGL.Map === "function") {
+          resolve(window.BMapGL);
           return;
         }
         reject(new Error("百度地图脚本加载完成但运行时不可用，请检查 AK、域名白名单或网络连接。"));
@@ -35591,17 +35601,26 @@ function initProviderMap(containerId, isMultiAccount = false) {
         providerMapEventsBound[containerId] = true;
       }
     } else if (provider === "baidu") {
-      if (!window.BMap || typeof window.BMap.Map !== "function") {
+      if (!window.BMapGL || typeof window.BMapGL.Map !== "function") {
         throw new Error("百度地图运行时未加载");
       }
       if (!instance) {
-        instance = new BMap.Map(containerId);
+        instance = new BMapGL.Map(containerId, {
+          enableIconClick: false,
+          displayOptions: { building: true },
+        });
         providerMapInstances[containerId] = instance;
         if (typeof instance.enableScrollWheelZoom === "function") {
           instance.enableScrollWheelZoom(true);
         }
       }
-      instance.centerAndZoom(new BMap.Point(providerCenter.lng, providerCenter.lat), zoom);
+      instance.centerAndZoom(new BMapGL.Point(providerCenter.lng, providerCenter.lat), zoom);
+      if (typeof instance.setTilt === "function") {
+        instance.setTilt(45);
+      }
+      if (typeof instance.setHeading === "function") {
+        instance.setHeading(0);
+      }
       if (!providerMapEventsBound[containerId] && typeof instance.addEventListener === "function") {
         instance.addEventListener("click", (event) => {
           const point = event && event.point ? event.point : null;
@@ -35615,6 +35634,11 @@ function initProviderMap(containerId, isMultiAccount = false) {
     }
 
     providerMapInstanceProviders[containerId] = provider;
+    if (containerId === "map-container") {
+      ensureSingleControls();
+    } else if (containerId === "multi-map-container") {
+      ensureMultiControls();
+    }
     logMessage_Info(`[地图] ${getMapProviderDisplayName(provider)}前端地图已加载: ${containerId}`);
     return true;
   } catch (error) {
@@ -35849,8 +35873,8 @@ function fitProviderMapToCoordinates(containerId, coords, overlay = null) {
       instance.fitBounds(bounds, { padding: 60 });
     } else if (provider === "tianditu" && typeof instance.setViewport === "function") {
       instance.setViewport(coords.map((coord) => new T.LngLat(coord.lng, coord.lat)));
-    } else if (provider === "baidu" && typeof instance.setViewport === "function") {
-      instance.setViewport(coords.map((coord) => new BMap.Point(coord.lng, coord.lat)));
+    } else if (provider === "baidu" && typeof instance.setViewport === "function" && window.BMapGL) {
+      instance.setViewport(coords.map((coord) => new BMapGL.Point(coord.lng, coord.lat)));
     }
   } catch (e) {
     logMessage_Warning(`[地图] 调整${containerId}视野失败:`, e);
@@ -35982,6 +36006,31 @@ function createTencentMarkerStyleOptions(label, options = {}) {
   };
 }
 
+function createProviderLabelMarkerSvgOptions(label, options = {}) {
+  const visibleLabel = Array.from(label || "标记").slice(0, 10).join("");
+  const safeLabel = escapeProviderSvgText(visibleLabel);
+  const color = resolveProviderMarkerColor(options);
+  const textLength = Math.max(2, Array.from(visibleLabel).length);
+  const width = Math.min(144, Math.max(48, 26 + textLength * 14));
+  const height = 38;
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+    '<defs><filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.22"/></filter></defs>',
+    '<g filter="url(#shadow)">',
+    `<rect x="1" y="1" width="${width - 2}" height="26" rx="13" fill="${color}"/>`,
+    `<path d="M ${width / 2 - 5} 27 L ${width / 2} 36 L ${width / 2 + 5} 27 Z" fill="${color}"/>`,
+    '</g>',
+    `<text x="${width / 2}" y="18" text-anchor="middle" font-size="12" font-weight="700" font-family="Arial, sans-serif" fill="#ffffff">${safeLabel}</text>`,
+    '</svg>',
+  ].join("");
+  return {
+    width,
+    height,
+    anchor: { x: width / 2, y: height },
+    src: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+  };
+}
+
 function addProviderMarker(containerId, coord, options = {}) {
   const provider = getActiveMapProvider();
   const instance = getProviderMapInstance(containerId);
@@ -36018,12 +36067,54 @@ function addProviderMarker(containerId, coord, options = {}) {
         }],
       });
     } else if (provider === "tianditu" && window.T) {
-      marker = new T.Marker(new T.LngLat(providerCoord.lng, providerCoord.lat), {
-        title: options.title || "",
-      });
+      const label = normalizeProviderMarkerLabel(options);
+      const markerKind = options.markerKind || (options.anchor === "center" ? "runner" : "label");
+      const markerOptions = {
+        title: options.title || label || "",
+        zIndexOffset: options.zIndex || 100,
+      };
+      if (label && markerKind !== "runner" && typeof T.Icon === "function") {
+        const iconOptions = createProviderLabelMarkerSvgOptions(label, options);
+        markerOptions.icon = new T.Icon({
+          iconUrl: iconOptions.src,
+          iconSize:
+            typeof T.Point === "function"
+              ? new T.Point(iconOptions.width, iconOptions.height)
+              : [iconOptions.width, iconOptions.height],
+          iconAnchor:
+            typeof T.Point === "function"
+              ? new T.Point(iconOptions.anchor.x, iconOptions.anchor.y)
+              : [iconOptions.anchor.x, iconOptions.anchor.y],
+        });
+      }
+      marker = new T.Marker(
+        new T.LngLat(providerCoord.lng, providerCoord.lat),
+        markerOptions,
+      );
       instance.addOverLay(marker);
-    } else if (provider === "baidu" && window.BMap) {
-      marker = new BMap.Marker(new BMap.Point(providerCoord.lng, providerCoord.lat));
+    } else if (provider === "baidu" && window.BMapGL) {
+      const label = normalizeProviderMarkerLabel(options);
+      const markerKind = options.markerKind || (options.anchor === "center" ? "runner" : "label");
+      marker = new BMapGL.Marker(
+        new BMapGL.Point(providerCoord.lng, providerCoord.lat),
+        {
+          title: options.title || label || "",
+          zIndex: options.zIndex || 100,
+        },
+      );
+      if (
+        label &&
+        markerKind !== "runner" &&
+        typeof BMapGL.Label === "function" &&
+        typeof BMapGL.Size === "function" &&
+        typeof marker.setLabel === "function"
+      ) {
+        marker.setLabel(
+          new BMapGL.Label(label, {
+            offset: new BMapGL.Size(12, -24),
+          }),
+        );
+      }
       instance.addOverlay(marker);
     }
     if (marker) {
@@ -36209,15 +36300,15 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
         bucket.push(polyline);
         return polyline;
       });
-    } else if (provider === "baidu" && window.BMap) {
+    } else if (provider === "baidu" && window.BMapGL) {
       line = providerSegments.map((segment) => {
         const segmentColor = resolveProviderRouteSegmentColor(
           segment.styleId,
           color,
           options,
         );
-        const polyline = new BMap.Polyline(
-          segment.coords.map((coord) => new BMap.Point(coord.lng, coord.lat)),
+        const polyline = new BMapGL.Polyline(
+          segment.coords.map((coord) => new BMapGL.Point(coord.lng, coord.lat)),
           {
             strokeColor: segmentColor,
             strokeWeight: weight,
@@ -36587,7 +36678,7 @@ function drawProviderTaskOnMap(containerId, data) {
   if (Array.isArray(data.target_points)) {
     const sequence = resolveVisualTaskProgressSequence(data, routeCoords);
     const names = (data.target_point_names || "").split("|");
-    const shouldSnapMarkerToRoute = getActiveMapProvider() === "tencent";
+    const shouldSnapMarkerToRoute = getActiveMapProvider() !== "amap";
     data.target_points.forEach((point, index) => {
       const coord = normalizeRouteCoord(point);
       if (Number.isFinite(coord.lng) && Number.isFinite(coord.lat)) {
@@ -42398,21 +42489,24 @@ async function getWalkingPath(waypoints) {
     throw new Error("地图实例未加载或路径点少于2");
   const useFallback = pythonParams.api_fallback_line ?? false,
     maxRetries = pythonParams.api_retries ?? 2,
-    retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+    retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000,
+    queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
+  const maxFailedWaves =2;
   callPythonAPI(
     "js_log",
     "INFO",
-    `开始路径规划: 重试=${maxRetries}次, 延迟=${retryDelayMs}ms, 备用直线=${useFallback}`,
+    `开始路径规划: 重试=${maxRetries}次, 延迟=${retryDelayMs}ms, 排队间隔=${queueIntervalMs}ms, 备用直线=${useFallback}`,
   );
   const all_path = [];
   const areCoordsEqual = (c1, c2) =>
     Math.abs(c1.lng - c2.lng) < 1e-6 && Math.abs(c1.lat - c2.lat) < 1e-6;
-  const searchSegment = (start, end) =>
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+  const searchSegment = (segmentIndex, start, end) =>
     new Promise((resolve) => {
       callPythonAPI(
         "js_log",
         "DEBUG",
-        `AMap API请求 --> 步行路径: ${start.toString()} 至 ${end.toString()}`,
+        `AMap API请求 --> 第 ${segmentIndex + 1} 段步行路径: ${start.toString()} 至 ${end.toString()}`,
       );
       new AMap.Walking({
         map: null,
@@ -42429,7 +42523,7 @@ async function getWalkingPath(waypoints) {
             "DEBUG",
             `AMap API响应 <-- 成功，点数: ${p.length}`,
           );
-          resolve(p);
+          resolve({ path: p });
         } else {
           let info = result ? result.info || JSON.stringify(result) : "NULL";
           callPythonAPI(
@@ -42437,28 +42531,58 @@ async function getWalkingPath(waypoints) {
             "ERROR",
             `AMap API响应 <-- 失败. 状态: ${status}, 结果: ${info}`,
           );
-          resolve([]);
+          resolve({ path: [], error: info });
         }
       });
     });
-  for (let i = 0; i < waypoints.length - 1; i++) {
-    logMessage_Info(`正在规划第 ${i + 1}/${waypoints.length - 1} 段路径...`);
+  const segmentCount = waypoints.length - 1;
+  const segmentPaths = Array(segmentCount).fill(null);
+  const segmentErrors = Array(segmentCount).fill(null);
+  const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
+  let consecutiveFailedWaves =0;
+
+  while (pendingIndexes.length >0) {
+    const waveIndexes = pendingIndexes.splice(0, pendingIndexes.length);
+    logMessage_Info(`正在排队规划 ${waveIndexes.length} 段路径...`);
+    const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
+      await sleep(queueIntervalMs * order);
+      const realStart = waypoints[segmentIndex],
+        realEnd = waypoints[segmentIndex + 1];
+      const result = await searchSegment(segmentIndex, realStart, realEnd);
+      return { segmentIndex, result };
+    }));
+    let waveSuccessCount = 0;
+    waveResults.forEach(({ segmentIndex, result }) => {
+      if (Array.isArray(result.path) && result.path.length > 0) {
+        segmentPaths[segmentIndex] = result.path;
+        segmentErrors[segmentIndex] = null;
+        waveSuccessCount += 1;
+      } else {
+        segmentErrors[segmentIndex] = result.error || "路径规划失败";
+        pendingIndexes.push(segmentIndex);
+      }
+    });
+    if (waveSuccessCount ===0) {
+      consecutiveFailedWaves += 1;
+      if (consecutiveFailedWaves >= maxFailedWaves) {
+        break;
+      }
+    } else {
+      consecutiveFailedWaves =0;
+    }
+    if (pendingIndexes.length >0) {
+      logMessage_Info(
+        `仍有 ${pendingIndexes.length} 段路径未成功，${retryDelayMs / 1000}秒后按限流重试...`,
+      );
+      await sleep(retryDelayMs);
+    }
+  }
+
+  for (let i = 0; i < segmentCount; i++) {
     const realStart = waypoints[i],
       realEnd = waypoints[i + 1];
-    let attempts = 0,
-      segmentPath = [];
-    while (attempts <= maxRetries) {
-      if (attempts > 0) {
-        logMessage_Info(
-          `第 ${i + 1} 段路径规划失败，${retryDelayMs / 1000}秒后重试...`,
-        );
-        await new Promise((res) => setTimeout(res, retryDelayMs));
-      }
-      segmentPath = await searchSegment(realStart, realEnd);
-      if (segmentPath.length > 0) break;
-      attempts++;
-    }
-    if (segmentPath.length === 0) {
+    let segmentPath = segmentPaths[i];
+    if (!Array.isArray(segmentPath) || segmentPath.length === 0) {
       if (useFallback) {
         logMessage_Info(`第 ${i + 1} 段路径规划最终失败，启用直线连接。`);
         segmentPath = [
@@ -42466,7 +42590,7 @@ async function getWalkingPath(waypoints) {
           { lng: realEnd.lng, lat: realEnd.lat },
         ];
       } else
-        throw new Error(`第 ${i + 1} 段路径规划失败 (重试 ${maxRetries} 次后)`);
+        throw new Error(`第 ${i + 1} 段路径规划失败 (${segmentErrors[i] || `连续 ${maxFailedWaves} 次失败`})`);
     }
     if (
       !areCoordsEqual(segmentPath[0], {

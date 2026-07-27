@@ -398,6 +398,8 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
             const useFallback = pythonParams.api_fallback_line ?? false;
             const maxRetries = pythonParams.api_retries ?? 2;
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
+            const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
             async function ensureAmapLoader() {
@@ -485,38 +487,62 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                     });
                 });
 
-                for (let i = 0; i < waypoints.length - 1; i += 1) {
-                    const realStart = waypoints[i];
-                    const realEnd = waypoints[i + 1];
-                    let attempts = 0;
-                    let segmentResult = null;
-                    let segmentPath = null;
+                const segmentCount = waypoints.length - 1;
+                const segmentPaths = Array(segmentCount).fill(null);
+                const segmentErrors = Array(segmentCount).fill(null);
+                const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
+                let consecutiveFailedWaves =0;
 
-                    while (attempts <= maxRetries) {
-                        if (attempts > 0) {
-                            await sleep(retryDelayMs);
+                while (pendingIndexes.length >0) {
+                    const waveIndexes = pendingIndexes.slice();
+                    pendingIndexes.length = 0;
+                    const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
+                        await sleep(queueIntervalMs * order);
+                        const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1]);
+                        return { segmentIndex, result };
+                    }));
+                    let waveSuccessCount = 0;
+                    waveResults.forEach(({ segmentIndex, result }) => {
+                        if (result && Array.isArray(result.path) && result.path.length > 0) {
+                            segmentPaths[segmentIndex] = result.path;
+                            waveSuccessCount += 1;
+                            return;
                         }
-                        segmentResult = await searchSegment(realStart, realEnd);
-                        if (segmentResult.path) {
-                            segmentPath = segmentResult.path;
+                        segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
+                        pendingIndexes.push(segmentIndex);
+                    });
+                    if (waveSuccessCount ===0) {
+                        consecutiveFailedWaves += 1;
+                        if (consecutiveFailedWaves >= maxFailedWaves) {
                             break;
                         }
-                        attempts += 1;
-                    }
-
-                    if (segmentPath) {
-                        if (i > 0) {
-                            allPath.push(...segmentPath.slice(1));
-                        } else {
-                            allPath.push(...segmentPath);
-                        }
-                    } else if (useFallback) {
-                        if (allPath.length === 0) {
-                            allPath.push({ lng: Number(realStart.lng), lat: Number(realStart.lat) });
-                        }
-                        allPath.push({ lng: Number(realEnd.lng), lat: Number(realEnd.lat) });
                     } else {
-                        return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                        consecutiveFailedWaves =0;
+                    }
+                    if (pendingIndexes.length >0) {
+                        await sleep(retryDelayMs);
+                    }
+                }
+
+                for (let i = 0; i < segmentCount; i += 1) {
+                    const segmentPath = segmentPaths[i];
+                    const realStart = waypoints[i];
+                    const realEnd = waypoints[i + 1];
+                    if (!segmentPath) {
+                        if (useFallback) {
+                            const fallbackPath = [
+                                { lng: Number(realStart.lng), lat: Number(realStart.lat) },
+                                { lng: Number(realEnd.lng), lat: Number(realEnd.lat) },
+                            ];
+                            allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
+                            continue;
+                        }
+                        return { error: `Segment ${i + 1} failed after ${maxFailedWaves} failed waves: ${segmentErrors[i] || 'Unknown error'}` };
+                    }
+                    if (i > 0) {
+                        allPath.push(...segmentPath.slice(1));
+                    } else {
+                        allPath.push(...segmentPath);
                     }
                 }
 
@@ -554,6 +580,8 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             const useFallback = pythonParams.api_fallback_line ?? false;
             const maxRetries = pythonParams.api_retries ?? 2;
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
+            const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             let jsonpRequestId = 0;
 
@@ -664,38 +692,62 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             const waypoints = waypointsPy.map(point => ({ lng: Number(point[0]), lat: Number(point[1]) }));
             const allPath = [];
 
-            for (let i = 0; i < waypoints.length - 1; i += 1) {
-                const realStart = waypoints[i];
-                const realEnd = waypoints[i + 1];
-                let attempts = 0;
-                let segmentResult = null;
-                let segmentPath = null;
+            const segmentCount = waypoints.length - 1;
+            const segmentPaths = Array(segmentCount).fill(null);
+            const segmentErrors = Array(segmentCount).fill(null);
+            const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
+            let consecutiveFailedWaves =0;
 
-                while (attempts <= maxRetries) {
-                    if (attempts > 0) {
-                        await sleep(retryDelayMs);
+            while (pendingIndexes.length >0) {
+                const waveIndexes = pendingIndexes.slice();
+                pendingIndexes.length = 0;
+                const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
+                    await sleep(queueIntervalMs * order);
+                    const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1]);
+                    return { segmentIndex, result };
+                }));
+                let waveSuccessCount = 0;
+                waveResults.forEach(({ segmentIndex, result }) => {
+                    if (result && Array.isArray(result.path) && result.path.length > 0) {
+                        segmentPaths[segmentIndex] = result.path;
+                        waveSuccessCount += 1;
+                        return;
                     }
-                    segmentResult = await searchSegment(realStart, realEnd);
-                    if (segmentResult.path) {
-                        segmentPath = segmentResult.path;
+                    segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
+                    pendingIndexes.push(segmentIndex);
+                });
+                if (waveSuccessCount ===0) {
+                    consecutiveFailedWaves += 1;
+                    if (consecutiveFailedWaves >= maxFailedWaves) {
                         break;
                     }
-                    attempts += 1;
-                }
-
-                if (segmentPath) {
-                    if (i > 0) {
-                        allPath.push(...segmentPath.slice(1));
-                    } else {
-                        allPath.push(...segmentPath);
-                    }
-                } else if (useFallback) {
-                    if (allPath.length === 0) {
-                        allPath.push({ lng: realStart.lng, lat: realStart.lat });
-                    }
-                    allPath.push({ lng: realEnd.lng, lat: realEnd.lat });
                 } else {
-                    return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                    consecutiveFailedWaves =0;
+                }
+                if (pendingIndexes.length >0) {
+                    await sleep(retryDelayMs);
+                }
+            }
+
+            for (let i = 0; i < segmentCount; i += 1) {
+                const segmentPath = segmentPaths[i];
+                const realStart = waypoints[i];
+                const realEnd = waypoints[i + 1];
+                if (!segmentPath) {
+                    if (useFallback) {
+                        const fallbackPath = [
+                            { lng: realStart.lng, lat: realStart.lat },
+                            { lng: realEnd.lng, lat: realEnd.lat },
+                        ];
+                        allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
+                        continue;
+                    }
+                    return { error: `Segment ${i + 1} failed after ${maxFailedWaves} failed waves: ${segmentErrors[i] || 'Unknown error'}` };
+                }
+                if (i > 0) {
+                    allPath.push(...segmentPath.slice(1));
+                } else {
+                    allPath.push(...segmentPath);
                 }
             }
 
@@ -728,6 +780,8 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             const useFallback = pythonParams.api_fallback_line ?? false;
             const maxRetries = pythonParams.api_retries ?? 2;
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
+            const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             const GCJ_PI = Math.PI;
             const GCJ_A = 6378245.0;
@@ -868,40 +922,62 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             const waypoints = waypointsPy.map(point => gcj02ToTdtCoordinate({ lng: Number(point[0]), lat: Number(point[1]) }));
             const allPath = [];
 
-            for (let i = 0; i < waypoints.length - 1; i += 1) {
-                const realStart = waypoints[i];
-                const realEnd = waypoints[i + 1];
-                let attempts = 0;
-                let segmentResult = null;
-                let segmentPath = null;
+            const segmentCount = waypoints.length - 1;
+            const segmentPaths = Array(segmentCount).fill(null);
+            const segmentErrors = Array(segmentCount).fill(null);
+            const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
+            let consecutiveFailedWaves =0;
 
-                while (attempts <= maxRetries) {
-                    if (attempts > 0) {
-                        await sleep(retryDelayMs);
+            while (pendingIndexes.length >0) {
+                const waveIndexes = pendingIndexes.slice();
+                pendingIndexes.length = 0;
+                const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
+                    await sleep(queueIntervalMs * order);
+                    const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1]);
+                    return { segmentIndex, result };
+                }));
+                let waveSuccessCount = 0;
+                waveResults.forEach(({ segmentIndex, result }) => {
+                    if (result && Array.isArray(result.path) && result.path.length > 0) {
+                        segmentPaths[segmentIndex] = result.path;
+                        waveSuccessCount += 1;
+                        return;
                     }
-                    segmentResult = await searchSegment(realStart, realEnd);
-                    if (segmentResult.path) {
-                        segmentPath = segmentResult.path;
+                    segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
+                    pendingIndexes.push(segmentIndex);
+                });
+                if (waveSuccessCount ===0) {
+                    consecutiveFailedWaves += 1;
+                    if (consecutiveFailedWaves >= maxFailedWaves) {
                         break;
                     }
-                    attempts += 1;
-                }
-
-                if (segmentPath) {
-                    if (i > 0) {
-                        allPath.push(...segmentPath.slice(1));
-                    } else {
-                        allPath.push(...segmentPath);
-                    }
-                } else if (useFallback) {
-                    const startGcj = tdtCoordinateToGcj02(realStart);
-                    const endGcj = tdtCoordinateToGcj02(realEnd);
-                    if (allPath.length === 0) {
-                        allPath.push(startGcj);
-                    }
-                    allPath.push(endGcj);
                 } else {
-                    return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                    consecutiveFailedWaves =0;
+                }
+                if (pendingIndexes.length >0) {
+                    await sleep(retryDelayMs);
+                }
+            }
+
+            for (let i = 0; i < segmentCount; i += 1) {
+                const segmentPath = segmentPaths[i];
+                const realStart = waypoints[i];
+                const realEnd = waypoints[i + 1];
+                if (!segmentPath) {
+                    if (useFallback) {
+                        const fallbackPath = [
+                            tdtCoordinateToGcj02(realStart),
+                            tdtCoordinateToGcj02(realEnd),
+                        ];
+                        allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
+                        continue;
+                    }
+                    return { error: `Segment ${i + 1} failed after ${maxFailedWaves} failed waves: ${segmentErrors[i] || 'Unknown error'}` };
+                }
+                if (i > 0) {
+                    allPath.push(...segmentPath.slice(1));
+                } else {
+                    allPath.push(...segmentPath);
                 }
             }
 
@@ -934,6 +1010,8 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             const useFallback = pythonParams.api_fallback_line ?? false;
             const maxRetries = pythonParams.api_retries ?? 2;
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
+            const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
+            const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
             function gcj02ToBd09(lng, lat) {
@@ -959,7 +1037,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             }
 
             async function ensureBaiduMapScript() {
-                if (window.BMap && typeof window.BMap.Map === 'function') {
+                if (window.BMapGL && typeof window.BMapGL.Map === 'function') {
                     return;
                 }
                 await new Promise((resolve, reject) => {
@@ -969,7 +1047,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                     }
                     const script = document.createElement('script');
                     const callbackName = '__backendBaiduMapApiLoaded';
-                    script.src = `https://api.map.baidu.com/api?v=3.0&ak=${encodeURIComponent(ak)}&callback=${callbackName}`;
+                    script.src = `https://api.map.baidu.com/api?v=1.0&type=webgl&ak=${encodeURIComponent(ak)}&callback=${callbackName}`;
                     script.async = true;
                     script.defer = true;
                     script.dataset.baiduMapApi = 'true';
@@ -979,7 +1057,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                         } catch (error) {
                             window[callbackName] = undefined;
                         }
-                        if (window.BMap && typeof window.BMap.Map === 'function') {
+                        if (window.BMapGL && typeof window.BMapGL.Map === 'function') {
                             resolve();
                             return;
                         }
@@ -999,8 +1077,8 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                     document.body.appendChild(container);
                 }
                 if (!window.__backendBaiduRouteMap) {
-                    window.__backendBaiduRouteMap = new BMap.Map(container);
-                    window.__backendBaiduRouteMap.centerAndZoom(new BMap.Point(116.404, 39.915), 12);
+                    window.__backendBaiduRouteMap = new BMapGL.Map(container.id);
+                    window.__backendBaiduRouteMap.centerAndZoom(new BMapGL.Point(116.404, 39.915), 12);
                 }
                 return window.__backendBaiduRouteMap;
             }
@@ -1052,9 +1130,9 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                 };
 
                 if (routeType === 'walking') {
-                    searchInstance = new BMap.WalkingRoute(map, commonOptions);
+                    searchInstance = new BMapGL.WalkingRoute(map, commonOptions);
                 } else {
-                    searchInstance = new BMap.DrivingRoute(map, commonOptions);
+                    searchInstance = new BMapGL.DrivingRoute(map, commonOptions);
                 }
                 return searchInstance;
             }
@@ -1090,44 +1168,66 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             const routeType = actualMode === 'driving' ? 'driving' : 'walking';
             const waypoints = waypointsPy.map(point => {
                 const converted = gcj02ToBd09(Number(point[0]), Number(point[1]));
-                return new BMap.Point(converted.lng, converted.lat);
+                return new BMapGL.Point(converted.lng, converted.lat);
             });
             const allPath = [];
 
-            for (let i = 0; i < waypoints.length - 1; i += 1) {
-                const realStart = waypoints[i];
-                const realEnd = waypoints[i + 1];
-                let attempts = 0;
-                let segmentResult = null;
-                let segmentPath = null;
+            const segmentCount = waypoints.length - 1;
+            const segmentPaths = Array(segmentCount).fill(null);
+            const segmentErrors = Array(segmentCount).fill(null);
+            const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
+            let consecutiveFailedWaves =0;
 
-                while (attempts <= maxRetries) {
-                    if (attempts > 0) {
-                        await sleep(retryDelayMs);
+            while (pendingIndexes.length >0) {
+                const waveIndexes = pendingIndexes.slice();
+                pendingIndexes.length = 0;
+                const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
+                    await sleep(queueIntervalMs * order);
+                    const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1], routeType, map);
+                    return { segmentIndex, result };
+                }));
+                let waveSuccessCount = 0;
+                waveResults.forEach(({ segmentIndex, result }) => {
+                    if (result && Array.isArray(result.path) && result.path.length > 0) {
+                        segmentPaths[segmentIndex] = result.path;
+                        waveSuccessCount += 1;
+                        return;
                     }
-                    segmentResult = await searchSegment(realStart, realEnd, routeType, map);
-                    if (segmentResult.path) {
-                        segmentPath = segmentResult.path;
+                    segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
+                    pendingIndexes.push(segmentIndex);
+                });
+                if (waveSuccessCount ===0) {
+                    consecutiveFailedWaves += 1;
+                    if (consecutiveFailedWaves >= maxFailedWaves) {
                         break;
                     }
-                    attempts += 1;
-                }
-
-                if (segmentPath) {
-                    if (i > 0) {
-                        allPath.push(...segmentPath.slice(1));
-                    } else {
-                        allPath.push(...segmentPath);
-                    }
-                } else if (useFallback) {
-                    const startGcj = bd09ToGcj02(Number(realStart.lng), Number(realStart.lat));
-                    const endGcj = bd09ToGcj02(Number(realEnd.lng), Number(realEnd.lat));
-                    if (allPath.length === 0) {
-                        allPath.push(startGcj);
-                    }
-                    allPath.push(endGcj);
                 } else {
-                    return { error: `Segment ${i + 1} failed after ${maxRetries + 1} attempts: ${segmentResult && segmentResult.error ? segmentResult.error : 'Unknown error'}` };
+                    consecutiveFailedWaves =0;
+                }
+                if (pendingIndexes.length >0) {
+                    await sleep(retryDelayMs);
+                }
+            }
+
+            for (let i = 0; i < segmentCount; i += 1) {
+                const segmentPath = segmentPaths[i];
+                const realStart = waypoints[i];
+                const realEnd = waypoints[i + 1];
+                if (!segmentPath) {
+                    if (useFallback) {
+                        const fallbackPath = [
+                            bd09ToGcj02(Number(realStart.lng), Number(realStart.lat)),
+                            bd09ToGcj02(Number(realEnd.lng), Number(realEnd.lat)),
+                        ];
+                        allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
+                        continue;
+                    }
+                    return { error: `Segment ${i + 1} failed after ${maxFailedWaves} failed waves: ${segmentErrors[i] || 'Unknown error'}` };
+                }
+                if (i > 0) {
+                    allPath.push(...segmentPath.slice(1));
+                } else {
+                    allPath.push(...segmentPath);
                 }
             }
 
@@ -1285,7 +1385,7 @@ def _plan_route_path_with_provider_runtime(
 
     if not isinstance(result, dict):
         result = {"error": "路径规划执行器未返回有效结果。"}
-    if provider == "tencent" and isinstance(result.get("path"), list):
+    if provider in ("tencent", "tianditu", "baidu") and isinstance(result.get("path"), list):
         result["path"] = _complete_route_path_with_waypoint_endpoints(result["path"], waypoints)
     result["provider"] = provider
     result["provider_plan"] = provider_plan
@@ -12152,6 +12252,7 @@ class Api:
             "api_fallback_line": False,
             "api_retries": 2,
             "api_retry_delay_s": 0.5,
+            "api_queue_interval_s": 0.1,
             "ignore_task_time": True,
             "theme_base_color": "#7dd3fc",
             "theme_style": "default",
