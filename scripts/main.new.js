@@ -35419,6 +35419,79 @@ async function loadActiveMapProviderRuntime(provider = getActiveMapProvider()) {
   }
 }
 
+function getProviderMapSurfaceId(containerId) {
+  return `${containerId}-provider-surface`;
+}
+
+function getProviderMapSurface(containerId) {
+  return document.getElementById(getProviderMapSurfaceId(containerId));
+}
+
+function clearProviderMapContainerChildren(container) {
+  if (!container) return;
+  if (container.firstChild) {
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+  } else if (Array.isArray(container.children)) {
+    [...container.children].forEach((child) => {
+      if (child && typeof container.removeChild === "function") {
+        container.removeChild(child);
+      }
+    });
+  }
+  container.innerHTML = "";
+}
+
+function ensureProviderMapSurface(containerId, shouldReset = false) {
+  const container = document.getElementById(containerId);
+  if (!container) return null;
+  if (container.classList && typeof container.classList.add === "function") {
+    container.classList.add("relative", "overflow-hidden");
+  }
+
+  let surface = getProviderMapSurface(containerId);
+  if (shouldReset || !surface || surface.parentNode !== container) {
+    clearProviderMapContainerChildren(container);
+    surface = document.createElement("div");
+    surface.id = getProviderMapSurfaceId(containerId);
+    surface.className = "absolute inset-0 w-full h-full";
+    surface.style.position = "absolute";
+    surface.style.inset = "0";
+    surface.style.width = "100%";
+    surface.style.height = "100%";
+    surface.style.zIndex = "0";
+    container.appendChild(surface);
+  }
+  return surface;
+}
+
+function isElementInsideContainer(container, element) {
+  let current = element;
+  while (current) {
+    if (current === container) return true;
+    current = current.parentNode;
+  }
+  return false;
+}
+
+function removeElementOrParentOverlay(element) {
+  if (!element) return;
+  const parent = element.parentNode;
+  const target =
+    parent &&
+    parent.dataset &&
+    (parent.dataset.providerMapViewControl === "true" ||
+      parent.dataset.providerMapControlOverlay === "true")
+      ? parent
+      : element;
+  if (target && typeof target.remove === "function") {
+    target.remove();
+  } else if (target && target.parentNode && typeof target.parentNode.removeChild === "function") {
+    target.parentNode.removeChild(target);
+  }
+}
+
 function destroyProviderMapInstance(containerId) {
   clearProviderMapOverlays(containerId, { clearRunnerMarkers: true });
   const instance = providerMapInstances[containerId];
@@ -35575,7 +35648,7 @@ function addBaiduProvider3DControl(instance) {
     options.anchor = BMAP_ANCHOR_TOP_LEFT;
   }
   if (typeof BMapGL.Size === "function") {
-    options.offset = new BMapGL.Size(12, 12);
+    options.offset = new BMapGL.Size(12, 68);
   }
   try {
     instance.addControl(new BMapGL.NavigationControl3D(options));
@@ -35585,6 +35658,98 @@ function addBaiduProvider3DControl(instance) {
     logMessage_Warning("[地图] 添加百度地图3D视角控件失败:", e);
     return false;
   }
+}
+
+function getProvider3DViewButtonId(containerId) {
+  return containerId === "multi-map-container"
+    ? "multi-provider-3d-view-btn"
+    : "provider-3d-view-btn";
+}
+
+function removeProvider3DViewControl(containerId) {
+  const button = document.getElementById(getProvider3DViewButtonId(containerId));
+  removeElementOrParentOverlay(button);
+}
+
+function attachProvider3DViewControlHandler(containerId) {
+  const button = document.getElementById(getProvider3DViewButtonId(containerId));
+  if (!button || button._provider3DViewBound) return;
+  button.addEventListener("click", () => {
+    applyProviderMapDefaultOrientation(containerId);
+  });
+  button._provider3DViewBound = true;
+}
+
+function ensureProvider3DViewControl(containerId) {
+  const provider = providerMapInstanceProviders[containerId] || getActiveMapProvider();
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const buttonId = getProvider3DViewButtonId(containerId);
+  const existingButton = document.getElementById(buttonId);
+
+  if (provider !== "baidu") {
+    removeProvider3DViewControl(containerId);
+    return;
+  }
+
+  if (existingButton && isElementInsideContainer(container, existingButton)) {
+    attachProvider3DViewControlHandler(containerId);
+    return;
+  }
+  removeElementOrParentOverlay(existingButton);
+
+  const overlay = document.createElement("div");
+  overlay.dataset.providerMapViewControl = "true";
+  overlay.className =
+    "absolute top-4 left-3 z-[1000] bg-white/85 backdrop-blur-sm rounded-full shadow-md flex items-center p-1 border border-slate-200";
+  overlay.innerHTML = `
+    <button id="${buttonId}" class="w-10 h-10 font-bold text-sm flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-700" title="3D视角">3D</button>
+  `;
+  container.appendChild(overlay);
+  attachProvider3DViewControlHandler(containerId);
+}
+
+function enableTianDiTuRightDragPan(containerId, instance) {
+  const surface = getProviderMapSurface(containerId);
+  if (!surface || surface._providerTianDiTuRightDragBound || !instance) return;
+
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+
+  surface.addEventListener("mousedown", (event) => {
+    if (getActiveMapProvider() !== "tianditu" || !event || event.button !== 2) return;
+    dragging = true;
+    lastX = Number(event.clientX) || 0;
+    lastY = Number(event.clientY) || 0;
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    if (typeof event.stopPropagation === "function") event.stopPropagation();
+  });
+
+  document.addEventListener("mousemove", (event) => {
+    if (!dragging || !event) return;
+    const currentX = Number(event.clientX) || lastX;
+    const currentY = Number(event.clientY) || lastY;
+    const dx = currentX - lastX;
+    const dy = currentY - lastY;
+    lastX = currentX;
+    lastY = currentY;
+    const activeInstance = getProviderMapInstance(containerId);
+    if (activeInstance && typeof activeInstance.panBy === "function" && (dx || dy)) {
+      activeInstance.panBy(dx, dy);
+    }
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    if (typeof event.stopPropagation === "function") event.stopPropagation();
+  });
+
+  document.addEventListener("mouseup", (event) => {
+    if (!dragging) return;
+    dragging = false;
+    if (event && typeof event.preventDefault === "function") event.preventDefault();
+    if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+  });
+
+  surface._providerTianDiTuRightDragBound = true;
 }
 
 function enableProviderMapInteractions(containerId, provider, instance) {
@@ -35602,6 +35767,10 @@ function enableProviderMapInteractions(containerId, provider, instance) {
       if (typeof instance.enableRotateGestures === "function") instance.enableRotateGestures();
       if (typeof instance.enableTiltGestures === "function") instance.enableTiltGestures();
       addBaiduProvider3DControl(instance);
+    } else if (provider === "tianditu") {
+      if (typeof instance.enableDrag === "function") instance.enableDrag();
+      if (typeof instance.enableScrollWheelZoom === "function") instance.enableScrollWheelZoom();
+      enableTianDiTuRightDragPan(containerId, instance);
     }
   } catch (e) {
     logMessage_Warning(`[地图] 启用${containerId}地图交互失败:`, e);
@@ -35610,13 +35779,18 @@ function enableProviderMapInteractions(containerId, provider, instance) {
 
 function ensureProviderMapContextMenuGuard(containerId) {
   const container = document.getElementById(containerId);
-  if (!container || container._providerMapContextMenuGuardBound) return;
-  container.addEventListener("contextmenu", (event) => {
-    if (getActiveMapProvider() !== "amap" && event && typeof event.preventDefault === "function") {
-      event.preventDefault();
-    }
-  });
-  container._providerMapContextMenuGuardBound = true;
+  if (!container) return;
+  const bindGuard = (target) => {
+    if (!target || target._providerMapContextMenuGuardBound) return;
+    target.addEventListener("contextmenu", (event) => {
+      if (getActiveMapProvider() !== "amap" && event && typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+    }, true);
+    target._providerMapContextMenuGuardBound = true;
+  };
+  bindGuard(container);
+  bindGuard(getProviderMapSurface(containerId));
 }
 
 function getTianDiTuToken() {
@@ -35668,8 +35842,14 @@ function initProviderMap(containerId, isMultiAccount = false) {
     destroyProviderMapInstance(containerId);
     instance = null;
   }
-  if (!instance) {
-    container.innerHTML = "";
+  let surface = getProviderMapSurface(containerId);
+  if (instance && (!surface || surface.parentNode !== container)) {
+    destroyProviderMapInstance(containerId);
+    instance = null;
+  }
+  surface = ensureProviderMapSurface(containerId, !instance);
+  if (!surface) {
+    return false;
   }
 
   try {
@@ -35678,7 +35858,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
         throw new Error("腾讯地图运行时未加载");
       }
       if (!instance) {
-        instance = new TMap.Map(container, {
+        instance = new TMap.Map(surface, {
           center: new TMap.LatLng(providerCenter.lat, providerCenter.lng),
           zoom,
           pitch: 55,
@@ -35710,7 +35890,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
         throw new Error("天地图运行时未加载");
       }
       if (!instance) {
-        instance = new T.Map(containerId);
+        instance = new T.Map(surface.id);
         providerMapInstances[containerId] = instance;
         applyTianDiTuDefaultMapType(instance);
       }
@@ -35729,7 +35909,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
         throw new Error("百度地图运行时未加载");
       }
       if (!instance) {
-        instance = new BMapGL.Map(containerId, {
+        instance = new BMapGL.Map(surface.id, {
           forceRenderType: "webgl",
           showControls: false,
           enableIconClick: false,
@@ -35762,6 +35942,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
     enableProviderMapInteractions(containerId, provider, instance);
     applyProviderMapDefaultView(containerId);
     ensureProviderMapContextMenuGuard(containerId);
+    ensureProvider3DViewControl(containerId);
     if (containerId === "map-container") {
       ensureSingleControls();
     } else if (containerId === "multi-map-container") {
@@ -37134,15 +37315,24 @@ async function saveMobileSettings() {
 function ensureSingleControls() {
   const container = document.getElementById("map-container");
   if (!container) return;
-  const hasZoomIn = !!document.getElementById("zoom-in");
-  const hasZoomOut = !!document.getElementById("zoom-out");
-  const hasReset = !!document.getElementById("reset-view-btn");
+  const zoomIn = document.getElementById("zoom-in");
+  const zoomOut = document.getElementById("zoom-out");
+  const reset = document.getElementById("reset-view-btn");
+  const hasZoomIn = !!zoomIn && isElementInsideContainer(container, zoomIn);
+  const hasZoomOut = !!zoomOut && isElementInsideContainer(container, zoomOut);
+  const hasReset = !!reset && isElementInsideContainer(container, reset);
 
   if (hasZoomIn && hasZoomOut && hasReset) {
     attachSingleControlHandlers();
     return;
   }
+  [zoomIn, zoomOut, reset].forEach((element) => {
+    if (element && !isElementInsideContainer(container, element)) {
+      removeElementOrParentOverlay(element);
+    }
+  });
   const overlay = document.createElement("div");
+  overlay.dataset.providerMapControlOverlay = "true";
   overlay.className =
     "absolute top-4 right-3 z-[1000] bg-white/80 backdrop-blur-sm rounded-full shadow-md flex items-center space-x-1 p-1 border border-slate-200";
   overlay.innerHTML = `
@@ -37188,16 +37378,25 @@ function ensureMultiControls() {
   const container = document.getElementById("multi-map-container");
   if (!container) return;
 
-  const hasZoomIn = !!document.getElementById("multi-zoom-in");
-  const hasZoomOut = !!document.getElementById("multi-zoom-out");
-  const hasReset = !!document.getElementById("multi-reset-view-btn");
+  const zoomIn = document.getElementById("multi-zoom-in");
+  const zoomOut = document.getElementById("multi-zoom-out");
+  const reset = document.getElementById("multi-reset-view-btn");
+  const hasZoomIn = !!zoomIn && isElementInsideContainer(container, zoomIn);
+  const hasZoomOut = !!zoomOut && isElementInsideContainer(container, zoomOut);
+  const hasReset = !!reset && isElementInsideContainer(container, reset);
 
   if (hasZoomIn && hasZoomOut && hasReset) {
     attachMultiControlHandlers();
     return;
   }
+  [zoomIn, zoomOut, reset].forEach((element) => {
+    if (element && !isElementInsideContainer(container, element)) {
+      removeElementOrParentOverlay(element);
+    }
+  });
 
   const overlay = document.createElement("div");
+  overlay.dataset.providerMapControlOverlay = "true";
   overlay.className =
     "absolute top-4 right-3 z-[1000] bg-white/80 backdrop-blur-sm rounded-full shadow-md flex items-center space-x-1 p-1 border border-slate-200";
   overlay.innerHTML = `

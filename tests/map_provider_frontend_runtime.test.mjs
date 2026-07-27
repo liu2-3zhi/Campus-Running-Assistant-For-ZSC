@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 function extractFunctionSource(source, functionName) {
-  const asyncSignature = `async function ${functionName}`;
-  const syncSignature = `function ${functionName}`;
+  const asyncSignature = `async function ${functionName}(`;
+  const syncSignature = `function ${functionName}(`;
   let start = source.indexOf(asyncSignature);
   if (start === -1) {
     start = source.indexOf(syncSignature);
@@ -101,8 +101,21 @@ function createDocument(options = {}) {
         this.children = this.children.filter((item) => item !== child);
         child.parentNode = null;
       },
+      remove() {
+        if (this.parentNode && typeof this.parentNode.removeChild === 'function') {
+          this.parentNode.removeChild(this);
+        }
+      },
       addEventListener(eventName, handler) {
         this.events.push({ eventName, handler });
+      },
+      contains(child) {
+        let node = child;
+        while (node) {
+          if (node === this) return true;
+          node = node.parentNode;
+        }
+        return false;
       },
       classList: {
         add() {},
@@ -118,9 +131,9 @@ function createDocument(options = {}) {
         const idPattern = /id="([^"]+)"/g;
         let match = idPattern.exec(this._innerHTML);
         while (match) {
-          if (!elements.has(match[1])) {
-            elements.set(match[1], createElementObject(match[1]));
-          }
+          const child = createElementObject(match[1]);
+          child.parentNode = this;
+          elements.set(match[1], child);
           match = idPattern.exec(this._innerHTML);
         }
       },
@@ -156,6 +169,10 @@ function createDocument(options = {}) {
     },
     querySelector() {
       return null;
+    },
+    events: [],
+    addEventListener(eventName, handler) {
+      this.events.push({ eventName, handler });
     },
     head: createElementObject('head'),
     body: createElementObject('body'),
@@ -265,6 +282,7 @@ function createTianDiTuSdk() {
       this.centerAndZoomCalls = [];
       this.zoomInCalls = 0;
       this.zoomOutCalls = 0;
+      this.panByCalls = [];
     }
     centerAndZoom(center, zoom) {
       this.center = center;
@@ -292,6 +310,9 @@ function createTianDiTuSdk() {
     }
     zoomOut() {
       this.zoomOutCalls += 1;
+    }
+    panBy(x, y) {
+      this.panByCalls.push({ x, y });
     }
     clearOverLays() {
       this.overlays = [];
@@ -510,6 +531,12 @@ function createRuntime(provider, options = {}) {
     'loadTianDiTuMapOnce',
     'loadBaiduMapOnce',
     'loadActiveMapProviderRuntime',
+    'getProviderMapSurfaceId',
+    'getProviderMapSurface',
+    'clearProviderMapContainerChildren',
+    'ensureProviderMapSurface',
+    'isElementInsideContainer',
+    'removeElementOrParentOverlay',
     'getTianDiTuToken',
     'createTianDiTuTileLayer',
     'applyTianDiTuDefaultMapType',
@@ -522,6 +549,11 @@ function createRuntime(provider, options = {}) {
     'applyProviderMapDefaultOrientation',
     'applyProviderMapDefaultView',
     'addBaiduProvider3DControl',
+    'getProvider3DViewButtonId',
+    'removeProvider3DViewControl',
+    'attachProvider3DViewControlHandler',
+    'ensureProvider3DViewControl',
+    'enableTianDiTuRightDragPan',
     'enableProviderMapInteractions',
     'ensureProviderMapContextMenuGuard',
     'initProviderMap',
@@ -823,6 +855,98 @@ test('provider maps hide native controls and keep app controls at the amap posit
     assert.match(controlOverlay.className, /top-4 right-3/, provider);
     assert.match(controlOverlay.className, /z-\[1000\]/, provider);
   }
+});
+
+test('provider maps initialize SDKs on an isolated surface below app controls', () => {
+  const providers = ['tencent', 'tianditu', 'baidu'];
+
+  for (const provider of providers) {
+    const runtime = createRuntime(provider, {
+      baiduGlOnly: provider === 'baidu',
+      strictDocumentIds: true,
+    });
+    const doc = runtime.getDocument();
+    const container = doc.getElementById('map-container');
+
+    assert.equal(runtime.initProviderMap('map-container', false), true, provider);
+
+    const surface = doc.getElementById('map-container-provider-surface');
+    assert.ok(surface, `${provider} should create an SDK-only map surface`);
+    assert.equal(surface.parentNode, container, `${provider} surface should stay inside outer map container`);
+    assert.match(surface.className, /absolute/, provider);
+    assert.match(surface.className, /inset-0/, provider);
+
+    const instance = runtime.getProviderMapInstance('map-container');
+    if (provider === 'tencent') {
+      assert.equal(instance.container, surface);
+    } else {
+      assert.equal(instance.containerId, surface.id);
+    }
+
+    const controlOverlay = container.children.find(
+      (child) => String(child.innerHTML).includes('reset-view-btn'),
+    );
+    assert.ok(controlOverlay, `${provider} should keep app controls on the outer container`);
+    assert.equal(controlOverlay.parentNode, container, provider);
+    assert.notEqual(controlOverlay.parentNode, surface, provider);
+  }
+});
+
+test('baidu provider exposes an app-level 3d view button at the top left', () => {
+  const runtime = createRuntime('baidu', { baiduGlOnly: true, strictDocumentIds: true });
+  const doc = runtime.getDocument();
+  const container = doc.getElementById('map-container');
+
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+
+  const button = doc.getElementById('provider-3d-view-btn');
+  assert.ok(button, 'baidu should expose a stable app-level 3D view button');
+  const overlay = container.children.find(
+    (child) => String(child.innerHTML).includes('provider-3d-view-btn'),
+  );
+  assert.ok(overlay);
+  assert.match(overlay.className, /top-4 left-3/);
+  assert.match(overlay.className, /z-\[1000\]/);
+
+  const instance = runtime.getProviderMapInstance('map-container');
+  instance.setTilt(0);
+  instance.setHeading(123);
+  const click = button.events.find((event) => event.eventName === 'click');
+  assert.ok(click, '3D view button should be clickable');
+  click.handler();
+  assert.equal(instance.tilt, 55);
+  assert.equal(instance.heading, 0);
+});
+
+test('tianditu provider supports right-button drag panning on the SDK surface', () => {
+  const runtime = createRuntime('tianditu', { strictDocumentIds: true });
+  const doc = runtime.getDocument();
+
+  assert.equal(runtime.initProviderMap('map-container', false), true);
+
+  const surface = doc.getElementById('map-container-provider-surface');
+  const instance = runtime.getProviderMapInstance('map-container');
+  const down = surface.events.find((event) => event.eventName === 'mousedown');
+  const move = doc.events.find((event) => event.eventName === 'mousemove');
+  const up = doc.events.find((event) => event.eventName === 'mouseup');
+  assert.ok(down);
+  assert.ok(move);
+  assert.ok(up);
+
+  let prevented = 0;
+  const eventBase = {
+    button: 2,
+    preventDefault() {
+      prevented += 1;
+    },
+    stopPropagation() {},
+  };
+  down.handler({ ...eventBase, clientX: 100, clientY: 100 });
+  move.handler({ ...eventBase, clientX: 112, clientY: 92 });
+  up.handler({ ...eventBase, clientX: 112, clientY: 92 });
+
+  assert.deepEqual(instance.panByCalls, [{ x: 12, y: -8 }]);
+  assert.ok(prevented >= 2);
 });
 
 test('fitProviderMapToLastRoute resets provider maps to the default view without a drawn route', () => {

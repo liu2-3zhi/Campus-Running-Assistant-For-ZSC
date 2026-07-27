@@ -129,19 +129,26 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn('window.BMapGL && typeof window.BMapGL.Map === "function"', runtime_source)
         self.assertIn("百度地图脚本加载完成但运行时不可用", runtime_source)
 
-    def test_provider_map_reinit_does_not_clear_existing_sdk_dom(self):
+    def test_provider_map_reinit_uses_isolated_sdk_surface(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
         provider_map_source = source[
             source.index("function initProviderMap("):
             source.index("function renderMapProviderFrontendPlaceholder(", source.index("function initProviderMap("))
         ]
+        surface_source = source[
+            source.index("function ensureProviderMapSurface("):
+            source.index("function isElementInsideContainer(", source.index("function ensureProviderMapSurface("))
+        ]
 
-        self.assertIn("if (!instance) {", provider_map_source)
-        self.assertIn('container.innerHTML = "";', provider_map_source)
-        self.assertLess(
-            provider_map_source.index("if (!instance) {"),
-            provider_map_source.index('container.innerHTML = "";'),
-        )
+        self.assertIn("function getProviderMapSurface(", source)
+        self.assertIn("function ensureProviderMapSurface(", source)
+        self.assertIn("clearProviderMapContainerChildren(container);", surface_source)
+        self.assertIn("surface.id = getProviderMapSurfaceId(containerId);", surface_source)
+        self.assertIn('surface.className = "absolute inset-0 w-full h-full";', surface_source)
+        self.assertIn("surface = ensureProviderMapSurface(containerId, !instance);", provider_map_source)
+        self.assertIn("new TMap.Map(surface,", provider_map_source)
+        self.assertIn("new T.Map(surface.id)", provider_map_source)
+        self.assertIn("new BMapGL.Map(surface.id,", provider_map_source)
 
     def test_provider_map_instances_are_recreated_when_provider_changes(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
