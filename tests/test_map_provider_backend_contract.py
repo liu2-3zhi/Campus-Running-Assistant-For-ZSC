@@ -1,21 +1,41 @@
 import unittest
 from pathlib import Path
 import ast
+import base64
+import json
 import logging
+import re
 import subprocess
 import tempfile
 import threading
 from types import SimpleNamespace
 from unittest import mock
 
+from flask import Flask
+
 import main as main_module
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MAIN_PATH = PROJECT_ROOT / "main.py"
+DOCKER_ENTRYPOINT_PATH = PROJECT_ROOT / "docker" / "docker-entrypoint.sh"
 
 
 class TestMapProviderBackendContract(unittest.TestCase):
+    def _decode_obfuscated_runtime_script(self, script):
+        match = re.search(
+            r"const\s+_[0-9a-f]+='([^']+)',_[0-9a-f]+='([^']+)';",
+            script,
+        )
+        self.assertIsNotNone(match)
+        payload = base64.b64decode(match.group(1))
+        mask = base64.b64decode(match.group(2))
+        decoded = bytes(
+            byte ^ mask[index % len(mask)]
+            for index, byte in enumerate(payload)
+        )
+        return decoded.decode("utf-8")
+
     def _runtime_config_with_map(self, provider, providers):
         temp = tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False)
         self.addCleanup(lambda path=temp.name: Path(path).unlink(missing_ok=True))
@@ -243,7 +263,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
             },
             provider="amap",
         )
-        self.assertEqual(bundle["algorithm"], "RSA-OAEP-256")
+        self.assertNotIn("algorithm", bundle)
         self.assertRegex(
             bundle["runtime_script"],
             r"^/api/map_key_runtime\.js\?v=[0-9a-f]+$",
@@ -263,6 +283,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
             provider="tencent",
         )
 
+        self.assertEqual(bundle["provider"], "tencent")
         self.assertEqual(set(bundle["providers"]), {"tencent"})
         self.assertEqual(bundle["providers"]["tencent"]["field"], "map_key")
         self.assertNotIn("amap", bundle["providers"])
@@ -434,6 +455,8 @@ class TestMapProviderBackendContract(unittest.TestCase):
         source = MAIN_PATH.read_text(encoding="utf-8")
 
         self.assertIn('@app.route("/api/map_key_runtime.js")', source)
+        self.assertIn('@app.route("/api/map_provider_keys/decrypt"', source)
+        self.assertIn("def _decrypt_map_provider_key_bundle(", source)
         self.assertIn('return _apply_no_cache_headers(response)', source)
         self.assertIn(
             '"runtime_script": _get_map_key_runtime_script_url(',
@@ -443,6 +466,240 @@ class TestMapProviderBackendContract(unittest.TestCase):
         self.assertNotIn(
             'runtime_js = _ensure_map_key_runtime_cache().get("runtime_script", "")',
             scripts_source,
+        )
+
+    def test_generated_map_key_runtime_hides_static_crypto_material(self):
+        runtime_template = main_module._load_map_key_runtime_template()
+        script = main_module._build_obfuscated_map_key_runtime_script(
+            "runtime-secret-version",
+        )
+        decoded_script = self._decode_obfuscated_runtime_script(script)
+
+        for clear_text in (
+            "__MAP_KEY_RUNTIME_PRIVATE_KEY_PEM__",
+            "BEGIN PRIVATE KEY",
+            "secret-private-key",
+            "RSA-OAEP",
+            "SHA-256",
+            "pkcs8",
+            "crypto.subtle",
+            "runtimePrivateKeyPem",
+        ):
+            self.assertNotIn(clear_text, runtime_template)
+            self.assertNotIn(clear_text, script)
+            self.assertNotIn(clear_text, decoded_script)
+        self.assertIn('"/api/map_provider_keys/decrypt"', runtime_template)
+        self.assertIn('"/api/map_provider_keys/decrypt"', decoded_script)
+        self.assertNotIn("__MAP_KEY_RUNTIME__", script)
+        self.assertNotIn("decryptMapProviderKeys", script)
+        self.assertNotIn("/api/map_provider_keys/decrypt", script)
+        self.assertNotIn("runtime-secret-version", script)
+        self.assertLessEqual(script.count("\n"), 2)
+
+    def test_server_decrypts_map_provider_bundle_without_client_private_key(self):
+        context = main_module._generate_map_key_runtime_context()
+        bundle = main_module._build_map_provider_key_bundle(
+            {
+                "amap": {"js_key": "amap-server-secret"},
+                "tencent": {"map_key": "tencent-server-secret"},
+            },
+            provider="amap",
+            runtime_context=context,
+        )
+
+        decrypted = main_module._decrypt_map_provider_key_bundle(bundle, context)
+
+        self.assertEqual(decrypted, {"amap": {"js_key": "amap-server-secret"}})
+        self.assertNotIn("private_key", json.dumps(bundle, ensure_ascii=False))
+
+    def test_map_provider_decrypt_request_requires_active_session_and_version(self):
+        app = Flask(__name__)
+        session_id = "55555555-5555-4555-8555-555555555555"
+        context = main_module._generate_map_key_runtime_context()
+        bundle = main_module._build_map_provider_key_bundle(
+            {"amap": {"js_key": "amap-endpoint-secret"}},
+            provider="amap",
+            runtime_context=context,
+        )
+        tencent_bundle = main_module._build_map_provider_key_bundle(
+            {"tencent": {"map_key": "tencent-endpoint-secret"}},
+            provider="tencent",
+            runtime_context=context,
+        )
+        bundle["providers"]["tencent"] = tencent_bundle["providers"]["tencent"]
+        runtime_maps = (
+            main_module.map_key_runtime_cache,
+            main_module.map_key_runtime_session_contexts,
+            main_module.map_key_runtime_session_users,
+            main_module.map_key_runtime_user_contexts,
+            main_module.map_key_runtime_contexts_by_version,
+        )
+        original_web_sessions = getattr(main_module, "web_sessions", None)
+        original_web_sessions_lock = getattr(main_module, "web_sessions_lock", None)
+
+        for runtime_map in runtime_maps:
+            runtime_map.clear()
+        main_module.web_sessions = {
+            session_id: SimpleNamespace(is_guest=False, auth_username="alice")
+        }
+        main_module.web_sessions_lock = threading.RLock()
+        main_module.map_key_runtime_session_contexts[session_id] = context
+        main_module.map_key_runtime_session_users[session_id] = "alice"
+        main_module.map_key_runtime_user_contexts["alice"] = context
+        main_module.map_key_runtime_contexts_by_version[
+            context["runtime_version"]
+        ] = context
+
+        try:
+            with app.test_request_context(
+                f"/api/map_provider_keys/decrypt?v={context['runtime_version']}",
+                method="POST",
+                headers={"X-Session-ID": session_id},
+                json={
+                    "runtime_version": context["runtime_version"],
+                    "bundle": bundle,
+                },
+            ):
+                response = main_module._decrypt_map_provider_keys_for_request()
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.get_json(),
+                    {
+                        "success": True,
+                        "providers": {
+                            "amap": {"js_key": "amap-endpoint-secret"}
+                        },
+                    },
+                )
+                self.assertIn("no-store", response.headers.get("Cache-Control", ""))
+
+            with app.test_request_context(
+                "/api/map_provider_keys/decrypt?v=wrong-runtime",
+                method="POST",
+                headers={"X-Session-ID": session_id},
+                json={
+                    "runtime_version": "wrong-runtime",
+                    "bundle": bundle,
+                },
+            ):
+                response = main_module._decrypt_map_provider_keys_for_request()
+                self.assertEqual(response.status_code, 404)
+                self.assertFalse(response.get_json()["success"])
+
+            with app.test_request_context(
+                f"/api/map_provider_keys/decrypt?v={context['runtime_version']}",
+                method="POST",
+                headers={"Referer": f"http://localhost/uuid={session_id}"},
+                json={
+                    "runtime_version": context["runtime_version"],
+                    "bundle": bundle,
+                },
+            ):
+                response = main_module._decrypt_map_provider_keys_for_request()
+                self.assertEqual(response.status_code, 404)
+                self.assertFalse(response.get_json()["success"])
+        finally:
+            for runtime_map in runtime_maps:
+                runtime_map.clear()
+            if original_web_sessions is not None:
+                main_module.web_sessions = original_web_sessions
+            else:
+                delattr(main_module, "web_sessions")
+            if original_web_sessions_lock is not None:
+                main_module.web_sessions_lock = original_web_sessions_lock
+            else:
+                delattr(main_module, "web_sessions_lock")
+
+    def test_generated_map_key_runtime_executes_obfuscated_payload(self):
+        context = main_module._generate_map_key_runtime_context()
+        session_id = "11111111-1111-4111-8111-111111111111"
+        secret = "amap-runtime-secret-from-api"
+        payload = json.dumps(
+            {
+                "script": context["runtime_script"],
+                "runtime_version": context["runtime_version"],
+                "session_id": session_id,
+                "secret": secret,
+            }
+        )
+        node_script = r"""
+const payload = JSON.parse(process.argv[process.argv.length - 1]);
+const { TextDecoder } = require("util");
+globalThis.TextDecoder = TextDecoder;
+globalThis.window = globalThis;
+globalThis.location = { pathname: `/uuid=${payload.session_id}` };
+globalThis.sessionStorage = {
+  getItem(name) {
+    return name === "session_uuid" ? payload.session_id : "";
+  },
+};
+if (!globalThis.atob) {
+  globalThis.atob = (value) => Buffer.from(value, "base64").toString("binary");
+}
+globalThis.fetch = async (url, options) => {
+  if (!String(url).includes("/api/map_provider_keys/decrypt?v=" + encodeURIComponent(payload.runtime_version))) {
+    throw new Error("unexpected decrypt endpoint: " + url);
+  }
+  if (!options || options.method !== "POST") {
+    throw new Error("decrypt request must use POST");
+  }
+  if (!options.headers || options.headers["X-Session-ID"] !== payload.session_id) {
+    throw new Error("missing session header");
+  }
+  const body = JSON.parse(options.body || "{}");
+  if (body.runtime_version !== payload.runtime_version) {
+    throw new Error("missing runtime version");
+  }
+  if (!body.bundle || !body.bundle.providers || !body.bundle.providers.amap) {
+    throw new Error("missing key bundle");
+  }
+  return {
+    ok: true,
+    json: async () => ({ success: true, providers: { amap: { js_key: payload.secret } } }),
+  };
+};
+(async () => {
+  eval(payload.script);
+  const runtime = globalThis.__MAP_KEY_RUNTIME__;
+  if (!runtime || typeof runtime.decryptMapProviderKeys !== "function") {
+    throw new Error("runtime unavailable");
+  }
+  const result = await runtime.decryptMapProviderKeys({
+    runtime_version: payload.runtime_version,
+    providers: {
+      amap: { field: "js_key", ciphertext: "server-only-ciphertext" },
+    },
+  });
+  if (!result.amap || result.amap.js_key !== payload.secret) {
+    throw new Error("server decrypt result mismatch");
+  }
+})().catch((error) => {
+  console.error(error && error.stack ? error.stack : String(error));
+  process.exit(1);
+});
+"""
+        result = subprocess.run(
+            ["node", "-e", node_script, payload],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(
+            result.returncode,
+            0,
+            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}",
+        )
+
+    def test_map_key_runtime_template_is_not_public_static_asset(self):
+        source = MAIN_PATH.read_text(encoding="utf-8")
+        entrypoint_source = DOCKER_ENTRYPOINT_PATH.read_text(encoding="utf-8")
+
+        self.assertFalse((PROJECT_ROOT / "scripts" / "map_key_runtime.js").exists())
+        self.assertNotIn('"scripts", MAP_KEY_RUNTIME_SCRIPT_NAME', source)
+        self.assertIn(
+            r"location ~* ^/scripts/map_key_runtime\.js$",
+            entrypoint_source,
         )
 
     def test_server_start_initializes_a_fresh_map_key_runtime(self):

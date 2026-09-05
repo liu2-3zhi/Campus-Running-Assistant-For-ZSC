@@ -31,9 +31,11 @@ function loadRuntimeScript(scriptUrl, runtimeVersion) {
       if (!expectedVersion || window[RUNTIME_NAMESPACE]?.version === expectedVersion) {
         resolve()
       } else {
-        reject(new Error('地图密钥运行时版本不匹配'))
+        existing.remove()
       }
-      return
+      if (!expectedVersion || window[RUNTIME_NAMESPACE]?.version === expectedVersion) {
+        return
+      }
     }
     const script = document.createElement('script')
     script.src = getRuntimeScriptUrl(scriptUrl, expectedVersion)

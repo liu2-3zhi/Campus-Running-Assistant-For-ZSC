@@ -7,6 +7,7 @@ SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.new.js"
 LOAD_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "load_amap_watermark.js"
 MAIN_PATH = PROJECT_ROOT / "main.py"
 INDEX_PATH = PROJECT_ROOT / "index.html"
+FRONTEND_MAP_KEY_RUNTIME_PATH = PROJECT_ROOT / "frontend" / "src" / "services" / "mapKeyRuntime.js"
 
 
 class TestMapProviderRuntimeGuards(unittest.TestCase):
@@ -77,6 +78,19 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertNotIn(
             'console.log("[水印控制] 准备保存配置（移动端）:", requestBody);',
             source,
+        )
+
+    def test_vue_runtime_loader_reloads_stale_same_version_script(self):
+        source = FRONTEND_MAP_KEY_RUNTIME_PATH.read_text(encoding="utf-8")
+        existing_source = source[
+            source.index("if (existing) {"):
+            source.index("const script = document.createElement('script')")
+        ]
+
+        self.assertIn("existing.remove()", existing_source)
+        self.assertNotIn(
+            "reject(new Error('地图密钥运行时版本不匹配'))",
+            existing_source,
         )
 
     def test_missing_key_modal_is_provider_agnostic(self):

@@ -7,6 +7,9 @@ from __future__ import annotations
 import ast
 import math
 import tempfile
+
+from flask import jsonify, request
+
 _import_failures = []
 _log_buffer = []
 _logging_exception_hooks_installed = False
@@ -291,6 +294,63 @@ MAP_PROVIDER_KEY_FIELDS = {
 
 MAP_KEY_RUNTIME_SCRIPT_NAME = "map_key_runtime.js"
 MAP_KEY_RUNTIME_NAMESPACE = "__MAP_KEY_RUNTIME__"
+MAP_KEY_RUNTIME_TEMPLATE = r"""
+(function (globalScope) {
+  "use strict";
+
+  const runtimeVersion = __MAP_KEY_RUNTIME_VERSION__;
+  const runtimeNamespace = "__MAP_KEY_RUNTIME_NAMESPACE__";
+  const decryptEndpoint = "/api/map_provider_keys/decrypt";
+
+  function getSessionId() {
+    try {
+      const sessionStorageValue = globalScope.sessionStorage
+        ? globalScope.sessionStorage.getItem("session_uuid")
+        : "";
+      if (sessionStorageValue) return sessionStorageValue;
+    } catch (error) {
+      // Ignore restricted storage; path fallback below still binds ordinary UI sessions.
+    }
+    const pathname = globalScope.location && globalScope.location.pathname
+      ? String(globalScope.location.pathname)
+      : "";
+    const match = pathname.match(/\/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})/i);
+    return match ? match[1] : "";
+  }
+
+  async function decryptMapProviderKeys(bundle) {
+    const headers = { "Content-Type": "application/json" };
+    const sessionId = getSessionId();
+    if (sessionId) headers["X-Session-ID"] = sessionId;
+    const endpointUrl = runtimeVersion
+      ? decryptEndpoint + "?v=" + encodeURIComponent(runtimeVersion)
+      : decryptEndpoint;
+    const response = await fetch(endpointUrl, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers,
+      body: JSON.stringify({
+        runtime_version: runtimeVersion,
+        bundle: bundle || {},
+      }),
+    });
+    if (!response.ok) {
+      throw new Error("地图密钥解密请求失败");
+    }
+    const payload = await response.json();
+    if (!payload || payload.success === false) {
+      throw new Error((payload && payload.message) || "地图密钥解密失败");
+    }
+    return payload.providers || {};
+  }
+
+  globalScope[runtimeNamespace] = Object.freeze({
+    version: runtimeVersion,
+    decryptMapProviderKeys,
+  });
+})(window);
+"""
 map_key_runtime_lock = None
 map_key_runtime_cache = {}
 map_key_runtime_session_contexts = {}
@@ -409,10 +469,7 @@ def _strip_map_provider_secret_fields(map_providers):
 
 
 def _load_map_key_runtime_template():
-    base_dir = os.path.dirname(__file__)
-    runtime_js_path = os.path.join(base_dir, "scripts", MAP_KEY_RUNTIME_SCRIPT_NAME)
-    with open(runtime_js_path, "r", encoding="utf-8") as f:
-        return f.read()
+    return MAP_KEY_RUNTIME_TEMPLATE
 
 
 def _get_crypto_primitives():
@@ -423,6 +480,8 @@ def _get_crypto_primitives():
 
 
 def _obfuscate_runtime_javascript(source):
+    import base64 as _base64
+
     source = re.sub(r"/\*[\s\S]*?\*/", "", str(source or ""))
     compact_lines = []
     for line in source.splitlines():
@@ -431,14 +490,37 @@ def _obfuscate_runtime_javascript(source):
         if not line:
             continue
         compact_lines.append(line)
-    return "".join(compact_lines)
+    compact_source = "".join(compact_lines)
+    source_bytes = compact_source.encode("utf-8")
+    mask = secrets.token_bytes(16)
+    encoded_bytes = bytes(
+        byte ^ mask[index % len(mask)]
+        for index, byte in enumerate(source_bytes)
+    )
+    payload = _base64.b64encode(encoded_bytes).decode("ascii")
+    mask_payload = _base64.b64encode(mask).decode("ascii")
+    payload_name = f"_{secrets.token_hex(6)}"
+    mask_name = f"_{secrets.token_hex(6)}"
+    decode_name = f"_{secrets.token_hex(6)}"
+    return (
+        f"(function(){{'use strict';"
+        f"const {payload_name}='{payload}',{mask_name}='{mask_payload}';"
+        f"function {decode_name}(v){{"
+        f"const b=atob(v),a=new Uint8Array(b.length);"
+        f"for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);"
+        f"return a}}"
+        f"const d={decode_name}({payload_name}),m={decode_name}({mask_name}),"
+        f"o=new Uint8Array(d.length);"
+        f"for(let i=0;i<d.length;i++)o[i]=d[i]^m[i%m.length];"
+        f"(0,Function)(new TextDecoder().decode(o))();"
+        f"}})();"
+    )
 
 
-def _build_obfuscated_map_key_runtime_script(private_key_pem, runtime_version):
+def _build_obfuscated_map_key_runtime_script(runtime_version):
     runtime_template = _load_map_key_runtime_template()
     rendered = (
         runtime_template
-        .replace("__MAP_KEY_RUNTIME_PRIVATE_KEY_PEM__", json.dumps(str(private_key_pem or "")))
         .replace("__MAP_KEY_RUNTIME_NAMESPACE__", MAP_KEY_RUNTIME_NAMESPACE)
         .replace("__MAP_KEY_RUNTIME_VERSION__", json.dumps(str(runtime_version or "")))
     )
@@ -446,23 +528,17 @@ def _build_obfuscated_map_key_runtime_script(private_key_pem, runtime_version):
 
 
 def _generate_map_key_runtime_context():
-    rsa, _, serialization, _ = _get_crypto_primitives()
+    rsa, _, _, _ = _get_crypto_primitives()
     private_key = rsa.generate_private_key(
         public_exponent=65537,
         key_size=2048,
     )
-    private_key_pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
-    ).decode("utf-8")
     runtime_version = secrets.token_hex(8)
     return {
         "private_key": private_key,
         "public_key": private_key.public_key(),
         "runtime_version": runtime_version,
         "runtime_script": _build_obfuscated_map_key_runtime_script(
-            private_key_pem=private_key_pem,
             runtime_version=runtime_version,
         ),
     }
@@ -602,10 +678,12 @@ def _release_map_key_runtime_session(session_id, username=None):
         _unregister_map_key_runtime_context_if_unused(context)
 
 
-def _get_map_key_runtime_context_for_request():
+def _get_map_key_runtime_context_for_request(require_session_header=False):
     session_id = normalize_session_uuid(
         request.headers.get("X-Session-ID", "")
     )
+    if require_session_header and not session_id:
+        return None
     if not session_id and request.referrer:
         uuid_match = re.search(
             r"/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})",
@@ -687,6 +765,87 @@ def _encrypt_map_provider_secret(secret_value, runtime_context=None):
     return _base64.b64encode(ciphertext).decode("utf-8")
 
 
+def _decrypt_map_provider_key_bundle(key_bundle, runtime_context):
+    if not isinstance(key_bundle, dict) or not isinstance(runtime_context, dict):
+        return {}
+    private_key = runtime_context.get("private_key")
+    if private_key is None:
+        return {}
+    providers_payload = key_bundle.get("providers")
+    if not isinstance(providers_payload, dict):
+        return {}
+    requested_provider = str(key_bundle.get("provider") or "").strip().lower()
+    if requested_provider not in MAP_PROVIDER_KEY_FIELDS:
+        if len(providers_payload) != 1:
+            return {}
+        requested_provider = str(next(iter(providers_payload)) or "").strip().lower()
+    provider = _normalize_map_provider(requested_provider)
+    if provider != requested_provider:
+        return {}
+    secret_info = providers_payload.get(provider)
+    if not isinstance(secret_info, dict):
+        return {}
+    field_name = str(secret_info.get("field") or "").strip()
+    if field_name != MAP_PROVIDER_KEY_FIELDS.get(provider):
+        return {}
+    ciphertext = str(secret_info.get("ciphertext") or "").strip()
+    if not ciphertext:
+        return {}
+
+    import base64 as _base64
+
+    _, padding, _, hashes = _get_crypto_primitives()
+    try:
+        plain_text = private_key.decrypt(
+            _base64.b64decode(ciphertext),
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None,
+            ),
+        ).decode("utf-8")
+    except Exception as exc:
+        logging.warning(
+            "[MapKeyRuntime] 地图密钥密文解密失败: provider=%s, error=%s",
+            provider,
+            type(exc).__name__,
+        )
+        return {}
+    return {provider: {field_name: plain_text}}
+
+
+def _map_key_runtime_unavailable_response():
+    response = jsonify({"success": False, "message": "Runtime unavailable"})
+    response.status_code = 404
+    return _apply_no_cache_headers(response)
+
+
+def _decrypt_map_provider_keys_for_request():
+    runtime_context = _get_map_key_runtime_context_for_request(
+        require_session_header=True
+    )
+    if not runtime_context:
+        return _map_key_runtime_unavailable_response()
+
+    payload = request.get_json(silent=True) or {}
+    runtime_version = str(
+        payload.get("runtime_version") or request.args.get("v", "")
+    ).strip()
+    if (
+        not runtime_version
+        or runtime_version
+        != str(runtime_context.get("runtime_version") or "").strip()
+    ):
+        return _map_key_runtime_unavailable_response()
+
+    providers = _decrypt_map_provider_key_bundle(
+        payload.get("bundle") or {},
+        runtime_context,
+    )
+    response = jsonify({"success": True, "providers": providers})
+    return _apply_no_cache_headers(response)
+
+
 def _build_map_provider_key_bundle(
     map_providers,
     provider=None,
@@ -706,7 +865,7 @@ def _build_map_provider_key_bundle(
             "public_key"
         ):
             return {
-                "algorithm": "RSA-OAEP-256",
+                "provider": requested_provider,
                 "runtime_version": "",
                 "runtime_script": "",
                 "providers": {
@@ -731,7 +890,7 @@ def _build_map_provider_key_bundle(
             "ciphertext": encrypted_secret,
         }
         return {
-            "algorithm": "RSA-OAEP-256",
+            "provider": requested_provider,
             "runtime_version": runtime_context.get("runtime_version", ""),
             "runtime_script": _get_map_key_runtime_script_url(
                 runtime_context.get("runtime_version", "")
@@ -746,7 +905,7 @@ def _build_map_provider_key_bundle(
             {"field": requested_key_field, "ciphertext": ""},
         )
         return {
-            "algorithm": "RSA-OAEP-256",
+            "provider": requested_provider,
             "runtime_version": "",
             "runtime_script": _get_map_key_runtime_script_url(""),
             "providers": encrypted_providers,
@@ -37644,6 +37803,20 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"[MapKeyRuntime] 返回运行时脚本失败: {e}")
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    @app.route("/api/map_provider_keys/decrypt", methods=["POST"])
+    def decrypt_map_provider_keys():
+        """使用当前会话绑定的服务端私钥解密地图密钥密文。"""
+        try:
+            return _decrypt_map_provider_keys_for_request()
+        except Exception as e:
+            logging.error(
+                "[MapKeyRuntime] 地图密钥解密接口失败: %s",
+                type(e).__name__,
+            )
+            response = jsonify({"success": False, "message": "地图密钥解密失败"})
+            response.status_code = 500
+            return _apply_no_cache_headers(response)
 
     @app.route("/api/cdn/map/<map_key>")
     def get_cdn_cached_source_map(map_key):
