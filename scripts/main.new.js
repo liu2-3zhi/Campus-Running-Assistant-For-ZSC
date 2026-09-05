@@ -14,6 +14,82 @@ const SECURITY_CONSTRAINTS = {
   USERNAME_PATTERN: /^[a-zA-Z0-9_\-\.@]+$/,
 };
 
+const CLIENT_LOG_SENSITIVE_KEYS = new Set([
+  "apikey",
+  "mapkey",
+  "jskey",
+  "amapkey",
+  "amapjskey",
+  "tencentmapkey",
+  "tianditutoken",
+  "baidumapak",
+  "key",
+  "token",
+  "password",
+  "secret",
+  "privatekey",
+  "accesskey",
+  "authorization",
+  "cookie",
+  "captcha",
+  "captchaid",
+  "smscode",
+  "twofacode",
+  "signature",
+  "authcode",
+  "subopenid",
+  "openid",
+  "appid",
+  "sign",
+  "payurl",
+  "paymenturl",
+  "payinfo",
+  "returnurl",
+  "notifyurl",
+  "requesturl",
+]);
+
+const CLIENT_LOG_SENSITIVE_QUERY_PATTERN = /([?&](?:api[_-]?key|key|token|password|secret|authorization|cookie|captcha(?:[_-]?id)?|sms[_-]?code|verification[_-]?code|auth[_-]?code|openid|appid|signature|sign|p)=)[^&#\s]+/gi;
+const CLIENT_LOG_SENSITIVE_ASSIGNMENT_PATTERN = /((?:api[_-]?key|map[_-]?key|js[_-]?key|token|password|secret|authorization|cookie|captcha(?:[_-]?id)?|sms[_-]?code|verification[_-]?code|auth[_-]?code|openid|appid|signature|sign)\s*[:=]\s*)(["']?)[^,\s;&}"']+\2/gi;
+
+function createSafeClientLogValue(value, depth = 0) {
+  if (depth > 5) {
+    return "[已省略]";
+  }
+  if (typeof value === "string") {
+    return value
+      .replace(CLIENT_LOG_SENSITIVE_QUERY_PATTERN, "$1[已隐藏]")
+      .replace(CLIENT_LOG_SENSITIVE_ASSIGNMENT_PATTERN, "$1$2[已隐藏]$2");
+  }
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, 50)
+      .map((item) => createSafeClientLogValue(item, depth + 1));
+  }
+  if (value && typeof value === "object") {
+    const safeValue = {};
+    Object.entries(value).forEach(([key, item]) => {
+      const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (
+        CLIENT_LOG_SENSITIVE_KEYS.has(normalizedKey) ||
+        normalizedKey.includes("apikey") ||
+        normalizedKey.includes("mapkey") ||
+        normalizedKey.includes("password") ||
+        normalizedKey.includes("token") ||
+        normalizedKey.includes("secret") ||
+        normalizedKey.includes("captcha") ||
+        normalizedKey.includes("signature")
+      ) {
+        safeValue[key] = "[已隐藏]";
+      } else {
+        safeValue[key] = createSafeClientLogValue(item, depth + 1);
+      }
+    });
+    return safeValue;
+  }
+  return value;
+}
+
 const mobileAdminUnifiedScrollState = {
   tabType: null,
   scrollTop: 0,
@@ -2981,7 +3057,10 @@ async function loadPaymentMethodsConfig(
 
       if (configData.success) {
         // console.log('[支付配置] 成功获取启用状态响应：', configData);
-        logMessage_Info("[支付配置] 成功获取启用状态响应：", configData);
+        logMessage_Info(
+          "[支付配置] 成功获取启用状态响应：",
+          createSafeClientLogValue(configData),
+        );
       } else {
         // console.warn('[支付配置] 获取启用状态失败，默认显示所有支付方式为启用：', configData.message || '未知错误');
         // logMessage_Warning(
@@ -3931,7 +4010,10 @@ async function savePaymentMethod() {
     };
 
     // console.log('[支付配置] 准备提交的数据：', { code, ...methodData });
-    logMessage_Info("[支付配置] 准备提交的数据：", { code, ...methodData });
+    logMessage_Info(
+      "[支付配置] 准备提交的数据：",
+      createSafeClientLogValue({ code, ...methodData }),
+    );
 
     // === 第3步：判断是添加还是编辑模式 ===
     const mode = modal.dataset.mode || "add";
@@ -4394,7 +4476,7 @@ async function queryOrder() {
     const result = await response.json();
 
     // 输出完整的API响应，方便开发者调试
-    logMessage_Info("[订单查询] API响应：", result);
+    logMessage_Info("[订单查询] API响应：", createSafeClientLogValue(result));
 
     // 4.4 检查业务状态
     // 即使HTTP状态码是200，业务逻辑也可能失败（如订单不存在）
@@ -4414,7 +4496,10 @@ async function queryOrder() {
     const order = result.order;
 
     // 输出订单数据
-    logMessage_Info("[订单查询] 查询成功，订单数据：", order);
+    logMessage_Info(
+      "[订单查询] 查询成功，订单数据：",
+      createSafeClientLogValue(order),
+    );
 
     // ========== 第6步：根据订单状态确定显示样式 ==========
 
@@ -4671,7 +4756,7 @@ function initMobileRefundOrderAutoFill() {
  * @param {string} tradeNo - 订单号
  */
 async function fetchMobileOrderAmountAndFill(tradeNo) {
-  console.log("[移动端退款自动填充] 开始处理订单号:", tradeNo);
+  console.log("[移动端退款自动填充] 开始处理订单查询");
 
   // 获取移动端退款金额输入框
   const amountInput = document.getElementById("refund-amount");
@@ -4707,7 +4792,7 @@ async function fetchMobileOrderAmountAndFill(tradeNo) {
     const data = await response.json();
 
     if (!data.success || !data.order) {
-      console.error("[移动端退款自动填充] API返回数据异常:", data);
+      console.error("[移动端退款自动填充] API返回数据异常");
       return;
     }
     const order = data.order;
@@ -4744,14 +4829,7 @@ async function fetchMobileOrderAmountAndFill(tradeNo) {
     // 填充退款金额（保留两位小数）
     amountInput.value = refundableAmount.toFixed(2);
 
-    console.log("[移动端退款自动填充] 订单金额已填充:", {
-      orderAmount,
-      refundedAmount,
-      refundCount,
-      hasRefundRecords,
-      refundableAmount: refundableAmount,
-      percentage: "80%",
-    });
+    console.log("[移动端退款自动填充] 订单金额已填充");
   } catch (error) {
     console.error("[移动端退款自动填充] 查询订单失败:", error);
   }
@@ -4956,12 +5034,15 @@ async function processRefund() {
   const refundReason = reasonInput.value.trim();
 
   // 输出日志，记录所有输入参数（便于调试）
-  logMessage_Info("[退款功能] 退款参数：", {
-    trade_no: tradeNo,
-    refund_amount: refundAmount,
-    refund_no: refundNo,
-    refund_reason: refundReason || "（未填写）",
-  });
+  logMessage_Info(
+    "[退款功能] 退款参数：",
+    createSafeClientLogValue({
+      trade_no: tradeNo,
+      refund_amount: refundAmount,
+      refund_no: refundNo,
+      refund_reason: refundReason || "（未填写）",
+    }),
+  );
 
   // ========== 第4步：显示"处理中"状态 ==========
 
@@ -5008,7 +5089,7 @@ async function processRefund() {
     const result = await response.json();
 
     // 输出完整的API响应，方便开发者调试
-    logMessage_Info("[退款功能] API响应：", result);
+    logMessage_Info("[退款功能] API响应：", createSafeClientLogValue(result));
 
     // 5.4 检查业务状态
     // 即使HTTP状态码是200，业务逻辑也可能失败（如订单不存在、退款金额超过订单金额等）
@@ -5020,7 +5101,7 @@ async function processRefund() {
     // ========== 第6步：显示退款成功结果 ==========
 
     // 6.1 输出成功日志
-    logMessage_Info("[退款功能] 退款成功：", result);
+    logMessage_Info("[退款功能] 退款成功：", createSafeClientLogValue(result));
 
     // 6.2 构建成功提示HTML
     // 显示绿色的成功提示框，包含退款单号和相关信息
@@ -5373,7 +5454,10 @@ async function testGenerateProductName() {
 
     // 解析响应JSON
     const result = await response.json();
-    logMessage_Info("[移动端商品名测试] API响应：", result);
+    logMessage_Info(
+      "[移动端商品名测试] API响应：",
+      createSafeClientLogValue(result),
+    );
 
     // === 第4步：处理响应 ===
     if (result.success) {
@@ -5924,13 +6008,16 @@ async function createTestOrder() {
   // 输出日志记录生成的订单号
   logMessage_Info("[测试支付] 生成订单号：", tradeNo);
   // 输出日志，记录所有订单参数（便于调试）
-  logMessage_Info("[测试支付] 订单参数：", {
-    trade_no: tradeNo,
-    amount: amount,
-    product_name: productName,
-    pay_type: paymentMethod,
-    method: paymentType,
-  });
+  logMessage_Info(
+    "[测试支付] 订单参数：",
+    createSafeClientLogValue({
+      trade_no: tradeNo,
+      amount: amount,
+      product_name: productName,
+      pay_type: paymentMethod,
+      method: paymentType,
+    }),
+  );
 
   const app_host = window.location.protocol + "//" + window.location.host;
 
@@ -5977,7 +6064,7 @@ async function createTestOrder() {
     const result = await response.json();
 
     // 输出完整的API响应，方便开发者调试
-    logMessage_Info("[测试支付] API响应：", result);
+    logMessage_Info("[测试支付] API响应：", createSafeClientLogValue(result));
 
     // 6.4 检查业务状态
     // 即使HTTP状态码是200，业务逻辑也可能失败
@@ -5999,7 +6086,10 @@ async function createTestOrder() {
     const payInfo = result.pay_info || result.pay_url || "";
 
     // 输出成功日志
-    logMessage_Info("[测试支付] 订单创建成功：", result);
+    logMessage_Info(
+      "[测试支付] 订单创建成功：",
+      createSafeClientLogValue(result),
+    );
 
     // 7.2 填充商户订单号
     const orderIdElem = document.getElementById("test-order-id");
@@ -6216,8 +6306,8 @@ function openTestPayUrl() {
   // data-url属性是在createTestOrder()函数中设置的，包含完整的支付链接
   const payUrl = openPayBtn.getAttribute("data-url");
 
-  // 输出日志，记录获取到的支付链接
-  logMessage_Info("[测试支付] 获取到的支付链接：", payUrl);
+  // 支付链接可能带有签名或临时令牌，不写入日志。
+  logMessage_Info("[测试支付] 已获取支付链接");
 
   // ========== 第3步：验证支付链接是否存在 ==========
 
@@ -6550,7 +6640,10 @@ async function saveAdminPaymentMethodsConfig() {
     };
 
     // 在控制台输出即将提交的配置，便于调试
-    logMessage_Info("[PC端支付配置] 准备提交的配置数据：", config);
+    logMessage_Info(
+      "[PC端支付配置] 准备提交的配置数据：",
+      createSafeClientLogValue(config),
+    );
 
     // === 第3步：发起HTTP PUT请求保存配置 ===
 
@@ -6581,7 +6674,10 @@ async function saveAdminPaymentMethodsConfig() {
       // 5.1 成功情况：响应状态为200且result.success为true
 
       // 输出成功日志
-      logMessage_Info("[PC端支付配置] 支付方式配置保存成功：", result);
+      logMessage_Info(
+        "[PC端支付配置] 支付方式配置保存成功：",
+        createSafeClientLogValue(result),
+      );
 
       // 使用showModalAlert()显示成功提示（绿色样式）
       // 标题设置为"成功"，会触发showModalAlert内部的样式判断，显示为绿色
@@ -6776,7 +6872,10 @@ async function queryAdminPaymentOrder() {
 
     const result = await response.json();
 
-    logMessage_Info("[PC端订单查询] API响应：", result);
+    logMessage_Info(
+      "[PC端订单查询] API响应：",
+      createSafeClientLogValue(result),
+    );
 
     // === 第6步：检查业务状态 ===
 
@@ -7028,7 +7127,7 @@ async function loadAllPaymentOrders() {
 
     // === 第3步：解析响应数据 ===
     const result = await response.json();
-    logMessage_Info("[订单列表] API响应：", result);
+    logMessage_Info("[订单列表] API响应：", createSafeClientLogValue(result));
 
     // === 第4步：检查业务状态 ===
     if (!result.success) {
@@ -7596,7 +7695,7 @@ async function queryOrderManually() {
 
     // === 第5步：解析响应数据 ===
     const result = await response.json();
-    logMessage_Info("[手动查询] API响应：", result);
+    logMessage_Info("[手动查询] API响应：", createSafeClientLogValue(result));
 
     // === 第6步：检查业务状态 ===
     if (!result.success) {
@@ -7702,7 +7801,7 @@ async function fetchOrdersFromPlatform() {
 
     // === 第4步：解析响应数据 ===
     const result = await response.json();
-    logMessage_Info("[拉取订单] API响应：", result);
+    logMessage_Info("[拉取订单] API响应：", createSafeClientLogValue(result));
 
     // === 第5步：检查业务状态 ===
     if (!result.success) {
@@ -7773,7 +7872,10 @@ function showOrderDetailModal_form_botton(order) {
  */
 function showOrderDetailModal(order) {
   // 输出日志：标记显示订单详情
-  logMessage_Info("[订单详情] 显示订单详情：", order);
+  logMessage_Info(
+    "[订单详情] 显示订单详情：",
+    createSafeClientLogValue(order),
+  );
 
   // === 保存当前订单信息到全局变量，供刷新功能使用 ===
   // 将订单对象存储为全局变量，这样刷新按钮的函数可以知道要刷新哪个订单
@@ -8442,12 +8544,15 @@ async function submitAdminPaymentRefund() {
   // 获取退款原因（可选）
   const reason = reasonInput ? reasonInput.value.trim() : "";
 
-  logMessage_Info("[PC端退款] 退款数据：", {
-    tradeNo,
-    amount,
-    refundNo,
-    reason,
-  });
+  logMessage_Info(
+    "[PC端退款] 退款数据：",
+    createSafeClientLogValue({
+      tradeNo,
+      amount,
+      refundNo,
+      reason,
+    }),
+  );
 
   try {
     // === 第3步：发起HTTP POST请求提交退款 ===
@@ -8476,7 +8581,7 @@ async function submitAdminPaymentRefund() {
 
     const result = await response.json();
 
-    logMessage_Info("[PC端退款] API响应：", result);
+    logMessage_Info("[PC端退款] API响应：", createSafeClientLogValue(result));
 
     // === 第6步：检查业务状态 ===
 
@@ -8762,7 +8867,10 @@ async function testGenerateProductName_modal() {
 
     // 解析响应JSON
     const result = await response.json();
-    console.log("[PC端商品名测试] API响应：", result);
+    console.log(
+      "[PC端商品名测试] API响应：",
+      createSafeClientLogValue(result),
+    );
 
     // === 第4步：处理响应 ===
     if (result.success) {
@@ -9234,8 +9342,10 @@ async function createAdminTestPayment() {
     // === 第4步：发起HTTP POST请求创建订单 ===
 
     logMessage_Info(
-      "[PC端测试支付] 发送创建订单请求，API：/api/payment/create 数据：" +
-        JSON.stringify(requestData),
+      `[PC端测试支付] 发送创建订单请求，API：/api/payment/create，` +
+        `支付方式=${method}，接口类型=${paymentType}，` +
+        `包含扫码参数=${Boolean(authCode)}，` +
+        `包含JSAPI参数=${Boolean(subOpenid || subAppid)}`,
     );
 
     const response = await fetch("/api/payment/create", {
@@ -9258,7 +9368,10 @@ async function createAdminTestPayment() {
 
     const result = await response.json();
 
-    console.log("[PC端测试支付] API响应：", result);
+    console.log(
+      "[PC端测试支付] API响应：",
+      createSafeClientLogValue(result),
+    );
 
     // === 第6步：检查业务状态 ===
 
@@ -9511,7 +9624,7 @@ function openAdminPaymentLink() {
   // 从按钮的data-url属性获取支付链接
   const payUrl = openBtn.getAttribute("data-url");
 
-  console.log("[PC端测试支付] 支付链接：", payUrl);
+  console.log("[PC端测试支付] 已获取支付链接");
 
   // === 验证链接是否存在 ===
 
@@ -9742,7 +9855,10 @@ async function loadAdminYiPayConfig(show_Modal = true) {
     const result = await response.json();
 
     // 在控制台输出获取到的配置数据，方便开发者查看和调试
-    console.log("[PC端易支付配置] 成功获取易支付配置：", result);
+    console.log(
+      "[PC端易支付配置] 成功获取易支付配置：",
+      createSafeClientLogValue(result),
+    );
 
     // === 第4步：检查业务状态 ===
     // 即使HTTP状态码成功，也需要检查业务逻辑是否成功
@@ -10331,7 +10447,10 @@ async function saveAdminYiPayConfig() {
 
     const result = await response.json();
 
-    console.log("[PC端易支付配置] API响应：", result);
+    console.log(
+      "[PC端易支付配置] API响应：",
+      createSafeClientLogValue(result),
+    );
 
     // === 第6步：检查业务状态 ===
 
@@ -10429,7 +10548,10 @@ async function loadMobileYiPayConfig() {
 
     // === 解析响应数据 ===
     const result = await response.json();
-    console.log("[移动端易支付配置] 成功获取易支付配置：", result);
+    console.log(
+      "[移动端易支付配置] 成功获取易支付配置：",
+      createSafeClientLogValue(result),
+    );
 
     // === 检查业务状态 ===
     if (!result.success) {
@@ -10609,7 +10731,10 @@ async function saveMobileYiPayConfig() {
 
     // === 解析响应数据 ===
     const result = await response.json();
-    console.log("[移动端易支付配置] API响应：", result);
+    console.log(
+      "[移动端易支付配置] API响应：",
+      createSafeClientLogValue(result),
+    );
 
     // === 检查业务状态 ===
     if (!result.success) {
@@ -10961,7 +11086,10 @@ async function initRegisterAvailableRunsHint() {
 async function updateProfileAvailableRuns(userData) {
   try {
     // 在控制台输出日志，记录函数调用
-    console.log("[个人资料] 开始更新available_runs显示，用户数据:", userData);
+    console.log(
+      "[个人资料] 开始更新available_runs显示，用户数据:",
+      createSafeClientLogValue(userData),
+    );
 
     // ========== 步骤1：验证参数 ==========
 
@@ -11007,7 +11135,10 @@ async function updateProfileAvailableRuns(userData) {
     const config = await response.json();
 
     // 在控制台输出获取到的配置
-    console.log("[个人资料] 获取到的显示配置:", config);
+    console.log(
+      "[个人资料] 获取到的显示配置:",
+      createSafeClientLogValue(config),
+    );
 
     // ========== 步骤3：检查是否需要显示available_runs ==========
 
@@ -11374,7 +11505,10 @@ async function loadPricingConfig() {
     }
 
     // ========== 记录成功日志 ==========
-    console.log("[价格配置] 价格配置加载成功", config);
+    console.log(
+      "[价格配置] 价格配置加载成功",
+      createSafeClientLogValue(config),
+    );
     configLoadState.pricing = true;
   } catch (error) {
     configLoadState.pricing = false;
@@ -11535,7 +11669,7 @@ async function savePricingConfig() {
     };
 
     // ========== 记录请求日志 ==========
-    console.log("[价格配置] 正在保存价格配置:", requestData);
+    console.log("[价格配置] 正在保存价格配置");
 
     // ========== 发送PUT请求保存配置 ==========
     const response = await fetch("/api/admin/pricing_config", {
@@ -11705,7 +11839,10 @@ async function loadMobilePricingConfig() {
     }
 
     // 记录成功日志
-    console.log("[价格配置] 价格配置加载成功（移动端）", config);
+    console.log(
+      "[价格配置] 价格配置加载成功（移动端）",
+      createSafeClientLogValue(config),
+    );
   } catch (error) {
     // 错误处理
     console.error("[价格配置] 加载价格配置失败（移动端）:", error);
@@ -11810,7 +11947,7 @@ async function saveMobilePricingConfig() {
     };
 
     // 记录请求日志
-    console.log("[价格配置] 正在保存价格配置（移动端）:", requestData);
+    console.log("[价格配置] 正在保存价格配置（移动端）");
 
     if (
       sessionUUID === undefined ||
@@ -11866,6 +12003,181 @@ async function saveMobilePricingConfig() {
 
 // --- Next Script Block ---
 
+const LEGACY_MAP_KEY_RUNTIME_NAMESPACE = "__MAP_KEY_RUNTIME__";
+let legacyMapKeyRuntimeLoadPromise = null;
+let legacyMapKeyRuntimeLoadVersion = "";
+
+function getLegacyMapKeyRuntimeUrl(scriptUrl, runtimeVersion) {
+  const baseUrl = scriptUrl || "/api/map_key_runtime.js";
+  const version = String(runtimeVersion || "").trim();
+  if (!version || /[?&]v=/.test(baseUrl)) {
+    return baseUrl;
+  }
+  return `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`;
+}
+
+function loadLegacyMapKeyRuntime(keyBundle) {
+  const bundle = keyBundle && typeof keyBundle === "object" ? keyBundle : {};
+  const expectedVersion = String(bundle.runtime_version || "").trim();
+  const currentRuntime = window[LEGACY_MAP_KEY_RUNTIME_NAMESPACE];
+  if (
+    expectedVersion &&
+    currentRuntime &&
+    currentRuntime.version === expectedVersion
+  ) {
+    return Promise.resolve();
+  }
+  if (
+    legacyMapKeyRuntimeLoadPromise &&
+    legacyMapKeyRuntimeLoadVersion === expectedVersion
+  ) {
+    return legacyMapKeyRuntimeLoadPromise;
+  }
+
+  legacyMapKeyRuntimeLoadVersion = expectedVersion;
+  legacyMapKeyRuntimeLoadPromise = new Promise((resolve, reject) => {
+    const existingScripts = Array.from(
+      document.querySelectorAll('script[data-map-key-runtime="1"]'),
+    );
+    const existingScript = existingScripts.find(
+      (script) =>
+        String(script.dataset.mapKeyRuntimeVersion || "") === expectedVersion,
+    );
+    if (existingScript) {
+      if (
+        !expectedVersion ||
+        window[LEGACY_MAP_KEY_RUNTIME_NAMESPACE]?.version === expectedVersion
+      ) {
+        resolve();
+      } else {
+        existingScript.remove();
+      }
+      if (
+        !expectedVersion ||
+        window[LEGACY_MAP_KEY_RUNTIME_NAMESPACE]?.version === expectedVersion
+      ) {
+        return;
+      }
+    }
+
+    const script = document.createElement("script");
+    script.src = getLegacyMapKeyRuntimeUrl(
+      bundle.runtime_script,
+      expectedVersion,
+    );
+    script.async = true;
+    script.dataset.mapKeyRuntime = "1";
+    script.dataset.mapKeyRuntimeVersion = expectedVersion;
+    script.onload = () => {
+      if (
+        expectedVersion &&
+        window[LEGACY_MAP_KEY_RUNTIME_NAMESPACE]?.version !== expectedVersion
+      ) {
+        reject(new Error("地图密钥运行时版本不匹配"));
+        return;
+      }
+      resolve();
+    };
+    script.onerror = () => reject(new Error("地图密钥运行时脚本加载失败"));
+    document.head.appendChild(script);
+  }).catch((error) => {
+    legacyMapKeyRuntimeLoadPromise = null;
+    legacyMapKeyRuntimeLoadVersion = "";
+    throw error;
+  });
+  return legacyMapKeyRuntimeLoadPromise;
+}
+
+async function hydrateMapProviderSecretsForLegacy(initialData) {
+  if (!initialData || typeof initialData !== "object") {
+    return initialData;
+  }
+  const keyBundle = initialData.map_provider_key_bundle;
+  if (!keyBundle || typeof keyBundle !== "object") {
+    return initialData;
+  }
+  if (keyBundle.available === false) {
+    return initialData;
+  }
+
+  await loadLegacyMapKeyRuntime(keyBundle);
+  const runtime = window[LEGACY_MAP_KEY_RUNTIME_NAMESPACE];
+  if (!runtime || typeof runtime.decryptMapProviderKeys !== "function") {
+    throw new Error("地图密钥运行时不可用");
+  }
+
+  const decryptedProviders = await runtime.decryptMapProviderKeys(keyBundle);
+  const nextProviders = { ...(initialData.map_providers || {}) };
+  Object.entries(decryptedProviders || {}).forEach(([provider, secrets]) => {
+    const current = nextProviders[provider];
+    nextProviders[provider] = {
+      ...(current && typeof current === "object" ? current : {}),
+      ...(secrets && typeof secrets === "object" ? secrets : {}),
+    };
+  });
+  return {
+    ...initialData,
+    map_providers: nextProviders,
+  };
+}
+
+function createLegacyPublicConfigSnapshot(config) {
+  const snapshot = { ...(config || {}) };
+  [
+    "amap_key",
+    "amap_js_key",
+    "tencent_map_key",
+    "tianditu_token",
+    "baidu_map_ak",
+    "map_key",
+    "js_key",
+    "token",
+    "ak",
+  ].forEach((field) => {
+    delete snapshot[field];
+  });
+  const providers = config && config.map_providers;
+  if (!providers || typeof providers !== "object") {
+    return snapshot;
+  }
+  snapshot.map_providers = {};
+  Object.entries(providers).forEach(([provider, value]) => {
+    const safeValue = { ...(value || {}) };
+    ["js_key", "map_key", "token", "ak"].forEach((field) => {
+      delete safeValue[field];
+    });
+    snapshot.map_providers[provider] = safeValue;
+  });
+  return snapshot;
+}
+
+function applyLegacyAppConfig(config) {
+  const safeConfig = config && typeof config === "object" ? config : {};
+  window.__mapKeyRuntimeReady = hydrateMapProviderSecretsForLegacy(
+    safeConfig,
+  )
+    .then((hydratedConfig) => {
+      window.APP_CONFIG = hydratedConfig;
+      window.dispatchEvent(
+        new CustomEvent("appConfigLoaded", {
+          detail: createLegacyPublicConfigSnapshot(hydratedConfig),
+        }),
+      );
+      return hydratedConfig;
+    })
+    .catch((error) => {
+      console.error("[配置] 地图密钥运行时加载失败，使用脱敏配置:", error);
+      window.APP_CONFIG = safeConfig;
+      window.dispatchEvent(
+        new CustomEvent("appConfigLoaded", {
+          detail: createLegacyPublicConfigSnapshot(safeConfig),
+        }),
+      );
+      return safeConfig;
+    });
+  return window.__mapKeyRuntimeReady;
+}
+
 // 初始化前端配置：从API加载配置或使用服务端注入的配置
 (function initAppConfig() {
   // 默认配置（集中定义，避免重复）
@@ -11885,6 +12197,7 @@ async function saveMobilePricingConfig() {
   // 如果服务端已经注入了配置（旧方式，用于兼容），直接使用
   if (typeof window.APP_CONFIG !== "undefined") {
     console.log("[配置] 使用服务端注入的配置");
+    applyLegacyAppConfig(window.APP_CONFIG);
     return;
   }
 
@@ -11935,11 +12248,8 @@ async function saveMobilePricingConfig() {
       return response.json();
     })
     .then(function (config) {
-      window.APP_CONFIG = config;
-      console.log("[配置] 成功从API加载配置:", config);
-      // 触发自定义事件，通知配置已加载，并传递配置数据
-      var event = new CustomEvent("appConfigLoaded", { detail: config });
-      window.dispatchEvent(event);
+      console.log("[配置] API配置加载完成");
+      applyLegacyAppConfig(config);
     })
     .catch(function (error) {
       clearTimeout(timeoutId);
@@ -11949,7 +12259,7 @@ async function saveMobilePricingConfig() {
         console.error("[配置] 加载配置失败，使用默认配置:", error);
       }
       // 保持默认配置
-      window.APP_CONFIG = DEFAULT_CONFIG;
+      applyLegacyAppConfig(DEFAULT_CONFIG);
     });
 })();
 
@@ -12437,8 +12747,11 @@ async function saveWatermarkControlConfig() {
       users: usersConfig,
     };
 
-    // 记录要发送的数据（便于调试）
-    console.log("[水印控制] 准备保存配置（PC端）:", requestBody);
+    // 只记录数量，避免日志暴露用户账号列表。
+    console.log(
+      "[水印控制] 准备保存配置（PC端），用户数:",
+      Object.keys(usersConfig).length,
+    );
 
     // ========== 步骤4: 发送HTTP请求保存配置 ==========
     const response = await fetch("/api/amap/watermark_control/config", {
@@ -12748,8 +13061,8 @@ async function openAddWatermarkUserModal() {
     // 获取所有系统用户列表
     // 【调试日志】记录API返回的用户数据，便于排查用户列表加载问题
     const allUsers = data.all_users || [];
-    console.log(`[水印控制] API返回的系统用户列表:`, allUsers);
-    console.log(`[水印控制] 已配置的用户:`, Object.keys(configuredUsers));
+    console.log(`[水印控制] API返回系统用户数: ${allUsers.length}`);
+    console.log(`[水印控制] 已配置用户数: ${Object.keys(configuredUsers).length}`);
 
     // [步骤6] 筛选出未配置的用户
     // 只显示那些尚未在水印控制配置中的用户
@@ -13041,8 +13354,10 @@ async function refreshWatermarkUserList() {
     // 获取所有系统用户列表
     // 【调试日志】记录API返回的用户数据
     const allUsers = data.all_users || [];
-    console.log(`[水印控制] 刷新后的系统用户列表:`, allUsers);
-    console.log(`[水印控制] 刷新后的已配置用户:`, Object.keys(configuredUsers));
+    console.log(`[水印控制] 刷新后的系统用户数: ${allUsers.length}`);
+    console.log(
+      `[水印控制] 刷新后的已配置用户数: ${Object.keys(configuredUsers).length}`,
+    );
 
     // [步骤5] 筛选出未配置的用户
     const availableUsers = allUsers.filter(
@@ -13615,7 +13930,10 @@ async function saveMobileWatermarkControlConfig() {
       users: usersConfig,
     };
 
-    console.log("[水印控制] 准备保存配置（移动端）:", requestBody);
+    console.log(
+      "[水印控制] 准备保存配置（移动端），用户数:",
+      Object.keys(usersConfig).length,
+    );
 
     // ========== 步骤3: 发送HTTP请求保存配置 ==========
     const response = await fetch("/api/amap/watermark_control/config", {
@@ -16405,7 +16723,10 @@ function getApiRequestSessionHeaderValue(method) {
   }
 
   sessionUUID = null;
-  if (isUsableClientSessionUUID(authSessionUUID)) {
+  if (
+    isAuthContextApiMethod(method) &&
+    isUsableClientSessionUUID(authSessionUUID)
+  ) {
     return authSessionUUID;
   }
 
@@ -18571,7 +18892,10 @@ async function checkAuthStatus() {
   try {
     // 调用统一的初始数据加载函数进行认证状态检查
     const result = await loadInitialData();
-    logMessage_Info("[认证状态] 检查结果:", result);
+    logMessage_Info(
+      "[认证状态] 检查结果:",
+      createSafeClientLogValue(result),
+    );
     if (result && result.is_authenticated) {
       return true;
     }
@@ -19282,9 +19606,10 @@ async function loadCaptcha(formType) {
 
       displayElement.innerHTML = iframeHtml;
 
-      console.log(
-        `[验证码] 已加载验证码iframe: ${result.captcha_id} (时间戳: ${timestamp}) 宽度: ${captchaWidth}`,
-      );
+      console.log("[验证码] 已加载验证码 iframe:", {
+        width: captchaWidth,
+        height: captchaHeight,
+      });
 
       // loadMobileCaptcha(formType);
     } else {
@@ -19399,12 +19724,7 @@ async function loadCaptchaModal(requestedWidth) {
 
       displayElement.innerHTML = iframeHtml;
 
-      console.log(
-        `[验证码模态窗] 验证码加载成功，ID: ${result.captcha_id.substring(
-          0,
-          8,
-        )}... (时间戳: ${timestamp})`,
-      );
+      console.log("[验证码模态窗] 验证码加载成功");
     } else {
       displayElement.innerHTML =
         '<span class="text-red-500 text-xs">加载失败</span>';
@@ -19685,7 +20005,23 @@ async function handleAuthLogin(isMobile_use = false) {
   const password = $("auth-password").value.trim();
   const sms_code = $("auth-sms-code").value.trim();
   const captcha = $("auth-login-captcha").value.trim();
-  const isBehaviorCaptchaMode = await isBehaviorCaptchaProvider();
+  const isBehaviorCaptchaMode =
+    typeof isBehaviorCaptchaProvider === "function" &&
+    (await isBehaviorCaptchaProvider());
+  const resetLoginCaptcha = () => {
+    if (typeof resetBehaviorCaptchaForForm === "function") {
+      resetBehaviorCaptchaForForm(
+        isMobile_use === false ? "login" : "mobile-login",
+      );
+    }
+  };
+  const isMissingLoginCaptchaId = (value) => {
+    if (typeof isMissingCaptchaId === "function") {
+      return isMissingCaptchaId(value);
+    }
+    const normalized = String(value ?? "").trim().toLowerCase();
+    return !normalized || normalized === "null" || normalized === "undefined";
+  };
 
   let login_mode = "username";
   let login_verification_method = "password";
@@ -19739,7 +20075,7 @@ async function handleAuthLogin(isMobile_use = false) {
         title: "登录失败",
         text: "请输入密码",
       });
-      resetBehaviorCaptchaForForm(isMobile_use === false ? "login" : "mobile-login");
+      resetLoginCaptcha();
       if (isMobile_use === false) {
         refreshCaptcha("login");
       } else {
@@ -19853,8 +20189,10 @@ async function handleAuthLogin(isMobile_use = false) {
     : captcha;
 
   console.log("[登录] isMobile_use:", isMobile_use);
-  console.log("[登录] captchaIds_login:", captchaIds_login);
-  console.log("[登录] captchaIds_mobile_login:", captchaIds_mobile_login);
+  console.log("[登录] 验证码状态:", {
+    desktop: Boolean(captchaIds_login),
+    mobile: Boolean(captchaIds_mobile_login),
+  });
   if (isMobile_use === true) {
     // request_body.captcha_id = captchaIds["mobile-login"];
     request_body.captcha_id = captchaIds_mobile_login;
@@ -19862,9 +20200,9 @@ async function handleAuthLogin(isMobile_use = false) {
     // request_body.captcha_id = captchaIds.login;
     request_body.captcha_id = captchaIds_login;
   }
-  console.log("[登录] 使用的验证码ID:", request_body.captcha_id);
+  console.log("[登录] 已附带验证码ID:", Boolean(request_body.captcha_id));
 
-  if (isMissingCaptchaId(request_body.captcha_id)) {
+  if (isMissingLoginCaptchaId(request_body.captcha_id)) {
     // showModalAlert("验证码未加载或已过期，请刷新后重试", "登录失败");
     Swal.fire({
       icon: "warning",
@@ -19877,7 +20215,7 @@ async function handleAuthLogin(isMobile_use = false) {
     // document.getElementById("auth-login-captcha-refresh").click();
     // document.getElementById("mobile-login-captcha-refresh").click();
 
-    resetBehaviorCaptchaForForm(isMobile_use === false ? "login" : "mobile-login");
+    resetLoginCaptcha();
     if (isMobile_use === false) {
       refreshCaptcha("login");
     } else {
@@ -20181,7 +20519,11 @@ async function handleAuthLogin(isMobile_use = false) {
  * @param {boolean} isMobile - 是否为移动端
  */
 function handlePhoneNotRegisteredRedirect(phoneNumber, smsCode, isMobile) {
-  console.log("[手机号未注册跳转] 开始处理:", { phoneNumber, smsCode, isMobile });
+  console.log("[手机号未注册跳转] 开始处理:", {
+    isMobile,
+    hasPhoneNumber: Boolean(phoneNumber),
+    hasSmsCode: Boolean(smsCode),
+  });
 
   if (isMobile) {
     const mobileRegisterTab = document.getElementById("mobile-auth-tab-register");
@@ -20237,7 +20579,7 @@ function handlePhoneNotRegisteredRedirect(phoneNumber, smsCode, isMobile) {
   );
   if (regSmsCodeInput && smsCode) {
     regSmsCodeInput.value = smsCode;
-    console.log("[手机号未注册跳转] 已填充验证码:", smsCode);
+    console.log("[手机号未注册跳转] 已填充短信验证码");
 
     // 调用后端API延长验证码有效期（拒绝/异常也不阻断注册流程）
     (async () => {
@@ -20607,13 +20949,17 @@ async function handleAuthRegister(isMobile_use = false) {
   if (isMobile_use === true) {
     // formData.append("captcha_id", captchaIds["mobile-register"]);
     formData.append("captcha_id", captchaIds_mobile_register);
-    console.log("获取注册验证码ID（移动端）:", captchaIds_mobile_register);
-    console.log("获取注册验证码ID（移动端）:", formData.get("captcha_id"));
+    console.log(
+      "获取注册验证码ID（移动端）:",
+      Boolean(captchaIds_mobile_register),
+    );
   } else {
     // formData.append("captcha_id", captchaIds.register);
     formData.append("captcha_id", captchaIds_register);
-    console.log("获取注册验证码ID（桌面端）:", captchaIds_register);
-    console.log("获取注册验证码ID（桌面端）:", formData.get("captcha_id"));
+    console.log(
+      "获取注册验证码ID（桌面端）:",
+      Boolean(captchaIds_register),
+    );
   }
 
   if (avatarFile) {
@@ -27722,8 +28068,10 @@ async function showUserSchoolAccounts(username) {
       result = await response.json();
     } catch (jsonError) {
       // JSON解析失败，说明响应内容不是有效的JSON
-      console.error("[学校账户管理] JSON解析失败：", jsonError);
-      console.error("响应内容：", await response.text());
+      console.error(
+        "[学校账户管理] JSON解析失败，HTTP状态码:",
+        response.status,
+      );
       // showModalAlert("服务器返回了无效的数据格式", "解析错误");
       Swal.fire({
         title: "解析错误",
@@ -27736,7 +28084,10 @@ async function showUserSchoolAccounts(username) {
     // ========== 步骤4：验证响应数据格式 ==========
     // 检查响应是否包含success字段
     if (typeof result.success === "undefined") {
-      console.error("[学校账户管理] 响应数据格式错误：缺少success字段", result);
+      console.error(
+        "[学校账户管理] 响应数据格式错误：缺少success字段",
+        createSafeClientLogValue(result),
+      );
       // showModalAlert("服务器返回了格式错误的数据", "数据错误");
       Swal.fire({
         title: "数据错误",
@@ -33809,6 +34160,10 @@ function startSessionValidityCheck() {
 // }
 
 async function initializeApp() {
+  if (window.__mapKeyRuntimeReady) {
+    await window.__mapKeyRuntimeReady;
+  }
+
   function ShowMobileLoadingOverlay() {
     const isMobile = detectMobileDevice();
     if (isMobile) {
@@ -37808,8 +38163,8 @@ async function saveMobileSettings() {
       // 增加保存成功计数
       savedCount++;
 
-      // 记录每个参数的保存日志
-      console.log(`[移动端单账号] 参数已保存: ${key} = ${value}`);
+      // 不记录参数值，避免把密码、令牌或其他敏感配置写入控制台。
+      console.log("[移动端单账号] 参数已保存");
     }
 
     // 记录保存完成日志
@@ -38412,10 +38767,11 @@ async function onConfirmAmapKey() {
   btn.innerHTML = `<span class="inline-block animate-spin mr-2">⏳</span>保存中...`;
 
   try {
-    const result = await callPythonAPI("save_map_provider_key", {
+    let result = await callPythonAPI("save_map_provider_key", {
       provider: requirement.provider,
       api_key: newKey,
     });
+    result = await hydrateMapProviderSecretsForLegacy(result);
     if (result.success) {
       syncMapProviderConfigFromInitialData(result);
       const modal = $("amap-key-modal");
@@ -43856,6 +44212,28 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
+function formatSafeClientLogArgs(args) {
+  return args
+    .map((arg) => {
+      if (arg instanceof Error) {
+        const safeName = createSafeClientLogValue(arg.name);
+        const safeMessage = createSafeClientLogValue(arg.message);
+        const safeStack = createSafeClientLogValue(arg.stack || "");
+        return `${safeName}: ${safeMessage}${
+          safeStack ? `\n${safeStack}` : ""
+        }`;
+      }
+      const safeValue = createSafeClientLogValue(arg);
+      if (typeof safeValue === "string") return safeValue;
+      try {
+        return JSON.stringify(safeValue);
+      } catch (error) {
+        return "[已省略]";
+      }
+    })
+    .join(" ");
+}
+
 (function () {
   const originalConsole = {
     log: console.log.bind(console),
@@ -43867,23 +44245,12 @@ window.addEventListener("beforeunload", () => {
   let isIntercepting = false;
 
   function interceptConsole(level, args, originalFn) {
-    originalFn.apply(console, args);
+    const message = formatSafeClientLogArgs(args);
+    originalFn.call(console, message);
     if (isIntercepting) return;
 
     try {
       isIntercepting = true;
-      const message = args
-        .map((arg) => {
-          if (typeof arg === "string") return arg;
-          if (arg instanceof Error)
-            return `${arg.name}: ${arg.message}\n${arg.stack}`;
-          try {
-            return JSON.stringify(arg);
-          } catch (e) {
-            return String(arg);
-          }
-        })
-        .join(" ");
       if (
         message.includes("[前端日志]") ||
         message.includes("[日志发送失败]") ||
@@ -43939,7 +44306,7 @@ function logMessage(msg, level = "INFO", source = null) {
   const s = String(now.getSeconds()).padStart(2, "0");
   const timestamp = `[${h}:${m}:${s}]`;
   const timestamp2 = `${h}:${m}:${s}`;
-  const line = typeof msg === "string" ? msg : JSON.stringify(msg);
+  const line = formatSafeClientLogArgs([msg]);
 
   let level_new = "INFO";
   let callerInfo;
@@ -44081,24 +44448,19 @@ function logMessage(msg, level = "INFO", source = null) {
   }
 }
 function logMessage_Debug(...args) {
-  const msg = args.join(" ");
-  logMessage(msg, "DEBUG");
+  logMessage(formatSafeClientLogArgs(args), "DEBUG");
 }
 function logMessage_Info(...args) {
-  const msg = args.join(" ");
-  logMessage(msg, "INFO");
+  logMessage(formatSafeClientLogArgs(args), "INFO");
 }
 function logMessage_Warning(...args) {
-  const msg = args.join(" ");
-  logMessage(msg, "WARNING");
+  logMessage(formatSafeClientLogArgs(args), "WARNING");
 }
 function logMessage_Error(...args) {
-  const msg = args.join(" ");
-  logMessage(msg, "ERROR");
+  logMessage(formatSafeClientLogArgs(args), "ERROR");
 }
 function logMessage_Critical(...args) {
-  const msg = args.join(" ");
-  logMessage(msg, "CRITICAL");
+  logMessage(formatSafeClientLogArgs(args), "CRITICAL");
 }
 function showTab(tabName, element) {
   if (tabName !== "attendance" && notificationAutoRefreshTimer) {
@@ -49278,11 +49640,8 @@ async function loadCaptchaSettings(ShowSwalFire = true) {
       applyCaptchaProviderSettings(settings, "");
       applyCaptchaProviderSettings(settings, "mobile-");
 
-      // 步骤9：记录成功加载的日志，包含实际加载的配置值
-      console.log(
-        "[验证码设置] 成功从 /api/captcha/config 加载配置:",
-        settings,
-      );
+      // 只记录加载状态，避免把验证码服务配置写入控制台。
+      console.log("[验证码设置] 已从 /api/captcha/config 加载配置");
 
       // 步骤10：显示成功提示（可选，避免过多打扰用户）
       // 使用Swal.fire显示简短的成功提示，2秒后自动关闭
@@ -49534,9 +49893,9 @@ async function testGenerateCaptcha() {
     const result = await response.json();
     if (result && result.success) {
       if (result.provider === "behavior") {
-        console.log("[验证码设置] 验证码服务器测试生成成功，ID:", result.captcha_id);
+        console.log("[验证码设置] 验证码服务器测试生成成功");
       } else {
-        console.log("[验证码设置] 测试生成成功，验证码:", result.code);
+        console.log("[验证码设置] 测试生成成功");
       }
       renderCaptchaTestPreview(result, "");
     } else {
@@ -49793,7 +50152,7 @@ async function loadCaptchaHistory(need_weight = "") {
   }
 }
 function showCaptchaDetail(captchaId) {
-  console.log("显示验证码详情:", captchaId);
+    console.log("显示验证码详情，已收到验证码标识:", Boolean(captchaId));
   fetch(`/api/captcha/detail/${captchaId}`, {
     headers: {
       "X-Session-ID": sessionUUID,
@@ -51391,7 +51750,10 @@ async function loadCDNConfig() {
       _syncCDNForceRefreshAvailability(!!(data.config.cdn_enabled || false));
 
       // 在控制台输出日志，方便调试
-      console.log("[CDN配置] 配置加载成功:", data.config);
+      console.log(
+        "[CDN配置] 配置加载成功:",
+        createSafeClientLogValue(data.config),
+      );
       configLoadState.cdn = true;
     } else {
       configLoadState.cdn = false;
@@ -52196,7 +52558,14 @@ async function saveSystemConfig() {
       const providerChanged = previousProvider !== newProvider;
       let queuedMapProviderConfig = false;
       try {
-        const freshConfig = await fetch("/api/frontend-config", { cache: "no-cache" }).then((r) => r.json());
+        let freshConfig = await fetch("/api/frontend-config", {
+          cache: "no-cache",
+          credentials: "include",
+          headers: {
+            "X-Session-ID": sessionUUID,
+          },
+        }).then((r) => r.json());
+        freshConfig = await hydrateMapProviderSecretsForLegacy(freshConfig);
         queuedMapProviderConfig = queuePendingMapProviderConfig(freshConfig);
       } catch (_syncErr) {
         const directUpdate = { map_provider: newProvider, map_providers: {} };
@@ -52381,7 +52750,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         if (typeof callPythonAPI === "function") {
           callPythonAPI("update_param", key, value);
-          console.log(`[移动端] 参数已更新: ${key} = ${value}`);
+          console.log("[移动端] 参数已更新");
         }
       },
       excludeGroups,
@@ -52424,7 +52793,7 @@ document.addEventListener("DOMContentLoaded", function () {
         // 调用 API 保存参数
         if (typeof callPythonAPI === "function") {
           callPythonAPI("update_param", key, value);
-          console.log(`[移动端多账号] 全局参数已更新: ${key} = ${value}`);
+          console.log("[移动端多账号] 全局参数已更新");
         }
       },
       excludeGroups,
@@ -57904,7 +58273,10 @@ async function confirmManualAccountAdd() {
       console.log(`[移动端] 手动添加账号成功: ${username}`);
     } else {
       showModalAlert(`添加失败: ${result.message || "未知错误"}`, "错误");
-      console.error("[移动端] 手动添加账号失败:", result);
+      console.error(
+        "[移动端] 手动添加账号失败:",
+        createSafeClientLogValue(result),
+      );
     }
   } catch (error) {
     console.error("[移动端] 手动添加账号异常:", error);
@@ -58163,8 +58535,10 @@ function saveMobileMultiGlobalSettings() {
       });
       // 显示保存成功提示
       showModalAlert("全局设置已保存", "成功");
-      // 在控制台输出保存的参数，方便调试
-      console.log("[移动端] 全局参数已保存:", params);
+      console.log(
+        "[移动端] 全局参数已保存，参数数量:",
+        Object.keys(params).length,
+      );
     } else {
       // API 不可用时显示错误提示
       showModalAlert("API不可用", "错误");
@@ -58651,7 +59025,10 @@ async function confirmMobileMapAttendance() {
       longitude: mobileMapAttendanceSelected[0],
       latitude: mobileMapAttendanceSelected[1],
     });
-    console.log("[地图选点] 签到API返回", result);
+    console.log(
+      "[地图选点] 签到API返回",
+      createSafeClientLogValue(result),
+    );
     if (result.success) {
       showModalAlert("✅ 签到成功！", "成功");
       closeMobileMapAttendanceModal();
@@ -59451,11 +59828,8 @@ async function mobileLoadCaptchaSettings(showAlert = true) {
       // mobileUpdateCaptchaForm 会处理实际的DOM更新操作
       mobileUpdateCaptchaForm(settings);
 
-      // 步骤7：记录成功加载的日志，包含实际加载的配置值
-      console.log(
-        "[移动端验证码] 成功从 /api/captcha/config 加载配置:",
-        settings,
-      );
+      // 只记录加载状态，避免把验证码服务配置写入控制台。
+      console.log("[移动端验证码] 已从 /api/captcha/config 加载配置");
 
       // 步骤8：显示成功提示（使用移动端专用的提示函数）
       // showModalAlert是移动端使用的提示函数，比Swal更适合移动设备
@@ -59728,12 +60102,12 @@ async function mobileTestCaptcha() {
     if (previewContainer && previewDisplay && previewAnswer) {
       previewContainer.classList.remove("hidden");
 
-      console.log("[移动端验证码] 后端返回结果", result);
+      console.log("[移动端验证码] 测试生成响应已收到");
 
       // 检查后端返回结果是否成功
       if (result && result.success) {
         if (result.provider === "behavior") {
-          console.log("[移动端验证码] 验证码服务器测试生成成功，ID:", result.captcha_id);
+          console.log("[移动端验证码] 验证码服务器测试生成成功");
         }
         renderCaptchaTestPreview(result, "mobile-");
       } else {
@@ -60020,11 +60394,10 @@ async function loadMobileCaptchaHistoryModal() {
 
     // 调试日志：输出第一条记录的完整结构，便于排查字段命名问题
     // 这里输出所有字段，帮助开发者确认 code 字段是否存在
-    console.log("[移动端验证码历史] 收到记录:", records[0]);
+    console.log("[移动端验证码历史] 已收到验证码记录:", records.length);
     // 额外调试：检查 code 字段是否存在
     if (records[0]) {
-      console.log("[移动端验证码历史] 记录字段列表:", Object.keys(records[0]));
-      console.log("[移动端验证码历史] code字段值:", records[0].code);
+      console.log("[移动端验证码历史] 记录字段数量:", Object.keys(records[0]).length);
     }
 
     // 更新统计数据（若模态框中存在对应元素）
@@ -61314,7 +61687,8 @@ async function loadInitialData(options = {}) {
     // 使用await关键字等待callPythonAPI的Promise完成
     // callPythonAPI是应用中已存在的函数，负责与Python后端通信
     // "get_initial_data"是API端点的标识符，后端会据此返回相应数据
-    const response = await callPythonAPI("get_initial_data", params);
+    let response = await callPythonAPI("get_initial_data", params);
+    response = await hydrateMapProviderSecretsForLegacy(response);
 
     // 此时response已包含后端返回的完整数据对象
     // 如果API调用失败，callPythonAPI可能会抛出异常，会被catch块捕获
@@ -61409,7 +61783,7 @@ async function loadInitialData(options = {}) {
     // 步骤8：返回完整的响应对象
     // ====================================================================
 
-    logMessage_Info("[初始化] 初始数据加载完成:", response);
+  logMessage_Info("[初始化] 初始数据加载完成");
 
     // 将response返回给调用者
     // 调用者可以从中提取需要的数据（如用户列表、权限信息等）
@@ -61819,7 +62193,7 @@ async function createPaymentOrder() {
     const orderId = createResult.order_id;
 
     // 输出日志：记录订单创建成功
-    console.log("[支付] 订单创建成功:", { orderId, payUrl });
+    console.log("[支付] 订单创建成功:", { orderId, hasPayUrl: Boolean(payUrl) });
 
     // 步骤14：关闭支付弹窗
     closePaymentModal();
@@ -61888,7 +62262,11 @@ async function queryOrderStatus(orderId) {
     const result = await response.json();
 
     // 步骤4：输出日志 - 记录查询结果
-    console.log("[支付] 查询订单状态:", { orderId, result });
+    console.log("[支付] 查询订单状态:", {
+      orderId,
+      success: Boolean(result && result.success),
+      status: result && result.status,
+    });
 
     // 步骤5：返回查询结果
     return result;
@@ -63541,7 +63919,12 @@ document.addEventListener("DOMContentLoaded", function () {
  * const canStart3 = await checkOverdueBeforeStart(selectedUsernames);
  */
 async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
-  console.log("检查欠费状态，参数:", schoolUsernameOrList);
+  const requestedAccountCount = Array.isArray(schoolUsernameOrList)
+    ? schoolUsernameOrList.length
+    : typeof schoolUsernameOrList === "string" && schoolUsernameOrList
+      ? 1
+      : 0;
+  console.log("检查欠费状态，账号数量:", requestedAccountCount);
   try {
     // ========== 步骤1：构造请求体 ==========
     // 根据传入参数的不同类型，构造不同的请求体
@@ -63566,7 +63949,10 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
 
     // ========== 步骤2：调用后端检查欠费接口 ==========
     // 使用 fetch 而不是 callPythonAPI，因为需要更精细的错误处理
-    console.log("调用 /api/check_overdue 接口，参数:", requestBody);
+    console.log(
+      "调用 /api/check_overdue 接口，账号数量:",
+      requestedAccountCount,
+    );
     const response = await fetch("/api/check_overdue", {
       method: "POST",
       headers: {
@@ -65928,7 +66314,7 @@ function initOrderNumberAutoFill() {
  * }
  */
 async function fetchOrderAmountAndFill(tradeNo) {
-  console.log("[订单号自动填充] 开始处理订单号:", tradeNo);
+    console.log("[订单号自动填充] 开始处理订单号");
 
   // ========== 步骤1：订单号格式校验 ==========
 
@@ -65960,7 +66346,7 @@ async function fetchOrderAmountAndFill(tradeNo) {
       tradeNo,
     )}`;
 
-    console.log("[订单号自动填充] 调用新API直接查询订单:", url);
+    console.log("[订单号自动填充] 已调用订单查询 API");
 
     // 发起GET请求
     const response = await fetch(url, {
@@ -65982,7 +66368,7 @@ async function fetchOrderAmountAndFill(tradeNo) {
 
       if (response.status === 404) {
         // 404：订单不存在
-        console.warn("[订单号自动填充] 订单不存在:", tradeNo);
+        console.warn("[订单号自动填充] 订单不存在");
         showModalAlert(
           result.message || "未找到该订单号对应的订单记录",
           "订单不存在",
@@ -65998,7 +66384,7 @@ async function fetchOrderAmountAndFill(tradeNo) {
         return;
       } else if (response.status === 403) {
         // 403：无权限访问该订单（普通用户尝试查询其他用户的订单）
-        console.warn("[订单号自动填充] 无权限访问订单:", tradeNo);
+        console.warn("[订单号自动填充] 无权限访问订单");
         showModalAlert(result.message || "无权限访问该订单", "权限不足");
         return;
       } else {
@@ -66025,7 +66411,10 @@ async function fetchOrderAmountAndFill(tradeNo) {
       return;
     }
 
-    console.log("[订单号自动填充] 成功获取订单数据:", matchedOrder);
+    console.log(
+      "[订单号自动填充] 成功获取订单数据:",
+      createSafeClientLogValue(matchedOrder),
+    );
 
     // ========== 步骤4.5：检查是否已退款（一个订单只能退款一次） ==========
     
@@ -66060,7 +66449,7 @@ async function fetchOrderAmountAndFill(tradeNo) {
 
     // 校验金额是否有效（必须是正数）
     if (isNaN(orderAmount) || orderAmount <= 0) {
-      console.error("[订单号自动填充] 订单金额无效:", matchedOrder.amount);
+      console.error("[订单号自动填充] 订单金额无效");
       showModalAlert("该订单的金额数据无效，无法计算退款金额", "数据错误");
       return;
     }
@@ -66765,7 +67154,10 @@ async function createBillingPaymentOrderAndOpen(billingItems, selectedPayType) {
   if (!payInfo) {
     throw new Error("支付链接为空");
   }
-  console.log("[账单支付] 创建订单成功，支付方式:", responsePayType, "支付信息:", payInfo);
+  console.log("[账单支付] 创建订单成功:", {
+    paymentType: responsePayType,
+    hasPaymentInfo: Boolean(payInfo),
+  });
 
   if (responsePayType === "qrcode") {
     let qrPollTimer = null;

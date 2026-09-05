@@ -162,6 +162,102 @@ def _apply_no_cache_headers(response):
     return response
 
 
+def _redact_sensitive_log_text(value):
+    """移除文本中以键值形式出现的凭据、令牌和其他认证材料。"""
+    text = str(value or "")
+    if not text:
+        return text
+    text = re.sub(
+        r"(?i)(['\"]?\b("
+        r"api[_-]?key|map[_-]?key|js[_-]?key|amap[_-]?key|"
+        r"tencent[_-]?map[_-]?key|tianditu[_-]?token|baidu[_-]?ak|"
+        r"token|password|secret|private[_-]?key|access[_-]?key|"
+        r"authorization|cookie|captcha(?:[_-]?id)?|sms[_-]?code|"
+        r"two[_-]?fa[_-]?code|verification[_-]?code|auth[_-]?code|"
+        r"refresh[_-]?token|csrf[_-]?token|session[_-]?(?:id|uuid)|"
+        r"x-session-id|shiro[_-]?cookie|sub[_-]?openid|sub[_-]?appid|"
+        r"signature|merchant[_-]?key|"
+        r"app[_-]?secret|client[_-]?secret|pay[_-]?url|payment[_-]?url|"
+        r"return[_-]?url|notify[_-]?url|request[_-]?url"
+        r")['\"]?\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|[^,\s;&}]+)",
+        r"\1<redacted>",
+        text,
+    )
+    return re.sub(
+        r"(?i)([?&](?:api[_-]?key|key|token|password|secret|"
+        r"authorization|cookie|captcha(?:[_-]?id)?|sms[_-]?code|"
+        r"verification[_-]?code|auth[_-]?code|openid|signature|sign|p)="
+        r")[^&#\s]+",
+        r"\1<redacted>",
+        text,
+    )
+
+
+def _redact_sensitive_log_value(value):
+    """递归移除日志中的凭据、令牌和其他认证材料。"""
+    sensitive_fragments = (
+        "api_key",
+        "apikey",
+        "map_key",
+        "js_key",
+        "token",
+        "password",
+        "secret",
+        "private_key",
+        "access_key",
+        "authorization",
+        "cookie",
+        "shirocookie",
+        "captcha",
+        "sms_code",
+        "two_fa_code",
+        "verification_code",
+        "auth_code",
+        "refresh_token",
+        "csrf_token",
+        "session_id",
+        "session_uuid",
+        "sub_openid",
+        "sub_appid",
+        "signature",
+        "sign",
+        "pay_url",
+        "payment_url",
+        "pay_info",
+        "payment_info",
+        "return_url",
+        "request_url",
+        "notify_url",
+        "signed_params",
+        "refund_result",
+        "platform_data",
+        "platform_order",
+        "order_data",
+        "api_response",
+        "query_result",
+        "notify_params",
+        "openid",
+        "appid",
+    )
+
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            normalized_key = str(key or "").strip().lower().replace("-", "_")
+            if any(fragment in normalized_key for fragment in sensitive_fragments):
+                redacted[key] = "<redacted>"
+            else:
+                redacted[key] = _redact_sensitive_log_value(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_sensitive_log_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_sensitive_log_value(item) for item in value)
+    if isinstance(value, str):
+        return _redact_sensitive_log_text(value)
+    return value
+
+
 def _install_amap_dialog_guard(page, guard_label="AMap"):
     """在 AMap 相关加载阶段自动拦截原生对话框，避免浏览器执行被阻塞。"""
     try:
@@ -197,6 +293,10 @@ MAP_KEY_RUNTIME_SCRIPT_NAME = "map_key_runtime.js"
 MAP_KEY_RUNTIME_NAMESPACE = "__MAP_KEY_RUNTIME__"
 map_key_runtime_lock = None
 map_key_runtime_cache = {}
+map_key_runtime_session_contexts = {}
+map_key_runtime_session_users = {}
+map_key_runtime_user_contexts = {}
+map_key_runtime_contexts_by_version = {}
 
 
 
@@ -345,41 +445,233 @@ def _build_obfuscated_map_key_runtime_script(private_key_pem, runtime_version):
     return _obfuscate_runtime_javascript(rendered)
 
 
-def _ensure_map_key_runtime_cache():
+def _generate_map_key_runtime_context():
+    rsa, _, serialization, _ = _get_crypto_primitives()
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+    )
+    private_key_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+    runtime_version = secrets.token_hex(8)
+    return {
+        "private_key": private_key,
+        "public_key": private_key.public_key(),
+        "runtime_version": runtime_version,
+        "runtime_script": _build_obfuscated_map_key_runtime_script(
+            private_key_pem=private_key_pem,
+            runtime_version=runtime_version,
+        ),
+    }
+
+
+def _get_map_key_runtime_user_key(username):
+    normalized = str(username or "").strip()
+    if not normalized or normalized.lower() == "guest":
+        return ""
+    return normalized.casefold()
+
+
+def _get_map_key_runtime_session_identity(session_id):
+    """验证会话是否仍存在，并返回会话绑定的认证用户。"""
+    normalized_session_id = normalize_session_uuid(session_id)
+    if not normalized_session_id:
+        return "", None, False
+    if "web_sessions_lock" not in globals() or "web_sessions" not in globals():
+        return normalized_session_id, None, False
+    with web_sessions_lock:
+        api_instance = web_sessions.get(normalized_session_id)
+        if api_instance is None:
+            return normalized_session_id, None, False
+        if getattr(api_instance, "is_guest", True):
+            return normalized_session_id, None, True
+        return (
+            normalized_session_id,
+            getattr(api_instance, "auth_username", None),
+            True,
+        )
+
+
+def _register_map_key_runtime_context(context):
+    if not isinstance(context, dict):
+        return
+    runtime_version = str(context.get("runtime_version") or "").strip()
+    if runtime_version:
+        map_key_runtime_contexts_by_version[runtime_version] = context
+
+
+def _unregister_map_key_runtime_context_if_unused(context):
+    if not isinstance(context, dict):
+        return
+    if any(item is context for item in map_key_runtime_session_contexts.values()):
+        return
+    if any(item is context for item in map_key_runtime_user_contexts.values()):
+        return
+    runtime_version = str(context.get("runtime_version") or "").strip()
+    if runtime_version:
+        registered = map_key_runtime_contexts_by_version.get(runtime_version)
+        if registered is context:
+            map_key_runtime_contexts_by_version.pop(runtime_version, None)
+
+
+def _get_map_key_runtime_context_for_session(
+    session_id=None,
+    username=None,
+    create=True,
+):
+    """获取会话使用的运行时上下文，并按用户复用仍存活的密钥对。"""
+    normalized_session_id = str(session_id or "").strip()
+    if not normalized_session_id:
+        # 没有真实会话时只使用启动级兜底上下文，避免为匿名探测请求不断生成孤立密钥对。
+        return _ensure_map_key_runtime_cache() if create else None
+    user_key = _get_map_key_runtime_user_key(username)
     with _get_map_key_runtime_lock():
-        if map_key_runtime_cache:
-            return map_key_runtime_cache
-        rsa, _, serialization, _ = _get_crypto_primitives()
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
+        context = (
+            map_key_runtime_session_contexts.get(normalized_session_id)
+            if normalized_session_id
+            else None
         )
-        private_key_pem = private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption(),
-        ).decode("utf-8")
-        runtime_version = secrets.token_hex(8)
-        map_key_runtime_cache.update(
-            {
-                "private_key": private_key,
-                "public_key": private_key.public_key(),
-                "runtime_version": runtime_version,
-                "runtime_script": _build_obfuscated_map_key_runtime_script(
-                    private_key_pem=private_key_pem,
-                    runtime_version=runtime_version,
-                ),
-            }
+        previous_context = context
+        previous_user_key = (
+            map_key_runtime_session_users.get(normalized_session_id)
+            if normalized_session_id
+            else ""
         )
+
+        if user_key:
+            context = map_key_runtime_user_contexts.get(user_key)
+            if context is None and create:
+                context = _generate_map_key_runtime_context()
+            if context is not None:
+                map_key_runtime_user_contexts[user_key] = context
+        elif context is None and create:
+            context = _generate_map_key_runtime_context()
+
+        if not context:
+            return None
+
+        _register_map_key_runtime_context(context)
+        if normalized_session_id:
+            map_key_runtime_session_contexts[normalized_session_id] = context
+            map_key_runtime_session_users[normalized_session_id] = user_key
+
+        if previous_user_key != user_key and previous_user_key:
+            old_context = map_key_runtime_user_contexts.get(previous_user_key)
+            has_remaining_sessions = any(
+                linked_user == previous_user_key
+                for linked_session_id, linked_user in map_key_runtime_session_users.items()
+                if linked_session_id != normalized_session_id
+            )
+            if old_context is previous_context and not has_remaining_sessions:
+                map_key_runtime_user_contexts.pop(previous_user_key, None)
+                _unregister_map_key_runtime_context_if_unused(old_context)
+
+        if previous_context is not None and previous_context is not context:
+            _unregister_map_key_runtime_context_if_unused(previous_context)
+        return context
+
+
+def _get_map_key_runtime_context_by_version(runtime_version):
+    normalized_version = str(runtime_version or "").strip()
+    if not normalized_version:
+        return None
+    with _get_map_key_runtime_lock():
+        return map_key_runtime_contexts_by_version.get(normalized_version)
+
+
+def _release_map_key_runtime_session(session_id, username=None):
+    normalized_session_id = str(session_id or "").strip()
+    if not normalized_session_id:
+        return
+    with _get_map_key_runtime_lock():
+        context = map_key_runtime_session_contexts.pop(normalized_session_id, None)
+        user_key = map_key_runtime_session_users.pop(normalized_session_id, None)
+        user_key = user_key or _get_map_key_runtime_user_key(username)
+        if user_key:
+            user_context = map_key_runtime_user_contexts.get(user_key)
+            has_remaining_sessions = any(
+                linked_user == user_key
+                for linked_user in map_key_runtime_session_users.values()
+            )
+            if not has_remaining_sessions:
+                map_key_runtime_user_contexts.pop(user_key, None)
+                _unregister_map_key_runtime_context_if_unused(user_context or context)
+        _unregister_map_key_runtime_context_if_unused(context)
+
+
+def _get_map_key_runtime_context_for_request():
+    session_id = normalize_session_uuid(
+        request.headers.get("X-Session-ID", "")
+    )
+    if not session_id and request.referrer:
+        uuid_match = re.search(
+            r"/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})",
+            request.referrer,
+            re.IGNORECASE,
+        )
+        if uuid_match:
+            session_id = uuid_match.group(1)
+
+    session_id, username, session_exists = _get_map_key_runtime_session_identity(
+        session_id
+    )
+    if not session_exists:
+        return None
+
+    session_context = _get_map_key_runtime_context_for_session(
+        session_id,
+        username,
+    )
+    if session_context is None:
+        return None
+
+    runtime_version = request.args.get("v", "")
+    if not str(runtime_version or "").strip():
+        return session_context
+    version_context = _get_map_key_runtime_context_by_version(runtime_version)
+    if version_context is not session_context:
+        return None
+    return session_context
+
+
+def _initialize_map_key_runtime():
+    """为一次 Web 服务启动创建全新的非对称密钥对和运行时脚本。"""
+    with _get_map_key_runtime_lock():
+        map_key_runtime_cache.clear()
+        map_key_runtime_session_contexts.clear()
+        map_key_runtime_session_users.clear()
+        map_key_runtime_user_contexts.clear()
+        map_key_runtime_contexts_by_version.clear()
+        context = _generate_map_key_runtime_context()
+        map_key_runtime_cache.update(context)
+        _register_map_key_runtime_context(map_key_runtime_cache)
         return map_key_runtime_cache
 
 
-def _encrypt_map_provider_secret(secret_value):
+def _ensure_map_key_runtime_cache():
+    with _get_map_key_runtime_lock():
+        if not map_key_runtime_cache:
+            map_key_runtime_cache.update(_generate_map_key_runtime_context())
+            _register_map_key_runtime_context(map_key_runtime_cache)
+        return map_key_runtime_cache
+
+
+def _get_map_key_runtime_script_url(runtime_version):
+    version = str(runtime_version or "").strip()
+    if not version:
+        return f"/api/{MAP_KEY_RUNTIME_SCRIPT_NAME}"
+    return f"/api/{MAP_KEY_RUNTIME_SCRIPT_NAME}?v={version}"
+
+
+def _encrypt_map_provider_secret(secret_value, runtime_context=None):
     raw_value = str(secret_value or "").strip()
     if not raw_value:
         return ""
     _, padding, _, hashes = _get_crypto_primitives()
-    runtime_context = _ensure_map_key_runtime_cache()
+    runtime_context = runtime_context or _ensure_map_key_runtime_cache()
     ciphertext = runtime_context["public_key"].encrypt(
         raw_value.encode("utf-8"),
         padding.OAEP(
@@ -395,45 +687,102 @@ def _encrypt_map_provider_secret(secret_value):
     return _base64.b64encode(ciphertext).decode("utf-8")
 
 
-def _build_map_provider_key_bundle(map_providers):
+def _build_map_provider_key_bundle(
+    map_providers,
+    provider=None,
+    runtime_context=None,
+    allow_global_fallback=True,
+):
     encrypted_providers = {}
     providers = map_providers if isinstance(map_providers, dict) else {}
+    requested_provider = _normalize_map_provider(
+        provider or _get_active_map_provider()
+    )
+    requested_key_field = MAP_PROVIDER_KEY_FIELDS[requested_provider]
     try:
-        for provider, key_field in MAP_PROVIDER_KEY_FIELDS.items():
-            provider_config = providers.get(provider) if isinstance(providers.get(provider), dict) else {}
-            encrypted_secret = _encrypt_map_provider_secret(provider_config.get(key_field, ""))
-            encrypted_providers[provider] = {
-                "field": key_field,
-                "ciphertext": encrypted_secret,
+        if runtime_context is None and allow_global_fallback:
+            runtime_context = _ensure_map_key_runtime_cache()
+        if not isinstance(runtime_context, dict) or not runtime_context.get(
+            "public_key"
+        ):
+            return {
+                "algorithm": "RSA-OAEP-256",
+                "runtime_version": "",
+                "runtime_script": "",
+                "providers": {
+                    requested_provider: {
+                        "field": requested_key_field,
+                        "ciphertext": "",
+                    }
+                },
+                "available": False,
             }
-        runtime_context = _ensure_map_key_runtime_cache()
+        provider_config = (
+            providers.get(requested_provider)
+            if isinstance(providers.get(requested_provider), dict)
+            else {}
+        )
+        encrypted_secret = _encrypt_map_provider_secret(
+            provider_config.get(requested_key_field, ""),
+            runtime_context=runtime_context,
+        )
+        encrypted_providers[requested_provider] = {
+            "field": requested_key_field,
+            "ciphertext": encrypted_secret,
+        }
         return {
             "algorithm": "RSA-OAEP-256",
             "runtime_version": runtime_context.get("runtime_version", ""),
-            "runtime_script": f"/scripts/{MAP_KEY_RUNTIME_SCRIPT_NAME}",
+            "runtime_script": _get_map_key_runtime_script_url(
+                runtime_context.get("runtime_version", "")
+            ),
             "providers": encrypted_providers,
             "available": True,
         }
     except Exception as e:
         logging.error(f"[MapKeyRuntime] 生成地图密钥密文失败: {e}")
-        for provider, key_field in MAP_PROVIDER_KEY_FIELDS.items():
-            encrypted_providers.setdefault(provider, {"field": key_field, "ciphertext": ""})
+        encrypted_providers.setdefault(
+            requested_provider,
+            {"field": requested_key_field, "ciphertext": ""},
+        )
         return {
             "algorithm": "RSA-OAEP-256",
             "runtime_version": "",
-            "runtime_script": f"/scripts/{MAP_KEY_RUNTIME_SCRIPT_NAME}",
+            "runtime_script": _get_map_key_runtime_script_url(""),
             "providers": encrypted_providers,
             "available": False,
         }
 
 
-def _build_public_map_provider_frontend_payload(config=None):
+def _build_public_map_provider_frontend_payload(
+    config=None,
+    required_provider=None,
+    session_id=None,
+    username=None,
+):
     frontend_config = _get_map_provider_frontend_config(config)
     map_providers = frontend_config.get("map_providers", {})
+    provider = _normalize_map_provider(
+        required_provider or frontend_config.get("map_provider", "amap")
+    )
+    runtime_context = None
+    normalized_session_id, session_username, session_exists = (
+        _get_map_key_runtime_session_identity(session_id)
+    )
+    if session_exists:
+        runtime_context = _get_map_key_runtime_context_for_session(
+            session_id=normalized_session_id,
+            username=session_username,
+        )
     return {
         "map_provider": frontend_config.get("map_provider", "amap"),
         "map_providers": _strip_map_provider_secret_fields(map_providers),
-        "map_provider_key_bundle": _build_map_provider_key_bundle(map_providers),
+        "map_provider_key_bundle": _build_map_provider_key_bundle(
+            map_providers,
+            provider=provider,
+            runtime_context=runtime_context,
+            allow_global_fallback=False,
+        ),
     }
 
 
@@ -2223,11 +2572,9 @@ def append_behavior_captcha_history(captcha_id, behavior_type="SLIDER", status="
         date_str = datetime.datetime.fromtimestamp(now_ts).strftime("%Y%m%d")
         history_file = os.path.join(history_dir, f"captcha_history_{date_str}.jsonl")
         try:
-            session_id = request.headers.get("X-Session-ID", "unknown")
             client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
             user_agent = request.headers.get("User-Agent", "unknown")
         except Exception:
-            session_id = "unknown"
             client_ip = "unknown"
             user_agent = "unknown"
         history_entry = {
@@ -2238,7 +2585,6 @@ def append_behavior_captcha_history(captcha_id, behavior_type="SLIDER", status="
             "display_text": "使用验证码服务器",
             "code": "",
             "html": "",
-            "session_id": session_id,
             "client_ip": client_ip,
             "user_agent": user_agent,
             "timestamp": now_ts,
@@ -2313,6 +2659,11 @@ def update_behavior_captcha_history(captcha_id, passed):
 def normalize_captcha_history_record(record):
     if not isinstance(record, dict):
         return record
+    # 历史记录只用于审计状态，不应成为验证码答案或会话标识的备份。
+    record["code"] = ""
+    record["captcha_code"] = ""
+    record["html"] = ""
+    record.pop("session_id", None)
     provider = str(
         record.get("provider") or record.get("captcha_provider") or ""
     ).strip().lower()
@@ -2320,9 +2671,6 @@ def normalize_captcha_history_record(record):
         record["provider"] = "behavior"
         record["captcha_provider"] = "behavior"
         record["display_text"] = "使用验证码服务器"
-        record["code"] = ""
-        record["captcha_code"] = ""
-        record["html"] = ""
         if record.get("verified_input"):
             record["verified_input"] = "验证码服务器二次校验"
     return record
@@ -2356,7 +2704,8 @@ def _verify_behavior_captcha(captcha_id):
             logging.info(f"[验证码-behavior] 二验通过: ID={captcha_id[:12]}...")
             return True, ""
         logging.warning(
-            f"[验证码-behavior] 二验未通过: ID={captcha_id[:12]}..., status={resp.status_code}, body={resp.text[:40]}"
+            f"[验证码-behavior] 二验未通过: ID={captcha_id[:8]}..., "
+            f"status={resp.status_code}"
         )
         return False, "人机验证未通过，请重试"
     except Exception as e:
@@ -2368,7 +2717,7 @@ def verify_captcha(captcha_id, user_input):
     """
     验证验证码辅助函数（按提供方分支：本地图片 / behavior）
     """
-    logging.debug(f"[验证码] 开始验证: ID={captcha_id}..., 用户输入='{user_input}'")
+    logging.debug(f"[验证码] 开始验证: ID={str(captcha_id)[:8]}...")
 
     # ========================================
     # 提供方分支：behavior 走 /check2 二次校验，不依赖文本输入
@@ -2386,7 +2735,7 @@ def verify_captcha(captcha_id, user_input):
     captchas_dir = os.path.join("logs", "captchas")
     captcha_file = os.path.join(captchas_dir, f"{captcha_id}.json")
     if not os.path.exists(captcha_file):
-        logging.warning(f"[验证码] 验证码文件不存在: ID={captcha_id}...")
+        logging.warning(f"[验证码] 验证码文件不存在: ID={str(captcha_id)[:8]}...")
         return False, "人机验证码不存在或已失效"
 
     try:
@@ -2430,7 +2779,7 @@ def verify_captcha(captcha_id, user_input):
                                         time.time()
                                     ).strftime("%Y-%m-%d %H:%M:%S")
                                 )
-                                record["verified_input"] = user_input_upper
+                                record["verified_input"] = "已提交（内容已隐藏）"
                                 lines[i] = (
                                     json.dumps(
                                         record, ensure_ascii=False) + "\n"
@@ -2454,7 +2803,7 @@ def verify_captcha(captcha_id, user_input):
                          daemon=True).start()
         try:
             os.remove(captcha_file)
-            logging.debug(f"[验证码] 已删除验证码文件: {captcha_id}")
+            logging.debug(f"[验证码] 已删除验证码文件: {str(captcha_id)[:8]}...")
         except Exception as e:
             logging.warning(f"[验证码] 删除验证码文件失败: {e}")
         if is_correct:
@@ -3527,8 +3876,6 @@ class IPVerifier:
 
         token, challenge = _create_payment_verify_probe(ttl_seconds=15)
         verify_url = _build_payment_verify_probe_url(base_url, token)
-        token_preview = f"{token[:8]}..." if len(token) > 8 else token
-
         try:
             response = requests.post(
                 verify_url,
@@ -3538,7 +3885,7 @@ class IPVerifier:
 
             if response.status_code != 200:
                 logging.warning(
-                    f"[本机验证] probe 请求失败 - 状态码: {response.status_code}, token: {token_preview}"
+                    f"[本机验证] probe 请求失败 - 状态码: {response.status_code}"
                 )
                 return False
 
@@ -3549,26 +3896,26 @@ class IPVerifier:
                 return False
 
             if not response_data.get("success"):
-                logging.warning(f"[本机验证] probe 接口返回失败: {token_preview}")
+                logging.warning("[本机验证] probe 接口返回失败")
                 return False
 
             if not _is_payment_verify_probe_consumed(token):
-                logging.warning(f"[本机验证] probe 未在本机消费成功: {token_preview}")
+                logging.warning("[本机验证] probe 未在本机消费成功")
                 return False
 
             logging.info(f"[本机验证] app_host probe 验证通过: {base_url}")
             return True
 
         except requests.exceptions.Timeout:
-            logging.warning(f"[本机验证] 请求超时 - {verify_url}")
+            logging.warning(f"[本机验证] 请求超时 - {_redact_sensitive_log_text(base_url)}")
             return False
 
         except requests.exceptions.ConnectionError:
-            logging.warning(f"[本机验证] 连接失败 - {verify_url}")
+            logging.warning(f"[本机验证] 连接失败 - {_redact_sensitive_log_text(base_url)}")
             return False
 
         except Exception as e:
-            logging.error(f"[本机验证] 验证过程异常: {str(e)}")
+            logging.error(f"[本机验证] 验证过程异常: {type(e).__name__}")
             return False
 
         finally:
@@ -3700,7 +4047,14 @@ class IPVerifier:
 # ==============================================================================
 
 
-class NoColorFileFormatter(logging.Formatter):
+class SensitiveLogFormatter(logging.Formatter):
+    """格式化日志时统一移除凭据、令牌和其他认证材料。"""
+
+    def format(self, record):
+        return _redact_sensitive_log_text(super().format(record))
+
+
+class NoColorFileFormatter(SensitiveLogFormatter):
     """
     自定义日志格式化程序，用于在写入文件前去除ANSI颜色代码。
     """
@@ -4014,7 +4368,7 @@ def setup_logging():
 
     logger.handlers.clear()
 
-    log_format = logging.Formatter(
+    log_format = SensitiveLogFormatter(
         "%(asctime)s [%(levelname)s] [pid=%(process)d tid=%(thread)d %(threadName)s] "
         "[req=%(request_id)s user=%(request_user)s ip=%(client_ip)s] "
         "[%(filename)s:%(lineno)d] [%(funcName)s] %(message)s",
@@ -5755,7 +6109,7 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("[Admin]\n")
         f.write("# 超级管理员账号名称（有且只有一个）\n")
         f.write("# 注意：super_admin 只能在此配置文件中设置，不能在界面创建\n")
-        f.write("# 默认账号: admin，默认密码: admin（首次登录后请立即修改）\n")
+        f.write("# 默认管理员账号将在首次启动时创建，首次登录后请立即修改密码\n")
         f.write(
             f"super_admin = {config_obj.get('Admin', 'super_admin', fallback='admin')}\n\n"
         )
@@ -6343,9 +6697,9 @@ def get_baidu_access_token(api_key, secret_key):
     使用示例:
         result = get_baidu_access_token("your_api_key", "your_secret_key")
         if result["error"] is None:
-            print(f"获取token成功: {result['access_token']}")
+            print("获取token成功")
         else:
-            print(f"获取token失败: {result['error']}")
+            print("获取token失败")
     """
     # 注意：requests库已在模块级别通过_try_import_third_party()导入
     # 不需要在函数内部重复导入
@@ -6417,9 +6771,10 @@ def get_baidu_access_token(api_key, secret_key):
     except requests.exceptions.HTTPError as e:
         # 捕获HTTP错误异常（4xx、5xx状态码）
         # 例如：401 Unauthorized、403 Forbidden、500 Internal Server Error
+        logging.warning(f"[百度云Token] HTTP请求失败: {type(e).__name__}")
         return {
             "access_token": None,
-            "error": f"HTTP请求失败: {str(e)}"
+            "error": "HTTP请求失败，请稍后重试"
         }
 
     except ValueError:
@@ -6433,9 +6788,10 @@ def get_baidu_access_token(api_key, secret_key):
     except Exception as e:
         # 捕获所有其他未预期的异常
         # 作为最后的兜底处理，确保函数不会因为未知错误而崩溃
+        logging.warning(f"[百度云Token] 请求异常: {type(e).__name__}")
         return {
             "access_token": None,
-            "error": f"发生未知错误: {str(e)}"
+            "error": "请求百度云服务失败，请稍后重试"
         }
 
 
@@ -6673,12 +7029,13 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
     except requests.exceptions.HTTPError as e:
         # HTTP错误（4xx、5xx状态码）
         # 例如：401未授权、403禁止访问、500服务器内部错误等
+        logging.warning(f"[百度云文本审核] HTTP请求失败: {type(e).__name__}")
         return {
             "success": False,
             "conclusion": "审核失败",
             "conclusion_type": 4,
             "data": [],
-            "error": f"HTTP请求失败: {str(e)}"
+            "error": "HTTP请求失败，请稍后重试"
         }
 
     except ValueError:
@@ -6695,12 +7052,13 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
     except Exception as e:
         # 捕获所有其他未预期的异常
         # 这是最后的兜底处理，确保函数始终返回标准格式的结果
+        logging.warning(f"[百度云文本审核] 请求异常: {type(e).__name__}")
         return {
             "success": False,
             "conclusion": "审核失败",
             "conclusion_type": 4,
             "data": [],
-            "error": f"发生未知错误: {str(e)}"
+            "error": "文本审核服务异常，请稍后重试"
         }
 
 
@@ -7048,7 +7406,7 @@ def _create_config_ini():
                 print(f"[配置文件] 添加新的配置节: {section}")
                 for key, value in default_config.items(section):
                     existing_config.set(section, key, value)
-                    print(f"[配置文件] 为新节添加配置项: [{section}] {key} = {value}")
+                    print(f"[配置文件] 为新节添加配置项: [{section}] {key}")
             else:
                 existing_keys_lower = {
                     k.lower() for k in existing_config.options(section)
@@ -7057,9 +7415,7 @@ def _create_config_ini():
                     if key.lower() not in existing_keys_lower:
                         existing_config.set(section, key, value)
                         updated = True
-                        print(
-                            f"[配置文件] 添加缺失的配置项: [{section}] {key} = {value}"
-                        )
+                        print(f"[配置文件] 添加缺失的配置项: [{section}] {key}")
 
         if updated:
             try:
@@ -7828,9 +8184,9 @@ def _create_default_admin():
         )
         return
 
-    print("[管理员账号] 创建默认管理员账号 (用户名: admin, 密码: admin)...")
+    print("[管理员账号] 创建默认管理员账号 (用户名: admin)...")
     logging.info(
-        f"[系统初始化] 开始创建默认管理员账号 --> 用户名: admin, 密码: admin (⚠️ 建议首次登录后立即修改), 权限组: super_admin, 文件路径: {admin_file}"
+        f"[系统初始化] 开始创建默认管理员账号 --> 用户名: admin, 权限组: super_admin, 文件路径: {admin_file}"
     )
     admin_data = {
         "auth_username": "admin",
@@ -7879,7 +8235,7 @@ def normalize_session_uuid(session_id):
         return ""
     if not SESSION_UUID_V4_PATTERN.match(normalized):
         return ""
-    return normalized
+    return normalized.lower()
 
 
 AUTH_OPTIONAL_API_METHODS = {"get_initial_data"}
@@ -8077,8 +8433,8 @@ class RsaSigner:
             # 这个原文必须与签名时使用的原文完全一致
             content = self._build_string_to_sign(params)
 
-            # 记录日志：输出待验证的原文内容（用于调试）
-            logging.info(f"[RSA验签] 待验证原文: {content}")
+            # 原文可能包含订单、回调地址或其他敏感参数，只记录长度用于排障。
+            logging.info(f"[RSA验签] 待验证原文长度: {len(content)}")
 
             # 第2步：检查公钥是否已加载
             # 如果初始化时没有提供公钥，则无法进行验签
@@ -8305,12 +8661,11 @@ class RainbowYiPayClient:
         if pay_type == "jsapi":
             if not sub_openid or not sub_appid:
                 return {"success": False, "message": "jsapi支付方式需要提供sub_openid和sub_appid"}
-            logging.info(
-                f"[彩虹易支付] 检测到jsapi支付方式，sub_openid: {sub_openid}, sub_appid: {sub_appid}")
+            logging.info("[彩虹易支付] 检测到jsapi支付方式，必要参数已提供")
         if pay_type == "scan":
             if not auth_code:
                 return {"success": False, "message": "scan支付方式需要提供auth_code"}
-            logging.info(f"[彩虹易支付] 检测到scan支付方式，auth_code: {auth_code}")
+            logging.info("[彩虹易支付] 检测到scan支付方式，付款码已提供")
 
         # 声明使用全局 requests 变量
         # requests 已在 check_and_import_dependencies() 中导入
@@ -8488,6 +8843,17 @@ class RainbowYiPayClient:
         RainbowYiPayRsaSigner = RsaSigner(self.key)
 
         data_to_sent = RainbowYiPayRsaSigner.generate_sign(params)
+        safe_order_data = {
+            key: value
+            for key, value in params.items()
+            if key not in {
+                "auth_code",
+                "sub_openid",
+                "sub_appid",
+                "return_url",
+                "notify_url",
+            }
+        }
 
         # 构造完整的API请求URL
         # 彩虹易支付的创建订单接口路径为 /api/pay/create
@@ -8498,19 +8864,18 @@ class RainbowYiPayClient:
             f"[彩虹易支付] 创建订单 - 订单号: {out_trade_no}, 金额: {money}元, 支付方式: {pay_type}")
 
         logging.info(
-            f"[彩虹易支付] 发起请求 - URL: {api_url}, 数据: {data_to_sent}", extra={"method": "POST"})
+            f"[彩虹易支付] 发起请求 - URL: {api_url}, 已签名参数数量: {len(data_to_sent)}",
+            extra={"method": "POST"},
+        )
 
         try:
             # 向彩虹易支付API发送POST请求
             response = requests.post(api_url, data=data_to_sent, timeout=10)
 
             logging.info(
-                f"[彩虹易支付] 发起[请求头] Headers: {response.request.headers}")
-            logging.info(
-                f"[彩虹易支付] 发起[请求体] Body (Raw): {response.request.body}")
-
-            logging.info(
-                f"[彩虹易支付] 收到响应 - 状态码: {response.status_code}, 响应内容: {response.text}")
+                f"[彩虹易支付] 收到响应 - 状态码: {response.status_code}, "
+                f"响应长度: {len(response.content or b'')}"
+            )
 
             # 检查HTTP响应状态码
             # status_code 200 表示请求成功
@@ -8528,7 +8893,7 @@ class RainbowYiPayClient:
                         "success": True,
                         "message": "订单创建成功",
                         "pay_url": response.url,  # 使用重定向后的URL
-                        "order_data": params,
+                        "order_data": safe_order_data,
                     }
 
                 # 检查API响应中的状态码
@@ -8563,14 +8928,12 @@ class RainbowYiPayClient:
                             "trade_no": trade_no,         # 平台订单号
                             "pay_type": pay_type_response,  # 发起支付类型
                             "pay_info": pay_info,         # 发起支付参数
-                            "order_data": params,
+                            "order_data": safe_order_data,
                         }
-                        logging.info(
-                            f"[彩虹易支付] 订单创建成功 - 详细信息:" + json.dumps(data_to_sent2, ensure_ascii=False))
                         return data_to_sent2
                     else:
                         # API响应中没有支付信息
-                        logging.error(f"[彩虹易支付] API响应中缺少支付信息: {result}")
+                        logging.error("[彩虹易支付] API响应中缺少支付信息")
                         return {
                             "success": False,
                             "message": "易支付API响应异常，缺少支付信息",
@@ -8579,8 +8942,14 @@ class RainbowYiPayClient:
                     # 订单创建失败，API返回了错误信息
                     error_msg = result.get("msg") or result.get(
                         "message") or "未知错误"
-                    logging.error(f"[彩虹易支付] 创建订单失败 - {error_msg}")
-                    return {"success": False, "message": f"创建订单失败: {error_msg}"}
+                    logging.error(
+                        f"[彩虹易支付] 创建订单失败 - "
+                        f"错误信息长度: {len(str(error_msg))}"
+                    )
+                    return {
+                        "success": False,
+                        "message": "创建订单失败，请稍后重试",
+                    }
             else:
                 # HTTP请求失败（非200状态码）
                 logging.error(
@@ -8598,14 +8967,14 @@ class RainbowYiPayClient:
 
         except requests.exceptions.RequestException as e:
             # 其他网络请求异常（如网络不通、DNS解析失败等）
-            logging.error(f"[彩虹易支付] 网络请求异常: {str(e)}")
-            return {"success": False, "message": f"网络请求失败: {str(e)}"}
+            logging.error(f"[彩虹易支付] 网络请求异常: {type(e).__name__}")
+            return {"success": False, "message": "网络请求失败，请稍后重试"}
 
         except Exception as e:
             # 捕获所有未预期的异常
-            logging.error(f"[彩虹易支付] 创建订单异常: {str(e)}")
+            logging.error(f"[彩虹易支付] 创建订单异常: {type(e).__name__}")
             logging.error(traceback.format_exc())
-            return {"success": False, "message": f"创建订单时发生错误: {str(e)}"}
+            return {"success": False, "message": "创建订单时发生错误，请稍后重试"}
 
 
 # ==============================================================================
@@ -11689,7 +12058,9 @@ class ApiClient:
             "platform":"android",
         }
         try:
-            logging.debug(f"当前Session的Cookies: {self.session.cookies.get_dict()}")
+            logging.debug(
+                f"当前Session包含 {len(self.session.cookies)} 个 Cookie"
+            )
         except requests.cookies.CookieConflictError:
             logging.warning(
                 "CookieConflictError 即使在使用 get_dict() 时也发送。获取原始cookie列表进行失败....")
@@ -11706,12 +12077,13 @@ class ApiClient:
                 if cookie.name == "shiroCookie":
                     auth_token = cookie.value
                     logging.warning(
-                        f"手动查找到 'shiroCookie': {auth_token[:10]}...")
+                        f"手动查找到 shiroCookie，长度: {len(auth_token)}"
+                    )
                     break
 
         if auth_token:
             logging.debug(
-                f"使用shiroCookie作为认证令牌进行Authorization请求头设置: {auth_token}"
+                f"使用 shiroCookie 设置 Authorization 请求头，令牌长度: {len(auth_token)}"
             )
             headers["Authorization"] = auth_token
         else:
@@ -11810,10 +12182,16 @@ class ApiClient:
         connect_timeout = 5
         read_timeout = 10
 
-        log_data = data
+        request_field_names = (
+            sorted(data.keys()) if isinstance(data, dict) else []
+        )
+        safe_request_url = _redact_sensitive_log_text(url)
 
         logging.debug(
-            f"[网络请求] 准备发起HTTP请求 --> 请求方法: {method.upper()}, 目标URL: {url}, 重试次数配置: {retries}次, 连接超时: {connect_timeout}秒, 读取超时: {read_timeout}秒\n[请求数据]: {log_data}"
+            f"[网络请求] 准备发起HTTP请求 --> 请求方法: {method.upper()}, "
+            f"目标URL: {safe_request_url}, 重试次数配置: {retries}次, "
+            f"连接超时: {connect_timeout}秒, 读取超时: {read_timeout}秒, "
+            f"请求字段: {request_field_names}"
         )
 
         for attempt in range(retries):
@@ -11841,7 +12219,9 @@ class ApiClient:
                         
 
                     logging.debug(
-                        f"[网络请求] 发起POST请求 --> URL: {url}, 请求头: {headers}\n请求体字节长度: {len(post_data_bytes)} 字节\n请求体: {post_data_bytes}\n"
+                        f"[网络请求] 发起POST请求 --> URL: {safe_request_url}, "
+                        f"请求头字段: {sorted(headers.keys())}, "
+                        f"请求体字节长度: {len(post_data_bytes)} 字节"
                     )
                     resp = self.session.post(
                         url,
@@ -11859,10 +12239,10 @@ class ApiClient:
                     )
 
                 logging.debug(
-                    f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} ({resp.reason}), 来源URL: {url}\n响应头: {dict(resp.headers)}\n响应内容长度: {len(resp.content)} 字节"
-                )
-                logging.debug(
-                    f"[网络请求] 响应内容: \n{resp.text}\n"
+                    f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} "
+                    f"({resp.reason}), 来源URL: {safe_request_url}, "
+                    f"响应头字段: {sorted(resp.headers.keys())}, "
+                    f"响应内容长度: {len(resp.content)} 字节"
                 )
                 resp.raise_for_status()
                 return resp
@@ -11871,15 +12251,25 @@ class ApiClient:
                 requests.exceptions.ConnectionError,
                 requests.exceptions.Timeout,
             ) as net_err:
-                log_func(f"网络连接失败 (第{attempt+1}/{retries}次): {net_err}")
+                log_func(
+                    f"网络连接失败 (第{attempt+1}/{retries}次)，"
+                    f"异常类型: {type(net_err).__name__}"
+                )
                 logging.error(
-                    f"[网络请求] 网络连接失败 --> 重试次数: 第{attempt+1}次/共{retries}次, 请求方法: {method.upper()}, 目标URL: {url}, 错误类型: {type(net_err).__name__}, 错误详情: {net_err}, 连接超时配置: {connect_timeout}秒, 读取超时配置: {read_timeout}秒",
+                    f"[网络请求] 网络连接失败 --> 重试次数: 第{attempt+1}次/共{retries}次, "
+                    f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
+                    f"错误类型: {type(net_err).__name__}, "
+                    f"连接超时配置: {connect_timeout}秒, 读取超时配置: {read_timeout}秒",
                     exc_info=False,
                 )
                 if attempt + 1 == retries:
-                    log_func(f"网络连接最终失败: 无法连接到服务器 {self.BASE_URL}")
+                    log_func(
+                        f"网络连接最终失败: 无法连接到服务器 "
+                        f"{_redact_sensitive_log_text(self.BASE_URL)}"
+                    )
                     logging.error(
-                        f"[网络请求] 网络连接最终失败 --> 已达到最大重试次数({retries}次), 目标服务器: {self.BASE_URL}, 无法建立连接"
+                        f"[网络请求] 网络连接最终失败 --> 已达到最大重试次数({retries}次), "
+                        f"目标服务器: {_redact_sensitive_log_text(self.BASE_URL)}, 无法建立连接"
                     )
                     return None
                 logging.info(
@@ -11893,7 +12283,11 @@ class ApiClient:
                     f"服务器返回错误 (第{attempt+1}次): {http_err.response.status_code}"
                 )
                 logging.error(
-                    f"[网络请求] HTTP错误 --> 重试次数: 第{attempt+1}次/共{retries}次, 请求方法: {method.upper()}, 目标URL: {url}, HTTP状态码: {http_err.response.status_code}, 状态描述: {http_err.response.reason}, 服务器响应内容: {http_err.response.text[:200]}{'...(已截断)' if len(http_err.response.text) > 200 else ''}",
+                    f"[网络请求] HTTP错误 --> 重试次数: 第{attempt+1}次/共{retries}次, "
+                    f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
+                    f"HTTP状态码: {http_err.response.status_code}, "
+                    f"状态描述: {http_err.response.reason}, "
+                    f"响应内容长度: {len(http_err.response.content)} 字节",
                     exc_info=False,
                 )
                 if attempt + 1 == retries:
@@ -11909,15 +12303,23 @@ class ApiClient:
                 continue
 
             except requests.exceptions.RequestException as req_err:
-                log_func(f"请求发生意外错误 (第{attempt+1}次): {req_err}")
+                log_func(
+                    f"请求发生意外错误 (第{attempt+1}次)，"
+                    f"异常类型: {type(req_err).__name__}"
+                )
                 logging.error(
-                    f"[网络请求] 意外的请求异常 --> 重试次数: 第{attempt+1}次/共{retries}次, 请求方法: {method.upper()}, 目标URL: {url}, 异常类型: {type(req_err).__name__}, 异常详情: {req_err}, 完整堆栈信息如下:",
+                    f"[网络请求] 意外的请求异常 --> 重试次数: 第{attempt+1}次/共{retries}次, "
+                    f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
+                    f"异常类型: {type(req_err).__name__}, 完整堆栈信息如下:",
                     exc_info=True,
                 )
                 if attempt + 1 == retries:
-                    log_func(f"请求最终失败: {req_err}")
+                    log_func(
+                        f"请求最终失败，异常类型: {type(req_err).__name__}"
+                    )
                     logging.error(
-                        f"[网络请求] 请求最终失败 --> 已达到最大重试次数({retries}次), 所有重试均失败, 异常信息: {req_err}"
+                        f"[网络请求] 请求最终失败 --> 已达到最大重试次数({retries}次), "
+                        f"所有重试均失败, 异常类型: {type(req_err).__name__}"
                     )
                     return None
                 logging.info(
@@ -11942,7 +12344,10 @@ class ApiClient:
             except json.JSONDecodeError as e:
                 log_func("服务器响应解析失败。")
                 logging.error(
-                    f"[JSON解析] JSON解码失败 --> 响应状态码: {resp.status_code}, 响应内容类型: {resp.headers.get('Content-Type', '未知')}, 解码错误位置: 第{e.lineno}行第{e.colno}列, 响应文本内容(前500字符): {resp.text[:500]}{'...(已截断)' if len(resp.text) > 500 else ''}, 错误详情: {e}"
+                    f"[JSON解析] JSON解码失败 --> 响应状态码: {resp.status_code}, "
+                    f"响应内容类型: {resp.headers.get('Content-Type', '未知')}, "
+                    f"解码错误位置: 第{e.lineno}行第{e.colno}列, "
+                    f"响应内容长度: {len(resp.content)} 字节"
                 )
                 return None
         logging.debug(f"[JSON解析] 响应对象为空，无法解析JSON")
@@ -11952,13 +12357,8 @@ class ApiClient:
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}/app/login?username={username}&password={password}",
-                # {
-                #     "username": username,
-                #     "password": password,
-                #     "appVersion": self.API_VERSION,
-                # },
-                data="",
+                f"{self.BASE_URL}/app/login",
+                data={"username": username, "password": password},
             )
         )
 
@@ -12553,7 +12953,8 @@ class Api:
     def log(self, message):
         """将日志消息通过 WebSocket 发送到前端界面显示"""
         session_id = getattr(self, "_web_session_id", None)
-        logging.info(message)
+        safe_message = _redact_sensitive_log_value(message)
+        logging.info(safe_message)
         if session_id and socketio:
             try:
                 # 添加线程诊断日志
@@ -12562,7 +12963,7 @@ class Api:
                 logging.debug(f"[SocketIO Emit] Attempting emit from {thread_info}")
                 
                 socketio.emit("log_message", {
-                              "msg": str(message)}, room=session_id)
+                              "msg": str(safe_message)}, room=session_id)
                 logging.debug(f"[SocketIO Emit] Success from {thread_info}")
             except Exception as e:
                 current_thread = threading.current_thread()
@@ -14085,7 +14486,7 @@ class Api:
                 for log_item in logs_to_process:
                     if isinstance(log_item, dict) and log_item.get("message"):
                         level = log_item.get("level", "INFO").upper()
-                        message = log_item.get("message", "")
+                        message = _redact_sensitive_log_value(log_item.get("message", ""))
                         timestamp = log_item.get("timestamp", "")
                         source = log_item.get("source", "unknown")
 
@@ -14224,7 +14625,8 @@ class Api:
                 user_info = self.user_info
 
             logging.debug(
-                f"Initial users={users}, last user={last_user}, logged_in={is_logged_in}"
+                f"Initial user count={len(users)}, has_last_user={bool(last_user)}, "
+                f"logged_in={is_logged_in}"
             )
 
             # ========================================
@@ -14307,7 +14709,6 @@ class Api:
             except Exception as e:
                 logging.warning(f"[get_initial_data] 获取CDN缓存状态失败: {e}")
 
-            map_public_payload = _build_public_map_provider_frontend_payload(cfg)
             task_status = None
             try:
                 if (
@@ -14318,6 +14719,19 @@ class Api:
                     task_status = background_task_manager.get_task_status(session_uuid)
             except Exception as e:
                 logging.warning(f"[get_initial_data] 获取后台任务状态失败: {e}")
+
+            required_map_provider = None
+            if (
+                isinstance(task_status, dict)
+                and task_status.get("status") in ("running", "paused")
+            ):
+                required_map_provider = task_status.get("map_provider")
+            map_public_payload = _build_public_map_provider_frontend_payload(
+                cfg,
+                required_provider=required_map_provider,
+                session_id=session_uuid,
+                username=auth_username,
+            )
 
             response_data = {
                 "success": True,
@@ -14531,7 +14945,12 @@ class Api:
             display_name = MAP_PROVIDER_DISPLAY_NAMES[provider]
             self.log(f"{display_name} API Key已保存。")
             logging.info(f"已成功保存新的{display_name} API Key")
-            map_public_payload = _build_public_map_provider_frontend_payload(cfg)
+            map_public_payload = _build_public_map_provider_frontend_payload(
+                cfg,
+                required_provider=provider,
+                session_id=getattr(self, "_web_session_id", None),
+                username=getattr(self, "auth_username", None),
+            )
             return {
                 "success": True,
                 "map_provider": map_public_payload["map_provider"],
@@ -14831,7 +15250,9 @@ class Api:
         # auth_group = auth_system.get_user_group( )
 
         login_map_payload = _build_public_map_provider_frontend_payload(
-            _read_config_ini(self.config_path) or _get_default_config()
+            _read_config_ini(self.config_path) or _get_default_config(),
+            session_id=getattr(self, "_web_session_id", None),
+            username=getattr(self, "auth_username", None),
         )
         return {
             "success": True,
@@ -16811,7 +17232,7 @@ class Api:
 
     def update_param(self, key, value):
         """更新并保存单个参数"""
-        logging.info(f"API调用: update_param - 更新参数，键: {key}, 值: {value}")
+        logging.info(f"API调用: update_param - 更新参数，键: {key}")
 
         username_to_update = None
         if self.is_multi_account_mode:
@@ -16872,7 +17293,7 @@ class Api:
                 if username_to_update and not self.is_multi_account_mode:
                     self._save_config(username_to_update)
 
-                logging.debug(f"参数已更新: 参数名={key}, 新值={target_params[key]}")
+                logging.debug(f"参数已更新: 参数名={key}")
 
                 # 当 auto_attendance_enabled 参数改变时，更新JSON配置文件
                 # 不再将此参数保存到INI文件，改为使用集中的JSON配置管理
@@ -21554,6 +21975,7 @@ def cleanup_inactive_session(session_id):
 
     try:
         logging.info(f"清理不活跃会话: {session_id}")
+        runtime_username = None
         with web_sessions_lock:
             if session_id in web_sessions:
                 api_instance = web_sessions[session_id]
@@ -21563,6 +21985,7 @@ def cleanup_inactive_session(session_id):
                     api_instance, "is_guest", True
                 ):
                     username = api_instance.auth_username
+                    runtime_username = username
                     is_browsing = False
                     try:
                         timeout = 300
@@ -21598,6 +22021,7 @@ def cleanup_inactive_session(session_id):
                         )
 
                 del web_sessions[session_id]
+        _release_map_key_runtime_session(session_id, runtime_username)
         session_hash = hashlib.sha256(session_id.encode()).hexdigest()
         session_file = os.path.join(
             SESSION_STORAGE_DIR, f"{session_hash}.json")
@@ -24761,7 +25185,8 @@ class BruteForceTaskManager:
 
         if len(found_pwds) > 0:
             logging.info(
-                f"[密码恢复] 在本地配置文件中为账号 {target_account} 发现可能的密码: {found_pwds}"
+                f"[密码恢复] 在本地配置文件中为账号 {target_account} "
+                f"发现 {len(found_pwds)} 个可能的历史密码"
             )
 
         return list(found_pwds)
@@ -24899,9 +25324,7 @@ class BruteForceTaskManager:
                     if resp and resp.get("success"):
                         # 登录成功！找到密码
                         success = True
-                        logging.info(
-                            f"[密码恢复] 账号 {account} 登录成功，密码为: {password}"
-                        )
+                        logging.info(f"[密码恢复] 账号 {account} 登录成功")
                     else:
                         # 登录失败
                         success = False
@@ -24940,7 +25363,8 @@ class BruteForceTaskManager:
                 except Exception as e:
                     # 登录请求异常，继续尝试下一个密码
                     logging.debug(
-                        f"[密码恢复] 账号 {account} 尝试密码 {password} 时出现异常: {e}"
+                        f"[密码恢复] 账号 {account} 登录请求异常，"
+                        f"异常类型: {type(e).__name__}"
                     )
                     success = False
 
@@ -24979,7 +25403,7 @@ class BruteForceTaskManager:
                         }
                         self._save_json_file(self.results_file, self.results)
 
-                    logging.info(f"[密码恢复] 账号 {account} 的密码已找到: {password}")
+                    logging.info(f"[密码恢复] 账号 {account} 的密码已找到")
                     return
 
                 # 添加短暂延迟，避免请求过快触发防护
@@ -26506,6 +26930,7 @@ def start_web_server(args_param):
     session_file_locks_lock = threading.Lock()
     session_activity = {}
     session_activity_lock = threading.Lock()
+    _initialize_map_key_runtime()
     
     # 用户封禁状态缓存（避免频繁文件读取导致的 greenlet 线程问题）
     global user_ban_cache
@@ -28091,6 +28516,7 @@ def start_web_server(args_param):
                     with web_sessions_lock:
                         if session_id in web_sessions:
                             del web_sessions[session_id]
+                    _release_map_key_runtime_session(session_id, auth_username)
                     return jsonify({"success": False, "message": "账号已注销"}), 403
             except Exception as _e:
                 logging.warning(f"[账号注销] 惰性处理失败: {_e}")
@@ -28764,7 +29190,14 @@ def start_web_server(args_param):
         is_captcha_valid, captcha_error_msg = verify_captcha(
             captcha_id, captcha_input)
         
-        logging.info(f"[登录] 收到登录请求: auth_phone='{auth_phone}', auth_username='{auth_username}', auth_password={auth_password}, sms_code='{sms_code}', two_fa_code='{two_fa_code}', captcha_id='{captcha_id}',captcha_input='{captcha_input}', is_captcha_valid='{is_captcha_valid}', captcha_error_msg='{captcha_error_msg}'")
+        logging.info(
+            f"[登录] 收到登录请求: auth_phone_present={bool(auth_phone)}, "
+            f"auth_username='{auth_username}', password_present={bool(auth_password)}, "
+            f"sms_code_present={bool(sms_code)}, two_fa_present={bool(two_fa_code)}, "
+            f"captcha_id_present={bool(captcha_id)}, "
+            f"captcha_input_present={bool(captcha_input)}, "
+            f"is_captcha_valid={is_captcha_valid}"
+        )
         
         if not is_captcha_valid:
             return jsonify({"success": False, "message": captcha_error_msg})
@@ -29608,19 +30041,10 @@ def start_web_server(args_param):
             type_func=lambda x: str(x).lower() in ("true", "yes", "1", "on"),
             fallback=True,
         )
-        amap_js_key = _get_config_value(
-            auth_system.config,
-            "Map",
-            "amap_js_key",
-            type_func=str,
-            fallback="",
-        )
-
         return jsonify(
             {
                 "success": True,
                 "allow_guest_login": allow_guest_login,
-                "amap_js_key": amap_js_key,
             }
         )
 
@@ -32801,6 +33225,7 @@ def start_web_server(args_param):
         with web_sessions_lock:
             if target_session_id in web_sessions:
                 del web_sessions[target_session_id]
+        _release_map_key_runtime_session(target_session_id, auth_username)
 
         return jsonify({"success": True, "message": "会话已删除"})
 
@@ -33139,6 +33564,10 @@ def start_web_server(args_param):
         with web_sessions_lock:
             if target_session_id in web_sessions:
                 del web_sessions[target_session_id]
+        _release_map_key_runtime_session(
+            target_session_id,
+            target_username if target_username != "unknown" else None,
+        )
         # 使用统一函数获取客户端真实IP
         ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
         auth_system.log_audit(
@@ -35122,10 +35551,13 @@ def start_web_server(args_param):
             if not username or not api_key:
                 return jsonify({"success": False, "message": "短信宝配置不完整"})
             url = f"https://api.smsbao.com/query?u={username}&p={api_key}"
-            logging.debug(f"[短信配置] 查询余额URL: {url}")
+            logging.debug("[短信配置] 正在查询短信服务余额")
             response = requests.get(url, timeout=10)
             response_text = response.text.strip()
-            logging.debug(f"[短信配置] 查询余额响应: {response_text}")
+            logging.debug(
+                f"[短信配置] 查询余额响应状态码: {response.status_code}, "
+                f"响应长度: {len(response.content or b'')}"
+            )
             lines = response_text.split("\n")
             if lines and lines[0] == "0":
                 if len(lines) > 1:
@@ -35635,7 +36067,10 @@ def start_web_server(args_param):
                         400,
                     )
             if save_ssl_config(current_config):
-                logging.info(f"[SSL管理] {g.user} 更新SSL配置: {current_config}")
+                logging.info(
+                    f"[SSL管理] {g.user} 更新SSL配置: "
+                    f"{_redact_sensitive_log_value(current_config)}"
+                )
                 return jsonify(
                     {
                         "success": True,
@@ -35885,7 +36320,10 @@ def start_web_server(args_param):
             }
 
             # 记录日志
-            logging.info(f"[CDN配置] {g.user} 更新CDN配置: {saved_config}")
+            logging.info(
+                f"[CDN配置] {g.user} 更新CDN配置: "
+                f"{_redact_sensitive_log_value(saved_config)}"
+            )
 
             # 返回成功响应
             return jsonify(
@@ -36103,7 +36541,7 @@ def start_web_server(args_param):
         "enable_phone_modification": False,
     }
 
-    def get_frontend_config():
+    def get_frontend_config(session_id=None, username=None):
         """辅助函数：读取前端需要的功能开关配置"""
         # [修正] 使用 strict=False 允许读取包含重复项的配置文件（保留最后一个值）
         # 同时设置 optionxform=str 保持大小写敏感，防止 LastUser/lastuser 冲突
@@ -36169,7 +36607,11 @@ def start_web_server(args_param):
         except Exception:
             newbie_help_url = ""
 
-        map_public_payload = _build_public_map_provider_frontend_payload(config)
+        map_public_payload = _build_public_map_provider_frontend_payload(
+            config,
+            session_id=session_id,
+            username=username,
+        )
 
         return {
             "sms_enabled": sms_enabled,
@@ -36218,8 +36660,10 @@ def start_web_server(args_param):
                 params = request.form.to_dict()
                 logging.info(f"[支付通知] 使用POST方式接收参数")
 
-            # 记录日志：收到异步通知
-            logging.info(f"[支付通知] 收到异步通知 - 参数: {params}")
+            safe_params = _redact_sensitive_log_value(params)
+
+            # 记录日志：收到异步通知，但不写入签名、令牌或认证字段
+            logging.info(f"[支付通知] 收到异步通知 - 参数: {safe_params}")
 
             # ========== 检查是否有jump参数（支付完成后跳转）==========
             # jump参数：支付完成后的跳转地址
@@ -36228,7 +36672,7 @@ def start_web_server(args_param):
             if jump_url:
                 # 存在jump参数，返回跳转页面
                 # 使用JavaScript自动跳转，提供更好的用户体验
-                logging.info(f"[支付通知] 检测到jump参数，跳转到: {jump_url}")
+                logging.info("[支付通知] 检测到jump参数")
                 return f'''
                 <!DOCTYPE html>
                 <html lang="zh-CN">
@@ -36581,7 +37025,7 @@ def start_web_server(args_param):
             # 如果签名验证失败
             if not signature_valid:
                 # 签名验证失败，可能是伪造的通知或RSA验证出错
-                logging.error(f"[支付通知] RSA签名验证失败 - 参数: {params}")
+                logging.error(f"[支付通知] RSA签名验证失败 - 参数: {safe_params}")
 
                 # ========== 写入支付操作日志（签名验证失败） ==========
 
@@ -36593,7 +37037,7 @@ def start_web_server(args_param):
                     action="payment_notify_signature_failed",   # 操作类型：签名验证失败
                     log_data={
                         # 通知参数
-                        "notify_params": params,                # 完整的通知参数
+                        "notify_params": safe_params,            # 脱敏后的通知参数
                         # 通知来源IP
                         "notify_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
                         # 安全信息
@@ -36623,7 +37067,7 @@ def start_web_server(args_param):
 
             # 验证必要参数是否存在
             if not out_trade_no or not trade_status:
-                logging.error(f"[支付通知] 缺少必要参数 - 参数: {params}")
+                logging.error(f"[支付通知] 缺少必要参数 - 参数: {safe_params}")
                 return "fail"
 
             # ========== 提取request相关信息（用于异步处理）==========
@@ -36958,7 +37402,11 @@ def start_web_server(args_param):
                         # 检查订单是否包含欠费账号信息（即这是一个欠费补缴订单）
                         # overdue_accounts字段只有通过/api/payment/create_order_for_overdue创建的订单才有
                         logging.info(
-                            f"[支付通知-异步] 检查订单是否包含欠费账号信息 - 订单号: {out_trade_no} ，订单数据: {order_data}")
+                            f"[支付通知-异步] 检查订单是否包含欠费账号信息 - "
+                            f"订单号: {out_trade_no}, "
+                            f"包含欠费账号: {'overdue_accounts' in order_data}, "
+                            f"订单字段数: {len(order_data)}"
+                        )
                         if "overdue_accounts" in order_data:
 
                             # 这是一个欠费补缴订单，需要：
@@ -37115,12 +37563,23 @@ def start_web_server(args_param):
         用于客户端动态加载配置，减轻服务器端渲染压力
         """
         try:
-            config = get_frontend_config()
-            return jsonify(config)
+            session_id = normalize_session_uuid(
+                request.headers.get("X-Session-ID", "")
+            )
+            username = None
+            if session_id:
+                with web_sessions_lock:
+                    api_instance = web_sessions.get(session_id)
+                    if api_instance is not None and not getattr(
+                        api_instance, "is_guest", True
+                    ):
+                        username = getattr(api_instance, "auth_username", None)
+            config = get_frontend_config(session_id=session_id, username=username)
+            return _apply_no_cache_headers(jsonify(config))
         except Exception as e:
             logging.error(f"获取前端配置失败: {e}")
             # 使用集中定义的默认配置
-            return jsonify(DEFAULT_FRONTEND_CONFIG), 500
+            return _apply_no_cache_headers(jsonify(DEFAULT_FRONTEND_CONFIG)), 500
 
     # ========== 新增路由：CDN缓存文件API ==========
     @app.route("/api/cdn/<file_key>")
@@ -37166,6 +37625,24 @@ def start_web_server(args_param):
                     )
         except Exception as e:
             logging.error(f"[CDN缓存API] 返回文件时发生错误: {e}", exc_info=True)
+            return jsonify({"success": False, "message": "服务器内部错误"}), 500
+
+    @app.route("/api/map_key_runtime.js")
+    def serve_map_key_runtime():
+        """通过 API 下发会话对应的地图密钥解密运行时。"""
+        try:
+            runtime_context = _get_map_key_runtime_context_for_request()
+            runtime_js = (runtime_context or {}).get("runtime_script", "")
+            if not runtime_js:
+                return (
+                    jsonify({"success": False, "message": "Runtime script unavailable"}),
+                    404,
+                )
+            response = make_response(runtime_js)
+            response.mimetype = "application/javascript"
+            return _apply_no_cache_headers(response)
+        except Exception as e:
+            logging.error(f"[MapKeyRuntime] 返回运行时脚本失败: {e}")
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
 
     @app.route("/api/cdn/map/<map_key>")
@@ -37293,14 +37770,19 @@ def start_web_server(args_param):
         服务 ./scripts 目录下的静态文件
         """
         try:
-            if filename == MAP_KEY_RUNTIME_SCRIPT_NAME:
-                runtime_js = _ensure_map_key_runtime_cache().get("runtime_script", "")
-                if not runtime_js:
-                    return jsonify({"success": False, "message": "Runtime script not ready"}), 503
-                response = make_response(runtime_js)
-                response.mimetype = "application/javascript"
-                return _apply_no_cache_headers(response)
-
+            if (
+                os.path.basename(filename).casefold()
+                == MAP_KEY_RUNTIME_SCRIPT_NAME.casefold()
+            ):
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": "地图密钥运行时只能通过 API 获取",
+                        }
+                    ),
+                    404,
+                )
             # 获取 main.py 所在目录
             base_dir = os.path.dirname(__file__)
             script_dir = os.path.join(base_dir, "scripts")
@@ -37642,6 +38124,10 @@ def start_web_server(args_param):
     @app.route("/api/frontend_config.js")
     def get_frontend_config_javascript():
         """将前端配置以JavaScript形式返回，并尝试根据Referer恢复会话"""
+        resolved_session_id = normalize_session_uuid(
+            request.headers.get("X-Session-ID", "")
+        )
+        resolved_username = None
         # ==========================================
         # 逻辑合并：尝试从 Referer 恢复会话状态
         # ==========================================
@@ -37658,32 +38144,43 @@ def start_web_server(args_param):
 
                 if uuid_match:
                     uuid = uuid_match.group(1)
+                    resolved_session_id = uuid
                     # 执行原 session_view 的会话恢复逻辑
                     with web_sessions_lock:
                         if uuid not in web_sessions:
                             state = load_session_state(uuid)
-                            api_instance = Api(args)
-                            api_instance._session_created_at = time.time()
-                            api_instance._web_session_id = uuid
+                            api_instance = None
+                            if state:
+                                api_instance = Api(args)
+                                api_instance._session_created_at = time.time()
+                                api_instance._web_session_id = uuid
 
-                            if state and state.get("login_success"):
-                                api_instance.login_success = True
-                                api_instance.user_info = state.get("user_info")
-                                api_instance._session_created_at = state.get(
-                                    "created_at", time.time()
-                                )
-                                restore_session_to_api_instance(
-                                    api_instance, state)
+                            if state:
+                                if state.get("login_success"):
+                                    api_instance.login_success = True
+                                    api_instance.user_info = state.get("user_info")
+                                    api_instance._session_created_at = state.get(
+                                        "created_at", time.time()
+                                    )
+                                    restore_session_to_api_instance(
+                                        api_instance, state
+                                    )
 
-                                logging.info(
-                                    f"[ConfigLoader] 从文件恢复已登录会话 : {uuid} (用户: {state.get('user_info', {}).get('username', 'Unknown')})"
-                                )
+                                    logging.info(
+                                        "[ConfigLoader] 从文件恢复已登录会话 "
+                                        f"{uuid[:16]}... "
+                                        f"(用户: {state.get('user_info', {}).get('username', 'Unknown')})"
+                                    )
+                                else:
+                                    logging.info(
+                                        f"[ConfigLoader] 恢复未登录会话 {uuid[:16]}..."
+                                    )
+
+                                web_sessions[uuid] = api_instance
                             else:
                                 logging.info(
-                                    f"[ConfigLoader] 初始化新会话结构 : {uuid} "
+                                    f"[ConfigLoader] 拒绝恢复未登记会话 {uuid[:16]}..."
                                 )
-
-                            web_sessions[uuid] = api_instance
                         else:
                             # 内存中已存在，确保 ID 属性设置正确
                             api_instance = web_sessions[uuid]
@@ -37692,18 +38189,37 @@ def start_web_server(args_param):
                             logging.debug(
                                 f"[ConfigLoader] 确认现有会话活跃: {uuid[:32]}..."
                             )
+                        if api_instance is not None and not getattr(
+                            api_instance, "is_guest", True
+                        ):
+                            resolved_username = getattr(
+                                api_instance, "auth_username", None
+                            )
         except Exception as e:
             logging.error(f"[ConfigLoader] 尝试恢复会话时出错: {e}")
+
+        if resolved_session_id and resolved_username is None:
+            with web_sessions_lock:
+                api_instance = web_sessions.get(resolved_session_id)
+                if api_instance is not None and not getattr(
+                    api_instance, "is_guest", True
+                ):
+                    resolved_username = getattr(
+                        api_instance, "auth_username", None
+                    )
 
         # ==========================================
         # 返回配置脚本
         # ==========================================
-        app_config = get_frontend_config()
+        app_config = get_frontend_config(
+            session_id=resolved_session_id,
+            username=resolved_username,
+        )
         config_script = f"window.APP_CONFIG = {json.dumps(app_config)};"
 
         resp = make_response(config_script)
         resp.mimetype = "application/javascript"
-        return resp
+        return _apply_no_cache_headers(resp)
 
     # Vue 前端自动构建：vue 模式下若 dist/ 不存在则尝试构建
     _vue_dist_dir = os.path.join(os.path.dirname(__file__), "dist")
@@ -38876,8 +39392,10 @@ def start_web_server(args_param):
 
             if hasattr(api_instance, method):
                 func = getattr(api_instance, method)
+                safe_params = _redact_sensitive_log_value(params)
                 logging.debug(
-                    f"API调用: 方法={method}, 参数类型={type(params)}, 参数内容={str(params)[:200]}"
+                    f"API调用: 方法={method}, 参数类型={type(params)}, "
+                    f"参数内容={str(safe_params)[:200]}"
                 )
 
                 if params:
@@ -39782,10 +40300,11 @@ def start_web_server(args_param):
         except requests.exceptions.Timeout:
             return jsonify({"success": False, "message": "验证超时，请检查网络连接"})
         except requests.exceptions.RequestException as e:
-            return jsonify({"success": False, "message": f"网络请求失败: {str(e)}"})
+            logging.warning(f"[高德Key验证] 网络请求失败: {type(e).__name__}")
+            return jsonify({"success": False, "message": "网络请求失败，请稍后重试"})
         except Exception as e:
-            logging.error(f"[高德Key验证] 验证失败: {str(e)}")
-            return jsonify({"success": False, "message": f"验证失败: {str(e)}"})
+            logging.error(f"[高德Key验证] 验证失败: {type(e).__name__}")
+            return jsonify({"success": False, "message": "验证失败，请稍后重试"})
 
     # ============================================================
     # 高德地图去水印控制API
@@ -40647,7 +41166,10 @@ def start_web_server(args_param):
             config_data["behavior_type"] = _prov["behavior_type"]
 
             # 记录调试信息：准备返回配置数据
-            logging.debug(f"[验证码配置] 准备返回配置数据: {config_data}")
+            logging.debug(
+                f"[验证码配置] 准备返回配置数据: "
+                f"{_redact_sensitive_log_value(config_data)}"
+            )
 
             # 返回成功响应
             # jsonify()将Python字典转换为JSON格式的HTTP响应
@@ -40856,7 +41378,7 @@ def start_web_server(args_param):
             )
 
             logging.debug(
-                f"[本地验证码] 已生成验证码，长度={length}，答案={captcha_code}，尺寸={captcha_width}x{captcha_height}"
+                f"[本地验证码] 已生成验证码，长度={length}，尺寸={captcha_width}x{captcha_height}"
             )
             if not captcha_html or not captcha_code:
                 logging.error(
@@ -40890,9 +41412,8 @@ def start_web_server(args_param):
                     os.makedirs(history_dir, exist_ok=True)
                     history_data = {
                         "captcha_id": p_captcha_id,
-                        "code": p_code.upper(),
-                        "html": p_html,
-                        "session_id": p_session_id,
+                        "code": "",
+                        "html": "",
                         "client_ip": p_client_ip,
                         "user_agent": p_user_agent,
                         "timestamp": time.time(),
@@ -40961,14 +41482,9 @@ def start_web_server(args_param):
 
             threading.Thread(target=cleanup_expired_captchas,
                              daemon=True).start()
-            if session_id and str(session_id).lower() not in ("null", "undefined", ""):
-                logging.info(
-                    f"[本地验证码] 已生成验证码 ID: {captcha_id} 会话: {session_id} 长度: {length} 尺寸: {captcha_width}x{captcha_height}px"
-                )
-            else:
-                logging.info(
-                    f"[本地验证码] 已生成验证码 ID: {captcha_id} 会话: 未知 长度: {length} 尺寸: {captcha_width}x{captcha_height}px"
-                )
+            logging.info(
+                f"[本地验证码] 已生成验证码，长度={length}，尺寸={captcha_width}x{captcha_height}px"
+            )
 
             # 支持通过查询参数传入目标宽度（width），按比例计算返回的高度
             provided_width = request.args.get("width", type=int)
@@ -41176,19 +41692,27 @@ def start_web_server(args_param):
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
-            logging.debug(f"[验证码HTML页面] 成功返回验证码HTML: {captcha_id}")
+            logging.debug(
+                f"[验证码HTML页面] 成功返回验证码HTML: {captcha_id[:8]}..."
+            )
 
             return response
 
         except json.JSONDecodeError as e:
-            logging.error(f"[验证码HTML页面] JSON解析失败: {captcha_id} - {e}")
+            logging.error(
+                f"[验证码HTML页面] JSON解析失败: {captcha_id[:8]}... - "
+                f"{type(e).__name__}"
+            )
             return (
                 '<html><body><p style="color: red; text-align: center; padding: 20px;">验证码数据损坏</p></body></html>',
                 500,
             )
 
         except IOError as e:
-            logging.error(f"[验证码HTML页面] 文件读取失败: {captcha_id} - {e}")
+            logging.error(
+                f"[验证码HTML页面] 文件读取失败: {captcha_id[:8]}... - "
+                f"{type(e).__name__}"
+            )
             return (
                 '<html><body><p style="color: red; text-align: center; padding: 20px;">读取验证码失败</p></body></html>',
                 500,
@@ -41196,7 +41720,9 @@ def start_web_server(args_param):
 
         except Exception as e:
             logging.error(
-                f"[验证码HTML页面] 未知错误: {captcha_id} - {e}", exc_info=True
+                f"[验证码HTML页面] 未知错误: {captcha_id[:8]}... - "
+                f"{type(e).__name__}",
+                exc_info=True,
             )
             return (
                 '<html><body><p style="color: red; text-align: center; padding: 20px;">读取验证码时发生错误</p></body></html>',
@@ -41824,7 +42350,7 @@ def start_web_server(args_param):
             )
 
             logging.debug(
-                f"【本地验证码】测试验证码生成成功: code={code}, html_length={len(html)}, size={width}x{height}"
+                f"【本地验证码】测试验证码生成成功: html_length={len(html)}, size={width}x{height}"
             )
 
             # ========================================
@@ -41860,9 +42386,8 @@ def start_web_server(args_param):
 
                 history_entry = {
                     "captcha_id": captcha_id,
-                    "code": code.upper(),
-                    "html": html,
-                    "session_id": request.headers.get("X-Session-ID", "unknown"),
+                    "code": "",
+                    "html": "",
                     # 使用统一函数获取客户端真实IP
                     "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
                     "user_agent": request.headers.get("User-Agent", "unknown"),
@@ -41879,7 +42404,9 @@ def start_web_server(args_param):
                 with open(history_file, "a", encoding="utf-8") as f:
                     f.write(json.dumps(history_entry, ensure_ascii=False) + "\n")
 
-                logging.info(f"【本地验证码】测试记录已保存: ID={captcha_id}")
+                logging.info(
+                    f"【本地验证码】测试记录已保存: ID={captcha_id[:8]}..."
+                )
             except Exception as e:
                 logging.error(f"【本地验证码】保存测试历史失败: {e}")
 
@@ -42203,6 +42730,67 @@ def start_web_server(args_param):
             _save_order_file_incremental(order_id, order_data)
         return order_data
 
+    def _build_payment_order_response(
+        order_data,
+        include_payment_details=False,
+        include_admin_fields=False,
+    ):
+        """构造订单接口响应，避免把本地或平台原始订单数据直接下发。"""
+        if not isinstance(order_data, dict):
+            return {}
+
+        visible_fields = {
+            "order_id",
+            "trade_no",
+            "api_trade_no",
+            "amount",
+            "product_name",
+            "total_count",
+            "pay_type",
+            "payment_method",
+            "payment_type",
+            "status",
+            "created_at",
+            "created_time",
+            "paid_at",
+            "paid_time",
+            "device",
+            "refundmoney",
+            "refund_count",
+            "synced_from_platform",
+            "synced_at",
+            "synced_time",
+            "updated_from_platform",
+            "last_synced_at",
+            "last_synced_time",
+        }
+        if include_admin_fields:
+            visible_fields.update({
+                "username",
+                "buyer",
+                "clientip",
+                "param",
+            })
+
+        response_data = {
+            field: order_data[field]
+            for field in visible_fields
+            if field in order_data
+        }
+
+        refund_records = order_data.get("refund_records")
+        if isinstance(refund_records, list):
+            response_data["refund_records_count"] = len(refund_records)
+
+        # 支付链接本身具备临时授权属性，仅在已鉴权且订单仍待支付时返回。
+        if include_payment_details:
+            status = str(order_data.get("status") or "").strip().lower()
+            pay_url = str(order_data.get("pay_url") or "").strip()
+            if status == ORDER_STATUS_PENDING and pay_url:
+                response_data["pay_url"] = pay_url
+
+        return response_data
+
     def _get_billing_scope_from_order_data(order_data):
         if not isinstance(order_data, dict):
             return "", ""
@@ -42458,10 +43046,12 @@ def start_web_server(args_param):
             # 所有日志文件统一存放在 PAYMENT_LOGS_DIR 目录下，不再按用户分子目录
             log_filepath = os.path.join(PAYMENT_LOGS_DIR, log_filename)
 
+            safe_log_data = _redact_sensitive_log_value(log_data)
+
             # ========== 准备支付日志数据 ==========
             # 合并基础信息和传入的自定义数据，形成完整的日志记录
             # 新增字段：referer、request_method、request_path、session_id等
-            full_log_data = {
+            full_log_data = _redact_sensitive_log_value({
                 # === 基础元信息 ===
                 "timestamp": time.time(),                          # Unix时间戳（数字），用于精确计算时间差
                 # 可读时间字符串，便于人工查看
@@ -42499,8 +43089,8 @@ def start_web_server(args_param):
                 # === 自定义数据（从参数传入） ===
                 # 使用**运算符展开log_data字典，将其所有键值对添加到full_log_data中
                 # 这允许调用者传入任意额外的业务数据
-                **log_data
-            }
+                **safe_log_data
+            })
 
             # ========== 写入日志文件并检查日志目录大小 ==========
 
@@ -42695,7 +43285,10 @@ def start_web_server(args_param):
                 query_params["out_trade_no"] = order_id
 
             # 记录日志：准备查询订单
-            logging.info(f"[易支付查询] 准备查询订单 - 参数: {query_params}")
+            logging.info(
+                f"[易支付查询] 准备查询订单 - 参数: "
+                f"{_redact_sensitive_log_value(query_params)}"
+            )
 
             # ========== 第4步：生成RSA签名 ==========
 
@@ -42708,7 +43301,10 @@ def start_web_server(args_param):
             signed_params = signer.generate_sign(query_params)
 
             # 记录日志：输出签名后的参数
-            logging.debug(f"[易支付查询] 签名后的参数: {signed_params}")
+            logging.debug(
+                f"[易支付查询] 签名后的参数: "
+                f"{_redact_sensitive_log_value(signed_params)}"
+            )
 
             # ========== 第5步：调用易支付查询API ==========
 
@@ -42729,9 +43325,11 @@ def start_web_server(args_param):
                 timeout=15
             )
 
-            # 记录日志：收到API响应
-            logging.info(f"[易支付查询] API响应状态码: {response.status_code}")
-            logging.debug(f"[易支付查询] API响应内容: {response.text}")
+            # 只记录响应状态和长度，避免平台返回的订单或凭据字段进入日志。
+            logging.info(
+                f"[易支付查询] API响应状态码: {response.status_code}, "
+                f"响应长度: {len(response.content or b'')}"
+            )
 
             # ========== 第6步：解析查询响应 ==========
 
@@ -42749,7 +43347,9 @@ def start_web_server(args_param):
                 query_result = response.json()
             except Exception as e:
                 # JSON解析失败
-                logging.error(f"[易支付查询] API响应JSON解析失败: {str(e)}")
+                logging.error(
+                    f"[易支付查询] API响应JSON解析失败，异常类型: {type(e).__name__}"
+                )
                 return {
                     "success": False,
                     "message": "查询API响应格式错误"
@@ -42784,12 +43384,12 @@ def start_web_server(args_param):
                 logging.warning(
                     f"[易支付查询] 查询失败 - "
                     f"错误码: {result_code}, "
-                    f"错误信息: {result_msg}"
+                    f"错误信息长度: {len(str(result_msg))}"
                 )
 
                 return {
                     "success": False,
-                    "message": f"平台返回错误：{result_msg}"
+                    "message": "平台订单查询失败，请稍后重试"
                 }
 
         except requests.exceptions.Timeout:
@@ -42802,19 +43402,23 @@ def start_web_server(args_param):
 
         except requests.exceptions.RequestException as e:
             # 网络错误
-            logging.error(f"[易支付查询] 网络错误: {str(e)}")
+            logging.error(
+                f"[易支付查询] 网络错误，异常类型: {type(e).__name__}"
+            )
             return {
                 "success": False,
-                "message": f"网络错误：{str(e)}"
+                "message": "网络请求失败，请稍后重试"
             }
 
         except Exception as e:
             # 其他未预期的异常
-            logging.error(f"[易支付查询] 未知异常: {str(e)}")
+            logging.error(
+                f"[易支付查询] 未知异常，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
             return {
                 "success": False,
-                "message": f"查询失败：{str(e)}"
+                "message": "查询失败，请稍后重试"
             }
 
     def _fetch_yipay_orders(offset=0, limit=50):
@@ -42917,7 +43521,10 @@ def start_web_server(args_param):
             signed_params = signer.generate_sign(list_params)
 
             # 记录日志：输出签名后的参数
-            logging.debug(f"[易支付订单列表] 签名后的参数: {signed_params}")
+            logging.debug(
+                f"[易支付订单列表] 签名后的参数: "
+                f"{_redact_sensitive_log_value(signed_params)}"
+            )
 
             # ========== 第5步：调用易支付订单列表API ==========
 
@@ -42938,10 +43545,11 @@ def start_web_server(args_param):
                 timeout=20
             )
 
-            # 记录日志：收到API响应
-            logging.info(f"[易支付订单列表] API响应状态码: {response.status_code}")
-            # 只记录前500字符，避免日志过长
-            logging.debug(f"[易支付订单列表] API响应内容: {response.text[:500]}...")
+            # 只记录响应状态和长度，避免订单列表内容进入日志。
+            logging.info(
+                f"[易支付订单列表] API响应状态码: {response.status_code}, "
+                f"响应长度: {len(response.content or b'')}"
+            )
 
             # ========== 第6步：解析查询响应 ==========
 
@@ -42960,7 +43568,9 @@ def start_web_server(args_param):
                 list_result = response.json()
             except Exception as e:
                 # JSON解析失败
-                logging.error(f"[易支付订单列表] API响应JSON解析失败: {str(e)}")
+                logging.error(
+                    f"[易支付订单列表] API响应JSON解析失败，异常类型: {type(e).__name__}"
+                )
                 return {
                     "success": False,
                     "message": "订单列表API响应格式错误"
@@ -42997,12 +43607,12 @@ def start_web_server(args_param):
                 logging.warning(
                     f"[易支付订单列表] 查询失败 - "
                     f"错误码: {result_code}, "
-                    f"错误信息: {result_msg}"
+                    f"错误信息长度: {len(str(result_msg))}"
                 )
 
                 return {
                     "success": False,
-                    "message": f"平台返回错误：{result_msg}"
+                    "message": "平台订单列表查询失败，请稍后重试"
                 }
 
         except requests.exceptions.Timeout:
@@ -43015,19 +43625,23 @@ def start_web_server(args_param):
 
         except requests.exceptions.RequestException as e:
             # 网络错误
-            logging.error(f"[易支付订单列表] 网络错误: {str(e)}")
+            logging.error(
+                f"[易支付订单列表] 网络错误，异常类型: {type(e).__name__}"
+            )
             return {
                 "success": False,
-                "message": f"网络错误：{str(e)}"
+                "message": "网络请求失败，请稍后重试"
             }
 
         except Exception as e:
             # 其他未预期的异常
-            logging.error(f"[易支付订单列表] 未知异常: {str(e)}")
+            logging.error(
+                f"[易支付订单列表] 未知异常，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
             return {
                 "success": False,
-                "message": f"查询失败：{str(e)}"
+                "message": "查询失败，请稍后重试"
             }
 
     @app.route("/api/payment/methods_config", methods=["GET"])
@@ -43369,7 +43983,7 @@ def start_web_server(args_param):
                 # 为了安全起见，建议不允许退款
                 return jsonify({
                     "success": False,
-                    "message": f"无法从支付平台验证订单状态，为避免重复退款，请稍后重试。错误信息：{error_msg}"
+                    "message": "无法从支付平台验证订单状态，为避免重复退款，请稍后重试"
                 })
 
             # ========== 第6步：验证退款金额不超过可退金额 ==========
@@ -43466,7 +44080,10 @@ def start_web_server(args_param):
             }
 
             # 记录日志：输出退款请求参数（不含签名）
-            logging.info(f"[退款请求] 退款参数（签名前）: {refund_params}")
+            logging.info(
+                f"[退款请求] 退款参数（签名前）: "
+                f"{_redact_sensitive_log_value(refund_params)}"
+            )
 
             # ========== 第10步：生成签名 ==========
 
@@ -43482,7 +44099,10 @@ def start_web_server(args_param):
             signed_params = signer.generate_sign(refund_params)
 
             # 记录日志：输出签名后的参数（包含sign和sign_type）
-            logging.info(f"[退款请求] 退款参数（签名后）: {signed_params}")
+            logging.info(
+                f"[退款请求] 退款参数（签名后）: "
+                f"{_redact_sensitive_log_value(signed_params)}"
+            )
 
             # ========== 第11步：调用易支付退款API ==========
 
@@ -43503,9 +44123,11 @@ def start_web_server(args_param):
                 timeout=30
             )
 
-            # 记录日志：收到API响应
-            logging.info(f"[退款请求] API响应状态码: {response.status_code}")
-            logging.info(f"[退款请求] API响应内容: {response.text}")
+            # 只记录响应状态和长度，避免退款平台返回内容进入日志。
+            logging.info(
+                f"[退款请求] API响应状态码: {response.status_code}, "
+                f"响应长度: {len(response.content or b'')}"
+            )
 
             # ========== 第12步：解析退款响应 ==========
 
@@ -43524,7 +44146,9 @@ def start_web_server(args_param):
                 refund_result = response.json()
             except Exception as e:
                 # JSON解析失败
-                logging.error(f"[退款请求] API响应JSON解析失败: {str(e)}")
+                logging.error(
+                    f"[退款请求] API响应JSON解析失败，异常类型: {type(e).__name__}"
+                )
                 return jsonify({
                     "success": False,
                     "message": "退款API响应格式错误"
@@ -43623,7 +44247,7 @@ def start_web_server(args_param):
                     f"[退款请求] 退款失败 - "
                     f"订单号: {trade_no}, "
                     f"错误码: {result_code}, "
-                    f"错误信息: {result_msg}"
+                    f"错误信息长度: {len(str(result_msg))}"
                 )
 
                 # 写入失败日志
@@ -43645,20 +44269,22 @@ def start_web_server(args_param):
                 # 返回失败响应给前端
                 return jsonify({
                     "success": False,
-                    "message": f"退款失败：{result_msg}"
+                    "message": "退款失败，请稍后重试"
                 })
 
         except Exception as e:
             # ========== 异常处理：捕获所有未预期的异常 ==========
 
             # 记录详细的异常信息（包含堆栈跟踪）
-            logging.error(f"[退款请求] 处理退款请求时发生异常: {str(e)}")
+            logging.error(
+                f"[退款请求] 处理退款请求时发生异常，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
 
             # 返回通用错误响应
             return jsonify({
                 "success": False,
-                "message": f"退款处理异常：{str(e)}"
+                "message": "退款处理异常，请稍后重试"
             })
 
     @app.route("/api/payment/create", methods=["POST"])
@@ -43832,11 +44458,17 @@ def start_web_server(args_param):
                 yipay_client_data["sub_appid"] = sub_appid
 
             logging.debug(
-                f"[支付订单] 调用 create_order() 方法，参数: {yipay_client_data}")
+                f"[支付订单] 调用 create_order() 方法，支付方式={pay_type}，"
+                f"设备={device}，包含扫码参数={bool(auth_code)}，"
+                f"包含JSAPI参数={bool(sub_openid or sub_appid)}"
+            )
 
             result = yipay_client.create_order(**yipay_client_data)
 
-            logging.debug(f"[支付订单] create_order() 方法返回结果: {result}")
+            logging.debug(
+                "[支付订单] create_order() 方法返回，成功=%s",
+                bool(result.get("success")) if isinstance(result, dict) else False,
+            )
 
             # 检查订单创建是否成功
             if result["success"]:
@@ -43902,8 +44534,6 @@ def start_web_server(args_param):
                         "amount": amount,                      # 支付金额
                         "product_name": product_name,          # 商品名称
                         "pay_type": pay_type,                  # 支付方式
-                        "pay_url": result["pay_url"],          # 支付跳转URL
-                        "return_url": return_url,              # 同步返回URL
                         # 请求信息
                         # 客户端IP
                         "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
@@ -43976,13 +44606,13 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有未预期的异常
             # 记录错误日志和堆栈跟踪
-            logging.error(f"[支付订单] 创建订单时发生异常: {str(e)}")
+            logging.error(f"[支付订单] 创建订单时发生异常: {type(e).__name__}")
             logging.error(traceback.format_exc())
 
             # 返回通用错误响应
             return jsonify({
                 "success": False,
-                "message": f"创建订单失败: {str(e)}"
+                "message": "创建订单失败，请稍后重试"
             }), 500
 
     @app.route("/api/payment/query", methods=["POST"])
@@ -44104,7 +44734,15 @@ def start_web_server(args_param):
                             "paid_time": order_data["paid_time"],    # 支付时间（可读）
                             # 查询信息
                             "query_user": g.user,                    # 查询者
-                            "query_result": query_result,            # 易支付查询结果
+                            "query_success": bool(query_result.get("success"))
+                            if isinstance(query_result, dict)
+                            else False,
+                            "query_status": (
+                                query_result.get("data", {}).get("status")
+                                if isinstance(query_result, dict)
+                                and isinstance(query_result.get("data"), dict)
+                                else None
+                            ),
                             # 请求信息
                             "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
                             "user_agent": request.headers.get("User-Agent", ""),
@@ -44143,13 +44781,16 @@ def start_web_server(args_param):
                 "success": True,
                 "message": "查询成功",
                 "status": order_data.get("status"),
-                "order": order_data
+                "order": _build_payment_order_response(
+                    order_data,
+                    include_payment_details=True,
+                )
             })
 
         except Exception as e:
-            logging.error(f"[支付订单] 查询订单异常: {str(e)}")
+            logging.error(f"[支付订单] 查询订单异常，异常类型: {type(e).__name__}")
             logging.error(traceback.format_exc())
-            return jsonify({"success": False, "message": f"查询订单失败: {str(e)}"}), 500
+            return jsonify({"success": False, "message": "查询订单失败，请稍后重试"}), 500
 
     @app.route("/api/payment/query_billing_active", methods=["POST"])
     @login_required
@@ -44249,12 +44890,12 @@ def start_web_server(args_param):
                 "success": True,
                 "message": "查询成功",
                 "status": order_data.get("status"),
-                "order": order_data,
+                "order": _build_payment_order_response(order_data),
             })
         except Exception as e:
-            logging.error(f"[账单主动查询] 查询异常: {str(e)}")
+            logging.error(f"[账单主动查询] 查询异常，异常类型: {type(e).__name__}")
             logging.error(traceback.format_exc())
-            return jsonify({"success": False, "message": f"主动查询失败: {str(e)}"}), 500
+            return jsonify({"success": False, "message": "主动查询失败，请稍后重试"}), 500
 
     @app.route("/api/payment/query_billing_local", methods=["POST"])
     @login_required
@@ -44323,12 +44964,12 @@ def start_web_server(args_param):
                 "success": True,
                 "message": "本地查询成功",
                 "status": order_data.get("status"),
-                "order": order_data,
+                "order": _build_payment_order_response(order_data),
             })
         except Exception as e:
-            logging.error(f"[账单本地查询] 查询异常: {str(e)}")
+            logging.error(f"[账单本地查询] 查询异常，异常类型: {type(e).__name__}")
             logging.error(traceback.format_exc())
-            return jsonify({"success": False, "message": f"本地查询失败: {str(e)}"}), 500
+            return jsonify({"success": False, "message": "本地查询失败，请稍后重试"}), 500
 
     @app.route("/api/payment/create_order_for_overdue", methods=["POST"])
     @login_required
@@ -44704,17 +45345,16 @@ def start_web_server(args_param):
             # 但在某些错误情况下（如网络异常、配置错误），可能返回字符串类型的错误信息
             if not isinstance(result, dict):
                 # 如果返回值不是字典类型，说明发生了异常
-                # 记录详细的错误日志，包含返回值的类型和内容，便于调试
+                # 只记录返回值类型，避免把平台响应或支付链接写入日志。
                 logging.error(
                     f"[欠费支付] create_order 返回值类型错误: "
-                    f"期望dict, 实际{type(result).__name__}, 值: {result}"
+                    f"期望dict, 实际{type(result).__name__}"
                 )
 
                 # 返回友好的错误信息给前端
-                # 将返回值转换为字符串，方便用户查看具体错误
                 return jsonify({
                     "success": False,
-                    "message": f"创建支付订单失败: {str(result)}"
+                    "message": "创建支付订单失败，请稍后重试"
                 })
 
             # 检查订单创建是否成功
@@ -44731,7 +45371,6 @@ def start_web_server(args_param):
                         "amount": amount,                      # 请求的支付金额
                         "product_name": product_name,          # 请求的商品名称
                         "pay_type": pay_type,                  # 请求的支付方式
-                        "return_url": return_url,              # 请求的返回URL
                         # 请求信息
                         # 客户端IP
                         "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
@@ -44739,8 +45378,7 @@ def start_web_server(args_param):
                         "user_agent": request.headers.get("User-Agent", ""),
                         # 失败信息
                         "success": False,                      # 操作失败
-                        "message": result["message"],          # 失败原因
-                        "error": result.get("error", "")       # 详细错误信息（如果有）
+                        "message": result.get("message", "创建支付订单失败"),
                     }
                 )
                 return jsonify({
@@ -44877,8 +45515,6 @@ def start_web_server(args_param):
                     "amount": amount,                      # 支付金额
                     "product_name": product_name,          # 商品名称
                     "pay_type": pay_type,                  # 支付方式
-                    "pay_url": result["pay_url"],          # 支付跳转URL
-                    "return_url": return_url,              # 同步返回URL
                     # 请求信息
                     # 客户端IP
                     "client_ip": request.environ.get("REMOTE_ADDR") or request.remote_addr,
@@ -44905,13 +45541,15 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有未预期的异常
             # 记录完整的堆栈信息，便于调试
-            logging.error(f"[欠费支付] 创建订单异常: {str(e)}")
+            logging.error(
+                f"[欠费支付] 创建订单异常，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
 
             # 返回500错误和友好的错误信息
             return jsonify({
                 "success": False,
-                "message": f"创建订单失败: {str(e)}"
+                "message": "创建订单失败，请稍后重试"
             }), 500
 
     @app.route("/api/payment/create_order_for_billing", methods=["POST"])
@@ -45232,8 +45870,14 @@ def start_web_server(args_param):
                 "active_query_token": active_query_token,
             })
         except Exception as e:
-            logging.error(f"[账单支付] 创建订单失败: {e}", exc_info=True)
-            return jsonify({"success": False, "message": f"创建账单支付订单失败: {str(e)}"}), 500
+            logging.error(
+                f"[账单支付] 创建订单失败，异常类型: {type(e).__name__}",
+                exc_info=True,
+            )
+            return jsonify({
+                "success": False,
+                "message": "创建账单支付订单失败，请稍后重试",
+            }), 500
 
     # @app.route("/api/payment/return", methods=["GET"])
     # def payment_return():
@@ -45759,12 +46403,19 @@ def start_web_server(args_param):
                             continue
 
                     # 添加到订单列表
-                    orders.append(order_data)
+                    orders.append(
+                        _build_payment_order_response(
+                            order_data,
+                            include_admin_fields=is_admin,
+                        )
+                    )
 
                 except (json.JSONDecodeError, IOError) as e:
                     # 文件读取或解析失败，记录日志并跳过
                     logging.warning(
-                        f"[订单列表] 读取订单文件失败: {filename}, 错误: {str(e)}")
+                        f"[订单列表] 读取订单文件失败: {filename}, "
+                        f"异常类型: {type(e).__name__}"
+                    )
                     continue
 
             # ========== 排序 ==========
@@ -45788,9 +46439,14 @@ def start_web_server(args_param):
             })
 
         except Exception as e:
-            logging.error(f"[订单列表] 查询订单列表异常: {str(e)}")
+            logging.error(
+                f"[订单列表] 查询订单列表异常，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
-            return jsonify({"success": False, "message": f"查询失败: {str(e)}"}), 500
+            return jsonify({
+                "success": False,
+                "message": "查询失败，请稍后重试",
+            }), 500
 
     # ==============================================================================
     # 通过订单号直接查询订单接口（无需遍历所有订单，性能更优）
@@ -45954,11 +46610,11 @@ def start_web_server(args_param):
             )
 
             # 返回成功响应（HTTP 200 OK）
-            # order字段包含完整的订单数据
+            # 订单响应只包含前端必要字段，不直接暴露原始订单对象。
             return jsonify({
                 "success": True,
                 "message": "查询成功",
-                "order": order_data
+                "order": _build_payment_order_response(order_data)
             })
 
         except Exception as e:
@@ -45968,7 +46624,8 @@ def start_web_server(args_param):
             # 这有助于快速定位和修复问题
             logging.error(
                 f"[订单查询] 查询订单异常 - "
-                f"用户: {g.user}, 订单号: {trade_no}, 错误: {str(e)}"
+                f"用户: {g.user}, 订单号: {trade_no}, "
+                f"异常类型: {type(e).__name__}"
             )
             logging.error(traceback.format_exc())
 
@@ -45976,7 +46633,7 @@ def start_web_server(args_param):
             # 不向客户端暴露详细的错误信息，避免安全风险
             return jsonify({
                 "success": False,
-                "message": f"查询失败: {str(e)}"
+                "message": "查询失败，请稍后重试"
             }), 500
 
     # ==============================================================================
@@ -46206,11 +46863,13 @@ def start_web_server(args_param):
 
         except Exception as e:
             # 捕获所有异常
-            logging.error(f"[支付配置] 管理支付配置接口异常: {str(e)}")
+            logging.error(
+                f"[支付配置] 管理支付配置接口异常，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
             return jsonify({
                 "success": False,
-                "message": f"操作失败：{str(e)}"
+                "message": "操作失败，请稍后重试"
             }), 500
 
     @app.route("/api/admin/payment_methods", methods=["POST"])
@@ -46356,11 +47015,13 @@ def start_web_server(args_param):
 
         except Exception as e:
             # 捕获所有异常
-            logging.error(f"[支付方式管理] 添加支付方式失败: {str(e)}")
+            logging.error(
+                f"[支付方式管理] 添加支付方式失败，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
             return jsonify({
                 "success": False,
-                "message": f"添加失败：{str(e)}"
+                "message": "添加失败，请稍后重试"
             }), 500
 
     @app.route("/api/admin/payment_methods/<code>", methods=["PUT", "DELETE"])
@@ -46539,11 +47200,13 @@ def start_web_server(args_param):
 
         except Exception as e:
             # 捕获所有异常
-            logging.error(f"[支付方式管理] 管理支付方式失败: {str(e)}")
+            logging.error(
+                f"[支付方式管理] 管理支付方式失败，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
             return jsonify({
                 "success": False,
-                "message": f"操作失败：{str(e)}"
+                "message": "操作失败，请稍后重试"
             }), 500
 
     @app.route("/api/admin/pricing_config", methods=["GET", "PUT"])
@@ -46970,12 +47633,14 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有异常
             # 记录错误日志，包括详细的堆栈跟踪信息
-            logging.error(f"[价格配置] 管理价格配置接口异常: {str(e)}")
+            logging.error(
+                f"[价格配置] 管理价格配置接口异常，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
             # 返回 500 错误响应
             return jsonify({
                 "success": False,
-                "message": f"操作失败：{str(e)}"
+                "message": "操作失败，请稍后重试"
             }), 500
 
     @app.route("/api/admin/yipay_config", methods=["GET", "PUT"])
@@ -47437,12 +48102,14 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有异常
             # 记录错误日志，包括详细的堆栈跟踪信息
-            logging.error(f"[易支付配置] 管理易支付配置接口异常: {str(e)}")
+            logging.error(
+                f"[易支付配置] 管理易支付配置接口异常，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
             # 返回 500 错误响应
             return jsonify({
                 "success": False,
-                "message": f"操作失败：{str(e)}"
+                "message": "操作失败，请稍后重试"
             }), 500
 
     @app.route("/api/payment_logs", methods=["GET"])
@@ -47659,6 +48326,8 @@ def start_web_server(args_param):
                         # 读取日志文件
                         with open(file_path, 'r', encoding='utf-8') as f:
                             log_entry = json.load(f)
+                        # 兼容旧日志文件，返回前再次递归脱敏。
+                        log_entry = _redact_sensitive_log_value(log_entry)
 
                         # 检查日志的user_id是否匹配当前用户
                         log_user_id = log_entry.get('user_id', '')
@@ -47726,10 +48395,13 @@ def start_web_server(args_param):
 
         except Exception as e:
             # 处理异常
-            app.logger.error(f"[用户支付日志] 处理失败: {str(e)}", exc_info=True)
+            app.logger.error(
+                f"[用户支付日志] 处理失败，异常类型: {type(e).__name__}",
+                exc_info=True,
+            )
             return jsonify({
                 "success": False,
-                "message": f"获取支付日志失败: {str(e)}"
+                "message": "获取支付日志失败，请稍后重试"
             }), 500
 
     @app.route("/api/admin/payment_logs", methods=["GET"])
@@ -47873,6 +48545,8 @@ def start_web_server(args_param):
                     # 读取日志文件
                     with open(log_filepath, "r", encoding="utf-8") as f:
                         log_data = json.load(f)
+                    # 兼容旧日志文件，返回前再次递归脱敏。
+                    log_data = _redact_sensitive_log_value(log_data)
 
                     # 提取用户ID并添加到用户集合
                     user_id = log_data.get("user_id", "")
@@ -47938,11 +48612,13 @@ def start_web_server(args_param):
 
         except Exception as e:
             # 捕获所有异常
-            logging.error(f"[支付日志] 获取支付日志列表异常: {str(e)}")
+            logging.error(
+                f"[支付日志] 获取支付日志列表异常，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
             return jsonify({
                 "success": False,
-                "message": f"获取日志失败：{str(e)}"
+                "message": "获取日志失败，请稍后重试"
             }), 500
 
     @app.route("/api/admin/payment/log_detail", methods=["POST"])
@@ -48064,6 +48740,8 @@ def start_web_server(args_param):
                 # 使用UTF-8编码确保中文内容正确显示
                 with open(log_filepath, "r", encoding="utf-8") as f:
                     log_detail = json.load(f)
+                # 兼容旧日志文件，返回前再次递归脱敏。
+                log_detail = _redact_sensitive_log_value(log_detail)
 
                 # 记录操作日志（用于审计）
                 # 记录谁在什么时候查看了哪条日志
@@ -48072,7 +48750,7 @@ def start_web_server(args_param):
                     f"用户: {g.user}, log_id: {log_id}"
                 )
 
-                # 返回成功响应，包含完整的日志详情
+                # 返回成功响应，内容已完成递归脱敏。
                 return jsonify({
                     "success": True,
                     "log_detail": log_detail
@@ -48092,21 +48770,23 @@ def start_web_server(args_param):
                 # 读取文件时的其他异常
                 logging.error(
                     f"[支付日志详情] 读取日志文件失败 - "
-                    f"log_id: {log_id}, 错误: {str(e)}"
+                    f"log_id: {log_id}, 异常类型: {type(e).__name__}"
                 )
                 return jsonify({
                     "success": False,
-                    "message": f"读取日志文件失败：{str(e)}"
+                    "message": "读取日志文件失败，请稍后重试"
                 }), 500
 
         except Exception as e:
             # 捕获所有未预期的异常
             # 记录详细的错误日志（包含堆栈跟踪）
-            logging.error(f"[支付日志详情] 获取日志详情异常: {str(e)}")
+            logging.error(
+                f"[支付日志详情] 获取日志详情异常，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
             return jsonify({
                 "success": False,
-                "message": f"获取日志详情失败：{str(e)}"
+                "message": "获取日志详情失败，请稍后重试"
             }), 500
 
     @app.route("/api/admin/payment/notify_stats", methods=["GET"])
@@ -48242,7 +48922,10 @@ def start_web_server(args_param):
 
                 except Exception as e:
                     # 读取单个订单文件失败，记录日志但继续处理其他订单
-                    logging.error(f"[通知统计] 读取订单文件失败: {filename}, 错误: {str(e)}")
+                    logging.error(
+                        f"[通知统计] 读取订单文件失败: {filename}, "
+                        f"异常类型: {type(e).__name__}"
+                    )
                     continue
 
             # ========== 对重复通知列表排序 ==========
@@ -48260,11 +48943,13 @@ def start_web_server(args_param):
 
         except Exception as e:
             # 捕获所有异常
-            logging.error(f"[通知统计] 获取统计信息失败: {str(e)}")
+            logging.error(
+                f"[通知统计] 获取统计信息失败，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
             return jsonify({
                 "success": False,
-                "message": f"获取统计信息失败: {str(e)}"
+                "message": "获取统计信息失败，请稍后重试"
             }), 500
 
     # ==============================================================================
@@ -48339,7 +49024,8 @@ def start_web_server(args_param):
                         # 读取失败，记录警告但继续尝试从平台查询
                         # 这种情况可能是文件损坏或格式错误
                         logging.warning(
-                            f"[管理员查询订单] 本地文件读取失败: {str(e)} - "
+                            f"[管理员查询订单] 本地文件读取失败，"
+                            f"异常类型: {type(e).__name__} - "
                             f"将尝试从平台查询"
                         )
 
@@ -48441,7 +49127,12 @@ def start_web_server(args_param):
                         "username", "未知")
 
                 logging.info(
-                    f"[管理员查询订单] 平台订单数据转换完成 - 单号: {local_order_data['order_id']}，数据：{local_order_data}")
+                    f"[管理员查询订单] 平台订单数据转换完成 - "
+                    f"单号: {local_order_data['order_id']}, "
+                    f"状态: {local_order_data.get('status', '')}, "
+                    f"平台字段数: {len(platform_order)}, "
+                    f"本地字段数: {len(local_order_data)}"
+                )
 
                 # ========== 修复退款状态判断逻辑 ==========
                 #
@@ -48588,7 +49279,8 @@ def start_web_server(args_param):
                     # 保存失败，记录错误但仍然返回平台数据
                     # 注意：即使保存失败，也不影响返回订单信息给调用方
                     logging.error(
-                        f"[管理员查询订单] 保存订单到本地失败: {str(e)} - "
+                        f"[管理员查询订单] 保存订单到本地失败，"
+                        f"异常类型: {type(e).__name__} - "
                         f"订单号: {out_trade_no}"
                     )
 
@@ -48611,32 +49303,31 @@ def start_web_server(args_param):
                 logging.warning(f"[管理员查询订单] 平台查询失败: {error_msg}")
                 return jsonify({
                     "success": False,
-                    "message": f"订单不存在或查询失败：{error_msg}"
+                    "message": "订单不存在或查询失败，请稍后重试"
                 }), 404
 
             # ========== 第5步：返回订单数据 ==========
 
-            # 返回完整的订单数据
-            # 注意：
-            # 1. order_data包含订单的所有字段，不会主动过滤任何信息
-            # 2. 本地订单和平台订单的字段可能有差异，但都会返回完整数据
-            # 3. 平台订单会额外包含platform_data字段，存储平台返回的原始数据
-            # 4. source字段标识数据来源：local（本地文件）或 platform（平台查询）
+            # 只返回管理界面需要的订单摘要，不暴露平台原始响应或内部凭据字段。
+            # source字段标识数据来源：local（本地文件）或 platform（平台查询）。
 
             return jsonify({
                 "success": True,
-                "order": order_data,              # 完整的订单数据（包含所有可用字段）
+                "order": _build_payment_order_response(
+                    order_data,
+                    include_admin_fields=True,
+                ),
                 "source": source,                 # 数据来源标识
                 "message": "查询成功"
             })
 
         except Exception as e:
             # 捕获所有异常
-            logging.error(f"[管理员查询订单] 处理失败: {str(e)}")
+            logging.error(f"[管理员查询订单] 处理失败，异常类型: {type(e).__name__}")
             logging.error(traceback.format_exc())
             return jsonify({
                 "success": False,
-                "message": f"查询失败：{str(e)}"
+                "message": "查询失败，请稍后重试"
             }), 500
 
     @app.route("/api/admin/payment/order_detail", methods=["POST"])
@@ -48693,21 +49384,28 @@ def start_web_server(args_param):
                 logging.info(f"[管理员获取订单详情] 成功读取订单 - 订单号: {order_id}")
                 return jsonify({
                     "success": True,
-                    "order": order_data
+                    "order": _build_payment_order_response(
+                        order_data,
+                        include_admin_fields=True,
+                    )
                 })
 
             except Exception as e:
-                logging.error(f"[管理员获取订单详情] 读取订单文件失败: {str(e)}")
+                logging.error(
+                    f"[管理员获取订单详情] 读取订单文件失败，异常类型: {type(e).__name__}"
+                )
                 return jsonify({
                     "success": False,
-                    "message": f"读取订单文件失败: {str(e)}"
+                    "message": "读取订单文件失败，请稍后重试"
                 }), 500
 
         except Exception as e:
-            logging.error(f"[管理员获取订单详情] 处理请求时发生错误: {str(e)}")
+            logging.error(
+                f"[管理员获取订单详情] 处理请求时发生错误，异常类型: {type(e).__name__}"
+            )
             return jsonify({
                 "success": False,
-                "message": f"服务器错误: {str(e)}"
+                "message": "服务器错误，请稍后重试"
             }), 500
 
     def _convert_yipay_status(status_code):
@@ -48854,7 +49552,7 @@ def start_web_server(args_param):
             logging.error(f"[获取本地订单] 处理失败: {str(e)}", exc_info=True)
             return jsonify({
                 "success": False,
-                "message": f"获取本地订单列表失败: {str(e)}"
+                "message": "获取本地订单列表失败，请稍后重试"
             }), 500
 
     @app.route("/api/admin/payment/fetch_orders", methods=["POST"])
@@ -48929,7 +49627,7 @@ def start_web_server(args_param):
                 logging.error(f"[管理员拉取订单] 平台拉取失败: {error_msg}")
                 return jsonify({
                     "success": False,
-                    "message": f"从平台拉取订单失败：{error_msg}"
+                    "message": "从平台拉取订单失败，请稍后重试"
                 }), 500
 
             # 获取订单列表
@@ -49048,7 +49746,9 @@ def start_web_server(args_param):
 
                         except Exception as e:
                             logging.warning(
-                                f"[管理员拉取订单] 读取现有订单失败: {out_trade_no}, 错误: {str(e)}")
+                                f"[管理员拉取订单] 读取现有订单失败: {out_trade_no}, "
+                                f"异常类型: {type(e).__name__}"
+                            )
 
                     # 保存订单到本地文件（使用增量更新模式）
                     # 调用统一的订单文件保存函数
@@ -49104,7 +49804,9 @@ def start_web_server(args_param):
                 except Exception as e:
                     # 保存单个订单失败，记录错误但继续处理其他订单
                     failed_count += 1
-                    logging.error(f"[管理员拉取订单] 保存订单失败: {str(e)}")
+                    logging.error(
+                        f"[管理员拉取订单] 保存订单失败，异常类型: {type(e).__name__}"
+                    )
                     continue
 
             # ========== 第4步：记录同步日志 ==========
@@ -49142,11 +49844,13 @@ def start_web_server(args_param):
 
         except Exception as e:
             # 捕获所有异常
-            logging.error(f"[管理员拉取订单] 处理失败: {str(e)}")
+            logging.error(
+                f"[管理员拉取订单] 处理失败，异常类型: {type(e).__name__}"
+            )
             logging.error(traceback.format_exc())
             return jsonify({
                 "success": False,
-                "message": f"拉取失败：{str(e)}"
+                "message": "拉取失败，请稍后重试"
             }), 500
 
     # ==============================================================================
@@ -49160,12 +49864,17 @@ def start_web_server(args_param):
         检查学校账号是否有欠费
         """
         try:
-            logging.info(f"[欠费检查] 收到请求 - 用户: {g.user}")
-            logging.info(f"[欠费检查] 请求Headers: {dict(request.headers)}")
-            logging.info(f"[欠费检查] 请求体: {request.get_json()}")
+            initial_payload = request.get_json(silent=True) or {}
+            logging.info(
+                "[欠费检查] 收到请求 - 用户: %s，请求字段: %s",
+                g.user,
+                sorted(initial_payload.keys())
+                if isinstance(initial_payload, dict)
+                else [],
+            )
         except Exception as e:
-            logging.error(f"[欠费检查] 解析请求数据失败: {str(e)}")
-            
+            logging.error("[欠费检查] 解析请求数据失败: %s", type(e).__name__)
+
         try:
             # ========== 步骤1：检查付费控制配置 ==========
             # 统一使用配置读取适配器（优先 configs/config.json，回退 config.ini）
@@ -49188,17 +49897,16 @@ def start_web_server(args_param):
 
             # ========== 步骤2：检查学校账号欠费情况 ==========
             # 从请求体中获取参数
-            data = request.get_json() or {}
-            logging.info(f"[欠费检查] 请求数据: {data}")
+            data = request.get_json(silent=True) or {}
+            logging.info(
+                "[欠费检查] 请求参数已解析，包含单账号筛选=%s，包含多账号筛选=%s",
+                bool(data.get("school_username")),
+                bool(data.get("school_usernames")),
+            )
 
             # 可选参数：要检查的特定学校账号用户名（支持字符串或数组）
-            logging.info(f"[欠费检查] 得到的请求数据: {data}")
             school_username_input_before1 = data.get("school_username")
             school_username_input_before2 = data.get("school_usernames")
-            logging.info(
-                f"[欠费检查] 得到的 school_username 参数: {school_username_input_before1}")
-            logging.info(
-                f"[欠费检查] 得到的 school_usernames 参数: {school_username_input_before2}")
 
             # 统一处理输入，确保最终是列表
             def normalize_input(input_val):
@@ -49226,8 +49934,10 @@ def start_web_server(args_param):
 
             # 处理筛选逻辑：将输入统一转换为集合（若未指定则为空集合，表示不过滤）
             target_usernames = set(school_username_input) if school_username_input is not None else set()
-            
-            logging.info(f"[欠费检查] 规范化后的目标学校账号列表: {target_usernames}")
+            logging.info(
+                "[欠费检查] 规范化后的目标学校账号数量: %d",
+                len(target_usernames),
+            )
 
             # 获取当前认证用户名
             auth_username = g.user
@@ -49249,14 +49959,20 @@ def start_web_server(args_param):
                     # 用户未指定账号：只返回其自己权限范围内的账号数据
                     target_usernames = set(user_school_accounts.keys())
                     
-            logging.info(f"[欠费检查] 最终有效的目标学校账号列表: {target_usernames}")
+            logging.info(
+                "[欠费检查] 最终有效的目标学校账号数量: %d",
+                len(target_usernames),
+            )
 
             # 获取该认证用户的所有学校账号配置
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
             school_accounts = g.api_instance._load_user_school_accounts(
                 auth_username)
             
-            logging.info(f"[欠费检查] 加载到的学校账号数据: {school_accounts}")
+            logging.info(
+                "[欠费检查] 已加载学校账号数量: %d",
+                len(school_accounts),
+            )
 
             # 如果没有学校账号，直接返回无欠费
             if not school_accounts:
@@ -51702,6 +52418,10 @@ def start_web_server(args_param):
                             logging.error(
                                 f"[会话清理] 清理会话 {session_id[:8]}... 时出错: {e}"
                             )
+
+                # 在释放 web_sessions 锁后清理运行时密钥，避免与请求侧的锁顺序相反。
+                for session_id in expired_sessions:
+                    _release_map_key_runtime_session(session_id)
 
                 if expired_sessions:
                     logging.info(
