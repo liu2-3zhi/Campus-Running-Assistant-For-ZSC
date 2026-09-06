@@ -8,7 +8,7 @@ import ast
 import math
 import tempfile
 
-from flask import jsonify, request
+from flask import jsonify, make_response, request
 
 _import_failures = []
 _log_buffer = []
@@ -62,6 +62,7 @@ font_cache_lock = _NoopLock()
 source_map_storage = {}
 source_map_lock = _NoopLock()
 _midnight_runtime_reload_hook = None
+ENABLE_FRONTEND_JS_ANTI_DEBUG = False
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 AUTO_ATTENDANCE_MAX_MINUTES = 120  # 自动签到最长持续时间（分钟），超时后自动关闭
@@ -162,6 +163,497 @@ def _apply_no_cache_headers(response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
+    return response
+
+
+def _is_frontend_js_hardening_enabled():
+    return bool(ENABLE_FRONTEND_JS_ANTI_DEBUG)
+
+
+def _is_javascript_asset_name(filename):
+    normalized = str(filename or "").split("?", 1)[0].lower()
+    return normalized.endswith((".js", ".mjs", ".cjs"))
+
+
+def _is_javascript_content_type(content_type):
+    normalized = str(content_type or "").split(";", 1)[0].strip().lower()
+    return normalized in {
+        "application/javascript",
+        "text/javascript",
+        "application/x-javascript",
+        "application/ecmascript",
+        "text/ecmascript",
+    } or normalized.endswith("+javascript")
+
+
+def _decode_frontend_javascript_content(content):
+    if isinstance(content, bytes):
+        try:
+            return content.decode("utf-8")
+        except UnicodeDecodeError:
+            return content.decode("latin-1", errors="replace")
+    return str(content or "")
+
+
+def _javascript_identifier_char(char):
+    return bool(char) and (char.isalnum() or char in ("_", "$"))
+
+
+def _javascript_previous_nonspace_and_identifier(output_chars):
+    previous = ""
+    identifier_reversed = []
+    for chunk in reversed(output_chars):
+        for char in reversed(chunk):
+            if not previous:
+                if char.isspace():
+                    continue
+                previous = char
+                if not _javascript_identifier_char(char):
+                    return previous, ""
+                identifier_reversed.append(char)
+                continue
+            if _javascript_identifier_char(char):
+                identifier_reversed.append(char)
+                continue
+            return previous, "".join(reversed(identifier_reversed))
+    return previous, "".join(reversed(identifier_reversed))
+
+
+def _javascript_previous_token_allows_regex(output_chars):
+    last_char, previous_identifier = _javascript_previous_nonspace_and_identifier(
+        output_chars
+    )
+    if not last_char:
+        return True
+    if last_char in "({[=,:;!&|?+-*~%^<>":
+        return True
+    return previous_identifier in {
+        "return",
+        "throw",
+        "case",
+        "delete",
+        "void",
+        "typeof",
+        "instanceof",
+        "in",
+        "of",
+        "yield",
+        "await",
+        "else",
+        "do",
+        "new",
+    }
+
+
+def _copy_javascript_string_literal(source, index, quote):
+    result = [quote]
+    index += 1
+    escaped = False
+    while index < len(source):
+        char = source[index]
+        result.append(char)
+        index += 1
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == quote:
+            break
+    return "".join(result), index
+
+
+def _copy_javascript_template_expression(
+    source,
+    index,
+    compact_interpolations=False,
+):
+    output = []
+    brace_depth = 1
+    while index < len(source):
+        char = source[index]
+        next_char = source[index + 1] if index + 1 < len(source) else ""
+        if char in ("'", '"'):
+            literal, index = _copy_javascript_string_literal(source, index, char)
+            output.append(literal)
+            continue
+        if char == "`":
+            literal, index = _copy_javascript_template_literal(
+                source,
+                index,
+                compact_interpolations=compact_interpolations,
+            )
+            output.append(literal)
+            continue
+        if char == "/" and next_char == "/":
+            index += 2
+            while index < len(source) and source[index] not in "\r\n":
+                index += 1
+            output.append("\n")
+            continue
+        if char == "/" and next_char == "*":
+            index += 2
+            while index + 1 < len(source) and not (
+                source[index] == "*" and source[index + 1] == "/"
+            ):
+                index += 1
+            index = min(index + 2, len(source))
+            output.append(" ")
+            continue
+        if char == "/" and _javascript_previous_token_allows_regex(output):
+            literal, index = _copy_javascript_regex_literal(source, index)
+            output.append(literal)
+            continue
+        if char == "{":
+            brace_depth += 1
+            output.append(char)
+            index += 1
+            continue
+        if char == "}":
+            if brace_depth == 1:
+                break
+            brace_depth -= 1
+        output.append(char)
+        index += 1
+    expression = "".join(output)
+    if compact_interpolations:
+        expression = _compact_javascript_whitespace(expression)
+    return expression, index
+
+
+def _copy_javascript_template_literal(
+    source,
+    index,
+    compact_interpolations=False,
+):
+    result = ["`"]
+    index += 1
+    while index < len(source):
+        char = source[index]
+        next_char = source[index + 1] if index + 1 < len(source) else ""
+        if char == "\\":
+            result.append(char)
+            index += 1
+            if index < len(source):
+                result.append(source[index])
+                index += 1
+            continue
+        if char == "`":
+            result.append(char)
+            return "".join(result), index + 1
+        if char == "$" and next_char == "{":
+            result.append("${")
+            expression, index = _copy_javascript_template_expression(
+                source,
+                index + 2,
+                compact_interpolations=compact_interpolations,
+            )
+            result.append(expression)
+            if index < len(source) and source[index] == "}":
+                result.append("}")
+                index += 1
+            continue
+        result.append(char)
+        index += 1
+    return "".join(result), index
+
+
+def _copy_javascript_regex_literal(source, index):
+    result = ["/"]
+    index += 1
+    escaped = False
+    in_class = False
+    while index < len(source):
+        char = source[index]
+        result.append(char)
+        index += 1
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == "[":
+            in_class = True
+            continue
+        if char == "]":
+            in_class = False
+            continue
+        if char == "/" and not in_class:
+            while index < len(source) and _javascript_identifier_char(source[index]):
+                result.append(source[index])
+                index += 1
+            break
+    return "".join(result), index
+
+
+def _strip_javascript_comments(source):
+    source = _decode_frontend_javascript_content(source)
+    output = []
+    index = 0
+    while index < len(source):
+        char = source[index]
+        next_char = source[index + 1] if index + 1 < len(source) else ""
+        if char == "#" and next_char == "!" and (
+            index == 0 or source[index - 1] in "\r\n"
+        ):
+            index += 2
+            while index < len(source) and source[index] not in "\r\n":
+                index += 1
+            output.append("\n")
+            continue
+        if char in ("'", '"'):
+            literal, index = _copy_javascript_string_literal(source, index, char)
+            output.append(literal)
+            continue
+        if char == "`":
+            literal, index = _copy_javascript_template_literal(source, index)
+            output.append(literal)
+            continue
+        if char == "/" and next_char == "/":
+            index += 2
+            while index < len(source) and source[index] not in "\r\n":
+                index += 1
+            output.append("\n")
+            continue
+        if char == "/" and next_char == "*":
+            index += 2
+            while index + 1 < len(source) and not (
+                source[index] == "*" and source[index + 1] == "/"
+            ):
+                index += 1
+            index = min(index + 2, len(source))
+            output.append(" ")
+            continue
+        if char == "/" and _javascript_previous_token_allows_regex(output):
+            literal, index = _copy_javascript_regex_literal(source, index)
+            output.append(literal)
+            continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _javascript_space_is_required(output_chars, current_char):
+    previous, previous_identifier = _javascript_previous_nonspace_and_identifier(
+        output_chars
+    )
+    if not previous:
+        return False
+    if _javascript_identifier_char(previous) and _javascript_identifier_char(current_char):
+        return True
+    if previous in ("+", "-") and current_char == previous:
+        return True
+    if previous == "/" and current_char in ("/", "*"):
+        return True
+    if current_char in ("'", '"', "`", "/", "[", "{", "("):
+        if previous_identifier in {
+            "return",
+            "throw",
+            "case",
+            "yield",
+            "await",
+            "typeof",
+            "void",
+            "delete",
+            "new",
+        }:
+            return True
+    if previous in (")", "]") and _javascript_identifier_char(current_char):
+        return True
+    return False
+
+
+def _compact_javascript_whitespace(source):
+    source = _decode_frontend_javascript_content(source)
+    output = []
+    pending_space = False
+    pending_newline = False
+    index = 0
+    while index < len(source):
+        char = source[index]
+        if char.isspace():
+            pending_space = True
+            if char in "\r\n":
+                pending_newline = True
+            index += 1
+            continue
+        if char in ("'", '"'):
+            if pending_space and _javascript_space_is_required(output, char):
+                output.append("\n" if pending_newline else " ")
+            literal, index = _copy_javascript_string_literal(source, index, char)
+            output.append(literal)
+            pending_space = False
+            pending_newline = False
+            continue
+        if char == "`":
+            if pending_space and _javascript_space_is_required(output, char):
+                output.append("\n" if pending_newline else " ")
+            literal, index = _copy_javascript_template_literal(
+                source,
+                index,
+                compact_interpolations=True,
+            )
+            output.append(literal)
+            pending_space = False
+            pending_newline = False
+            continue
+        if char == "/" and _javascript_previous_token_allows_regex(output):
+            if pending_space and _javascript_space_is_required(output, char):
+                output.append("\n" if pending_newline else " ")
+            literal, index = _copy_javascript_regex_literal(source, index)
+            output.append(literal)
+            pending_space = False
+            pending_newline = False
+            continue
+        if pending_space and _javascript_space_is_required(output, char):
+            output.append("\n" if pending_newline else " ")
+        output.append(char)
+        pending_space = False
+        pending_newline = False
+        index += 1
+    return "".join(output).strip()
+
+
+def _get_frontend_js_anti_debug_guard():
+    return r"""
+;(function(g){
+  "use strict";
+  if(!g||g.__FRONTEND_JS_ANTI_DEBUG__)return;
+  var k="__"+"MAP_KEY_RUNTIME"+"__";
+  function mark(reason){
+    try{Object.defineProperty(g,"__FRONTEND_JS_HOOK_BLOCKED__",{value:reason||"debug",configurable:false,writable:false});}
+    catch(_){g.__FRONTEND_JS_HOOK_BLOCKED__=reason||"debug";}
+    try{
+      var rt=g[k];
+      if(rt&&rt.decryptMapProviderKeys){
+        Object.defineProperty(rt,"decryptMapProviderKeys",{value:function(){return Promise.reject(new Error("Runtime locked"));},configurable:false});
+      }
+    }catch(_){}
+  }
+  try{Object.defineProperty(g,"__FRONTEND_JS_ANTI_DEBUG__",{value:1,configurable:false,writable:false});}
+  catch(_){g.__FRONTEND_JS_ANTI_DEBUG__=1;}
+  function checkSize(){
+    try{
+      if((g.outerWidth-g.innerWidth>160)||(g.outerHeight-g.innerHeight>160))mark("devtools");
+    }catch(_){}
+  }
+  try{
+    g.addEventListener("keydown",function(e){
+      var key=String(e.key||"");
+      if(key==="F12"||(e.ctrlKey&&e.shiftKey&&/[ICJ]/i.test(key))||(e.ctrlKey&&/U/i.test(key))){
+        e.preventDefault();
+        e.stopPropagation();
+        mark("shortcut");
+      }
+    },true);
+  }catch(_){}
+  try{setInterval(checkSize,1500);checkSize();}catch(_){}
+  try{
+    setInterval(function(){
+      var perf=g.performance;
+      if(!perf||!perf.now)return;
+      var started=perf.now();
+      Function("debugger")();
+      if(perf.now()-started>120)mark("debugger");
+    },2500);
+  }catch(_){}
+})(typeof window!=="undefined"?window:globalThis);
+"""
+
+
+def _harden_frontend_javascript_for_response(source):
+    source = _decode_frontend_javascript_content(source)
+    if not _is_frontend_js_hardening_enabled():
+        return source
+    guarded_source = _get_frontend_js_anti_debug_guard() + "\n" + source
+    return _compact_javascript_whitespace(_strip_javascript_comments(guarded_source))
+
+
+def _make_frontend_javascript_response(
+    content,
+    status=200,
+    cache_control=None,
+    no_cache=False,
+    headers=None,
+):
+    body = _harden_frontend_javascript_for_response(content)
+    response = make_response(body, status)
+    response.mimetype = "application/javascript"
+    if _is_frontend_js_hardening_enabled():
+        response.headers["X-JS-Hardened"] = "1"
+        response.headers["X-SourceMap"] = "stripped"
+    if cache_control:
+        response.headers["Cache-Control"] = cache_control
+    if headers:
+        for key, value in headers.items():
+            response.headers[key] = value
+    if no_cache:
+        return _apply_no_cache_headers(response)
+    return response
+
+
+def _harden_frontend_javascript_response_if_needed(response):
+    if not _is_frontend_js_hardening_enabled():
+        return response
+    if response.headers.get("X-JS-Hardened") == "1":
+        return response
+    if not _is_javascript_content_type(response.headers.get("Content-Type", "")):
+        return response
+    try:
+        response.direct_passthrough = False
+        response.set_data(_harden_frontend_javascript_for_response(response.get_data()))
+        response.headers["X-JS-Hardened"] = "1"
+        response.headers["X-SourceMap"] = "stripped"
+    except Exception as exc:
+        logging.error(f"[JS加固] after_request 处理失败: {exc}")
+    return response
+
+
+def _resolve_frontend_static_file(root_dir, filename):
+    root_path = os.path.abspath(root_dir)
+    candidate_path = os.path.abspath(os.path.join(root_path, str(filename or "")))
+    try:
+        if os.path.commonpath([root_path, candidate_path]) != root_path:
+            return None
+    except ValueError:
+        return None
+    if not os.path.isfile(candidate_path):
+        return None
+    return candidate_path
+
+
+def _send_frontend_static_file(
+    root_dir,
+    filename,
+    cache_control=None,
+    no_cache=False,
+    headers=None,
+):
+    if _is_frontend_js_hardening_enabled() and _is_javascript_asset_name(filename):
+        file_path = _resolve_frontend_static_file(root_dir, filename)
+        if not file_path:
+            return jsonify({"success": False, "message": "File not found"}), 404
+        try:
+            with open(file_path, "r", encoding="utf-8") as file:
+                return _make_frontend_javascript_response(
+                    file.read(),
+                    cache_control=cache_control,
+                    no_cache=no_cache,
+                    headers=headers,
+                )
+        except Exception as exc:
+            logging.error(f"[JS加固] 读取前端脚本失败: {exc}")
+            return jsonify({"success": False, "message": "File not found"}), 404
+    response = send_from_directory(root_dir, filename)
+    if cache_control:
+        response.headers["Cache-Control"] = cache_control
+    if headers:
+        for key, value in headers.items():
+            response.headers[key] = value
+    if no_cache:
+        return _apply_no_cache_headers(response)
     return response
 
 
@@ -328,6 +820,13 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
     return bytes;
   }
 
+  function assertDebugAllowed() {
+    if (globalScope.__FRONTEND_JS_HOOK_BLOCKED__) {
+      clientKeyPairPromise = null;
+      throw new Error("地图密钥运行时已锁定");
+    }
+  }
+
   async function getClientKeyPair() {
     if (!clientKeyPairPromise) {
       clientKeyPairPromise = crypto.subtle.generateKey(
@@ -345,6 +844,7 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
   }
 
   async function decryptMapProviderKeys(bundle) {
+    assertDebugAllowed();
     const clientKeyPair = await getClientKeyPair();
     const clientPublicKey = await crypto.subtle.exportKey(
       "jwk",
@@ -374,6 +874,7 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
     if (!payload || payload.success === false) {
       throw new Error((payload && payload.message) || "地图密钥解密失败");
     }
+    assertDebugAllowed();
     const encryptedPayload = payload.encrypted_payload || {};
     const wrappedKeyBuffer = await crypto.subtle.decrypt(
       { name: "RSA-OAEP" },
@@ -37910,6 +38411,12 @@ def start_web_server(args_param):
                     else:
                         mimetype = "application/javascript"
 
+                    if file_type == "js":
+                        return _make_frontend_javascript_response(
+                            content,
+                            cache_control="public, max-age=3600",
+                        )
+
                     response = make_response(content)
                     response.headers["Content-Type"] = mimetype
                     response.headers["Cache-Control"] = (
@@ -37939,9 +38446,7 @@ def start_web_server(args_param):
                     jsonify({"success": False, "message": "Runtime script unavailable"}),
                     404,
                 )
-            response = make_response(runtime_js)
-            response.mimetype = "application/javascript"
-            return _apply_no_cache_headers(response)
+            return _make_frontend_javascript_response(runtime_js, no_cache=True)
         except Exception as e:
             logging.error(f"[MapKeyRuntime] 返回运行时脚本失败: {e}")
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
@@ -38114,7 +38619,7 @@ def start_web_server(args_param):
                     404,
                 )
 
-            return send_from_directory(script_dir, filename)
+            return _send_frontend_static_file(script_dir, filename)
         except Exception as e:
             logging.error(f"Serving script error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
@@ -38141,7 +38646,7 @@ def start_web_server(args_param):
                     404,
                 )
 
-            return send_from_directory(style_dir, filename)
+            return _send_frontend_static_file(style_dir, filename)
         except Exception as e:
             logging.error(f"Serving style error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
@@ -38158,7 +38663,7 @@ def start_web_server(args_param):
             assets_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
             if not os.path.exists(assets_dir):
                 return jsonify({"success": False, "message": "File not found"}), 404
-            return send_from_directory(assets_dir, filename)
+            return _send_frontend_static_file(assets_dir, filename)
         except Exception as e:
             logging.error(f"Serving theme asset error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
@@ -38170,6 +38675,17 @@ def start_web_server(args_param):
         服务 ./twemoji 目录下的静态文件（用于 Editor.md 的 Twemoji 图片）
         """
         try:
+            normalized_twemoji_path = str(filename or "").replace("\\", "/").lstrip("/")
+            if normalized_twemoji_path.startswith(("scripts/", "src/")):
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": "twemoji 内部构建脚本不可公开访问",
+                        }
+                    ),
+                    404,
+                )
             base_dir = os.path.dirname(__file__)
             twemoji_dir = os.path.join(base_dir, "twemoji")
             if not os.path.exists(twemoji_dir):
@@ -38180,7 +38696,7 @@ def start_web_server(args_param):
                     404,
                 )
 
-            return send_from_directory(twemoji_dir, filename)
+            return _send_frontend_static_file(twemoji_dir, filename)
         except Exception as e:
             logging.error(f"Serving twemoji error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
@@ -38201,7 +38717,7 @@ def start_web_server(args_param):
                     404,
                 )
 
-            return send_from_directory(gh_dir, filename)
+            return _send_frontend_static_file(gh_dir, filename)
         except Exception as e:
             logging.error(f"Serving Github_emojis error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
@@ -38222,11 +38738,7 @@ def start_web_server(args_param):
                     404,
                 )
 
-            response = send_from_directory(ed_dir, filename)
-            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
-            return response
+            return _send_frontend_static_file(ed_dir, filename, no_cache=True)
         except Exception as e:
             logging.error(f"Serving editor.md error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404
@@ -38314,10 +38826,12 @@ def start_web_server(args_param):
             if not os.path.exists(sw_path):
                 logging.warning(f"sw.js 文件不存在: {sw_path}")
                 return jsonify({"success": False, "message": "sw.js 文件未找到"}), 404
-            response = send_file(sw_path, mimetype="application/javascript")
-            response.headers["Service-Worker-Allowed"] = "/"
-            response.headers["Cache-Control"] = "no-cache"
-            return response
+            return _send_frontend_static_file(
+                os.path.join(root_dir, "PWA"),
+                "sw.js",
+                cache_control="no-cache",
+                headers={"Service-Worker-Allowed": "/"},
+            )
         except Exception as e:
             logging.error(f"返回 sw.js 时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": "服务器内部错误"}), 500
@@ -38532,9 +39046,7 @@ def start_web_server(args_param):
         )
         config_script = f"window.APP_CONFIG = {json.dumps(app_config)};"
 
-        resp = make_response(config_script)
-        resp.mimetype = "application/javascript"
-        return _apply_no_cache_headers(resp)
+        return _make_frontend_javascript_response(config_script, no_cache=True)
 
     # Vue 前端自动构建：vue 模式下若 dist/ 不存在则尝试构建
     _vue_dist_dir = os.path.join(os.path.dirname(__file__), "dist")
@@ -38583,7 +39095,7 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "Not available"}), 404
         assets_dir = os.path.join(_vue_dist_dir, "assets")
         if os.path.exists(assets_dir):
-            return send_from_directory(assets_dir, filename)
+            return _send_frontend_static_file(assets_dir, filename)
         return jsonify({"success": False, "message": "Asset not found"}), 404
 
     def _serve_vue_index():
@@ -41537,13 +42049,22 @@ def start_web_server(args_param):
         from flask import Response
         base, _ = _behavior_base_or_error()
         if not base:
-            return Response("// behavior 未配置", mimetype="application/javascript", status=503)
+            return _make_frontend_javascript_response(
+                "// behavior 未配置",
+                status=503,
+            )
         try:
             r = _requests.get(f"{base}/loader.js", timeout=5)
-            return Response(r.content, mimetype="application/javascript", status=r.status_code)
+            return _make_frontend_javascript_response(
+                r.content,
+                status=r.status_code,
+            )
         except Exception as e:
             logging.error(f"[验证码-behavior] 代理 loader.js 失败: {e}")
-            return Response("// behavior loader 加载失败", mimetype="application/javascript", status=502)
+            return _make_frontend_javascript_response(
+                "// behavior loader 加载失败",
+                status=502,
+            )
 
     @app.route("/api/captcha/behavior/tac/<path:subpath>", methods=["GET"])
     def behavior_proxy_tac(subpath):
@@ -41556,6 +42077,12 @@ def start_web_server(args_param):
         try:
             r = _requests.get(f"{base}/tac/{subpath}", timeout=8)
             ctype = r.headers.get("Content-Type", "application/octet-stream")
+            if _is_javascript_content_type(ctype) or _is_javascript_asset_name(subpath):
+                return _make_frontend_javascript_response(
+                    r.content,
+                    status=r.status_code,
+                    headers={"Content-Type": ctype},
+                )
             return Response(r.content, mimetype=ctype.split(";")[0], status=r.status_code)
         except Exception as e:
             logging.error(f"[验证码-behavior] 代理 tac 资源失败({subpath}): {e}")
@@ -52949,6 +53476,7 @@ def start_web_server(args_param):
         """
         为所有响应添加安全相关的HTTP头。
         """
+        response = _harden_frontend_javascript_response_if_needed(response)
         request_id = getattr(g, "request_id", None)
         if request_id:
             response.headers["X-Request-ID"] = str(request_id)
