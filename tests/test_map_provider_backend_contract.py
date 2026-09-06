@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from flask import Flask
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 import main as main_module
 
@@ -35,6 +36,23 @@ class TestMapProviderBackendContract(unittest.TestCase):
             for index, byte in enumerate(payload)
         )
         return decoded.decode("utf-8")
+
+    def _rsa_public_key_to_jwk(self, public_key):
+        def encode_int(value):
+            size = max(1, (value.bit_length() + 7) // 8)
+            return base64.urlsafe_b64encode(
+                value.to_bytes(size, "big")
+            ).rstrip(b"=").decode("ascii")
+
+        numbers = public_key.public_numbers()
+        return {
+            "kty": "RSA",
+            "n": encode_int(numbers.n),
+            "e": encode_int(numbers.e),
+            "alg": "RSA-OAEP-256",
+            "ext": True,
+            "key_ops": ["encrypt"],
+        }
 
     def _runtime_config_with_map(self, provider, providers):
         temp = tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json", delete=False)
@@ -479,21 +497,34 @@ class TestMapProviderBackendContract(unittest.TestCase):
             "__MAP_KEY_RUNTIME_PRIVATE_KEY_PEM__",
             "BEGIN PRIVATE KEY",
             "secret-private-key",
-            "RSA-OAEP",
-            "SHA-256",
-            "pkcs8",
-            "crypto.subtle",
             "runtimePrivateKeyPem",
         ):
             self.assertNotIn(clear_text, runtime_template)
             self.assertNotIn(clear_text, script)
             self.assertNotIn(clear_text, decoded_script)
+        for clear_text in (
+            "RSA-OAEP",
+            "SHA-256",
+            "AES-GCM",
+            "crypto.subtle",
+            "decryptMapProviderKeys",
+            "/api/map_provider_keys/decrypt",
+            "runtime-secret-version",
+        ):
+            self.assertNotIn(clear_text, script)
+        self.assertIn("RSA-OAEP", runtime_template)
+        self.assertIn("AES-GCM", runtime_template)
+        self.assertIn("crypto.subtle", runtime_template)
         self.assertIn('"/api/map_provider_keys/decrypt"', runtime_template)
-        self.assertIn('"/api/map_provider_keys/decrypt"', decoded_script)
-        self.assertNotIn("__MAP_KEY_RUNTIME__", script)
-        self.assertNotIn("decryptMapProviderKeys", script)
-        self.assertNotIn("/api/map_provider_keys/decrypt", script)
-        self.assertNotIn("runtime-secret-version", script)
+        for clear_text in (
+            "RSA-OAEP",
+            "SHA-256",
+            "AES-GCM",
+            "crypto.subtle",
+            "decryptMapProviderKeys",
+            "/api/map_provider_keys/decrypt",
+        ):
+            self.assertIn(clear_text, decoded_script)
         self.assertLessEqual(script.count("\n"), 2)
 
     def test_server_decrypts_map_provider_bundle_without_client_private_key(self):
@@ -549,6 +580,14 @@ class TestMapProviderBackendContract(unittest.TestCase):
         main_module.map_key_runtime_contexts_by_version[
             context["runtime_version"]
         ] = context
+        rsa, padding, _, hashes = main_module._get_crypto_primitives()
+        client_private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+        )
+        client_public_key_jwk = self._rsa_public_key_to_jwk(
+            client_private_key.public_key()
+        )
 
         try:
             with app.test_request_context(
@@ -558,17 +597,39 @@ class TestMapProviderBackendContract(unittest.TestCase):
                 json={
                     "runtime_version": context["runtime_version"],
                     "bundle": bundle,
+                    "client_public_key": client_public_key_jwk,
                 },
             ):
                 response = main_module._decrypt_map_provider_keys_for_request()
                 self.assertEqual(response.status_code, 200)
+                response_json = response.get_json()
+                self.assertEqual(response_json["success"], True)
+                self.assertIn("encrypted_payload", response_json)
+                self.assertNotIn("providers", response_json)
+                self.assertNotIn("amap-endpoint-secret", response.get_data(as_text=True))
+                encrypted_payload = response_json["encrypted_payload"]
                 self.assertEqual(
-                    response.get_json(),
+                    set(encrypted_payload),
+                    {"encrypted_key", "iv", "ciphertext"},
+                )
+                aes_key = client_private_key.decrypt(
+                    base64.b64decode(encrypted_payload["encrypted_key"]),
+                    padding.OAEP(
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
+                        label=None,
+                    ),
+                )
+                self.assertEqual(
+                    json.loads(
+                        AESGCM(aes_key).decrypt(
+                            base64.b64decode(encrypted_payload["iv"]),
+                            base64.b64decode(encrypted_payload["ciphertext"]),
+                            None,
+                        ).decode("utf-8")
+                    ),
                     {
-                        "success": True,
-                        "providers": {
-                            "amap": {"js_key": "amap-endpoint-secret"}
-                        },
+                        "providers": {"amap": {"js_key": "amap-endpoint-secret"}}
                     },
                 )
                 self.assertIn("no-store", response.headers.get("Cache-Control", ""))
@@ -580,6 +641,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
                 json={
                     "runtime_version": "wrong-runtime",
                     "bundle": bundle,
+                    "client_public_key": client_public_key_jwk,
                 },
             ):
                 response = main_module._decrypt_map_provider_keys_for_request()
@@ -593,6 +655,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
                 json={
                     "runtime_version": context["runtime_version"],
                     "bundle": bundle,
+                    "client_public_key": client_public_key_jwk,
                 },
             ):
                 response = main_module._decrypt_map_provider_keys_for_request()
@@ -624,9 +687,11 @@ class TestMapProviderBackendContract(unittest.TestCase):
         )
         node_script = r"""
 const payload = JSON.parse(process.argv[process.argv.length - 1]);
-const { TextDecoder } = require("util");
+const { TextDecoder, TextEncoder } = require("util");
 globalThis.TextDecoder = TextDecoder;
+globalThis.TextEncoder = TextEncoder;
 globalThis.window = globalThis;
+Object.defineProperty(globalThis, "crypto", { value: require("crypto").webcrypto, configurable: true });
 globalThis.location = { pathname: `/uuid=${payload.session_id}` };
 globalThis.sessionStorage = {
   getItem(name) {
@@ -650,12 +715,48 @@ globalThis.fetch = async (url, options) => {
   if (body.runtime_version !== payload.runtime_version) {
     throw new Error("missing runtime version");
   }
+  if (!body.client_public_key || body.client_public_key.kty !== "RSA") {
+    throw new Error("missing client public key");
+  }
   if (!body.bundle || !body.bundle.providers || !body.bundle.providers.amap) {
     throw new Error("missing key bundle");
   }
+  const publicKey = await crypto.subtle.importKey(
+    "jwk",
+    body.client_public_key,
+    { name: "RSA-OAEP", hash: "SHA-256" },
+    false,
+    ["encrypt"],
+  );
+  const aesKey = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const aesKeyBytes = new Uint8Array(await crypto.subtle.exportKey("raw", aesKey));
+  const encryptedKey = await crypto.subtle.encrypt(
+    { name: "RSA-OAEP" },
+    publicKey,
+    aesKeyBytes,
+  );
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    aesKey,
+    new TextEncoder().encode(JSON.stringify({
+      providers: { amap: { js_key: payload.secret } },
+    })),
+  );
   return {
     ok: true,
-    json: async () => ({ success: true, providers: { amap: { js_key: payload.secret } } }),
+    json: async () => ({
+      success: true,
+      encrypted_payload: {
+        encrypted_key: Buffer.from(encryptedKey).toString("base64"),
+        iv: Buffer.from(iv).toString("base64"),
+        ciphertext: Buffer.from(ciphertext).toString("base64"),
+      },
+    }),
   };
 };
 (async () => {

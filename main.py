@@ -301,6 +301,7 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
   const runtimeVersion = __MAP_KEY_RUNTIME_VERSION__;
   const runtimeNamespace = "__MAP_KEY_RUNTIME_NAMESPACE__";
   const decryptEndpoint = "/api/map_provider_keys/decrypt";
+  let clientKeyPairPromise = null;
 
   function getSessionId() {
     try {
@@ -318,7 +319,37 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
     return match ? match[1] : "";
   }
 
+  function base64ToBytes(base64Text) {
+    const binaryText = atob(base64Text);
+    const bytes = new Uint8Array(binaryText.length);
+    for (let i = 0; i < binaryText.length; i += 1) {
+      bytes[i] = binaryText.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  async function getClientKeyPair() {
+    if (!clientKeyPairPromise) {
+      clientKeyPairPromise = crypto.subtle.generateKey(
+        {
+          name: "RSA-OAEP",
+          modulusLength: 2048,
+          publicExponent: new Uint8Array([1, 0, 1]),
+          hash: "SHA-256",
+        },
+        false,
+        ["encrypt", "decrypt"]
+      );
+    }
+    return clientKeyPairPromise;
+  }
+
   async function decryptMapProviderKeys(bundle) {
+    const clientKeyPair = await getClientKeyPair();
+    const clientPublicKey = await crypto.subtle.exportKey(
+      "jwk",
+      clientKeyPair.publicKey
+    );
     const headers = { "Content-Type": "application/json" };
     const sessionId = getSessionId();
     if (sessionId) headers["X-Session-ID"] = sessionId;
@@ -333,6 +364,7 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
       body: JSON.stringify({
         runtime_version: runtimeVersion,
         bundle: bundle || {},
+        client_public_key: clientPublicKey,
       }),
     });
     if (!response.ok) {
@@ -342,7 +374,29 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
     if (!payload || payload.success === false) {
       throw new Error((payload && payload.message) || "地图密钥解密失败");
     }
-    return payload.providers || {};
+    const encryptedPayload = payload.encrypted_payload || {};
+    const wrappedKeyBuffer = await crypto.subtle.decrypt(
+      { name: "RSA-OAEP" },
+      clientKeyPair.privateKey,
+      base64ToBytes(encryptedPayload.encrypted_key || "")
+    );
+    const aesKey = await crypto.subtle.importKey(
+      "raw",
+      wrappedKeyBuffer,
+      { name: "AES-GCM" },
+      false,
+      ["decrypt"]
+    );
+    const decryptedBuffer = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: base64ToBytes(encryptedPayload.iv || ""),
+      },
+      aesKey,
+      base64ToBytes(encryptedPayload.ciphertext || "")
+    );
+    const decryptedPayload = JSON.parse(new TextDecoder().decode(decryptedBuffer));
+    return decryptedPayload.providers || {};
   }
 
   globalScope[runtimeNamespace] = Object.freeze({
@@ -765,6 +819,79 @@ def _encrypt_map_provider_secret(secret_value, runtime_context=None):
     return _base64.b64encode(ciphertext).decode("utf-8")
 
 
+def _load_client_public_key(client_public_key):
+    if not isinstance(client_public_key, dict):
+        return None
+    try:
+        import base64 as _base64
+        rsa, _, _, _ = _get_crypto_primitives()
+
+        jwk = dict(client_public_key)
+        if jwk.get("kty") != "RSA":
+            return None
+        n_value = str(jwk.get("n") or "")
+        e_value = str(jwk.get("e") or "")
+        if not n_value or not e_value:
+            return None
+
+        def _decode_base64_urlsafe(value):
+            padding_size = (-len(value)) % 4
+            value = value + ("=" * padding_size)
+            return _base64.urlsafe_b64decode(value.encode("ascii"))
+
+        n_int = int.from_bytes(_decode_base64_urlsafe(n_value), "big")
+        e_int = int.from_bytes(_decode_base64_urlsafe(e_value), "big")
+        public_numbers = rsa.RSAPublicNumbers(e_int, n_int)
+        return public_numbers.public_key()
+    except Exception as exc:
+        logging.warning(
+            "[MapKeyRuntime] 客户端公钥解析失败: %s",
+            type(exc).__name__,
+        )
+        return None
+
+
+def _encrypt_map_provider_payload_for_client(
+    payload_text,
+    client_public_key,
+):
+    raw_value = str(payload_text or "").strip()
+    if not raw_value or client_public_key is None:
+        return {}
+    _, padding, _, hashes = _get_crypto_primitives()
+    import base64 as _base64
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    try:
+        aes_key = secrets.token_bytes(32)
+        iv = secrets.token_bytes(12)
+        ciphertext = AESGCM(aes_key).encrypt(
+            iv,
+            raw_value.encode("utf-8"),
+            None,
+        )
+        encrypted_key = client_public_key.encrypt(
+            aes_key,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None,
+            ),
+        )
+    except Exception as exc:
+        logging.warning(
+            "[MapKeyRuntime] 客户端负载加密失败: %s",
+            type(exc).__name__,
+        )
+        return {}
+
+    return {
+        "encrypted_key": _base64.b64encode(encrypted_key).decode("utf-8"),
+        "iv": _base64.b64encode(iv).decode("utf-8"),
+        "ciphertext": _base64.b64encode(ciphertext).decode("utf-8"),
+    }
+
+
 def _decrypt_map_provider_key_bundle(key_bundle, runtime_context):
     if not isinstance(key_bundle, dict) or not isinstance(runtime_context, dict):
         return {}
@@ -842,7 +969,22 @@ def _decrypt_map_provider_keys_for_request():
         payload.get("bundle") or {},
         runtime_context,
     )
-    response = jsonify({"success": True, "providers": providers})
+    client_public_key = _load_client_public_key(payload.get("client_public_key"))
+    if client_public_key is None:
+        response = jsonify({"success": False, "message": "Runtime unavailable"})
+        response.status_code = 400
+        return _apply_no_cache_headers(response)
+
+    encrypted_payload = _encrypt_map_provider_payload_for_client(
+        json.dumps({"providers": providers}, ensure_ascii=False),
+        client_public_key,
+    )
+    if not encrypted_payload:
+        response = jsonify({"success": False, "message": "地图密钥解密失败"})
+        response.status_code = 500
+        return _apply_no_cache_headers(response)
+
+    response = jsonify({"success": True, "encrypted_payload": encrypted_payload})
     return _apply_no_cache_headers(response)
 
 
