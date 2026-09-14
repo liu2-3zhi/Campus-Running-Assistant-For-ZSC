@@ -6,6 +6,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useMapStore } from '@/stores/map'
 import { useNotificationStore } from '@/stores/notification'
 import { callAPI } from '@/services/api'
+import { hydrateMapProviderSecrets } from '@/services/mapKeyRuntime'
 import { connectWebSocket, disconnectWebSocket } from '@/services/socket'
 import { useRouter } from 'vue-router'
 
@@ -70,7 +71,8 @@ let resizeHandler = null
 async function loadInitialData() {
   app.isLoading = true
   try {
-    const data = await callAPI('get_initial_data')
+    const responseData = await callAPI('get_initial_data')
+    const data = await hydrateMapProviderSecrets(responseData)
     if (data) {
       if (data.tasks) app.tasks = data.tasks
       if (data.users) app.users = data.users
@@ -87,11 +89,12 @@ async function loadInitialData() {
       if (data.selected_task_index != null) app.selectedTaskIndex = data.selected_task_index
 
       const mapConfig = {}
-      if (data.amap_key || data.amap_js_api_key) mapConfig.amapKey = data.amap_key || data.amap_js_api_key
-      if (data.amap_security_key) mapConfig.amapSecurityKey = data.amap_security_key
-      if (data.tencent_map_key) mapConfig.tencentKey = data.tencent_map_key
-      if (data.tianditu_map_key) mapConfig.tiandituKey = data.tianditu_map_key
-      if (data.baidu_map_ak) mapConfig.baiduKey = data.baidu_map_ak
+      const providers = data.map_providers || {}
+      if (providers.amap?.js_key) mapConfig.amapKey = providers.amap.js_key
+      if (providers.amap?.security_key) mapConfig.amapSecurityKey = providers.amap.security_key
+      if (providers.tencent?.map_key) mapConfig.tencentKey = providers.tencent.map_key
+      if (providers.tianditu?.token) mapConfig.tiandituKey = providers.tianditu.token
+      if (providers.baidu?.ak) mapConfig.baiduKey = providers.baidu.ak
       if (Object.keys(mapConfig).length > 0) mapStore.setConfig(mapConfig)
       if (data.map_provider) mapStore.setProvider(data.map_provider)
 

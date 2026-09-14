@@ -7,6 +7,7 @@ SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.new.js"
 LOAD_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "load_amap_watermark.js"
 MAIN_PATH = PROJECT_ROOT / "main.py"
 INDEX_PATH = PROJECT_ROOT / "index.html"
+FRONTEND_MAP_KEY_RUNTIME_PATH = PROJECT_ROOT / "frontend" / "src" / "services" / "mapKeyRuntime.js"
 
 
 class TestMapProviderRuntimeGuards(unittest.TestCase):
@@ -24,8 +25,73 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
     def test_index_loads_current_map_runtime_scripts(self):
         html = INDEX_PATH.read_text(encoding="utf-8")
 
+        self.assertIn('<script src="/api/frontend_config.js"></script>', html)
         self.assertIn('<script src="/scripts/load_amap_watermark.js"></script>', html)
         self.assertIn('<script src="scripts/main.new.js" defer=""></script>', html)
+
+    def test_legacy_ui_hydrates_map_keys_from_api_runtime(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("function createSafeClientLogValue(", source)
+        self.assertIn("function formatSafeClientLogArgs(", source)
+        self.assertIn("function loadLegacyMapKeyRuntime(", source)
+        self.assertIn("function hydrateMapProviderSecretsForLegacy(", source)
+        self.assertIn('"/api/map_key_runtime.js"', source)
+        self.assertIn("window.__mapKeyRuntimeReady", source)
+        self.assertIn("await hydrateMapProviderSecretsForLegacy(response)", source)
+        self.assertNotIn('console.log("[配置] 成功从API加载配置:", config);', source)
+        self.assertIn('console.log("[验证码设置] 测试生成成功");', source)
+        self.assertNotIn(
+            'console.log("[验证码设置] 测试生成成功，验证码:", result.code);',
+            source,
+        )
+        self.assertNotIn(
+            'console.log("[移动端验证码] 后端返回结果", result);',
+            source,
+        )
+        self.assertNotIn("成功从 /api/captcha/config 加载配置:", source)
+        self.assertNotIn('console.log("[移动端] 全局参数已保存:", params);', source)
+        self.assertNotIn(
+            'console.log(`[移动端] 参数已更新: ${key} = ${value}`);',
+            source,
+        )
+        self.assertNotIn(
+            'console.log(`[移动端多账号] 全局参数已更新: ${key} = ${value}`);',
+            source,
+        )
+        self.assertNotIn(
+            'console.log("[移动端退款自动填充] 开始处理订单号:", tradeNo);',
+            source,
+        )
+        self.assertNotIn(
+            'console.error("[移动端退款自动填充] API返回数据异常:", data);',
+            source,
+        )
+        self.assertNotIn(
+            'console.log("调用 /api/check_overdue 接口，参数:", requestBody);',
+            source,
+        )
+        self.assertNotIn(
+            'console.log("[水印控制] 准备保存配置（PC端）:", requestBody);',
+            source,
+        )
+        self.assertNotIn(
+            'console.log("[水印控制] 准备保存配置（移动端）:", requestBody);',
+            source,
+        )
+
+    def test_vue_runtime_loader_reloads_stale_same_version_script(self):
+        source = FRONTEND_MAP_KEY_RUNTIME_PATH.read_text(encoding="utf-8")
+        existing_source = source[
+            source.index("if (existing) {"):
+            source.index("const script = document.createElement('script')")
+        ]
+
+        self.assertIn("existing.remove()", existing_source)
+        self.assertNotIn(
+            "reject(new Error('地图密钥运行时版本不匹配'))",
+            existing_source,
+        )
 
     def test_missing_key_modal_is_provider_agnostic(self):
         html = INDEX_PATH.read_text(encoding="utf-8")

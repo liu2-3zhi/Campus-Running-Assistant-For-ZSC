@@ -172,6 +172,14 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             add_header Access-Control-Allow-Origin *;
         }
 
+        # 地图密钥运行时模板不能作为静态资源暴露，实际脚本只允许后端 /api 动态下发。
+        location ~* ^/scripts/map_key_runtime\.js$ {
+            add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+            add_header Pragma "no-cache" always;
+            add_header Expires "0" always;
+            return 404;
+        }
+
         # 2 & 3. Scripts 和 Styles 目录
         location ~ ^/(scripts|styles)/ {
             root /app;

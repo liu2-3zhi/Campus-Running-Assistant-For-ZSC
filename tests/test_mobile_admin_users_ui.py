@@ -24,12 +24,36 @@ class TestMobileAdminUsersUi(unittest.TestCase):
         self.assertIn('mobileContainer.querySelectorAll(".phone-location-badge[data-phone]")', js)
         self.assertIn('const info = await fetchPhoneInfo(span.dataset.phone);', js)
 
+    def test_opening_users_panel_clears_previous_search_keyword(self):
+        js = SCRIPT_PATH.read_text(encoding="utf-8")
+
+        helper = js[js.index("function resetAdminUsersSearchFilters"):]
+        self.assertIn('const usersSearchInput = $("admin-users-search-input_modal");', helper)
+        self.assertIn('const mobileUsersSearchInput = $("mobile-multi-admin-users-search-input");', helper)
+        self.assertIn('if (usersSearchInput) usersSearchInput.value = "";', helper)
+        self.assertIn('if (mobileUsersSearchInput) mobileUsersSearchInput.value = "";', helper)
+
+        toggle = js[js.index("async function toggleAdminPanel"):js.index("function switchAdminTab")]
+        self.assertIn('if (show) {\n    resetAdminUsersSearchFilters();', toggle)
+
+        mobile_open = js[js.index("function openMobileAdminPanelUnified"):]
+        self.assertIn('resetAdminUsersSearchFilters();', mobile_open)
+
     def test_outstanding_details_render_linked_users_section(self):
         js = SCRIPT_PATH.read_text(encoding="utf-8")
 
         self.assertIn('/api/admin/school-account-linked-users', js)
         self.assertIn('关联账号', js)
         self.assertIn('student_number', js)
+
+    def test_outstanding_details_prefers_non_admin_linked_accounts(self):
+        main = (PROJECT_ROOT / "main.py").read_text(encoding="utf-8")
+
+        self.assertIn("all_linked_users = []", main)
+        self.assertIn("non_admin_linked_users = []", main)
+        self.assertIn('user.get("group", "user")', main)
+        self.assertIn('if user_group not in {"admin", "super_admin"}', main)
+        self.assertIn("linked_users = non_admin_linked_users or all_linked_users", main)
 
 
 if __name__ == "__main__":
