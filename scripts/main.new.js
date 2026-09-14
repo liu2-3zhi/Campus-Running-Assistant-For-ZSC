@@ -22263,6 +22263,7 @@ async function toggleAdminPanel(show, skipAuthCheck = false) {
   const watermarkControlTab = $("admin-tab-watermark-control_modal");
 
   if (show) {
+    resetAdminUsersSearchFilters();
     let canViewMessages = false;
     let canManageSystem = false;
     let hasGodMode = false;
@@ -44234,6 +44235,13 @@ function formatSafeClientLogArgs(args) {
     .join(" ");
 }
 
+function resetAdminUsersSearchFilters() {
+  const usersSearchInput = $("admin-users-search-input_modal");
+  const mobileUsersSearchInput = $("mobile-multi-admin-users-search-input");
+  if (usersSearchInput) usersSearchInput.value = "";
+  if (mobileUsersSearchInput) mobileUsersSearchInput.value = "";
+}
+
 (function () {
   const originalConsole = {
     log: console.log.bind(console),
@@ -47572,6 +47580,7 @@ async function loadMobileTaskHistoryPanel() {
 function openMobileAdminPanelUnified(mode) {
   // 【第一步】记录日志，便于调试
   console.log(`[移动端管理面板] 打开统一面板，模式: ${mode}`);
+  resetAdminUsersSearchFilters();
 
   // 【第二步】保存当前模式到全局变量
   window.mobileAdminPanelMode = mode;

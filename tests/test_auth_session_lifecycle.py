@@ -8,6 +8,45 @@ import main as main_module
 
 
 class TestAuthSessionLifecycle(unittest.TestCase):
+    def test_promote_auth_only_session_to_persistent_reuses_instance(self):
+        source_id = "11111111-1111-4111-8111-111111111111"
+        target_id = "22222222-2222-4222-8222-222222222222"
+        api_instance = SimpleNamespace(
+            _is_persistent_session=False,
+            _web_session_id=source_id,
+            _session_created_at=123456.0,
+            auth_username="alice",
+        )
+
+        with mock.patch.multiple(
+            main_module,
+            web_sessions={source_id: api_instance},
+            web_sessions_lock=main_module.threading.Lock(),
+            create=True,
+        ):
+            promoted = main_module.promote_auth_session_to_persistent(
+                source_id, target_id
+            )
+
+            self.assertIs(promoted, api_instance)
+            self.assertNotIn(source_id, main_module.web_sessions)
+            self.assertIs(main_module.web_sessions[target_id], api_instance)
+            self.assertTrue(api_instance._is_persistent_session)
+            self.assertEqual(api_instance._web_session_id, target_id)
+
+    def test_temporary_auth_context_is_not_a_business_session(self):
+        self.assertFalse(
+            main_module.is_persistent_business_session(
+                SimpleNamespace(_is_persistent_session=False)
+            )
+        )
+        self.assertTrue(
+            main_module.is_persistent_business_session(
+                SimpleNamespace(_is_persistent_session=True)
+            )
+        )
+        self.assertTrue(main_module.is_persistent_business_session(SimpleNamespace()))
+
     def test_get_initial_data_is_the_only_auth_optional_generic_api(self):
         self.assertTrue(
             main_module.is_auth_optional_api_method("get_initial_data")

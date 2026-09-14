@@ -90,6 +90,9 @@ function onAuthSuccess(data) {
 // --- Session selected from picker → navigate to school login ---
 function onSessionSelected(sessionId) {
   auth.sessionUUID = sessionId
+  // The selected ID is now the active business session; stop using the
+  // temporary system-auth context for subsequent API calls.
+  auth.authSessionUUID = sessionId
   auth.loginInProgress = true
   sessionData.value = {}
   viewMode.value = 'school-login'

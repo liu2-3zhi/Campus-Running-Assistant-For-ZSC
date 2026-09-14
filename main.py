@@ -9040,6 +9040,42 @@ def normalize_session_uuid(session_id):
     return normalized.lower()
 
 
+def is_persistent_business_session(api_instance):
+    """Return whether an in-memory API instance represents a business session."""
+    return getattr(api_instance, "_is_persistent_session", True) is not False
+
+
+def promote_auth_session_to_persistent(source_session_id, target_session_id):
+    """Promote a temporary auth context in place and move it to a new session ID."""
+    source_session_id = normalize_session_uuid(source_session_id)
+    target_session_id = normalize_session_uuid(target_session_id)
+    if not source_session_id or not target_session_id or source_session_id == target_session_id:
+        return None
+
+    with web_sessions_lock:
+        api_instance = web_sessions.get(source_session_id)
+        if api_instance is None or is_persistent_business_session(api_instance):
+            return None
+        if target_session_id in web_sessions:
+            raise ValueError("目标会话ID已存在")
+
+        del web_sessions[source_session_id]
+        api_instance._web_session_id = target_session_id
+        api_instance._is_persistent_session = True
+        api_instance._session_created_at = time.time()
+        web_sessions[target_session_id] = api_instance
+        if "session_activity" in globals() and "session_activity_lock" in globals():
+            with session_activity_lock:
+                last_activity = session_activity.pop(source_session_id, None)
+                if last_activity is not None:
+                    session_activity[target_session_id] = last_activity
+        logging.info(
+            f"临时认证会话已自动转换为持久业务会话: "
+            f"{source_session_id[:8]}... -> {target_session_id[:8]}..."
+        )
+        return api_instance
+
+
 AUTH_OPTIONAL_API_METHODS = {"get_initial_data"}
 
 
@@ -32571,7 +32607,8 @@ def start_web_server(args_param):
         if not student_number:
             return jsonify({"success": False, "message": "缺少 student_number 参数"}), 400
 
-        linked_users = []
+        all_linked_users = []
+        non_admin_linked_users = []
         seen_entries = set()
         for user in auth_system.list_users():
             school_accounts = user.get("school_accounts") or []
@@ -32601,13 +32638,21 @@ def start_web_server(args_param):
                 if entry_key in seen_entries:
                     continue
                 seen_entries.add(entry_key)
-                linked_users.append({
+                linked_user = {
                     "username": user.get("auth_username", ""),
                     "nickname": user.get("nickname", ""),
                     "phone": user.get("phone", ""),
                     "school_username": school_username,
                     "student_number": linked_student_number,
-                })
+                }
+                all_linked_users.append(linked_user)
+
+                # Admin accounts are hidden when a regular linked account exists.
+                user_group = str(user.get("group", "user") or "").strip().lower()
+                if user_group not in {"admin", "super_admin"}:
+                    non_admin_linked_users.append(linked_user)
+
+        linked_users = non_admin_linked_users or all_linked_users
         return jsonify({"success": True, "users": linked_users})
 
     @app.route("/api/admin/school_account/delete", methods=["POST"])
@@ -34069,20 +34114,32 @@ def start_web_server(args_param):
 
         if not new_session_id:
             return jsonify({"success": False, "message": "缺少会话ID"}), 400
-        new_api_instance = Api(args)
-        new_api_instance._session_created_at = time.time()
-        new_api_instance._web_session_id = new_session_id
-        new_api_instance._is_persistent_session = True
-        if hasattr(api_instance, "auth_username"):
-            new_api_instance.auth_username = api_instance.auth_username
-            new_api_instance.auth_group = getattr(
-                api_instance, "auth_group", "guest")
-            new_api_instance.is_guest = is_guest
-            new_api_instance.is_authenticated = True
-        if hasattr(api_instance, "params"):
-            new_api_instance.params = copy.deepcopy(api_instance.params)
-        if hasattr(api_instance, "device_ua"):
-            new_api_instance.device_ua = api_instance.device_ua
+        # The first system login creates a temporary auth-only context. Promote
+        # that object in place so it does not remain as a second business session.
+        try:
+            new_api_instance = promote_auth_session_to_persistent(
+                session_id, new_session_id
+            )
+        except ValueError as exc:
+            return jsonify({"success": False, "message": str(exc)}), 409
+        if new_api_instance is None:
+            new_api_instance = Api(args)
+            new_api_instance._session_created_at = time.time()
+            new_api_instance._web_session_id = new_session_id
+            new_api_instance._is_persistent_session = True
+            if hasattr(api_instance, "auth_username"):
+                new_api_instance.auth_username = api_instance.auth_username
+                new_api_instance.auth_group = getattr(
+                    api_instance, "auth_group", "guest")
+                new_api_instance.is_guest = is_guest
+                new_api_instance.is_authenticated = True
+            if hasattr(api_instance, "params"):
+                new_api_instance.params = copy.deepcopy(api_instance.params)
+            if hasattr(api_instance, "device_ua"):
+                new_api_instance.device_ua = api_instance.device_ua
+        elif auth_username:
+            # The temporary token must not remain valid after its context is moved.
+            token_manager.invalidate_token(auth_username, session_id)
         cleanup_message = ""
         if not is_guest and auth_username:
             old_sessions, cleanup_message = (
@@ -34243,6 +34300,8 @@ def start_web_server(args_param):
         session_ids_in_memory = set()
         with web_sessions_lock:
             for sid, api in web_sessions.items():
+                if not is_persistent_business_session(api):
+                    continue
                 is_multi = getattr(api, "is_multi_account_mode", False)
                 login_success = getattr(api, "login_success", False)
                 if is_multi:
