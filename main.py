@@ -62,7 +62,7 @@ font_cache_lock = _NoopLock()
 source_map_storage = {}
 source_map_lock = _NoopLock()
 _midnight_runtime_reload_hook = None
-ENABLE_FRONTEND_JS_ANTI_DEBUG = True
+ENABLE_FRONTEND_JS_ANTI_DEBUG = False
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 AUTO_ATTENDANCE_MAX_MINUTES = 120  # 自动签到最长持续时间（分钟），超时后自动关闭
