@@ -10,6 +10,16 @@ export function isUsableSessionUUID(val) {
   return isValidUUID(val)
 }
 
+export function isRestorableSessionUUIDResponse(data) {
+  if (!data || data.success === false) return false
+  return (
+    data.type === 'session' ||
+    data.valid === true ||
+    data.uuid_type === 'guest' ||
+    data.uuid_type === 'system_account'
+  )
+}
+
 export function isValidUsername(username) {
   if (!username || typeof username !== 'string') return false
   return username.length >= 3 && username.length <= 32 && /^[a-zA-Z0-9_一-鿿]+$/.test(username)

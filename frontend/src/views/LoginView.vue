@@ -10,6 +10,7 @@ import SessionLogin from '@/components/login/SessionLogin.vue'
 import BeianFooter from '@/components/common/BeianFooter.vue'
 import AppModal from '@/components/common/AppModal.vue'
 import Swal from 'sweetalert2'
+import { isRestorableSessionUUIDResponse } from '@/utils/validation'
 
 const props = defineProps({
   uuid: { type: String, default: '' },
@@ -63,17 +64,23 @@ async function checkUUID(uuid) {
   errorMsg.value = ''
   try {
     const data = await callRawAPI('/auth/check_uuid_type', 'POST', { uuid })
-    if (data.type === 'session' || data.valid) {
+    if (isRestorableSessionUUIDResponse(data)) {
       auth.sessionUUID = uuid
       auth.loginInProgress = true
       sessionData.value = data
       viewMode.value = 'school-login'
     } else {
+      auth.sessionUUID = null
+      auth.loginInProgress = false
       viewMode.value = 'auth'
+      await router.replace('/')
     }
   } catch (e) {
     console.warn('UUID验证失败:', e)
+    auth.sessionUUID = null
+    auth.loginInProgress = false
     viewMode.value = 'auth'
+    await router.replace('/')
   }
 }
 

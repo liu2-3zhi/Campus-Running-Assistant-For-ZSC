@@ -17137,6 +17137,9 @@ async function callPythonAPI(method, ...args) {
 
       if (isMobileMode) {
         showMobileMessage("您的会话已过期或无效，请重新登录", "error");
+        if (redirectToLoginAfterSessionExpiry()) {
+          throw new Error("会话已过期或无效");
+        }
 
         const mobileMainApp = document.getElementById("mobile-main-app");
         const mobileMultiApp = document.getElementById(
@@ -34009,6 +34012,16 @@ function validateInput(input, type) {
   return { valid: true };
 }
 let sessionValidityCheckInterval = null;
+function redirectToLoginAfterSessionExpiry() {
+  if (window.location.pathname === "/") {
+    return false;
+  }
+
+  logMessage_Info("[会话检查] 会话已失效，正在返回登录页面");
+  window.location.replace("/");
+  return true;
+}
+
 async function checkSessionValidity() {
   if (!sessionUUID) {
     logMessage_Info("[会话检查] 无UUID，跳过检查");
@@ -34115,7 +34128,7 @@ async function checkSessionValidity() {
 
       button.onclick = () => {
         logMessage_Info("[会话检查] 用户确认会话失效，跳转到登录页面");
-        window.location.href = "/";
+        redirectToLoginAfterSessionExpiry();
       };
 
       modalContent.appendChild(icon);
@@ -34263,7 +34276,7 @@ async function initializeApp() {
           confirmButtonText: "确定",
         }).then(() => {
           logMessage_Info("用户确认无效UUID弹窗，正在跳转到登录页面...");
-          window.location.href = "/";
+          redirectToLoginAfterSessionExpiry();
         });
         return;
       }
@@ -34303,7 +34316,7 @@ async function initializeApp() {
               logMessage_Info(
                 "用户确认检查UUID失败弹窗，正在跳转到登录页面...",
               );
-              window.location.href = "/";
+              redirectToLoginAfterSessionExpiry();
             });
 
             return;
@@ -34531,14 +34544,14 @@ async function initializeApp() {
 
                 if (remainingSeconds <= 0) {
                   clearInterval(countdownInterval);
-                  window.location.href = "/";
+                  redirectToLoginAfterSessionExpiry();
                 }
               }, 1000);
 
               button.onclick = () => {
                 clearInterval(countdownInterval); // 点击时清除定时器
                 logMessage_Info("用户确认弹窗，正在跳转到登录页面...");
-                window.location.href = "/";
+                redirectToLoginAfterSessionExpiry();
               };
 
               modalContent.appendChild(icon);
@@ -34572,7 +34585,7 @@ async function initializeApp() {
           logMessage_Info(
             "用户确认检查UUID类型失败弹窗，正在跳转到登录页面...",
           );
-          window.location.href = "/";
+          redirectToLoginAfterSessionExpiry();
         });
         return;
       }
@@ -34601,6 +34614,10 @@ async function initializeApp() {
     if (!isAuthenticated) {
       hideLoadingOverlays();
       HiddenMobileLoadingOverlay();
+
+      if (sessionUUID) {
+        if (redirectToLoginAfterSessionExpiry()) return;
+      }
 
       if (isMobileMode) {
         console.log("[Mobile Init] 未认证，显示移动端认证页面");
@@ -38700,10 +38717,8 @@ $("start-run-button").addEventListener("click", toggleRun);
 $("start-all-button").addEventListener("click", toggleAllRuns);
 $("export-button").addEventListener("click", exportTask);
 
-// 移动端路径工具按钮
-if ($("mobile-record-button")) $("mobile-record-button").addEventListener("click", toggleRecordMode);
+// 移动端仅保留自动生成、清除和导出路径
 if ($("mobile-auto-gen-button")) $("mobile-auto-gen-button").addEventListener("click", () => { const modal = $("auto-gen-modal"); if (modal) { modal.classList.remove("hidden"); modal.classList.add("flex"); document.body.classList.add("modal-visible"); } });
-if ($("mobile-process-button")) $("mobile-process-button").addEventListener("click", processCurrentPath);
 if ($("mobile-clear-button")) $("mobile-clear-button").addEventListener("click", () => clearCurrentPath(true));
 if ($("mobile-export-button")) $("mobile-export-button").addEventListener("click", exportTask);
 
