@@ -138,4 +138,7 @@ test('school login uses the legacy light three-column presentation', () => {
   assert.match(loginView, /from-white via-sky-50\/30 to-cyan-50\/40/)
   assert.match(loginView, /text-3xl font-bold text-sky-700 lg:text-4xl/)
   assert.match(loginView, /支持批量导入账号/)
+  assert.match(loginView, /max-w-2xl/)
+  assert.match(loginView, /会话列表/)
+  assert.match(loginView, /from-sky-50 to-transparent/)
 })

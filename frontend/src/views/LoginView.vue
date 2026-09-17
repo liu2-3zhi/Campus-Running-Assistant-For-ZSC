@@ -391,22 +391,19 @@ onMounted(async () => {
         </div>
 
         <!-- Column 3: Session management -->
-        <div class="flex items-start justify-center overflow-y-auto p-4 lg:p-8" style="background: var(--base-color)">
-          <div class="w-full max-w-sm">
-            <div class="panel rounded-3xl p-5 lg:p-6 space-y-4 shadow-xl">
-              <div class="flex items-center gap-3 pb-3 border-b" style="border-color: var(--border-color)">
-                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
-                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 class="text-base font-bold" style="color: var(--ink)">会话管理</h3>
-                  <p class="text-xs" style="color: var(--ink-muted)">管理您的登录会话</p>
-                </div>
+        <div class="relative flex flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-6 md:p-10 lg:p-12">
+          <div class="relative w-full max-w-2xl">
+            <div class="panel flex max-h-[calc(100vh-12rem)] flex-col space-y-5 overflow-x-hidden rounded-3xl p-8 shadow-xl">
+              <div class="flex items-center justify-center gap-2 border-b border-sky-100 pb-2">
+                <svg class="h-6 w-6 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                <h3 class="text-2xl font-bold text-sky-700">会话管理</h3>
               </div>
 
-              <div class="flex items-center justify-between">
+              <div class="flex items-center justify-between gap-4 rounded-xl bg-gradient-to-r from-sky-50 to-transparent p-4">
+                <h4 class="text-lg font-bold text-slate-700">会话列表</h4>
+                <div class="flex items-center gap-4">
                 <label
                   v-if="hasGodModePermission"
                   class="flex cursor-pointer items-center gap-2 rounded-full px-3 py-1.5 text-sm transition-colors"
@@ -426,8 +423,7 @@ onMounted(async () => {
                 </span>
 
                 <button
-                  class="flex h-8 w-8 items-center justify-center rounded-lg border transition-colors hover:bg-gray-50"
-                  style="border-color: var(--border-color)"
+                  class="btn btn-ghost !px-3 !py-1.5"
                   :disabled="inlineSessionsLoading"
                   @click="loadInlineSessions"
                   title="刷新会话列表"
@@ -435,7 +431,9 @@ onMounted(async () => {
                   <svg class="h-4 w-4" :class="{ 'animate-spin': inlineSessionsLoading }" style="color: var(--ink-secondary)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
+                  刷新
                 </button>
+                </div>
               </div>
 
               <div class="max-h-[50vh] overflow-y-auto space-y-2 pr-1">
