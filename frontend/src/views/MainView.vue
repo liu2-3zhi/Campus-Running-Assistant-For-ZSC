@@ -16,6 +16,7 @@ import TaskPanel from '@/components/main/TaskPanel.vue'
 import ControlTabs from '@/components/main/ControlTabs.vue'
 import MobileControlPanel from '@/components/main/MobileControlPanel.vue'
 import MobileTaskPanel from '@/components/main/MobileTaskPanel.vue'
+import MobileNotificationsPanel from '@/components/main/MobileNotificationsPanel.vue'
 import StatusPanels from '@/components/main/StatusPanels.vue'
 import LogPanel from '@/components/main/LogPanel.vue'
 import MobileHeader from '@/components/main/MobileHeader.vue'
@@ -251,13 +252,15 @@ onUnmounted(() => {
 
         <!-- notifications panel -->
         <div v-show="mobileActivePanel === 'notifications'" class="h-full overflow-y-auto">
-          <NotificationsPanel />
+          <MobileNotificationsPanel />
         </div>
 
         <!-- task-details panel -->
         <div v-show="mobileActivePanel === 'task-details'" class="h-full overflow-y-auto">
-          <div class="panel p-4 space-y-3">
-            <h3 class="text-sm font-semibold text-[var(--ink)] mb-1">任务详情</h3>
+          <div class="mobile-card space-y-3">
+            <div class="mb-4 border-b border-slate-100 pb-3 text-center">
+              <h3 class="text-xl font-bold text-slate-700">任务详情</h3>
+            </div>
             <div v-if="!app.selectedTask" class="text-sm text-[var(--ink-muted)] py-6 text-center">
               请先在「任务」中选择一个任务
             </div>
@@ -288,13 +291,23 @@ onUnmounted(() => {
 
         <!-- log panel -->
         <div v-show="mobileActivePanel === 'log'" class="h-full overflow-y-auto">
-          <LogPanel :logs="app.logs" @clear="app.clearLogs()" />
+          <div class="mobile-card flex h-full min-h-screen flex-col">
+            <div class="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
+              <svg class="h-6 w-6 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <h3 class="text-xl font-bold text-slate-700">运行日志</h3>
+            </div>
+            <LogPanel :logs="app.logs" @clear="app.clearLogs()" />
+          </div>
         </div>
 
         <!-- profile panel -->
         <div v-show="mobileActivePanel === 'profile'" class="h-full overflow-y-auto">
-          <div class="panel p-4 space-y-3">
-            <h3 class="text-sm font-semibold text-[var(--ink)] mb-3">个人信息</h3>
+          <div class="mobile-card space-y-3">
+            <div class="mb-4 border-b border-slate-100 pb-3 text-center">
+              <h3 class="text-xl font-bold text-slate-700">个人信息</h3>
+            </div>
             <div class="flex items-center gap-3 pb-3 border-b border-[var(--border-color)]">
               <div class="w-14 h-14 rounded-full bg-[var(--accent)] flex items-center justify-center text-white text-xl font-semibold">
                 <img v-if="auth.avatarUrl" :src="auth.avatarUrl" class="w-14 h-14 rounded-full object-cover" :alt="auth.displayName || auth.username" />
