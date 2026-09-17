@@ -88,6 +88,7 @@ test('additional admin pages retain legacy titles', () => {
   const cdn = read('frontend/src/components/admin/AdminCDN.vue')
   assert.match(groups, /权限组列表/)
   assert.match(groups, /新增权限组/)
+  assert.doesNotMatch(groups, /md:flex-row/)
   assert.match(logs, /系统日志/)
   assert.match(cdn, /CDN缓存设置/)
 })
