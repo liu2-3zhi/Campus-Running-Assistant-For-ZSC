@@ -33,5 +33,7 @@ auto_attendance_config.json
 /.worktrees
 .pytest_cache
 /dist
+/output/
+/.superpowers/
 /docs/superpowers
 /frontend/node_modules
