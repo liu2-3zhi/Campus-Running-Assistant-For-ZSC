@@ -663,6 +663,9 @@ onUnmounted(() => {
 // --- Expose public API ---
 defineExpose({
   fitView,
+  zoomIn: handleZoomIn,
+  zoomOut: handleZoomOut,
+  resetView: handleResetView,
   addMarker,
   drawPolyline,
   clearOverlays,

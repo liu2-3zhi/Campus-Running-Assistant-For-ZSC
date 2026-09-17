@@ -1,108 +1,77 @@
 <template>
-  <AppModal
-    :visible="visible"
-    title="管理面板"
-    :fullscreen="true"
-    @close="emit('close')"
-  >
-    <div
-      class="flex h-full"
-      :class="isMobile ? 'flex-col' : ''"
-    >
-      <!-- Desktop Sidebar -->
-      <aside
-        v-if="!isMobile"
-        class="w-56 border-r border-[var(--border-color)] overflow-y-auto p-2 flex-shrink-0 bg-[var(--glass)]"
-      >
-        <template v-for="(group, gi) in tabGroups" :key="gi">
-          <div
-            v-if="gi > 0 && filteredGroupTabs(group.tabs).length > 0"
-            class="my-2 border-t border-[var(--border-color)]"
-          />
-          <div
-            v-if="group.label && filteredGroupTabs(group.tabs).length > 0"
-            class="px-3 py-1 text-xs font-semibold text-[var(--ink-muted)] uppercase tracking-wider"
-          >
-            {{ group.label }}
-          </div>
-          <button
-            v-for="tab in filteredGroupTabs(group.tabs)"
-            :key="tab.key"
-            class="w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2"
-            :class="
-              activeTab === tab.key
-                ? 'bg-[var(--accent)] text-white'
-                : 'text-[var(--ink-secondary)] hover:bg-[var(--glass)]'
-            "
-            @click="activeTab = tab.key"
-          >
-            <span class="text-base leading-none">{{ tab.icon }}</span>
-            <span>{{ tab.label }}</span>
-          </button>
-        </template>
-      </aside>
-
-      <!-- Mobile Horizontal Tabs -->
+  <teleport to="body">
+    <transition name="fade">
       <div
-        v-if="isMobile"
-        class="flex overflow-x-auto gap-1 p-2 border-b border-[var(--border-color)] flex-shrink-0"
+        v-if="visible"
+        id="admin-panel-modal"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
       >
-        <button
-          v-for="tab in visibleTabs"
-          :key="tab.key"
-          class="tab-button whitespace-nowrap px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-1"
-          :class="
-            activeTab === tab.key
-              ? 'bg-[var(--accent)] text-white'
-              : 'text-[var(--ink-secondary)] hover:bg-[var(--glass)]'
-          "
-          @click="activeTab = tab.key"
+        <div
+          class="absolute inset-0 bg-gradient-to-br from-black/50 to-slate-900/60 backdrop-blur-sm"
+          @click="emit('close')"
+        />
+        <div
+          class="panel relative flex max-h-[85vh] w-[65rem] flex-col space-y-5 overflow-x-hidden rounded-3xl border-2 border-white/20 p-8 shadow-2xl"
+          :class="isMobile ? 'h-full w-full rounded-none p-4' : ''"
         >
-          <span>{{ tab.icon }}</span>
-          <span>{{ tab.label }}</span>
-        </button>
-      </div>
-
-      <!-- Content Area -->
-      <div class="flex-1 overflow-y-auto p-4 md:p-6">
-        <Suspense>
-          <component :is="currentComponent" />
-          <template #fallback>
-            <div class="flex items-center justify-center h-full min-h-[200px]">
-              <div class="flex flex-col items-center gap-3 text-[var(--ink-muted)]">
-                <svg
-                  class="animate-spin h-8 w-8"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    class="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    stroke-width="4"
-                  />
-                  <path
-                    class="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-                <span class="text-sm">加载中...</span>
-              </div>
+          <div class="relative mb-2 flex-shrink-0 text-center">
+            <div class="flex items-center justify-center gap-3">
+              <svg
+                class="h-8 w-8 text-sky-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <h3 class="inline-block bg-gradient-to-r from-sky-600 to-blue-600 bg-clip-text text-3xl font-bold text-transparent">
+                管理面板
+              </h3>
             </div>
-          </template>
-        </Suspense>
+            <button
+              class="btn btn-ghost absolute right-0 top-1/2 -translate-y-1/2 !px-4 !py-2 rounded-xl"
+              @click="emit('close')"
+            >
+              <svg class="mr-1 inline h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              关闭
+            </button>
+          </div>
+
+          <div class="flex flex-shrink-0 gap-1 overflow-x-auto border-b-2 border-slate-200 pb-0">
+            <button
+              v-for="tab in visibleTabs"
+              :key="tab.key"
+              class="whitespace-nowrap rounded-t-lg px-5 py-3 font-semibold transition-all duration-200"
+              :class="activeTab === tab.key
+                ? 'border-b-[3px] border-sky-600 text-sky-600'
+                : 'border-b-[3px] border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600'"
+              @click="activeTab = tab.key"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
+
+          <div class="min-h-0 flex-1 overflow-y-auto px-1 py-2">
+            <Suspense>
+              <component :is="currentComponent" />
+              <template #fallback>
+                <div class="flex min-h-[200px] items-center justify-center">
+                  <span class="text-sm text-slate-400">加载中...</span>
+                </div>
+              </template>
+            </Suspense>
+          </div>
+        </div>
       </div>
-    </div>
-  </AppModal>
+    </transition>
+  </teleport>
 </template>
 
 <script setup>
 import { ref, computed, defineAsyncComponent, markRaw } from 'vue'
-import AppModal from '@/components/common/AppModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 
@@ -145,41 +114,6 @@ const allTabs = [
   { key: 'restore-account', label: '恢复账号', icon: '♻️', permission: 'restore_accounts' },
 ]
 
-const tabGroups = [
-  {
-    label: '用户与权限',
-    tabs: ['users', 'groups', 'sessions'],
-  },
-  {
-    label: '系统',
-    tabs: ['health', 'logs', 'config'],
-  },
-  {
-    label: '个人',
-    tabs: ['profile', 'messages'],
-  },
-  {
-    label: '安全',
-    tabs: ['ipban', 'captcha', 'bruteforce', 'ssl'],
-  },
-  {
-    label: '通讯与提醒',
-    tabs: ['sms', 'reminders'],
-  },
-  {
-    label: '网络',
-    tabs: ['cdn'],
-  },
-  {
-    label: '支付与账单',
-    tabs: ['payment-logs', 'payment-settings', 'pricing', 'billing', 'billing-logs'],
-  },
-  {
-    label: '其他',
-    tabs: ['watermark', 'restore-account'],
-  },
-]
-
 const componentMap = {
   'users': () => import('./AdminUsers.vue'),
   'groups': () => import('./AdminGroups.vue'),
@@ -213,12 +147,6 @@ function hasPermission(tab) {
 const visibleTabs = computed(() => allTabs.filter(hasPermission))
 
 const activeTab = ref(visibleTabs.value.length > 0 ? visibleTabs.value[0].key : 'health')
-
-function filteredGroupTabs(tabKeys) {
-  return tabKeys
-    .map((key) => allTabs.find((t) => t.key === key))
-    .filter((tab) => tab && hasPermission(tab))
-}
 
 const currentComponent = computed(() => {
   const loader = componentMap[activeTab.value]

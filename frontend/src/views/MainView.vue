@@ -15,12 +15,14 @@ import UserInfoBar from '@/components/main/UserInfoBar.vue'
 import TaskPanel from '@/components/main/TaskPanel.vue'
 import ControlTabs from '@/components/main/ControlTabs.vue'
 import MobileControlPanel from '@/components/main/MobileControlPanel.vue'
+import MobileTaskPanel from '@/components/main/MobileTaskPanel.vue'
 import StatusPanels from '@/components/main/StatusPanels.vue'
 import LogPanel from '@/components/main/LogPanel.vue'
 import MobileHeader from '@/components/main/MobileHeader.vue'
 import MobileSidebar from '@/components/main/MobileSidebar.vue'
 import NotificationsPanel from '@/components/main/NotificationsPanel.vue'
 import MapContainer from '@/components/map/MapContainer.vue'
+import MobileMapPanel from '@/components/map/MobileMapPanel.vue'
 import AdminPanel from '@/components/admin/AdminPanel.vue'
 import AppModal from '@/components/common/AppModal.vue'
 import BeianFooter from '@/components/common/BeianFooter.vue'
@@ -235,12 +237,12 @@ onUnmounted(() => {
 
         <!-- map panel -->
         <div v-show="mobileActivePanel === 'map'" class="h-full">
-          <MapContainer container-id="mobile-map" />
+          <MobileMapPanel />
         </div>
 
         <!-- tasks panel -->
         <div v-show="mobileActivePanel === 'tasks'" class="h-full overflow-y-auto">
-          <TaskPanel />
+          <MobileTaskPanel />
         </div>
 
         <!-- 打卡点/签到/历史/参数：已由侧边栏导航路由到「控制」面板对应 Tab（见 NAV_TO_CONTROL_TAB） -->
