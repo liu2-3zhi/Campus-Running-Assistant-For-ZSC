@@ -343,64 +343,42 @@ onMounted(() => loadList(1))
       <p class="text-sm text-[var(--ink-secondary)]">暂无账单记录</p>
     </div>
 
-    <!-- 账单表格 -->
-    <div v-else-if="records.length" class="panel overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="border-b border-[var(--border-color)]">
-          <tr>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">账单号</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">学校账号</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">用户</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">金额</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">状态</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">订单 / 流水</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">创建时间</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="r in records"
-            :key="r.billing_id"
-            class="border-b border-[var(--border-color)] hover:bg-[var(--glass)]"
-          >
-            <td class="px-3 py-2 font-mono whitespace-nowrap">{{ r.billing_id }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">
-              <div>{{ r.school_username || '--' }}</div>
-              <div v-if="r.reason" class="text-xs text-[var(--ink-muted)] max-w-[200px] truncate" :title="r.reason">
-                {{ r.reason }}
-              </div>
-            </td>
-            <td class="px-3 py-2">
-              <div class="font-medium">{{ r.nickname || r.username || '--' }}</div>
-              <div class="text-xs text-[var(--ink-muted)]">
-                <span v-if="r.username">@{{ r.username }}</span>
-                <span v-if="r.phone"> · {{ r.phone }}</span>
-                <span v-if="r.student_number"> · 学号 {{ r.student_number }}</span>
-              </div>
-            </td>
-            <td class="px-3 py-2 whitespace-nowrap font-medium">{{ formatAmount(r.amount) }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">
-              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" :class="statusInfo(r.status).cls">
-                <span>{{ statusInfo(r.status).icon }}</span>
-                <span>{{ statusInfo(r.status).label }}</span>
+    <!-- 账单列表 -->
+    <div v-else-if="records.length" class="space-y-2">
+      <div
+        v-for="record in records"
+        :key="record.billing_id"
+        class="rounded-lg border border-slate-200 bg-white p-3"
+      >
+        <div class="flex flex-col justify-between gap-3 md:flex-row md:items-start">
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-mono text-sm font-semibold text-slate-700">{{ record.billing_id }}</span>
+              <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs" :class="statusInfo(record.status).cls">
+                <span>{{ statusInfo(record.status).icon }}</span>
+                <span>{{ statusInfo(record.status).label }}</span>
               </span>
-            </td>
-            <td class="px-3 py-2 whitespace-nowrap text-xs text-[var(--ink-secondary)]">
-              <div v-if="r.order_id">订单 {{ r.order_id }}</div>
-              <div v-if="r.trade_no">流水 {{ r.trade_no }}</div>
-              <div v-if="!r.order_id && !r.trade_no">--</div>
-            </td>
-            <td class="px-3 py-2 whitespace-nowrap text-xs text-[var(--ink-secondary)]">{{ formatTime(r) }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">
-              <div class="flex items-center gap-1">
-                <button class="btn btn-ghost text-xs px-2 py-1" @click="openEdit(r)">编辑</button>
-                <button class="btn btn-danger text-xs px-2 py-1" @click="deleteBilling(r)">删除</button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            </div>
+            <p class="mt-1 text-xs text-slate-500">学校账号: {{ record.school_username || '--' }}</p>
+            <p class="text-xs text-slate-500">
+              用户: {{ record.nickname || record.username || '--' }}
+              <span v-if="record.username">(@{{ record.username }})</span>
+              <span v-if="record.phone"> · {{ record.phone }}</span>
+            </p>
+            <p v-if="record.reason" class="mt-1 break-words text-xs text-slate-400">原因: {{ record.reason }}</p>
+            <p class="mt-1 text-xs text-slate-500">创建时间: {{ formatTime(record) }}</p>
+            <p v-if="record.order_id" class="text-xs text-slate-500">订单: {{ record.order_id }}</p>
+            <p v-if="record.trade_no" class="text-xs text-slate-500">流水: {{ record.trade_no }}</p>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            <span class="text-lg font-semibold text-green-600">{{ formatAmount(record.amount) }}</span>
+            <div class="flex items-center gap-1">
+              <button class="btn btn-ghost !px-2 !py-1 text-xs" @click="openEdit(record)">编辑</button>
+              <button class="btn btn-danger !px-2 !py-1 text-xs" @click="deleteBilling(record)">删除</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 分页 -->

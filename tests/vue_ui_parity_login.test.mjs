@@ -76,6 +76,7 @@ test('sms billing and restore use legacy page headers', () => {
   assert.match(sms, /from-purple-50 to-pink-50/)
   assert.match(billing, /from-green-50 to-emerald-50/)
   assert.match(billing, /admin-billing-school-input/)
+  assert.doesNotMatch(billing, /<table class="w-full text-sm">/)
   assert.match(restore, /from-amber-50 to-orange-50/)
   assert.match(restore, /id="removed-accounts-list-container"/)
   assert.doesNotMatch(restore, /<table class="w-full text-sm">/)
