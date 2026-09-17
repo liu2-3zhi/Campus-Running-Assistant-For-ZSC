@@ -45,9 +45,13 @@ onUnmounted(() => {
           class="modal-content relative z-10 w-full p-6"
           :class="[fullscreen ? 'h-full max-h-full max-w-full rounded-none' : width]"
         >
-          <div v-if="title || closable" class="mb-4 flex items-center justify-between">
+          <div v-if="title || closable" class="relative mb-4 flex items-center justify-center">
             <h3 v-if="title" class="text-lg font-semibold">{{ title }}</h3>
-            <button v-if="closable" class="btn-ghost rounded-lg p-1.5" @click="close">
+            <button
+              v-if="closable"
+              class="btn-ghost absolute right-0 top-1/2 -translate-y-1/2 rounded-lg p-1.5"
+              @click="close"
+            >
               <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
