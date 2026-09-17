@@ -84,29 +84,19 @@ onMounted(loadSessions)
 
 <template>
   <div class="space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <h2 class="text-lg font-semibold text-[var(--ink)]">会话管理</h2>
+    <div class="flex items-center justify-between gap-3">
+      <h4 class="font-semibold">会话列表</h4>
       <div class="flex items-center gap-3">
-        <span class="text-sm text-[var(--ink-secondary)]">
-          {{ godMode ? '系统会话数' : '当前会话数' }}: <strong class="text-[var(--ink)]">{{ validSessions.length }}</strong>
-        </span>
-        <label class="flex items-center gap-2 text-sm text-[var(--ink-secondary)] cursor-pointer">
-          <input type="checkbox" v-model="godMode" class="rounded" @change="toggleGodMode" />
-          上帝模式
+        <label class="flex cursor-pointer items-center gap-2">
+          <input v-model="godMode" type="checkbox" class="h-4 w-4 rounded accent-red-600" @change="toggleGodMode" />
+          <span class="text-sm font-semibold text-red-600">查看所有会话</span>
         </label>
-        <button class="btn btn-secondary text-sm" :disabled="loading" @click="loadSessions">
+        <span class="text-sm text-slate-600">{{ validSessions.length }}</span>
+        <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="loadSessions">
           {{ loading ? '刷新中...' : '刷新' }}
         </button>
       </div>
     </div>
-
-    <!-- Search -->
-    <input
-      v-model="searchQuery"
-      type="text"
-      class="input-field w-full"
-      placeholder="搜索用户名、会话 ID 或权限组..."
-    />
 
     <div v-if="success" class="px-4 py-2 rounded-lg text-sm bg-green-100 text-green-700 flex items-center justify-between">
       <span>{{ success }}</span>
@@ -119,50 +109,41 @@ onMounted(loadSessions)
 
     <div v-if="loading" class="py-12 text-center text-[var(--ink-secondary)]">加载中...</div>
 
-    <div v-else class="panel overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="border-b border-[var(--border-color)]">
-          <tr>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">用户</th>
-            <th v-if="godMode" class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">权限组</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">会话标识</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">创建时间</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">状态</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="filteredSessions.length === 0">
-            <td :colspan="godMode ? 6 : 5" class="px-3 py-6 text-center text-[var(--ink-secondary)]">
-              {{ searchQuery ? '未找到匹配的会话' : '暂无活跃会话' }}
-            </td>
-          </tr>
-          <tr
-            v-for="session in filteredSessions"
-            :key="session.session_id"
-            class="border-b border-[var(--border-color)] hover:bg-[var(--glass)]"
-            :class="session.is_current ? 'bg-[var(--accent)]/5' : ''"
+    <div v-else id="admin-sessions-list_modal" class="max-h-[50vh] space-y-2 overflow-y-auto">
+      <p v-if="validSessions.length === 0" class="py-10 text-center text-slate-400">
+        暂无活跃会话
+      </p>
+      <div
+        v-for="session in validSessions"
+        :key="session.session_id"
+        class="rounded-lg border p-3"
+        :class="session.is_current ? 'border-sky-300 bg-sky-50/60' : 'border-slate-200 bg-white'"
+      >
+        <div class="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+          <div class="min-w-0 flex-1">
+            <p class="flex flex-wrap items-center gap-2 font-semibold text-slate-800">
+              {{ sessionUser(session) }}
+              <span v-if="session.is_current" class="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-700">当前</span>
+              <span v-if="session.is_multi_account_mode" class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">多账号</span>
+            </p>
+            <p class="mt-1 break-all font-mono text-xs text-slate-500">
+              {{ session.session_hash || session.session_id }}
+            </p>
+            <p class="mt-1 text-xs text-slate-500">创建时间: {{ formatDate(session.created_at) }}</p>
+            <p v-if="godMode" class="mt-1 text-xs text-slate-500">权限组: {{ session.auth_group || '--' }}</p>
+            <p class="mt-1 text-xs" :class="session.login_success ? 'text-green-600' : 'text-slate-400'">
+              状态: {{ session.login_success ? '已登录' : '未登录' }}
+            </p>
+          </div>
+          <button
+            class="btn btn-danger !px-3 !py-1 text-xs"
+            :disabled="session.is_current"
+            @click="kickSession(session)"
           >
-            <td class="px-3 py-2 font-mono whitespace-nowrap">{{ sessionUser(session) }}</td>
-            <td v-if="godMode" class="px-3 py-2 whitespace-nowrap">{{ session.auth_group || '--' }}</td>
-            <td class="px-3 py-2 font-mono text-xs">{{ session.session_hash || String(session.session_id).slice(0, 16) }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">{{ formatDate(session.created_at) }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">
-              <span v-if="session.is_current" class="px-2 py-0.5 rounded-full text-xs bg-[var(--accent)]/15 text-[var(--accent)] mr-1">当前</span>
-              <span v-if="session.login_success" class="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">已登录</span>
-              <span v-else class="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">未登录</span>
-              <span v-if="session.is_multi_account_mode" class="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 ml-1">多账号</span>
-            </td>
-            <td class="px-3 py-2">
-              <button
-                class="btn btn-danger text-xs px-2 py-1"
-                :disabled="session.is_current"
-                @click="kickSession(session)"
-              >{{ godMode ? '销毁' : '删除' }}</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            {{ godMode ? '销毁会话' : '删除会话' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
