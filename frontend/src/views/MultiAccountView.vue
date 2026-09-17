@@ -513,7 +513,7 @@ watch(() => appStore.multiPositions, (positions) => {
 <template>
   <div class="min-h-screen p-4 md:h-screen md:overflow-hidden md:p-4">
     <!-- ====== TOP BAR ====== -->
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3 lg:w-[530px]">
       <div class="flex items-center gap-3">
         <h1 class="text-lg font-bold" style="color: var(--ink)">
           多账号控制台

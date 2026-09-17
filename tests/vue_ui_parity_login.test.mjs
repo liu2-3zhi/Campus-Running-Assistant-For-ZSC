@@ -111,4 +111,5 @@ test('multi account view uses the legacy 530px desktop grid', () => {
   const multi = read('frontend/src/views/MultiAccountView.vue')
   assert.match(multi, /lg:grid-cols-\[530px_1fr\]/)
   assert.match(multi, /md:h-screen md:overflow-hidden/)
+  assert.match(multi, /lg:w-\[530px\]/)
 })
