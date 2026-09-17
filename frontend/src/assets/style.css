@@ -554,6 +554,48 @@ body.mobile-mode .mobile-header {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+body.mobile-mode .mobile-bottom-nav {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  height: 64px;
+  padding: 0 8px env(safe-area-inset-bottom, 0);
+  background: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+}
+
+body.mobile-mode .mobile-nav-btn {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+body.mobile-mode .mobile-nav-btn.active {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+body.mobile-mode .mobile-nav-btn svg {
+  width: 24px;
+  height: 24px;
+  margin-bottom: 4px;
+}
+
 body.mobile-mode #auth-login-container_panel h2 {
   font-size: 24px;
   line-height: 32px;

@@ -9,10 +9,12 @@ import { callAPI } from '@/services/api'
 import { hydrateMapProviderSecrets } from '@/services/mapKeyRuntime'
 import { connectWebSocket, disconnectWebSocket } from '@/services/socket'
 import { useRouter } from 'vue-router'
+import Swal from 'sweetalert2'
 
 import UserInfoBar from '@/components/main/UserInfoBar.vue'
 import TaskPanel from '@/components/main/TaskPanel.vue'
 import ControlTabs from '@/components/main/ControlTabs.vue'
+import MobileControlPanel from '@/components/main/MobileControlPanel.vue'
 import StatusPanels from '@/components/main/StatusPanels.vue'
 import LogPanel from '@/components/main/LogPanel.vue'
 import MobileHeader from '@/components/main/MobileHeader.vue'
@@ -127,6 +129,22 @@ function handleShowNotifications() {
   showNotifications.value = true
 }
 
+async function openHelp() {
+  await Swal.fire({
+    title: '新手帮助',
+    html: `
+      <div class="text-left text-sm leading-6 text-slate-600">
+        <p>控制面板用于启动、停止并查看当前任务状态。</p>
+        <p class="mt-2">地图、任务、通知和个人信息可通过底部导航切换。</p>
+      </div>
+    `,
+    confirmButtonText: '我知道了',
+    customClass: {
+      confirmButton: 'btn btn-primary',
+    },
+  })
+}
+
 async function handleBack() {
   try {
     const { callAPI } = await import('@/services/api')
@@ -176,6 +194,26 @@ onUnmounted(() => {
         @navigate="handleMobileNavigate"
         @back="handleBack"
       />
+      <button
+        id="newbie-help-btn"
+        type="button"
+        class="btn btn-ghost fixed z-[1001] !px-4 !py-2"
+        style="
+          top: 100px;
+          right: 1rem;
+          min-height: 48px;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.8);
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+        "
+        @click="openHelp"
+      >
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        帮助
+      </button>
 
       <!-- Loading overlay -->
       <div
@@ -189,11 +227,10 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <main class="pt-12 h-screen overflow-hidden">
+      <main class="h-screen overflow-hidden pb-16 pt-14">
         <!-- control panel -->
-        <div v-show="mobileActivePanel === 'control'" class="h-full overflow-y-auto px-3 py-3 space-y-3">
-          <ControlTabs :open-tab="controlTab" />
-          <StatusPanels />
+        <div v-show="mobileActivePanel === 'control'" class="h-full overflow-y-auto">
+          <MobileControlPanel />
         </div>
 
         <!-- map panel -->
@@ -202,19 +239,19 @@ onUnmounted(() => {
         </div>
 
         <!-- tasks panel -->
-        <div v-show="mobileActivePanel === 'tasks'" class="h-full overflow-y-auto px-3 py-3">
+        <div v-show="mobileActivePanel === 'tasks'" class="h-full overflow-y-auto">
           <TaskPanel />
         </div>
 
         <!-- 打卡点/签到/历史/参数：已由侧边栏导航路由到「控制」面板对应 Tab（见 NAV_TO_CONTROL_TAB） -->
 
         <!-- notifications panel -->
-        <div v-show="mobileActivePanel === 'notifications'" class="h-full overflow-y-auto px-3 py-3">
+        <div v-show="mobileActivePanel === 'notifications'" class="h-full overflow-y-auto">
           <NotificationsPanel />
         </div>
 
         <!-- task-details panel -->
-        <div v-show="mobileActivePanel === 'task-details'" class="h-full overflow-y-auto px-3 py-3">
+        <div v-show="mobileActivePanel === 'task-details'" class="h-full overflow-y-auto">
           <div class="panel p-4 space-y-3">
             <h3 class="text-sm font-semibold text-[var(--ink)] mb-1">任务详情</h3>
             <div v-if="!app.selectedTask" class="text-sm text-[var(--ink-muted)] py-6 text-center">
@@ -246,12 +283,12 @@ onUnmounted(() => {
         </div>
 
         <!-- log panel -->
-        <div v-show="mobileActivePanel === 'log'" class="h-full overflow-y-auto px-3 py-3">
+        <div v-show="mobileActivePanel === 'log'" class="h-full overflow-y-auto">
           <LogPanel :logs="app.logs" @clear="app.clearLogs()" />
         </div>
 
         <!-- profile panel -->
-        <div v-show="mobileActivePanel === 'profile'" class="h-full overflow-y-auto px-3 py-3">
+        <div v-show="mobileActivePanel === 'profile'" class="h-full overflow-y-auto">
           <div class="panel p-4 space-y-3">
             <h3 class="text-sm font-semibold text-[var(--ink)] mb-3">个人信息</h3>
             <div class="flex items-center gap-3 pb-3 border-b border-[var(--border-color)]">
@@ -278,10 +315,62 @@ onUnmounted(() => {
         </div>
 
         <!-- admin panel (mobile: opens fullscreen modal) -->
-        <div v-show="mobileActivePanel === 'admin'" class="h-full overflow-y-auto px-3 py-3">
+        <div v-show="mobileActivePanel === 'admin'" class="h-full overflow-y-auto">
           <AdminPanel :visible="mobileActivePanel === 'admin'" @close="mobileActivePanel = 'control'" />
         </div>
       </main>
+      <nav class="mobile-bottom-nav">
+        <button
+          class="mobile-nav-btn"
+          :class="{ active: mobileActivePanel === 'control' }"
+          @click="handleMobileNavigate('control')"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+          </svg>
+          <span>控制</span>
+        </button>
+        <button
+          class="mobile-nav-btn"
+          :class="{ active: mobileActivePanel === 'map' }"
+          @click="handleMobileNavigate('map')"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+          <span>地图</span>
+        </button>
+        <button
+          class="mobile-nav-btn"
+          :class="{ active: mobileActivePanel === 'tasks' }"
+          @click="handleMobileNavigate('tasks')"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+          <span>任务</span>
+        </button>
+        <button
+          class="mobile-nav-btn"
+          :class="{ active: mobileActivePanel === 'notifications' }"
+          @click="handleMobileNavigate('notifications')"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span>通知</span>
+        </button>
+        <button
+          class="mobile-nav-btn"
+          :class="{ active: mobileActivePanel === 'profile' }"
+          @click="handleMobileNavigate('profile')"
+        >
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+          <span>我的</span>
+        </button>
+      </nav>
     </template>
 
     <!-- ==================== DESKTOP LAYOUT ==================== -->
