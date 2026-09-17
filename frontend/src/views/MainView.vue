@@ -53,12 +53,8 @@ const NAV_TO_CONTROL_TAB = {
 }
 
 function handleMobileNavigate(panel) {
-  if (NAV_TO_CONTROL_TAB[panel]) {
-    controlTab.value = NAV_TO_CONTROL_TAB[panel]
-    mobileActivePanel.value = 'control'
-  } else {
-    mobileActivePanel.value = panel
-  }
+  if (NAV_TO_CONTROL_TAB[panel]) controlTab.value = NAV_TO_CONTROL_TAB[panel]
+  mobileActivePanel.value = panel
   sidebarVisible.value = false
 }
 
@@ -245,7 +241,13 @@ onUnmounted(() => {
           <MobileTaskPanel />
         </div>
 
-        <!-- 打卡点/签到/历史/参数：已由侧边栏导航路由到「控制」面板对应 Tab（见 NAV_TO_CONTROL_TAB） -->
+        <!-- 打卡点/签到/历史/参数：复用统一控制组件中的对应 Tab -->
+        <div
+          v-show="['checkpoints', 'attendance', 'history', 'settings'].includes(mobileActivePanel)"
+          class="h-full overflow-y-auto"
+        >
+          <ControlTabs :open-tab="controlTab" />
+        </div>
 
         <!-- notifications panel -->
         <div v-show="mobileActivePanel === 'notifications'" class="h-full overflow-y-auto">
