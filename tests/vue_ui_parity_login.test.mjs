@@ -114,3 +114,11 @@ test('multi account view uses the legacy 530px desktop grid', () => {
   assert.match(multi, /lg:w-\[530px\]/)
   assert.match(multi, /应用全局参数/)
 })
+
+test('session picker follows the legacy create-first layout', () => {
+  const picker = read('frontend/src/components/login/SessionPicker.vue')
+  assert.match(picker, /会话管理/)
+  assert.match(picker, /选择现有会话或创建新会话/)
+  assert.match(picker, /id="session-picker-list"/)
+  assert.match(picker, /提示：每个会话都是独立的学校账号登录状态/)
+})
