@@ -130,10 +130,11 @@ onMounted(() => {
 <template>
   <div class="space-y-4">
     <!-- User combo select -->
-    <div v-if="userList.length > 0" class="relative">
+    <div v-if="userList.length > 0">
+      <label class="mb-1 block text-sm font-semibold text-slate-700">选择用户</label>
       <select
         v-model="selectedUser"
-        class="w-full appearance-none rounded-xl border-2 border-slate-200 bg-white px-4 py-3 pr-10 text-sm font-medium text-slate-700 outline-none transition-colors focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+        class="select-field"
         @change="onUserSelect"
       >
         <option value="">请选择用户</option>
@@ -141,19 +142,15 @@ onMounted(() => {
           {{ user.display_name || user.nickname || user.username || user.name }}
         </option>
       </select>
-      <div class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-        <svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-        </svg>
-      </div>
     </div>
 
     <!-- Username -->
     <div>
+      <label class="mb-1 block text-sm font-semibold text-slate-700">用户名</label>
       <input
         v-model="loginForm.username"
         type="text"
-        class="w-full rounded-xl border-2 border-slate-200 px-4 py-3 text-sm outline-none transition-colors focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+        class="input-field"
         placeholder="请输入学号或工号"
         autocomplete="username"
         @blur="autoFillPassword"
@@ -162,10 +159,11 @@ onMounted(() => {
 
     <!-- Password -->
     <div>
+      <label class="mb-1 block text-sm font-semibold text-slate-700">密码</label>
       <input
         v-model="loginForm.password"
         type="password"
-        class="w-full rounded-xl border-2 border-slate-200 px-4 py-3 text-sm outline-none transition-colors focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+        class="input-field"
         placeholder="请输入密码，一般为身份证后六位"
         autocomplete="current-password"
         @keyup.enter="handleLogin"
@@ -174,11 +172,11 @@ onMounted(() => {
 
     <!-- Login button -->
     <button
-      class="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-sky-600 text-white font-semibold shadow-lg shadow-sky-300/50 hover:bg-sky-700 hover:shadow-sky-400/50 transition-all duration-300 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+      class="btn btn-primary w-full py-3"
       :disabled="loading"
       @click="handleLogin"
     >
-      <span>{{ loading ? '登录中...' : '立即登录' }}</span>
+      <span>{{ loading ? '登录中...' : '登录' }}</span>
       <svg v-if="!loading" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
       </svg>

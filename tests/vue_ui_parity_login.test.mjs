@@ -123,3 +123,11 @@ test('session picker follows the legacy create-first layout', () => {
   assert.match(picker, /id="session-picker-list"/)
   assert.match(picker, /提示：每个会话都是独立的学校账号登录状态/)
 })
+
+test('single account login uses legacy form controls', () => {
+  const login = read('frontend/src/components/login/SessionLogin.vue')
+  assert.match(login, /选择用户/)
+  assert.match(login, /class="select-field"/)
+  assert.match(login, /class="input-field"/)
+  assert.match(login, /登录中\.\.\.' : '登录'/)
+})
