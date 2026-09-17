@@ -1207,7 +1207,15 @@ globalThis.fetch = async (url, options) => {
             source.index("cleanup_thread = threading.Thread", source.index("def cleanup_sessions():"))
         ]
         self.assertIn(
-            "for session_id in expired_sessions:\n                    _release_map_key_runtime_session(session_id)",
+            "cleanup_session(",
+            cleanup_worker_source,
+        )
+        self.assertIn(
+            'reason="expired_or_memory_limit"',
+            cleanup_worker_source,
+        )
+        self.assertNotIn(
+            "del web_sessions[session_id]",
             cleanup_worker_source,
         )
 

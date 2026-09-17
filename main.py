@@ -13741,6 +13741,115 @@ class Api:
         self._load_tasks_inflight = False
         self.multi_run_only_incomplete = True
 
+    def _get_session_stop_event(self):
+        stop_event = getattr(self, "_session_stop_event", None)
+        if stop_event is None:
+            stop_event = threading.Event()
+            self._session_stop_event = stop_event
+        return stop_event
+
+    def shutdown_session_runtime(self, reason="cleanup", timeout=3.0):
+        if getattr(self, "_session_shutdown_requested", False):
+            return
+
+        self._session_shutdown_requested = True
+        self._get_session_stop_event().set()
+
+        for event_name in (
+            "stop_run_flag",
+            "multi_run_stop_flag",
+            "stop_auto_refresh",
+            "stop_multi_auto_refresh",
+            "stop_account_monitor",
+        ):
+            event = getattr(self, event_name, None)
+            if event is not None:
+                event.set()
+
+        accounts = list(getattr(self, "accounts", {}).values())
+        for account in accounts:
+            event = getattr(account, "stop_event", None)
+            if event is not None:
+                event.set()
+
+        threads_lock = getattr(self, "threads_lock", None)
+        refresh_threads = list(
+            getattr(self, "account_refresh_threads", {}).values()
+        )
+        if threads_lock is not None:
+            with threads_lock:
+                getattr(self, "account_refresh_threads", {}).clear()
+
+        threads = list(refresh_threads)
+        for attribute_name in (
+            "auto_refresh_thread",
+            "multi_auto_refresh_thread",
+            "account_monitor_thread",
+        ):
+            thread = getattr(self, attribute_name, None)
+            if thread is not None:
+                threads.append(thread)
+
+        for account in accounts:
+            thread = getattr(account, "worker_thread", None)
+            if thread is not None:
+                threads.append(thread)
+
+        unique_threads = {id(thread): thread for thread in threads}
+        alive_before = [
+            thread for thread in unique_threads.values() if thread.is_alive()
+        ]
+        logging.info(
+            "[内存诊断] 会话销毁开始: reason=%s, accounts=%d, "
+            "tracked_threads=%d, alive_tracked_threads=%d, process_threads=%d",
+            reason,
+            len(accounts),
+            len(unique_threads),
+            len(alive_before),
+            threading.active_count(),
+        )
+        deadline = time.monotonic() + max(float(timeout), 0.0)
+        for thread in unique_threads.values():
+            if not thread.is_alive():
+                continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                logging.warning(
+                    "[会话运行时] 线程停止超时: reason=%s, thread=%s",
+                    reason,
+                    getattr(thread, "name", "unknown"),
+                )
+                break
+            thread.join(remaining)
+
+        session = getattr(getattr(self, "api_client", None), "session", None)
+        if session is not None and hasattr(session, "close"):
+            session.close()
+            logging.info(
+                "[内存诊断] requests.Session 已关闭: reason=%s",
+                reason,
+            )
+
+        alive_after = [
+            thread for thread in unique_threads.values() if thread.is_alive()
+        ]
+        if alive_after:
+            logging.warning(
+                "[内存诊断] 会话销毁后仍有线程存活: reason=%s, threads=%s",
+                reason,
+                [getattr(thread, "name", "unknown") for thread in alive_after],
+            )
+
+        logging.info(
+            "[内存诊断] 会话销毁完成: reason=%s, tracked_threads=%d, "
+            "alive_before=%d, alive_after=%d, process_threads=%d",
+            reason,
+            len(unique_threads),
+            len(alive_before),
+            len(alive_after),
+            threading.active_count(),
+        )
+
     def _safe_socketio_emit(self, event_name, data, room=None):
         """
         安全的 socketio emit 方法，带有详细的线程和 greenlet 诊断日志
@@ -16109,44 +16218,14 @@ class Api:
         self.log("已注销。")
         logging.info("用户已成功登出，正在清除会话和状态数据")
 
-        # [旧版] 停止旧的自动刷新线程（为了向后兼容）
-        try:
-            self.stop_auto_refresh.set()
-            if self.auto_refresh_thread and self.auto_refresh_thread.is_alive():
-                self.auto_refresh_thread.join(timeout=1.0)
-            self.auto_refresh_thread = None
-        except Exception as e:
-            logging.warning(f"停止自动刷新线程失败: {e}")
-
-        # [新版] 停止当前账号的刷新线程
-        try:
-            # 如果已登录，获取当前账号ID
-            if self.user_data and self.user_data.id:
-                account_id = str(self.user_data.id)
-
-                # 使用线程锁保护对字典的访问
-                with self.threads_lock:
-                    # 检查是否有该账号的刷新线程
-                    if account_id in self.account_refresh_threads:
-                        thread = self.account_refresh_threads[account_id]
-
-                        # 从字典中移除（线程会自动退出，因为检测到账号已注销）
-                        del self.account_refresh_threads[account_id]
-
-                        logging.info(f"[登出] 已停止账号 {account_id} 的刷新线程")
-
-                        # 可选：等待线程停止
-                        if thread.is_alive():
-                            thread.join(timeout=1.0)
-        except Exception as e:
-            logging.error(f"[登出] 停止账号刷新线程失败: {e}", exc_info=True)
+        self.shutdown_session_runtime(reason="logout")
 
         self.login_success = False
         self.user_info = None
 
         self._init_state_variables()
         self._load_global_config()
-        self.api_client.session.cookies.clear()
+        self.api_client.session = requests.Session()
         return {"success": True}
 
     def load_tasks(self):
@@ -18738,6 +18817,7 @@ class Api:
                 # 该线程会定期检查所有账号，为需要的账号创建独立的刷新线程
                 self.account_monitor_thread = threading.Thread(
                     target=self._multi_account_monitor_worker,
+                    args=(self._get_session_stop_event(),),
                     daemon=True,
                     name="MultiAccountMonitor"
                 )
@@ -22022,6 +22102,9 @@ class Api:
         """
         # 规范化账号ID为字符串
         account_id = str(account_id)
+        stop_event = self._get_session_stop_event()
+        if stop_event.is_set():
+            return
 
         # 使用线程锁保护对 account_refresh_threads 字典的访问
         # 这确保在多线程环境下不会发生竞态条件
@@ -22046,7 +22129,7 @@ class Api:
             # name: 线程名称，便于调试和日志追踪
             thread = threading.Thread(
                 target=self._account_refresh_worker,
-                args=(account_id,),
+                args=(account_id, stop_event),
                 daemon=True,
                 name=f"AccountRefresh-{account_id}"
             )
@@ -22060,7 +22143,7 @@ class Api:
             # 记录日志，表明新线程已创建并启动
             logging.info(f"[线程管理] 已为账号 {account_id} 创建并启动刷新线程")
 
-    def _account_refresh_worker(self, account_id: str):
+    def _account_refresh_worker(self, account_id: str, stop_event=None):
         """
         单个账号的后台刷新和签到线程（新版统一实现）
 
@@ -22080,9 +22163,7 @@ class Api:
         # 记录线程启动日志
         logging.info(f"[账号刷新线程] 启动 - 账号ID: {account_id}")
 
-        # 创建一个停止事件，用于优雅地停止线程
-        # 注意：这是线程本地的停止事件，与全局停止事件不同
-        stop_event = threading.Event()
+        stop_event = stop_event or self._get_session_stop_event()
 
         try:
             # 主循环：持续运行直到收到停止信号
@@ -22236,7 +22317,7 @@ class Api:
             # 记录线程停止日志
             logging.info(f"[账号刷新线程] 停止 - 账号ID: {account_id}")
 
-    def _multi_account_monitor_worker(self):
+    def _multi_account_monitor_worker(self, stop_event=None):
         """
         多账号模式监控线程（新版实现）
 
@@ -22250,22 +22331,28 @@ class Api:
         """
         # 记录监控线程启动日志
         logging.info("[多账号监控] 监控线程已启动")
+        stop_event = stop_event or self._get_session_stop_event()
 
         # 主循环：持续运行直到收到停止信号
         # 使用 wait 而不是直接循环，可以更快地响应停止信号
-        while not self.stop_account_monitor.wait(timeout=1.0):
+        while (
+            not stop_event.is_set()
+            and not self.stop_account_monitor.is_set()
+        ):
             try:
                 # === 第一步：检查是否处于多账号模式 ===
                 if not self.is_multi_account_mode:
                     # 如果不在多账号模式，等待5秒后重新检查
                     # 这种情况可能发生在退出多账号模式后
-                    time.sleep(5)
+                    if stop_event.wait(timeout=5):
+                        break
                     continue
 
                 # === 第二步：检查是否有账号 ===
                 if not self.accounts:
                     # 如果没有任何账号，等待5秒后重新检查
-                    time.sleep(5)
+                    if stop_event.wait(timeout=5):
+                        break
                     continue
 
                 # === 第三步：遍历所有账号 ===
@@ -22305,7 +22392,10 @@ class Api:
                 # === 第四步：等待一段时间后再次检查 ===
                 # 每60秒检查一次所有账号的线程状态
                 # 使用 wait 而不是 sleep，以便能响应停止信号
-                if self.stop_account_monitor.wait(timeout=60):
+                if (
+                    stop_event.wait(timeout=60)
+                    or self.stop_account_monitor.is_set()
+                ):
                     # 如果收到停止信号，退出循环
                     break
 
@@ -22313,7 +22403,8 @@ class Api:
                 # 捕获并记录监控循环中的任何异常
                 logging.error(f"[多账号监控] 出错: {e}", exc_info=True)
                 # 发生错误后等待60秒再重试
-                time.sleep(60)
+                if stop_event.wait(timeout=60):
+                    break
 
         # 记录监控线程停止日志
         logging.info("[多账号监控] 监控线程已停止")
@@ -22654,10 +22745,64 @@ IP_CACHE_FILE = os.path.join("logs", "ip_location_cache.json")
 ip_location_cache = {}
 ip_cache_lock = threading.Lock()
 CACHE_DURATION_SECONDS = 86400
+IP_CACHE_TTL_SECONDS = CACHE_DURATION_SECONDS
+IP_CACHE_MAX_ENTRIES = 2000
 
 PHONE_CACHE_FILE = os.path.join("logs", "phone_location_cache.json")
 phone_location_cache = {}
 phone_cache_lock = threading.Lock()
+PHONE_CACHE_TTL_SECONDS = 30 * 86400
+PHONE_CACHE_MAX_ENTRIES = 1000
+
+
+def _prune_timestamped_cache(cache, ttl_seconds, max_entries, now_ts=None):
+    current_ts = float(now_ts if now_ts is not None else time.time())
+    ttl_seconds = max(float(ttl_seconds), 0.0)
+    max_entries = max(int(max_entries), 0)
+    removed_expired = 0
+    removed_overflow = 0
+
+    for key, entry in list(cache.items()):
+        if not isinstance(entry, dict):
+            cache.pop(key, None)
+            removed_expired += 1
+            continue
+        try:
+            timestamp = float(entry.get("timestamp", 0) or 0)
+        except (TypeError, ValueError):
+            cache.pop(key, None)
+            removed_expired += 1
+            continue
+        if timestamp <= 0 or current_ts - timestamp >= ttl_seconds:
+            cache.pop(key, None)
+            removed_expired += 1
+
+    while len(cache) > max_entries:
+        cache.pop(next(iter(cache)), None)
+        removed_overflow += 1
+
+    if removed_expired or removed_overflow:
+        logging.info(
+            "[缓存诊断] 清理完成: remaining=%d, expired=%d, overflow=%d, "
+            "ttl_seconds=%s, max_entries=%d",
+            len(cache),
+            removed_expired,
+            removed_overflow,
+            ttl_seconds,
+            max_entries,
+        )
+
+    return {
+        "remaining": len(cache),
+        "removed_expired": removed_expired,
+        "removed_overflow": removed_overflow,
+    }
+
+
+def _touch_cache_key(cache, key):
+    if key not in cache:
+        return
+    cache[key] = cache.pop(key)
 
 
 def _load_ip_cache():
@@ -22671,6 +22816,11 @@ def _load_ip_cache():
         try:
             with open(IP_CACHE_FILE, "r", encoding="utf-8") as f:
                 ip_location_cache = json.load(f)
+            _prune_timestamped_cache(
+                ip_location_cache,
+                IP_CACHE_TTL_SECONDS,
+                IP_CACHE_MAX_ENTRIES,
+            )
             logging.info(f"[IP缓存] 成功加载 {len(ip_location_cache)} 条IP缓存记录")
         except json.JSONDecodeError as e:
             logging.error(f"[IP缓存] 加载缓存文件失败（JSON解析错误）: {e}")
@@ -22692,6 +22842,11 @@ def _save_ip_cache():
     """保存IP归属地缓存到文件（线程安全）"""
     with ip_cache_lock:
         try:
+            _prune_timestamped_cache(
+                ip_location_cache,
+                IP_CACHE_TTL_SECONDS,
+                IP_CACHE_MAX_ENTRIES,
+            )
             os.makedirs(os.path.dirname(IP_CACHE_FILE), exist_ok=True)
             cache_copy = ip_location_cache.copy()
 
@@ -22712,6 +22867,11 @@ def _load_phone_cache():
         try:
             with open(PHONE_CACHE_FILE, "r", encoding="utf-8") as f:
                 phone_location_cache = json.load(f)
+            _prune_timestamped_cache(
+                phone_location_cache,
+                PHONE_CACHE_TTL_SECONDS,
+                PHONE_CACHE_MAX_ENTRIES,
+            )
         except Exception:
             phone_location_cache = {}
 
@@ -22719,6 +22879,11 @@ def _load_phone_cache():
 def _save_phone_cache():
     with phone_cache_lock:
         try:
+            _prune_timestamped_cache(
+                phone_location_cache,
+                PHONE_CACHE_TTL_SECONDS,
+                PHONE_CACHE_MAX_ENTRIES,
+            )
             os.makedirs(os.path.dirname(PHONE_CACHE_FILE), exist_ok=True)
             with open(PHONE_CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump(phone_location_cache.copy(), f, indent=2, ensure_ascii=False)
@@ -22795,6 +22960,100 @@ def update_session_activity(session_id):
         logging.debug(f"[会话活跃] 更新会话 {session_id} 的活跃时间")
 
 
+def _cleanup_chrome_context_for_session(session_id):
+    if not session_id:
+        return
+
+    pool = globals().get("chrome_pool")
+    if not pool:
+        logging.debug(
+            "[浏览器上下文] 未初始化或已禁用，跳过会话清理: session=%s",
+            session_id,
+        )
+        return
+
+    try:
+        logging.info("[浏览器上下文] 正在释放会话资源: session=%s", session_id)
+        pool.cleanup_context(session_id)
+        logging.info("[浏览器上下文] 会话资源已释放: session=%s", session_id)
+    except Exception as error:
+        logging.warning(
+            "[浏览器上下文] 会话清理失败: session=%s, error=%s",
+            session_id,
+            error,
+            exc_info=True,
+        )
+
+
+def _get_process_max_rss_mb():
+    try:
+        import resource
+
+        rss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        if sys.platform == "darwin":
+            return round(float(rss_kb) / (1024 * 1024), 2)
+        return round(float(rss_kb) / 1024, 2)
+    except Exception:
+        return None
+
+
+def _get_process_rss_mb():
+    try:
+        with open("/proc/self/statm", "r", encoding="ascii") as statm_file:
+            resident_pages = int(statm_file.read().split()[1])
+        page_size = int(os.sysconf("SC_PAGE_SIZE"))
+        return round(
+            resident_pages * page_size / (1024 * 1024),
+            2,
+        )
+    except Exception:
+        return None
+
+
+def _log_runtime_memory_diagnostics(context):
+    account_threads = [
+        thread
+        for thread in threading.enumerate()
+        if getattr(thread, "name", "").startswith("AccountRefresh-")
+    ]
+    multi_monitor_threads = [
+        thread
+        for thread in threading.enumerate()
+        if getattr(thread, "name", "") == "MultiAccountMonitor"
+    ]
+
+    playwright_contexts = None
+    pool = globals().get("chrome_pool")
+    if pool is not None and hasattr(pool, "_contexts"):
+        try:
+            playwright_contexts = len(pool._contexts)
+        except Exception:
+            playwright_contexts = -1
+
+    with ip_cache_lock:
+        ip_cache_size = len(ip_location_cache)
+    with phone_cache_lock:
+        phone_cache_size = len(phone_location_cache)
+
+    logging.info(
+        "[内存诊断] 快照: context=%s, web_sessions=%d, "
+        "account_refresh_threads=%d, multi_monitor_threads=%d, "
+        "process_threads=%d, playwright_contexts=%s, ip_cache=%d, "
+        "phone_cache=%d, sms_codes=%d, rss_mb=%s, max_rss_mb=%s",
+        context,
+        len(web_sessions),
+        len(account_threads),
+        len(multi_monitor_threads),
+        threading.active_count(),
+        playwright_contexts,
+        ip_cache_size,
+        phone_cache_size,
+        len(sms_verification_codes),
+        _get_process_rss_mb(),
+        _get_process_max_rss_mb(),
+    )
+
+
 def cleanup_session(session_id, reason="manual"):
     """清理指定会话（支持指定原因）"""
     if not session_id or session_id == "null" or session_id.strip() == "":
@@ -22802,63 +23061,127 @@ def cleanup_session(session_id, reason="manual"):
         return
 
     logging.info(f"清理会话: {session_id} (原因: {reason})")
-    cleanup_inactive_session(session_id)
+    cleanup_inactive_session(session_id, reason=reason)
 
 
-def cleanup_inactive_session(session_id):
+def cleanup_inactive_session(session_id, reason="manual"):
     """清理不活跃的会话"""
     if not session_id or session_id == "null" or session_id.strip() == "":
         logging.debug(f"跳过清理无效会话ID: '{session_id}'")
         return
 
     try:
-        logging.info(f"清理不活跃会话: {session_id}")
+        logging.info(
+            "[会话清理] 开始: session=%s, reason=%s",
+            session_id,
+            reason,
+        )
         runtime_username = None
+        api_instance = None
         with web_sessions_lock:
-            if session_id in web_sessions:
-                api_instance = web_sessions[session_id]
-                if hasattr(api_instance, "stop_run_flag"):
-                    api_instance.stop_run_flag.set()
-                if hasattr(api_instance, "auth_username") and not getattr(
-                    api_instance, "is_guest", True
-                ):
-                    username = api_instance.auth_username
-                    runtime_username = username
-                    is_browsing = False
-                    try:
-                        timeout = 300
-                        if os.path.exists(CONFIG_FILE):
-                            cfg = _read_config_ini(CONFIG_FILE)
-                            if cfg:
-                                timeout = cfg.getint(
-                                    "System", "session_inactivity_timeout", fallback=300
-                                )
-                        user_sids = auth_system.get_user_sessions(username)
-                        current_ts = time.time()
-                        with browsing_activity_lock:
-                            for sid in user_sids:
-                                if sid == session_id:
-                                    continue
+            api_instance = web_sessions.pop(session_id, None)
 
-                                last_browse_ts = browsing_activity.get(sid, 0)
-                                if current_ts - last_browse_ts < timeout:
-                                    is_browsing = True
-                                    break
-                    except Exception as e:
-                        logging.error(f"检查浏览状态失败: {e}")
+        if api_instance is None:
+            logging.warning(
+                "[会话清理] 内存中未找到会话，将继续清理残留资源: session=%s",
+                session_id,
+            )
+        else:
+            logging.info(
+                "[会话清理] 已从 web_sessions 移除: session=%s, remaining=%d",
+                session_id,
+                len(web_sessions),
+            )
 
-                    auth_system.unlink_session_from_user(username, session_id)
-                    if not is_browsing:
-                        token_manager.invalidate_token(username, session_id)
-                        logging.info(
-                            f"已使用户 {username} 的会话 {session_id} 的token失效 (无其他浏览行为)"
+        if api_instance is not None and hasattr(
+            api_instance, "stop_run_flag"
+        ):
+            api_instance.stop_run_flag.set()
+
+        if api_instance is not None and hasattr(
+            api_instance, "auth_username"
+        ) and not getattr(api_instance, "is_guest", True):
+            username = api_instance.auth_username
+            runtime_username = username
+            is_browsing = False
+            try:
+                timeout = 300
+                if os.path.exists(CONFIG_FILE):
+                    cfg = _read_config_ini(CONFIG_FILE)
+                    if cfg:
+                        timeout = cfg.getint(
+                            "System",
+                            "session_inactivity_timeout",
+                            fallback=300,
                         )
-                    else:
-                        logging.info(
-                            f"用户 {username} 仍在其他页面浏览，跳过 Token 失效，仅清理过期会话 {session_id}"
-                        )
+                user_sids = auth_system.get_user_sessions(username)
+                current_ts = time.time()
+                with browsing_activity_lock:
+                    for sid in user_sids:
+                        if sid == session_id:
+                            continue
 
-                del web_sessions[session_id]
+                        last_browse_ts = browsing_activity.get(sid, 0)
+                        if current_ts - last_browse_ts < timeout:
+                            is_browsing = True
+                            break
+            except Exception as e:
+                logging.error(f"检查浏览状态失败: {e}", exc_info=True)
+
+            try:
+                auth_system.unlink_session_from_user(username, session_id)
+            except Exception as auth_error:
+                logging.warning(
+                    "[会话清理] 解绑认证会话失败，继续释放本地资源: "
+                    "user=%s, session=%s, error=%s",
+                    username,
+                    session_id,
+                    auth_error,
+                    exc_info=True,
+                )
+
+            if not is_browsing:
+                try:
+                    token_manager.invalidate_token(username, session_id)
+                    logging.info(
+                        "[会话清理] 已使用户 %s 的会话 %s 的 token 失效（无其他浏览行为）",
+                        username,
+                        session_id,
+                    )
+                except Exception as token_error:
+                    logging.warning(
+                        "[会话清理] token 失效失败，继续释放本地资源: "
+                        "user=%s, session=%s, error=%s",
+                        username,
+                        session_id,
+                        token_error,
+                        exc_info=True,
+                    )
+            else:
+                logging.info(
+                    "[会话清理] 用户 %s 仍在其他页面浏览，跳过 token 失效: session=%s",
+                    username,
+                    session_id,
+                )
+
+        if api_instance is not None:
+            shutdown = getattr(api_instance, "shutdown_session_runtime", None)
+            if callable(shutdown):
+                try:
+                    shutdown(reason=reason)
+                except Exception as error:
+                    logging.error(
+                        "[会话运行时] 清理会话资源失败: session=%s, error=%s",
+                        session_id,
+                        error,
+                        exc_info=True,
+                    )
+            else:
+                stop_run_flag = getattr(api_instance, "stop_run_flag", None)
+                if stop_run_flag is not None:
+                    stop_run_flag.set()
+
+        _cleanup_chrome_context_for_session(session_id)
         _release_map_key_runtime_session(session_id, runtime_username)
         session_hash = hashlib.sha256(session_id.encode()).hexdigest()
         session_file = os.path.join(
@@ -22880,9 +23203,24 @@ def cleanup_inactive_session(session_id):
             del index[session_id]
             _save_session_index(index)
 
-        logging.info(f"会话清理完成: {session_id}")
+        with web_sessions_lock:
+            remaining_sessions = len(web_sessions)
+        logging.info(
+            "[会话清理] 完成: session=%s, reason=%s, remaining_sessions=%d",
+            session_id,
+            reason,
+            remaining_sessions,
+        )
+        _log_runtime_memory_diagnostics(
+            f"session_cleanup:{reason}"
+        )
     except Exception as e:
-        logging.error(f"清理会话失败 {session_id} {e}")
+        logging.error(
+            "[会话清理] 失败: session=%s, error=%s",
+            session_id,
+            e,
+            exc_info=True,
+        )
 
 
 def monitor_session_inactivity():
@@ -22995,7 +23333,7 @@ def monitor_session_inactivity():
                     f"[会话监控] 发现 {len(inactive_sessions_to_cleanup)} 个超时且无后台任务的会话，准备清理"
                 )
                 for sid in inactive_sessions_to_cleanup:
-                    cleanup_inactive_session(sid)
+                    cleanup_inactive_session(sid, reason="inactive_timeout")
 
         except Exception as e:
             logging.error(f"会话监控线程错误: {e}", exc_info=True)
@@ -26832,6 +27170,7 @@ def _collect_overdue_accounts_from_billing(school_usernames):
 
 sms_verification_codes = {}
 sms_extended_once_keys = set()
+SMS_VERIFICATION_CODE_MAX_ENTRIES = 5000
 
 
 def _build_sms_extend_once_key(phone, code):
@@ -26864,6 +27203,65 @@ def _reset_sms_extend_once_for_phone(phone):
     ]
     for key in stale_keys:
         sms_extended_once_keys.discard(key)
+
+
+def _cleanup_expired_sms_verification_codes(now_ts=None, max_entries=None):
+    current_ts = float(now_ts if now_ts is not None else time.time())
+    limit = max(
+        int(
+            SMS_VERIFICATION_CODE_MAX_ENTRIES
+            if max_entries is None
+            else max_entries
+        ),
+        0,
+    )
+    expired_phones = []
+
+    for phone, value in list(sms_verification_codes.items()):
+        if (
+            not isinstance(value, (tuple, list))
+            or len(value) != 2
+        ):
+            expired_phones.append(phone)
+            continue
+        try:
+            expires_at = float(value[1] or 0)
+        except (TypeError, ValueError):
+            expired_phones.append(phone)
+            continue
+        if expires_at <= current_ts:
+            expired_phones.append(phone)
+
+    for phone in expired_phones:
+        sms_verification_codes.pop(phone, None)
+        _reset_sms_extend_once_for_phone(phone)
+
+    removed_overflow = 0
+    while len(sms_verification_codes) > limit:
+        phone, _ = min(
+            sms_verification_codes.items(),
+            key=lambda item: float(item[1][1] or 0),
+        )
+        sms_verification_codes.pop(phone, None)
+        _reset_sms_extend_once_for_phone(phone)
+        removed_overflow += 1
+
+    if expired_phones or removed_overflow:
+        logging.info(
+            "[短信缓存诊断] 清理完成: remaining=%d, expired=%d, "
+            "overflow=%d, max_entries=%d, extend_markers=%d",
+            len(sms_verification_codes),
+            len(expired_phones),
+            removed_overflow,
+            limit,
+            len(sms_extended_once_keys),
+        )
+
+    return {
+        "remaining": len(sms_verification_codes),
+        "removed_expired": len(expired_phones),
+        "removed_overflow": removed_overflow,
+    }
 
 
 def _normalize_bool(value, default=False):
@@ -27584,6 +27982,7 @@ def _register_sms_routes(app, login_required):
             result = response.read().decode("utf-8").strip()
             if result == "0":
                 code_expire_seconds = code_expire_minutes * 60
+                _cleanup_expired_sms_verification_codes()
                 sms_verification_codes[phone] = (code, time.time() + code_expire_seconds)
                 _reset_sms_extend_once_for_phone(phone)
                 cache[ip_limit_key] = ip_count + 1
@@ -29351,10 +29750,10 @@ def start_web_server(args_param):
                     and int(cancellation_status.get("execute_at", 0) or 0) <= int(time.time())
                 ):
                     auth_system.delete_user(auth_username)
-                    with web_sessions_lock:
-                        if session_id in web_sessions:
-                            del web_sessions[session_id]
-                    _release_map_key_runtime_session(session_id, auth_username)
+                    cleanup_session(
+                        session_id,
+                        reason="account_cancelled",
+                    )
                     return jsonify({"success": False, "message": "账号已注销"}), 403
             except Exception as _e:
                 logging.warning(f"[账号注销] 惰性处理失败: {_e}")
@@ -34062,17 +34461,10 @@ def start_web_server(args_param):
                     f"[会话删除] 已禁用账号 {school_username} 的自动签到（会话已删除）"
                 )
 
-        auth_system.unlink_session_from_user(auth_username, target_session_id)
-        session_file = get_session_file_path(target_session_id)
-        if os.path.exists(session_file):
-            try:
-                os.remove(session_file)
-            except (FileNotFoundError, PermissionError) as e:
-                logging.debug(f"[会话删除] 删除会话文件失败: {e}")
-        with web_sessions_lock:
-            if target_session_id in web_sessions:
-                del web_sessions[target_session_id]
-        _release_map_key_runtime_session(target_session_id, auth_username)
+        cleanup_session(
+            target_session_id,
+            reason="user_deleted_session",
+        )
 
         return jsonify({"success": True, "message": "会话已删除"})
 
@@ -34411,23 +34803,9 @@ def start_web_server(args_param):
                 target_api = web_sessions[target_session_id]
                 target_username = getattr(
                     target_api, "auth_username", "unknown")
-        if target_username != "unknown" and target_username != "guest":
-            auth_system.unlink_session_from_user(
-                target_username, target_session_id)
-        session_hash = hashlib.sha256(target_session_id.encode()).hexdigest()
-        session_file = os.path.join(
-            SESSION_STORAGE_DIR, f"{session_hash}.json")
-        if os.path.exists(session_file):
-            try:
-                os.remove(session_file)
-            except (FileNotFoundError, PermissionError) as e:
-                logging.debug(f"[会话强制登出] 删除会话文件失败: {e}")
-        with web_sessions_lock:
-            if target_session_id in web_sessions:
-                del web_sessions[target_session_id]
-        _release_map_key_runtime_session(
+        cleanup_session(
             target_session_id,
-            target_username if target_username != "unknown" else None,
+            reason="admin_force_logout",
         )
         # 使用统一函数获取客户端真实IP
         ip_address = request.environ.get("REMOTE_ADDR") or request.remote_addr
@@ -35767,10 +36145,34 @@ def start_web_server(args_param):
         if not phone:
             return jsonify({"success": False, "message": "缺少手机号参数"}), 400
         try:
+            current_time = time.time()
             with phone_cache_lock:
                 cached = phone_location_cache.get(phone)
+                if cached:
+                    try:
+                        timestamp = float(cached.get("timestamp", 0) or 0)
+                    except (TypeError, ValueError):
+                        timestamp = 0
+                    if (
+                        timestamp > 0
+                        and current_time - timestamp < PHONE_CACHE_TTL_SECONDS
+                    ):
+                        _touch_cache_key(phone_location_cache, phone)
+                    else:
+                        phone_location_cache.pop(phone, None)
+                        cached = None
+                        logging.info(
+                            "[手机缓存] 丢弃过期条目: phone=%s",
+                            phone,
+                        )
             if cached:
-                return jsonify({"success": True, **cached})
+                public_cached = {
+                    key: value
+                    for key, value in cached.items()
+                    if key != "timestamp"
+                }
+                logging.debug("[手机缓存] 命中: phone=%s", phone)
+                return jsonify({"success": True, **public_cached})
             config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
             api_key = config.get("IP_Location", "uapipro_api_key", fallback="").strip()
             if not api_key:
@@ -35786,11 +36188,28 @@ def start_web_server(args_param):
                     "province": data.get("province", ""),
                     "city": data.get("city", ""),
                     "sp": data.get("sp", ""),
+                    "timestamp": time.time(),
                 }
                 with phone_cache_lock:
                     phone_location_cache[phone] = result
+                    _touch_cache_key(phone_location_cache, phone)
+                    _prune_timestamped_cache(
+                        phone_location_cache,
+                        PHONE_CACHE_TTL_SECONDS,
+                        PHONE_CACHE_MAX_ENTRIES,
+                    )
                 _save_phone_cache()
-                return jsonify({"success": True, **result})
+                public_result = {
+                    key: value
+                    for key, value in result.items()
+                    if key != "timestamp"
+                }
+                logging.info(
+                    "[手机缓存] 已写入: phone=%s, cache_entries=%d",
+                    phone,
+                    len(phone_location_cache),
+                )
+                return jsonify({"success": True, **public_result})
             return jsonify({"success": False, "message": data.get("message", "查询失败")}), resp.status_code
         except Exception as e:
             logging.warning(f"[手机归属地] 查询失败: {e}")
@@ -36527,6 +36946,7 @@ def start_web_server(args_param):
                 }), 403
 
             # 获取当前时间戳，用于过滤过期验证码
+            _cleanup_expired_sms_verification_codes()
             current_time = time.time()
             codes = []
             for phone, (code, expire_time) in list(sms_verification_codes.items()):
@@ -36622,6 +37042,7 @@ def start_web_server(args_param):
             extend_seconds = extend_minutes * 60
             new_expire_time = current_time + extend_seconds
 
+            _cleanup_expired_sms_verification_codes(now_ts=current_time)
             sms_verification_codes[phone] = (code, new_expire_time)
             _mark_sms_extend_used_once(phone, code)
 
@@ -36674,7 +37095,9 @@ def start_web_server(args_param):
                            "code_expire_minutes", fallback="5")
             )
             code_expire_seconds = code_expire_minutes * 60
-            expire_time = time.time() + code_expire_seconds
+            current_ts = time.time()
+            expire_time = current_ts + code_expire_seconds
+            _cleanup_expired_sms_verification_codes(now_ts=current_ts)
             sms_verification_codes[phone] = (code, expire_time)
             _reset_sms_extend_once_for_phone(phone)
 
@@ -40423,22 +40846,54 @@ def start_web_server(args_param):
             dedup_order = ["uapipro", "amap", "baidu"]
 
         current_time = time.time()
+        cache_hit = False
+        cached_location = None
         with ip_cache_lock:
-            cached_entry = ip_location_cache.get(normalized_ip)
-            if not cached_entry and normalized_ip != ip_raw:
-                cached_entry = ip_location_cache.get(ip_raw)
+            cached_key = None
+            if normalized_ip in ip_location_cache:
+                cached_key = normalized_ip
+            elif (
+                normalized_ip != ip_raw
+                and ip_raw in ip_location_cache
+            ):
+                cached_key = ip_raw
 
-        if cached_entry:
-            timestamp = cached_entry.get("timestamp", 0)
-            location = cached_entry.get("location")
-            if (current_time - timestamp < CACHE_DURATION_SECONDS) and location:
-                # 缓存为“未知”时忽略缓存并重新查询（仅对非空正常IP）
-                if str(location).strip() not in ("未知", "unknown", "UNKNOWN"):
-                    logging.debug(f"[IP缓存] 命中: ip={normalized_ip}, 位置={location}")
-                    return location
-                logging.info(f"[IP缓存] 命中未知值，忽略缓存并重查: ip={normalized_ip}")
-            else:
-                logging.debug(f"[IP缓存] 过期: ip={normalized_ip}")
+            cached_entry = (
+                ip_location_cache.get(cached_key) if cached_key else None
+            )
+            if cached_entry:
+                try:
+                    timestamp = float(cached_entry.get("timestamp", 0) or 0)
+                    location = cached_entry.get("location")
+                    if (
+                        current_time - timestamp < IP_CACHE_TTL_SECONDS
+                        and location
+                        and str(location).strip()
+                        not in ("未知", "unknown", "UNKNOWN")
+                    ):
+                        _touch_cache_key(ip_location_cache, cached_key)
+                        cache_hit = True
+                        cached_location = location
+                    else:
+                        ip_location_cache.pop(cached_key, None)
+                        logging.info(
+                            "[IP缓存] 丢弃过期或无效条目: key=%s",
+                            cached_key,
+                        )
+                except (TypeError, ValueError):
+                    ip_location_cache.pop(cached_key, None)
+                    logging.warning(
+                        "[IP缓存] 丢弃格式异常条目: key=%s",
+                        cached_key,
+                    )
+
+        if cache_hit:
+            logging.debug(
+                "[IP缓存] 命中: ip=%s, 位置=%s",
+                normalized_ip,
+                cached_location,
+            )
+            return cached_location
 
         def _dns_resolvable(url):
             """请求前DNS预检：失败重试，持续失败则切换渠道"""
@@ -40616,13 +41071,27 @@ def start_web_server(args_param):
                         "location": location,
                         "timestamp": current_time,
                     }
+                    _touch_cache_key(ip_location_cache, normalized_ip)
                     if normalized_ip != ip_raw:
                         ip_location_cache[ip_raw] = {
                             "location": location,
                             "timestamp": current_time,
                         }
+                        _touch_cache_key(ip_location_cache, ip_raw)
+                    _prune_timestamped_cache(
+                        ip_location_cache,
+                        IP_CACHE_TTL_SECONDS,
+                        IP_CACHE_MAX_ENTRIES,
+                        current_time,
+                    )
                 _save_ip_cache()
-                logging.debug(f"[IP定位] 成功获取: ip={normalized_ip}, 渠道={method}, 位置={location}")
+                logging.info(
+                    "[IP定位] 成功获取: ip=%s, 渠道=%s, 位置=%s, cache_entries=%d",
+                    normalized_ip,
+                    method,
+                    location,
+                    len(ip_location_cache),
+                )
                 return location
 
             # 仅网络错误内部重试，当前函数内已处理；这里统一切换下一个渠道
@@ -40636,12 +41105,25 @@ def start_web_server(args_param):
                 "location": "未知",
                 "timestamp": current_time,
             }
+            _touch_cache_key(ip_location_cache, normalized_ip)
             if normalized_ip != ip_raw:
                 ip_location_cache[ip_raw] = {
                     "location": "未知",
                     "timestamp": current_time,
                 }
+                _touch_cache_key(ip_location_cache, ip_raw)
+            _prune_timestamped_cache(
+                ip_location_cache,
+                IP_CACHE_TTL_SECONDS,
+                IP_CACHE_MAX_ENTRIES,
+                current_time,
+            )
         _save_ip_cache()
+        logging.warning(
+            "[IP定位] 所有渠道失败，已缓存未知结果: ip=%s, cache_entries=%d",
+            normalized_ip,
+            len(ip_location_cache),
+        )
         return "未知"
 
     @app.route("/api/messages/post", methods=["POST"])
@@ -53264,11 +53746,13 @@ def start_web_server(args_param):
         current_thread = threading.current_thread()
         logging.info(f"[会话清理 Worker] 已在线程中启动: Thread[{current_thread.name}, id={current_thread.ident}]")
         logging.warning("[Eventlet 警告] 会话清理 worker 运行在独立线程中 - 避免使用 eventlet 操作")
+        _log_runtime_memory_diagnostics("cleanup_worker_start")
         while True:
             time.sleep(3600)
             try:
                 current_time = time.time()
                 expired_sessions = []
+                _cleanup_expired_sms_verification_codes(now_ts=current_time)
 
                 with web_sessions_lock:
                     for session_id in list(web_sessions.keys()):
@@ -53297,32 +53781,19 @@ def start_web_server(args_param):
                         logging.warning(
                             f"[会话清理] 内存会话数超过限制({MAX_MEMORY_SESSIONS})，额外清理了 {sessions_to_remove} 个最旧会话"
                         )
-                    for session_id in expired_sessions:
-                        try:
-                            if chrome_pool:
-                                chrome_pool.cleanup_context(session_id)
-                            if session_id in web_sessions:
-                                del web_sessions[session_id]
-
-                            with session_activity_lock:
-                                if session_id in session_activity:
-                                    del session_activity[session_id]
-                            with browsing_activity_lock:
-                                if session_id in browsing_activity:
-                                    del browsing_activity[session_id]
-                            session_hash = hashlib.sha256(session_id.encode()).hexdigest()
-                            with session_file_locks_lock:
-                                if session_hash in session_file_locks:
-                                    del session_file_locks[session_hash]
-                            logging.info(f"[会话清理] 已清理会话: {session_id[:8]}...")
-                        except Exception as e:
-                            logging.error(
-                                f"[会话清理] 清理会话 {session_id[:8]}... 时出错: {e}"
-                            )
-
-                # 在释放 web_sessions 锁后清理运行时密钥，避免与请求侧的锁顺序相反。
                 for session_id in expired_sessions:
-                    _release_map_key_runtime_session(session_id)
+                    try:
+                        cleanup_session(
+                            session_id,
+                            reason="expired_or_memory_limit",
+                        )
+                    except Exception as e:
+                        logging.error(
+                            "[会话清理] 清理会话 %s 时出错: %s",
+                            session_id[:8],
+                            e,
+                            exc_info=True,
+                        )
 
                 if expired_sessions:
                     logging.info(
@@ -53334,6 +53805,7 @@ def start_web_server(args_param):
                         logging.debug(
                             f"[会话清理] 当前内存会话数: {len(web_sessions)}/{MAX_MEMORY_SESSIONS}"
                         )
+                _log_runtime_memory_diagnostics("cleanup_worker_interval")
             except Exception as e:
                 logging.error(f"[会话清理] 清理过程出错: {e}", exc_info=True)
 

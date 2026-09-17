@@ -123,6 +123,16 @@
 - 提交前运行 `git diff --check`。Windows 下 LF/CRLF 提示不是失败，但真正的 whitespace error 不能忽略。
 - 提交前确认 `git diff --stat` 和 `git status --short`，只提交当前任务相关文件。
 
+## 会话资源和全局缓存生命周期
+
+- 每个 `Api` 会话实例必须拥有独立的会话停止事件；`AccountRefresh-*` 和多账号监控线程启动时必须捕获该事件对象，不能在 worker 内创建无法从外部触发的局部停止事件。
+- `cleanup_inactive_session()`、24 小时清理、用户主动登出、用户删除会话、管理员强制销毁、账号注销六条路径必须统一调用会话销毁逻辑；禁止只执行 `del web_sessions[session_id]`。
+- 会话销毁顺序固定为：设置停止事件，停止账号和多账号任务，等待刷新线程退出，关闭 `api_client.session`，关闭该 session 的 Playwright context，释放地图运行时密钥，最后删除活动时间和会话文件锁。
+- Playwright 上下文必须按 `session_id` 主动关闭；不能只依赖 24 小时全局清理或 Playwright 工作线程最终退出。
+- IP 和手机号缓存必须同时具备 TTL 与最大条目数；短信验证码必须定期删除过期项，并在新增和查询时执行边界清理。
+- 验证会话清理不能只看 `web_sessions` 是否为空，还必须验证 `AccountRefresh-*`、`MultiAccountMonitor` 线程已经退出，且重复登录清理后 `Api` 对象可被垃圾回收。
+- 内存诊断日志统一使用 `[内存诊断]` 前缀，至少记录 `web_sessions`、后台线程数、Playwright context 数、IP/手机号/短信缓存条目数和 Linux `max_rss_mb`；排查内存增长时优先比较 `cleanup_worker_interval` 与 `session_cleanup:*` 快照趋势。
+
 ## 后续更新方式
 
 当以后又踩到坑时，在对应章节追加：
