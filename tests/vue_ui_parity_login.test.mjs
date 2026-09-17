@@ -112,4 +112,5 @@ test('multi account view uses the legacy 530px desktop grid', () => {
   assert.match(multi, /lg:grid-cols-\[530px_1fr\]/)
   assert.match(multi, /md:h-screen md:overflow-hidden/)
   assert.match(multi, /lg:w-\[530px\]/)
+  assert.match(multi, /应用全局参数/)
 })

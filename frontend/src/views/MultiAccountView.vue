@@ -983,6 +983,34 @@ watch(() => appStore.multiPositions, (positions) => {
         </div>
       </div>
 
+      <!-- Global params (legacy desktop panel) -->
+      <div class="panel hidden rounded-xl p-4 md:block">
+        <h3 class="mb-2 font-bold text-slate-800">全局参数</h3>
+        <div class="space-y-2">
+          <input
+            v-model="globalParams.distance"
+            type="number"
+            step="0.1"
+            min="0"
+            class="input-field !py-1 text-sm"
+            placeholder="跑步距离 (公里)"
+          />
+          <input
+            v-model="globalParams.pace"
+            type="text"
+            class="input-field !py-1 text-sm"
+            placeholder="配速，例如 5:30"
+          />
+          <select v-model="globalParams.runMode" class="select-field !py-1 text-sm">
+            <option value="">默认模式</option>
+            <option value="normal">普通模式</option>
+            <option value="fast">快速模式</option>
+            <option value="random">随机模式</option>
+          </select>
+          <button class="btn btn-primary w-full text-sm" @click="applyGlobalParams">应用全局参数</button>
+        </div>
+      </div>
+
       <!-- ====== RIGHT COLUMN: Map + Log ====== -->
       <div class="space-y-4">
         <!-- Map -->
