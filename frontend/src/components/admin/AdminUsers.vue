@@ -304,28 +304,48 @@ onMounted(loadUsers)
       <button class="ml-2 opacity-60 hover:opacity-100" @click="error = ''">&#x2715;</button>
     </div>
 
-    <!-- top bar: filters + add button -->
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex flex-wrap items-center gap-2">
-        <input
-          v-model="searchQuery"
-          class="input-field w-48"
-          type="text"
-          placeholder="搜索用户名/昵称/手机"
-          @input="onFilterChange"
-        />
-        <select v-model="groupFilter" class="select-field" @change="onFilterChange">
-          <option value="">全部权限组</option>
-          <option v-for="opt in groupOptions" :key="opt.key" :value="opt.key">{{ opt.name }}</option>
-        </select>
-        <select v-model="statusFilter" class="select-field" @change="onFilterChange">
-          <option value="">全部状态</option>
-          <option value="active">正常</option>
-          <option value="banned">已封禁</option>
-        </select>
+    <div class="flex items-center justify-between gap-3">
+      <h4 class="font-semibold">用户列表</h4>
+      <div class="flex gap-2">
+        <button class="btn btn-primary !px-2 !py-1" @click="showAddForm = !showAddForm">
+          {{ showAddForm ? '取消新增' : '新增用户' }}
+        </button>
+        <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="loadUsers">
+          刷新
+        </button>
       </div>
-      <button class="btn btn-primary" @click="showAddForm = !showAddForm">
-        {{ showAddForm ? '取消' : '添加用户' }}
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+      <input
+        v-model="searchQuery"
+        class="input-field min-w-[14rem] flex-1 !rounded-none !border-0 !p-0 !shadow-none"
+        type="text"
+        placeholder="搜索昵称 / 用户名 / 手机号 / 学校账号"
+        @input="onFilterChange"
+      />
+      <button class="btn btn-primary !px-3 !py-1 text-sm" type="button" @click="onFilterChange">
+        搜索
+      </button>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs text-slate-500">排序：</span>
+      <select v-model="sortKey" class="rounded border border-slate-300 px-2 py-1 text-xs" @change="onFilterChange">
+        <option value="created_at">创建时间</option>
+        <option value="auth_username">用户名</option>
+        <option value="nickname">昵称</option>
+        <option value="last_login">最后登录时间</option>
+        <option value="max_sessions">会话限制数量</option>
+        <option value="available_runs">可用次数</option>
+        <option value="2fa_enabled">2FA</option>
+      </select>
+      <button
+        class="btn btn-ghost !px-2 !py-0.5 text-xs border border-slate-300"
+        type="button"
+        @click="sortAsc = !sortAsc"
+      >
+        {{ sortAsc ? '↑ 升序' : '↓ 降序' }}
       </button>
     </div>
 
@@ -367,124 +387,91 @@ onMounted(loadUsers)
     <!-- loading -->
     <div v-if="loading" class="py-12 text-center text-[var(--ink-secondary)]">加载中...</div>
 
-    <!-- user table -->
-    <div v-else class="panel overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="border-b border-[var(--border-color)]">
-          <tr>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium cursor-pointer select-none whitespace-nowrap"
-                @click="toggleSort('auth_username')">
-              用户名 <span class="text-xs">{{ sortIcon('auth_username') }}</span>
-            </th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium cursor-pointer select-none whitespace-nowrap"
-                @click="toggleSort('nickname')">
-              昵称 <span class="text-xs">{{ sortIcon('nickname') }}</span>
-            </th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">手机</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">权限组</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium cursor-pointer select-none whitespace-nowrap"
-                @click="toggleSort('banned')">
-              状态 <span class="text-xs">{{ sortIcon('banned') }}</span>
-            </th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium cursor-pointer select-none whitespace-nowrap"
-                @click="toggleSort('max_sessions')">
-              会话 <span class="text-xs">{{ sortIcon('max_sessions') }}</span>
-            </th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium cursor-pointer select-none whitespace-nowrap"
-                @click="toggleSort('available_runs')">
-              次数 <span class="text-xs">{{ sortIcon('available_runs') }}</span>
-            </th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium cursor-pointer select-none whitespace-nowrap"
-                @click="toggleSort('2fa_enabled')">
-              2FA <span class="text-xs">{{ sortIcon('2fa_enabled') }}</span>
-            </th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium cursor-pointer select-none whitespace-nowrap"
-                @click="toggleSort('created_at')">
-              创建时间 <span class="text-xs">{{ sortIcon('created_at') }}</span>
-            </th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="paginatedUsers.length === 0">
-            <td colspan="10" class="px-3 py-6 text-center text-[var(--ink-secondary)]">暂无数据</td>
-          </tr>
-          <tr
-            v-for="user in paginatedUsers"
-            :key="user.auth_username"
-            class="border-b border-[var(--border-color)] hover:bg-[var(--glass)]"
-          >
-            <!-- username -->
-            <td class="px-3 py-2 font-mono whitespace-nowrap">{{ user.auth_username }}</td>
-            <!-- nickname -->
-            <td class="px-3 py-2">{{ user.nickname || '--' }}</td>
-            <!-- phone -->
-            <td class="px-3 py-2 font-mono whitespace-nowrap">{{ user.phone || '--' }}</td>
-            <!-- group select -->
-            <td class="px-3 py-2">
+    <div
+      v-else
+      id="admin-users-list_modal"
+      class="-mr-2 max-h-[50vh] space-y-2 overflow-y-auto pr-2"
+    >
+      <p v-if="sortedUsers.length === 0" class="py-10 text-center text-slate-400">
+        暂无用户
+      </p>
+      <div
+        v-for="user in sortedUsers"
+        :key="user.auth_username"
+        class="mb-2 rounded-lg border border-slate-200 p-3"
+      >
+        <div class="flex flex-col justify-between items-start gap-3 md:flex-row">
+          <div class="flex w-full flex-1 items-start gap-3 md:w-auto">
+            <div class="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-slate-300 bg-slate-200">
+              <img
+                v-if="user.avatar_url && user.avatar_url !== 'default_avatar.png'"
+                :src="user.avatar_url"
+                :alt="user.auth_username"
+                class="h-full w-full object-cover"
+              />
+              <span v-else class="text-2xl text-slate-400">👤</span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold text-slate-800">
+                {{ user.auth_username }}
+                <span v-if="user.banned" class="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-600">
+                  已封禁
+                </span>
+              </p>
+              <p class="text-xs text-slate-500">昵称: {{ user.nickname || '未设置' }}</p>
+              <p class="text-xs text-slate-500">手机号: {{ user.phone || '未绑定' }}</p>
+              <p class="text-xs text-slate-500">创建时间: {{ formatDate(user.created_at) }}</p>
+              <p class="text-xs text-slate-500">最后登录: {{ user.last_login ? formatDate(user.last_login) : '从未登录' }}</p>
+              <p class="text-xs text-slate-500">登录IP: {{ user.last_login_ip || '无记录' }} ({{ user.last_login_city || '未知' }})</p>
+              <p class="text-xs text-slate-500">会话限制: {{ sessionsText(user) }}{{ user.max_sessions === -1 ? '' : '个' }}</p>
+              <p class="text-xs text-slate-500">
+                可用次数:
+                <span class="font-semibold" :class="user.available_runs === -1 ? 'text-green-600' : user.available_runs === 0 ? 'text-red-600' : 'text-blue-600'">
+                  {{ user.available_runs === -1 ? '无限制' : (user.available_runs ?? 0) + '次' }}
+                </span>
+              </p>
+              <p class="text-xs" :class="user['2fa_enabled'] ? 'text-green-600' : 'text-slate-400'">
+                2FA: {{ user['2fa_enabled'] ? '已启用' : '未启用' }}
+              </p>
+            </div>
+          </div>
+          <div class="flex w-full flex-col gap-1 md:w-auto md:items-end">
+            <div class="flex w-full items-center justify-between md:justify-end">
+              <span class="mr-2 text-xs text-slate-600">权限组:</span>
               <select
-                class="select-field text-xs"
+                class="rounded border border-slate-300 px-2 py-1 text-sm"
                 :value="user.group"
                 @change="updateGroup(user, $event.target.value)"
               >
                 <option v-for="opt in groupOptions" :key="opt.key" :value="opt.key">{{ opt.name }}</option>
                 <option v-if="!groupOptions.some(o => o.key === user.group)" :value="user.group">{{ groupName(user.group) }}</option>
               </select>
-            </td>
-            <!-- status badge -->
-            <td class="px-3 py-2">
-              <span v-if="user.banned" class="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">已封禁</span>
-              <span v-else class="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">正常</span>
-            </td>
-            <!-- sessions -->
-            <td class="px-3 py-2 whitespace-nowrap">{{ sessionsText(user) }}</td>
-            <!-- runs -->
-            <td class="px-3 py-2 whitespace-nowrap">{{ runsText(user) }}</td>
-            <!-- 2FA -->
-            <td class="px-3 py-2">
-              <span v-if="user['2fa_enabled']" class="px-2 py-0.5 rounded-full text-xs bg-[var(--accent)]/15 text-[var(--accent)]">已启用</span>
-              <span v-else class="text-[var(--ink-muted)]">未启用</span>
-            </td>
-            <!-- created date -->
-            <td class="px-3 py-2 whitespace-nowrap">{{ formatDate(user.created_at) }}</td>
-            <!-- actions -->
-            <td class="px-3 py-2">
-              <div class="flex flex-wrap items-center gap-1">
-                <button
-                  class="btn btn-ghost text-xs px-2 py-1"
-                  @click="toggleBan(user)"
-                >{{ user.banned ? '解封' : '封禁' }}</button>
-                <button class="btn btn-ghost text-xs px-2 py-1" @click="resetPassword(user)">重置密码</button>
-                <button class="btn btn-ghost text-xs px-2 py-1" @click="modifyNickname(user)">昵称</button>
-                <button class="btn btn-ghost text-xs px-2 py-1" @click="modifyPhone(user)">手机</button>
-                <button class="btn btn-ghost text-xs px-2 py-1" @click="setMaxSessions(user)">会话数</button>
-                <button class="btn btn-ghost text-xs px-2 py-1" @click="editAvailableRuns(user)">次数</button>
-                <button class="btn btn-ghost text-xs px-2 py-1" @click="forceLogout(user)">强制登出</button>
-                <button v-if="user['2fa_enabled']" class="btn btn-ghost text-xs px-2 py-1" @click="forceDisable2FA(user)">关闭2FA</button>
-                <button class="btn btn-ghost text-xs px-2 py-1" @click="clearAvatar(user)">清除头像</button>
-                <button class="btn btn-danger text-xs px-2 py-1" @click="deleteUser(user)">删除</button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- pagination -->
-    <div v-if="!loading && sortedUsers.length > 0" class="flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--ink-secondary)]">
-      <div class="flex items-center gap-2">
-        <span>每页</span>
-        <select v-model.number="pageSize" class="select-field text-xs" @change="currentPage = 1">
-          <option :value="10">10</option>
-          <option :value="25">25</option>
-          <option :value="50">50</option>
-        </select>
-        <span>条</span>
-      </div>
-      <div class="flex items-center gap-2">
-        <span>第 {{ currentPage }} / {{ totalPages }} 页，共 {{ sortedUsers.length }} 条</span>
-        <button class="btn btn-secondary text-xs px-2 py-1" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
-        <button class="btn btn-secondary text-xs px-2 py-1" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
+            </div>
+            <div class="mt-2 grid w-full grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 md:grid-cols-6">
+              <button class="btn h-7 min-h-0 border border-indigo-100 bg-indigo-50 px-2 text-xs text-indigo-600" @click="editAvailableRuns(user)">修改次数</button>
+              <button class="btn h-7 min-h-0 border border-teal-100 bg-teal-50 px-2 text-xs text-teal-600" @click="modifyNickname(user)">修改昵称</button>
+              <button class="btn h-7 min-h-0 border border-teal-100 bg-teal-50 px-2 text-xs text-teal-600" @click="modifyPhone(user)">修改手机</button>
+              <button class="btn h-7 min-h-0 border border-purple-100 bg-purple-50 px-2 text-xs text-purple-600" @click="resetPassword(user)">重置密码</button>
+              <button class="btn h-7 min-h-0 border border-amber-100 bg-amber-50 px-2 text-xs text-amber-600" @click="forceLogout(user)">强制登出</button>
+              <button class="btn h-7 min-h-0 border border-rose-100 bg-rose-50 px-2 text-xs text-rose-600" @click="clearAvatar(user)">清除头像</button>
+              <button
+                class="btn h-7 min-h-0 border border-orange-100 bg-orange-50 px-2 text-xs text-orange-600"
+                :disabled="!user['2fa_enabled']"
+                @click="forceDisable2FA(user)"
+              >
+                {{ user['2fa_enabled'] ? '关闭2FA' : '2FA未启用' }}
+              </button>
+              <button
+                class="btn h-7 min-h-0 border px-2 text-xs font-bold"
+                :class="user.banned ? 'border-green-200 bg-green-100 text-green-700' : 'border-red-200 bg-red-100 text-red-700'"
+                @click="toggleBan(user)"
+              >
+                {{ user.banned ? '解封用户' : '封禁用户' }}
+              </button>
+              <button class="btn h-7 min-h-0 border border-red-600 bg-red-600 px-2 text-xs text-white" @click="deleteUser(user)">彻底删除</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 

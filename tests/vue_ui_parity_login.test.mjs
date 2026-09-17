@@ -41,3 +41,11 @@ test('admin panel uses the legacy centered modal shell', () => {
   assert.match(adminPanel, /w-\[65rem\]/)
   assert.match(adminPanel, /overflow-x-auto border-b-2 border-slate-200/)
 })
+
+test('admin users use the legacy card list instead of the table', () => {
+  const adminUsers = read('frontend/src/components/admin/AdminUsers.vue')
+  assert.match(adminUsers, /id="admin-users-list_modal"/)
+  assert.match(adminUsers, /搜索昵称 \/ 用户名 \/ 手机号 \/ 学校账号/)
+  assert.match(adminUsers, /grid w-full grid-cols-3/)
+  assert.doesNotMatch(adminUsers, /<table class="w-full text-sm">/)
+})
