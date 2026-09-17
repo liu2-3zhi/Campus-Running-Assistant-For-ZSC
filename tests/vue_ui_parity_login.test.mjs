@@ -59,3 +59,11 @@ test('admin sessions and health retain legacy headers', () => {
   assert.match(health, /系统健康状态/)
   assert.match(health, /自动刷新\(5秒\)/)
 })
+
+test('admin ip ban uses the legacy card sections', () => {
+  const ipBan = read('frontend/src/components/admin/AdminIPBan.vue')
+  assert.match(ipBan, /IP封禁管理/)
+  assert.match(ipBan, /id="ip-ban-list"/)
+  assert.match(ipBan, /添加封禁规则/)
+  assert.doesNotMatch(ipBan, /<table class="w-full text-sm">/)
+})

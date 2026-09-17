@@ -129,8 +129,11 @@ onMounted(loadBans)
 </script>
 
 <template>
-  <div class="space-y-4">
-    <h2 class="text-lg font-semibold text-[var(--ink)]">IP 封禁管理</h2>
+  <div class="flex flex-col space-y-4">
+    <div class="flex items-center justify-between">
+      <h4 class="text-lg font-semibold">🚫 IP封禁管理</h4>
+      <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="loadBans">刷新</button>
+    </div>
 
     <div v-if="success" class="px-4 py-2 rounded-lg text-sm bg-green-100 text-green-700 flex items-center justify-between">
       <span>{{ success }}</span>
@@ -142,18 +145,18 @@ onMounted(loadBans)
     </div>
 
     <!-- Add ban form -->
-    <div class="panel p-4 space-y-3">
-      <h3 class="font-medium text-[var(--ink)]">添加封禁</h3>
+    <div class="order-2 space-y-3 rounded-lg border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50 p-4 shadow-sm">
+      <h5 class="mb-3 text-base font-bold text-blue-900">➕ 添加封禁规则</h5>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label class="block text-xs text-[var(--ink-secondary)] mb-1">封禁类型</label>
+          <label class="mb-1 block text-sm font-medium text-slate-700">🏷️ 封禁类型</label>
           <select v-model="newBan.type" class="select-field w-full" @change="validateTarget">
             <option value="ip">IP 地址</option>
             <option value="range">IP 范围</option>
           </select>
         </div>
         <div class="sm:col-span-2">
-          <label class="block text-xs text-[var(--ink-secondary)] mb-1">封禁目标 *</label>
+          <label class="mb-1 block text-sm font-medium text-slate-700">🎯 封禁目标</label>
           <input
             v-model="newBan.target"
             class="input-field w-full"
@@ -167,50 +170,42 @@ onMounted(loadBans)
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label class="block text-xs text-[var(--ink-secondary)] mb-1">封禁范围</label>
+          <label class="mb-1 block text-sm font-medium text-slate-700">🔒 封禁范围</label>
           <select v-model="newBan.scope" class="select-field w-full">
             <option value="all">全部</option>
             <option value="messages_only">仅留言板</option>
           </select>
         </div>
       </div>
-      <button class="btn btn-primary text-sm" :disabled="banning" @click="banIP">
+      <button class="btn btn-primary min-h-[44px] w-full text-sm" :disabled="banning" @click="banIP">
         {{ banning ? '封禁中...' : '添加封禁' }}
       </button>
     </div>
 
     <div v-if="loading" class="py-12 text-center text-[var(--ink-secondary)]">加载中...</div>
 
-    <div v-else class="panel overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="border-b border-[var(--border-color)]">
-          <tr>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">封禁目标</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">类型</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">范围</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">创建时间</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="bans.length === 0">
-            <td colspan="5" class="px-3 py-6 text-center text-[var(--ink-secondary)]">暂无封禁记录</td>
-          </tr>
-          <tr
-            v-for="ban in bans"
-            :key="ban.id"
-            class="border-b border-[var(--border-color)] hover:bg-[var(--glass)]"
-          >
-            <td class="px-3 py-2 font-mono">{{ ban.target }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">{{ typeLabel(ban.type) }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">{{ scopeLabel(ban.scope) }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">{{ formatDate(ban.created_at) }}</td>
-            <td class="px-3 py-2">
-              <button class="btn btn-danger text-xs px-2 py-1" @click="unbanIP(ban)">解封</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-else class="order-1 rounded-lg border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-gray-50 p-4 shadow-sm">
+      <h5 class="mb-3 text-base font-bold text-slate-800">📜 现有封禁规则</h5>
+      <div id="ip-ban-list" class="-mr-2 max-h-[35vh] space-y-2 overflow-y-auto pr-2">
+        <p v-if="bans.length === 0" class="py-10 text-center text-slate-400">
+          暂无封禁记录
+        </p>
+        <div
+          v-for="ban in bans"
+          :key="ban.id"
+          class="rounded-lg border border-slate-200 bg-white p-3"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="break-all font-mono font-semibold text-slate-700">{{ ban.target }}</p>
+              <p class="mt-1 text-xs text-slate-500">类型: {{ typeLabel(ban.type) }}</p>
+              <p class="text-xs text-slate-500">范围: {{ scopeLabel(ban.scope) }}</p>
+              <p class="text-xs text-slate-500">创建时间: {{ formatDate(ban.created_at) }}</p>
+            </div>
+            <button class="btn btn-danger !px-3 !py-1 text-xs" @click="unbanIP(ban)">解封</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
