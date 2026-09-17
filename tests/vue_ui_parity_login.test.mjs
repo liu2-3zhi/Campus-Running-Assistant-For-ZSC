@@ -21,3 +21,23 @@ test('auth screens expose legacy semantic anchors', () => {
   assert.match(authPanel, /id="guest-login-section"/)
   assert.match(loginView, /id="auth-beian-footer"/)
 })
+
+test('main and mobile shells retain legacy layout anchors', () => {
+  const mainView = read('frontend/src/views/MainView.vue')
+  const mobileControl = read('frontend/src/components/main/MobileControlPanel.vue')
+  const mobileTask = read('frontend/src/components/main/MobileTaskPanel.vue')
+
+  assert.match(mainView, /xl:grid-cols-4/)
+  assert.match(mainView, /mobile-bottom-nav/)
+  assert.match(mobileControl, /id="mobile-control-panel"/)
+  assert.match(mobileControl, /id="mobile-run-stats-block"/)
+  assert.match(mobileControl, /id="mobile-single-progress-fill"/)
+  assert.match(mobileTask, /id="mobile-task-panel"/)
+})
+
+test('admin panel uses the legacy centered modal shell', () => {
+  const adminPanel = read('frontend/src/components/admin/AdminPanel.vue')
+  assert.match(adminPanel, /id="admin-panel-modal"/)
+  assert.match(adminPanel, /w-\[65rem\]/)
+  assert.match(adminPanel, /overflow-x-auto border-b-2 border-slate-200/)
+})

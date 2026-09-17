@@ -24,7 +24,7 @@ function selectTask(index) {
 </script>
 
 <template>
-  <div class="mobile-card flex min-h-screen flex-col p-0">
+  <div id="mobile-task-panel" class="mobile-card flex min-h-screen flex-col p-0">
     <div class="mb-4 flex items-center justify-between border-b border-green-100 p-4 pb-3">
       <div class="flex items-center gap-2">
         <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -37,12 +37,12 @@ function selectTask(index) {
         </svg>
         <h3 class="text-xl font-bold text-green-700">任务列表</h3>
       </div>
-      <div class="rounded-full bg-green-50 px-3 py-1 text-sm text-slate-600">
+      <div id="mobile-task-count" class="rounded-full bg-green-50 px-3 py-1 text-sm text-slate-600">
         {{ app.tasks.length }} 个任务
       </div>
     </div>
 
-    <div class="flex-1 space-y-2 px-4">
+    <div id="mobile-task-list" class="flex-1 space-y-2 px-4">
       <button
         v-for="(task, index) in app.tasks"
         :key="task.id || index"

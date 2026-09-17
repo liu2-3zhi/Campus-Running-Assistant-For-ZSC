@@ -122,7 +122,7 @@ async function exportPath() {
 </script>
 
 <template>
-  <div class="mobile-card">
+  <div id="mobile-control-panel" class="mobile-card">
     <div class="mb-4 flex items-center gap-2 border-b border-orange-100 pb-3">
       <svg
         class="h-6 w-6 text-orange-600"
@@ -143,7 +143,7 @@ async function exportPath() {
     <div class="mb-4 rounded-lg bg-slate-50 p-3">
       <div class="mb-2 flex items-center justify-between">
         <span class="text-sm font-medium text-slate-600">当前状态</span>
-        <span class="rounded-full bg-slate-200 px-2 py-1 text-xs font-semibold text-slate-600">
+        <span id="mobile-status-indicator" class="rounded-full bg-slate-200 px-2 py-1 text-xs font-semibold text-slate-600">
           {{ app.isRunning ? '运行中' : '未启动' }}
         </span>
       </div>
@@ -154,6 +154,7 @@ async function exportPath() {
 
     <div class="mb-4 grid grid-cols-1 gap-3">
       <button
+        id="mobile-start-btn"
         class="flex min-h-[72px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:shadow-xl"
         :disabled="app.isRunning || app.selectedTaskIndex < 0"
         @click="startTask"
@@ -168,6 +169,7 @@ async function exportPath() {
         开始
       </button>
       <button
+        id="mobile-stop-btn"
         class="flex min-h-[72px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-red-500 to-red-600 px-4 py-3 text-sm font-bold text-white shadow-lg transition hover:shadow-xl"
         :disabled="!app.isRunning"
         @click="stopTask"
@@ -183,21 +185,25 @@ async function exportPath() {
       </button>
     </div>
 
-    <div class="mt-4 rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3 text-center">
+    <div
+      id="mobile-run-stats-block"
+      class="mt-4 rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-3 text-center"
+    >
       <p class="mb-1 text-xs text-slate-600">已选任务总览</p>
-      <p class="text-lg font-bold text-emerald-600">{{ summary }}</p>
+      <p id="mobile-run-stats-label" class="text-lg font-bold text-emerald-600">{{ summary }}</p>
     </div>
 
-    <div class="mt-3 rounded-xl bg-slate-50 p-3">
+    <div id="mobile-single-progress-block" class="mt-3 rounded-xl bg-slate-50 p-3">
       <div class="mb-2 h-2 overflow-hidden rounded-full bg-slate-200">
         <div
+          id="mobile-single-progress-fill"
           class="h-2 bg-gradient-to-r from-sky-500 to-blue-500 transition-all duration-300"
           :style="{ width: progressPercent + '%' }"
         />
       </div>
       <div class="flex justify-between text-xs">
-        <span class="text-slate-600">{{ progressText }}</span>
-        <span class="text-slate-400">{{ progressPercent.toFixed(1) }}%</span>
+        <span id="mobile-single-progress-text" class="text-slate-600">{{ progressText }}</span>
+        <span id="mobile-single-progress-extra" class="text-slate-400">{{ progressPercent.toFixed(1) }}%</span>
       </div>
     </div>
 
@@ -210,13 +216,13 @@ async function exportPath() {
         路径工具
       </h4>
       <div class="grid grid-cols-2 gap-2">
-        <button class="rounded-lg bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600" @click="autoGeneratePath">
+        <button id="mobile-auto-gen-button" class="rounded-lg bg-slate-50 px-3 py-2.5 text-xs font-medium text-slate-600" @click="autoGeneratePath">
           自动生成
         </button>
-        <button class="rounded-lg bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-600" @click="clearPath">
+        <button id="mobile-clear-button" class="rounded-lg bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-600" @click="clearPath">
           清除路径
         </button>
-        <button class="col-span-2 rounded-lg bg-violet-50 px-3 py-2.5 text-xs font-medium text-violet-600" @click="exportPath">
+        <button id="mobile-export-button" class="col-span-2 rounded-lg bg-violet-50 px-3 py-2.5 text-xs font-medium text-violet-600" @click="exportPath">
           导出路径
         </button>
       </div>
@@ -236,26 +242,26 @@ async function exportPath() {
       <div class="grid grid-cols-2 gap-2">
         <div class="rounded-lg bg-blue-50 p-2 text-center">
           <p class="mb-1 text-xs text-slate-500">已跑距离</p>
-          <p class="text-sm font-bold text-blue-600">{{ formatDistance(app.runData?.live_distance || app.runData?.current_distance) }}</p>
+          <p id="mobile-live-dist-label" class="text-sm font-bold text-blue-600">{{ formatDistance(app.runData?.live_distance || app.runData?.current_distance) }}</p>
         </div>
         <div class="rounded-lg bg-green-50 p-2 text-center">
           <p class="mb-1 text-xs text-slate-500">总距离</p>
-          <p class="text-sm font-bold text-green-600">{{ formatDistance(app.runData?.total_distance) }}</p>
+          <p id="mobile-total-dist-label" class="text-sm font-bold text-green-600">{{ formatDistance(app.runData?.total_distance) }}</p>
         </div>
         <div class="rounded-lg bg-purple-50 p-2 text-center">
           <p class="mb-1 text-xs text-slate-500">已用时间</p>
-          <p class="text-sm font-bold text-purple-600">{{ formatTime(app.runData?.live_time || app.runData?.elapsed_time) }}</p>
+          <p id="mobile-live-time-label" class="text-sm font-bold text-purple-600">{{ formatTime(app.runData?.live_time || app.runData?.elapsed_time) }}</p>
         </div>
         <div class="rounded-lg bg-orange-50 p-2 text-center">
           <p class="mb-1 text-xs text-slate-500">预计时间</p>
-          <p class="text-sm font-bold text-orange-600">{{ formatTime(app.runData?.total_time) }}</p>
+          <p id="mobile-total-time-label" class="text-sm font-bold text-orange-600">{{ formatTime(app.runData?.total_time) }}</p>
         </div>
         <div class="col-span-2 rounded-lg bg-amber-50 p-2 text-center">
           <p class="mb-1 text-xs text-slate-500">预估剩余时间</p>
-          <p class="text-sm font-bold text-amber-600">{{ formatTime(app.runData?.remaining_time) }}</p>
+          <p id="mobile-remaining-time-label" class="text-sm font-bold text-amber-600">{{ formatTime(app.runData?.remaining_time) }}</p>
         </div>
       </div>
-      <p class="mt-2 text-center text-xs font-mono text-slate-500">当前位置: {{ locationText }}</p>
+      <p id="mobile-current-location-label" class="mt-2 text-center text-xs font-mono text-slate-500">当前位置: {{ locationText }}</p>
     </div>
   </div>
 </template>
