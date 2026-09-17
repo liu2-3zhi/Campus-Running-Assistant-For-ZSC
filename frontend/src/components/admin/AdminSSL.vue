@@ -108,7 +108,10 @@ onMounted(loadSSLStatus)
 
 <template>
   <div class="space-y-4">
-    <h2 class="text-lg font-semibold text-[var(--ink)]">SSL / HTTPS 管理</h2>
+    <div class="flex items-center justify-between">
+      <h4 class="text-lg font-semibold">🔐 SSL / HTTPS 配置</h4>
+      <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="loadSSLStatus">刷新</button>
+    </div>
 
     <div v-if="success" class="px-4 py-2 rounded-lg text-sm bg-green-100 text-green-700 flex items-center justify-between">
       <span>{{ success }}</span>

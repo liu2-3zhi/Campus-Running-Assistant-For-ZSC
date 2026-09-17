@@ -327,6 +327,11 @@ onMounted(async () => {
 
 <template>
   <div class="space-y-6">
+    <div class="flex items-center justify-between">
+      <h4 class="text-lg font-semibold">🔒 验证码配置</h4>
+      <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="fetchConfig(true)">刷新</button>
+    </div>
+
     <!-- Alerts -->
     <div v-if="success" class="p-3 rounded-lg bg-[var(--success)]/10 text-[var(--success)] flex items-center justify-between">
       <span>{{ success }}</span>

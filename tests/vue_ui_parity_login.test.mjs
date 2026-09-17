@@ -91,3 +91,12 @@ test('additional admin pages retain legacy titles', () => {
   assert.match(logs, /系统日志/)
   assert.match(cdn, /CDN缓存设置/)
 })
+
+test('security admin pages retain legacy top-level titles', () => {
+  const ssl = read('frontend/src/components/admin/AdminSSL.vue')
+  const brute = read('frontend/src/components/admin/AdminBruteforce.vue')
+  const captcha = read('frontend/src/components/admin/AdminCaptcha.vue')
+  assert.match(ssl, /SSL \/ HTTPS 配置/)
+  assert.match(brute, /密码恢复/)
+  assert.match(captcha, /验证码配置/)
+})
