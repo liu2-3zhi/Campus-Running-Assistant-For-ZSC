@@ -106,3 +106,9 @@ test('system config retains the legacy header', () => {
   assert.match(config, /系统配置/)
   assert.match(config, /@click="loadConfig"/)
 })
+
+test('multi account view uses the legacy 530px desktop grid', () => {
+  const multi = read('frontend/src/views/MultiAccountView.vue')
+  assert.match(multi, /lg:grid-cols-\[530px_1fr\]/)
+  assert.match(multi, /md:h-screen md:overflow-hidden/)
+})

@@ -511,7 +511,7 @@ watch(() => appStore.multiPositions, (positions) => {
 </script>
 
 <template>
-  <div class="min-h-screen p-4 md:p-6">
+  <div class="min-h-screen p-4 md:h-screen md:overflow-hidden md:p-4">
     <!-- ====== TOP BAR ====== -->
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-3">
@@ -592,7 +592,7 @@ watch(() => appStore.multiPositions, (positions) => {
     </div>
 
     <!-- ====== MAIN GRID (desktop: 2 columns) ====== -->
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-[530px_1fr]">
       <!-- ====== LEFT COLUMN: Account Management ====== -->
       <div
         class="space-y-4"
