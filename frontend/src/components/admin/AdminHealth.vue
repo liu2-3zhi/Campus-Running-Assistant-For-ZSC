@@ -94,18 +94,22 @@ onUnmounted(() => { stopAutoRefresh() })
 <template>
   <div class="space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h2 class="text-lg font-semibold text-[var(--ink)]">系统状态</h2>
+      <h4 class="font-semibold">系统健康状态</h4>
       <div class="flex items-center gap-2">
-        <button
-          class="btn text-sm"
-          :class="autoRefresh ? 'btn-primary' : 'btn-secondary'"
-          @click="toggleAutoRefresh"
-        >
-          自动刷新: {{ autoRefresh ? '开' : '关' }}
-          <span v-if="autoRefresh" class="ml-1 opacity-80">({{ countdown }}s)</span>
-        </button>
-        <button class="btn btn-ghost text-sm" :disabled="loading" @click="fetchHealth">
-          {{ loading ? '加载中...' : '立即刷新' }}
+        <label class="flex cursor-pointer items-center gap-2">
+          <input
+            v-model="autoRefresh"
+            type="checkbox"
+            class="h-4 w-4 rounded accent-sky-600"
+            @change="toggleAutoRefresh"
+          />
+          <span class="text-sm text-slate-600">
+            自动刷新(5秒)
+            <span v-if="autoRefresh" class="font-semibold text-sky-600">{{ countdown }}</span>
+          </span>
+        </label>
+        <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="fetchHealth">
+          {{ loading ? '加载中...' : '手动刷新' }}
         </button>
       </div>
     </div>

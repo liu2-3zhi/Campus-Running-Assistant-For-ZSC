@@ -49,3 +49,13 @@ test('admin users use the legacy card list instead of the table', () => {
   assert.match(adminUsers, /grid w-full grid-cols-3/)
   assert.doesNotMatch(adminUsers, /<table class="w-full text-sm">/)
 })
+
+test('admin sessions and health retain legacy headers', () => {
+  const sessions = read('frontend/src/components/admin/AdminSessions.vue')
+  const health = read('frontend/src/components/admin/AdminHealth.vue')
+  assert.match(sessions, /id="admin-sessions-list_modal"/)
+  assert.match(sessions, /查看所有会话/)
+  assert.doesNotMatch(sessions, /<table class="w-full text-sm">/)
+  assert.match(health, /系统健康状态/)
+  assert.match(health, /自动刷新\(5秒\)/)
+})
