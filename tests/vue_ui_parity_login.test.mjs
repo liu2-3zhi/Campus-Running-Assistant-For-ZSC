@@ -100,3 +100,9 @@ test('security admin pages retain legacy top-level titles', () => {
   assert.match(brute, /密码恢复/)
   assert.match(captcha, /验证码配置/)
 })
+
+test('system config retains the legacy header', () => {
+  const config = read('frontend/src/components/admin/AdminConfig.vue')
+  assert.match(config, /系统配置/)
+  assert.match(config, /@click="loadConfig"/)
+})
