@@ -1,6 +1,12 @@
 <template>
   <div class="space-y-4">
-    <h2 class="text-lg font-semibold text-[var(--ink)]">权限组管理</h2>
+    <div class="flex items-center justify-between">
+      <h4 class="font-semibold">权限组列表</h4>
+      <div class="flex gap-2">
+        <button class="btn btn-primary !px-2 !py-1" @click="showCreateForm = true">新增权限组</button>
+        <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="fetchGroups">刷新</button>
+      </div>
+    </div>
 
     <!-- Error / Success messages -->
     <div

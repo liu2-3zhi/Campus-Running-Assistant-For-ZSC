@@ -81,3 +81,13 @@ test('sms billing and restore use legacy page headers', () => {
   assert.match(restore, /id="removed-accounts-list-container"/)
   assert.doesNotMatch(restore, /<table class="w-full text-sm">/)
 })
+
+test('additional admin pages retain legacy titles', () => {
+  const groups = read('frontend/src/components/admin/AdminGroups.vue')
+  const logs = read('frontend/src/components/admin/AdminLogs.vue')
+  const cdn = read('frontend/src/components/admin/AdminCDN.vue')
+  assert.match(groups, /权限组列表/)
+  assert.match(groups, /新增权限组/)
+  assert.match(logs, /系统日志/)
+  assert.match(cdn, /CDN缓存设置/)
+})

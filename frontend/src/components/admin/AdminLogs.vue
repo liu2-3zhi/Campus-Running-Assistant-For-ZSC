@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-4">
-    <h2 class="text-lg font-semibold text-[var(--ink)]">日志查看</h2>
+    <h4 class="font-semibold">系统日志</h4>
 
     <!-- Top controls bar -->
     <div class="flex flex-wrap items-center gap-3">

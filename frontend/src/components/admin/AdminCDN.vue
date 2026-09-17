@@ -92,7 +92,7 @@ onMounted(loadCDNConfig)
 
 <template>
   <div class="space-y-4">
-    <h2 class="text-lg font-semibold text-[var(--ink)]">CDN 管理</h2>
+    <h4 class="font-semibold text-lg">🌐 CDN缓存设置</h4>
 
     <div v-if="success" class="px-4 py-2 rounded-lg text-sm bg-green-100 text-green-700 flex items-center justify-between">
       <span>{{ success }}</span>
