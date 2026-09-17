@@ -65,9 +65,9 @@ const stats = computed(() => [
 </script>
 
 <template>
-  <div class="panel p-3">
-    <div class="flex items-center justify-between mb-2">
-      <h3 class="text-sm font-semibold text-[var(--ink)]">实时状态</h3>
+  <div class="panel rounded-xl p-4">
+    <div class="mb-2 flex items-center justify-between">
+      <h3 class="text-lg font-bold text-slate-800">实时状态</h3>
       <p class="text-xs font-mono text-[var(--ink-muted)]">
         当前位置GPS坐标: {{ gpsLabel }}
       </p>

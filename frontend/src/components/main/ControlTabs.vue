@@ -363,8 +363,9 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="panel p-3">
+  <div class="panel rounded-xl p-4">
     <TabPanel
+      class="legacy-control-tabs"
       v-model="activeTab"
       :tabs="tabs"
       compact
@@ -372,46 +373,54 @@ onMounted(() => {
     >
       <!-- Execute tab -->
       <template #execute>
-        <div class="space-y-3 pt-3">
-          <div class="text-center p-3 rounded-lg border border-[var(--border-color)] bg-[var(--glass)]">
-            <p class="text-sm text-[var(--ink-muted)]">已选任务总览</p>
-            <p class="font-bold text-2xl text-[var(--accent)]">
+        <div class="space-y-3 pt-4">
+          <div
+            id="run-stats-block"
+            class="rounded-lg border border-slate-200 bg-white/80 p-3 text-center"
+          >
+            <p class="text-sm text-slate-500">已选任务总览</p>
+            <p id="run-stats-label" class="text-2xl font-bold text-sky-600">
               {{ app.runData?.total_distance != null ? (Number(app.runData.total_distance) / 1000).toFixed(2) + ' km' : '-- km' }}
               /
               {{ app.runData?.total_time != null ? formatDuration(app.runData.total_time) : '--:--' }}
             </p>
           </div>
 
-          <div>
-            <div class="h-2 bg-[var(--glass)] rounded-full overflow-hidden">
+          <div id="single-progress-block" class="mt-2">
+            <div class="h-2 overflow-hidden rounded-full bg-slate-200">
               <div
-                class="h-full bg-[var(--accent)] rounded-full transition-all duration-500"
+                id="single-progress-fill"
+                class="h-2 bg-sky-500 transition-all duration-500"
                 :style="{ width: progressPercent + '%' }"
               ></div>
             </div>
             <div class="flex justify-between text-xs mt-1">
-              <span class="text-[var(--ink-muted)]">{{ progressStatusText }}</span>
-              <span class="text-[var(--ink-muted)]">{{ progressPercent.toFixed(1) }}%</span>
+              <span id="single-progress-text" class="text-slate-600">{{ progressStatusText }}</span>
+              <span id="single-progress-extra" class="text-slate-400">{{ progressPercent.toFixed(1) }}%</span>
             </div>
           </div>
 
-          <div class="grid grid-cols-3 gap-2">
+          <div class="grid grid-cols-2 gap-3">
             <button
-              class="btn btn-primary justify-center"
-              :disabled="app.isRunning || app.selectedTaskIndex < 0"
+              v-if="!app.isRunning"
+              id="start-run-button"
+              class="btn btn-primary"
+              :disabled="app.selectedTaskIndex < 0"
               @click="startRun"
             >
               开始执行
             </button>
             <button
-              class="btn btn-danger justify-center"
-              :disabled="!app.isRunning"
+              v-else
+              id="stop-run-button"
+              class="btn btn-danger"
               @click="stopRun"
             >
               停止
             </button>
             <button
-              class="btn btn-secondary justify-center"
+              id="start-all-button"
+              class="btn btn-secondary"
               :disabled="app.isRunning"
               @click="startAll"
             >
@@ -420,12 +429,12 @@ onMounted(() => {
           </div>
 
           <div class="flex items-center justify-center space-x-4 pt-1">
-            <label class="flex items-center gap-1.5 text-xs text-[var(--ink-secondary)] cursor-pointer">
-              <input type="checkbox" v-model="ignoreCompleted" class="w-4 h-4 rounded accent-[var(--accent)]" />
+            <label class="flex cursor-pointer items-center gap-1.5 text-xs text-slate-700">
+              <input v-model="ignoreCompleted" type="checkbox" class="h-4 w-4 rounded accent-sky-600" />
               <span class="font-semibold">忽略已完成状态</span>
             </label>
-            <label class="flex items-center gap-1.5 text-xs text-[var(--ink-secondary)] cursor-pointer">
-              <input type="checkbox" v-model="autoGenAll" class="w-4 h-4 rounded accent-[var(--accent)]" />
+            <label class="flex cursor-pointer items-center gap-1.5 text-xs text-slate-700">
+              <input v-model="autoGenAll" type="checkbox" class="h-4 w-4 rounded accent-sky-600" />
               <span class="font-semibold">自动生成路径</span>
             </label>
           </div>

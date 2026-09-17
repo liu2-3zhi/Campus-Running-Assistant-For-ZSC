@@ -681,7 +681,6 @@ defineExpose({
 
     <!-- Zoom controls overlay -->
     <MapControls
-      v-if="mapReady"
       :zoom-level="zoomLevel"
       @zoom-in="handleZoomIn"
       @zoom-out="handleZoomOut"

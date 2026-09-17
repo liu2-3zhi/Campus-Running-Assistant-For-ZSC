@@ -165,7 +165,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[var(--base-color)]">
+  <div class="min-h-screen">
     <!-- ==================== MOBILE LAYOUT ==================== -->
     <template v-if="app.isMobile">
       <MobileHeader @toggle-sidebar="sidebarVisible = !sidebarVisible" />
@@ -286,22 +286,20 @@ onUnmounted(() => {
 
     <!-- ==================== DESKTOP LAYOUT ==================== -->
     <template v-else>
-      <div class="h-screen grid grid-cols-3 gap-4 p-4 overflow-hidden">
+      <div class="grid h-screen grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-3 xl:grid-cols-4">
         <!-- Column 1: User info, tasks, controls -->
-        <div class="col-span-1 flex flex-col gap-4 overflow-y-auto min-h-0 pr-1">
+        <div class="col-span-1 flex min-h-0 min-w-[320px] flex-col gap-4 overflow-y-auto pr-1">
           <UserInfoBar
             @show-notifications="handleShowNotifications"
             @show-user-details="showUserDetails = true"
             @show-admin="showAdmin = true"
           />
           <TaskPanel />
-          <div class="flex-1 min-h-0 overflow-y-auto">
-            <ControlTabs />
-          </div>
+          <ControlTabs />
         </div>
 
         <!-- Columns 2-3: Map and status -->
-        <div class="col-span-2 flex flex-col gap-4 overflow-hidden">
+        <div class="col-span-1 flex flex-col gap-4 overflow-hidden lg:col-span-2 xl:col-span-3">
           <!-- Map area -->
           <div class="flex-1 min-h-0 panel p-0 overflow-hidden">
             <MapContainer container-id="main-map" />

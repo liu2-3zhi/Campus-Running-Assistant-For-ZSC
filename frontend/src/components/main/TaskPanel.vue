@@ -58,41 +58,33 @@ function statusLabel(status) {
 </script>
 
 <template>
-  <div class="panel p-3">
+  <div class="panel flex min-h-0 flex-grow flex-col rounded-xl p-4">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-2">
-      <h3 class="text-sm font-semibold text-[var(--ink)]">
+    <div class="mb-3 flex items-center justify-between">
+      <h3 class="text-lg font-bold text-slate-800">
         任务列表
-        <span class="text-xs text-[var(--ink-muted)] font-normal ml-1">({{ app.tasks.length }})</span>
       </h3>
       <div class="flex gap-2">
       <button
-        class="btn btn-ghost text-xs px-2 py-1"
+        class="btn btn-ghost !px-3 !py-1"
         @click="openTaskDetail"
         title="查看任务详情"
       >
         任务详情
       </button>
       <button
-        class="btn btn-ghost text-xs px-2 py-1"
+        class="btn btn-ghost !px-3 !py-1"
         :disabled="refreshing"
         @click="refreshTasks"
         title="刷新任务"
       >
-        <svg
-          class="w-3.5 h-3.5 transition-transform"
-          :class="{ 'animate-spin': refreshing }"
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
         刷新
       </button>
       </div>
     </div>
 
     <!-- Task list -->
-    <div class="max-h-48 overflow-y-auto space-y-1">
+    <div class="-mr-2 flex-grow space-y-1 overflow-y-auto pr-2">
       <div v-if="app.tasks.length === 0" class="text-center text-sm text-[var(--ink-muted)] py-4">
         暂无任务
       </div>

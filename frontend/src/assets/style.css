@@ -353,6 +353,49 @@ body.dark-mode .btn-warning {
   border-bottom-color: #0284c7;
 }
 
+.legacy-control-tabs > div:first-child {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  margin: 0 -1rem;
+  padding: 0 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.legacy-control-tabs > div:first-child .tab-button {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0.5rem 0.25rem;
+  border-radius: 0;
+  border-bottom: 3px solid transparent;
+  font-size: 13px;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: break-all;
+  box-shadow: none;
+}
+
+.legacy-control-tabs > div:first-child .tab-button.active {
+  color: #0284c7;
+  border-bottom-color: #0284c7;
+}
+
+.user-info-actions .btn {
+  padding: 0.5rem 0.75rem;
+  font-size: 12px;
+  line-height: 16px;
+  box-shadow: none;
+}
+
+.user-info-actions .btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.user-info-actions .user-info-secondary {
+  display: none;
+}
+
 .auth-captcha-refresh-text {
   display: none;
 }

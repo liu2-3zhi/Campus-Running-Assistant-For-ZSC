@@ -7,11 +7,13 @@ const emit = defineEmits(['zoom-in', 'zoom-out', 'reset-view'])
 </script>
 
 <template>
-  <div class="absolute right-3 top-3 z-10 flex flex-col gap-1.5">
+  <div
+    class="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full px-2 py-1 shadow-sm"
+    style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--ink)"
+  >
     <!-- Zoom in -->
     <button
-      class="flex h-8 w-8 items-center justify-center rounded-lg shadow-sm transition-colors"
-      style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--ink)"
+      class="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-slate-100"
       title="放大"
       @click="emit('zoom-in')"
     >
@@ -22,8 +24,8 @@ const emit = defineEmits(['zoom-in', 'zoom-out', 'reset-view'])
 
     <!-- Zoom level display -->
     <div
-      class="flex h-7 w-8 items-center justify-center rounded-md text-xs font-medium"
-      style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--ink-secondary)"
+      class="flex h-8 min-w-8 items-center justify-center px-1 text-sm font-medium"
+      style="color: var(--ink-secondary)"
       title="当前缩放级别"
     >
       {{ zoomLevel }}
@@ -31,8 +33,7 @@ const emit = defineEmits(['zoom-in', 'zoom-out', 'reset-view'])
 
     <!-- Zoom out -->
     <button
-      class="flex h-8 w-8 items-center justify-center rounded-lg shadow-sm transition-colors"
-      style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--ink)"
+      class="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-slate-100"
       title="缩小"
       @click="emit('zoom-out')"
     >
@@ -41,13 +42,11 @@ const emit = defineEmits(['zoom-in', 'zoom-out', 'reset-view'])
       </svg>
     </button>
 
-    <!-- Separator -->
-    <div class="my-0.5 h-px w-8" style="background: var(--border-color)"></div>
+    <div class="mx-1 h-5 w-px" style="background: #cbd5e1"></div>
 
     <!-- Reset view -->
     <button
-      class="flex h-8 w-8 items-center justify-center rounded-lg shadow-sm transition-colors"
-      style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--ink)"
+      class="flex h-8 w-8 items-center justify-center rounded-full text-sky-600 transition-colors hover:bg-sky-50"
       title="重置视图"
       @click="emit('reset-view')"
     >
