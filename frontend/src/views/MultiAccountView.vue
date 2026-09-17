@@ -511,7 +511,7 @@ watch(() => appStore.multiPositions, (positions) => {
 </script>
 
 <template>
-  <div class="min-h-screen p-4 md:p-6" style="background: var(--base-color)">
+  <div class="min-h-screen p-4 md:p-6">
     <!-- ====== TOP BAR ====== -->
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-3">
