@@ -131,3 +131,11 @@ test('single account login uses legacy form controls', () => {
   assert.match(login, /class="input-field"/)
   assert.match(login, /登录中\.\.\.' : '登录'/)
 })
+
+test('school login uses the legacy light three-column presentation', () => {
+  const loginView = read('frontend/src/views/LoginView.vue')
+  assert.match(loginView, /from-purple-50 via-violet-50 to-purple-100/)
+  assert.match(loginView, /from-white via-sky-50\/30 to-cyan-50\/40/)
+  assert.match(loginView, /text-3xl font-bold text-sky-700 lg:text-4xl/)
+  assert.match(loginView, /支持批量导入账号/)
+})

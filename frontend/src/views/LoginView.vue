@@ -322,8 +322,7 @@ onMounted(async () => {
       <div class="h-screen w-full grid grid-cols-1 lg:grid-cols-3">
 
         <!-- Column 1: Multi-account entry (purple gradient) -->
-        <div class="relative flex items-center justify-center overflow-hidden p-4 lg:p-8"
-             style="background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 50%, #c4b5fd 100%)">
+        <div class="relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-purple-50 via-violet-50 to-purple-100 p-4 lg:p-8">
           <div class="absolute -left-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
           <div class="absolute -bottom-16 -right-16 h-48 w-48 rounded-full bg-white/10 blur-xl"></div>
 
@@ -340,42 +339,20 @@ onMounted(async () => {
                 </svg>
               </div>
               <div class="text-center space-y-1.5">
-                <h2 class="text-xl font-bold text-violet-900 tracking-tight">掌上莲峰</h2>
-                <p class="text-sm text-violet-700 font-medium">多账号模式</p>
+                <h2 class="card-title bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-3xl font-bold leading-tight text-transparent lg:text-4xl">
+                  掌上莲峰<br />
+                  多账号模式
+                </h2>
               </div>
 
-              <div class="space-y-3">
-                <div class="flex items-center gap-3 p-3 rounded-xl bg-violet-50/80">
-                  <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-600 text-white shadow-lg shadow-violet-200">
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                  </div>
-                  <div>
-                    <p class="text-sm font-semibold text-violet-900">支持批量导入账号</p>
-                    <p class="text-xs text-violet-600">支持 Excel / CSV 格式文件</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3 p-3 rounded-xl bg-violet-50/80">
-                  <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-600 text-white shadow-lg shadow-violet-200">
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                  </div>
-                  <div>
-                    <p class="text-sm font-semibold text-violet-900">统一管理所有任务</p>
-                    <p class="text-xs text-violet-600">为每个账号独立配置</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3 p-3 rounded-xl bg-violet-50/80">
-                  <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-600 text-white shadow-lg shadow-violet-200">
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                  </div>
-                  <div>
-                    <p class="text-sm font-semibold text-violet-900">一键执行全部流程</p>
-                    <p class="text-xs text-violet-600">实时状态看板监控</p>
-                  </div>
-                </div>
-              </div>
+              <p class="text-base leading-relaxed text-slate-600">
+                ✨ 支持批量导入账号<br />
+                🎯 统一管理所有任务<br />
+                ⚡ 一键执行全部流程
+              </p>
 
               <button
-                class="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-violet-600 text-white font-semibold shadow-lg shadow-violet-300/50 hover:bg-violet-700 hover:shadow-violet-400/50 transition-all duration-300 active:scale-[0.98]"
+                class="btn btn-secondary w-full py-3.5 text-lg font-bold shadow-xl shadow-violet-300/40"
                 @click="onEnterMulti"
               >
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
@@ -386,8 +363,7 @@ onMounted(async () => {
         </div>
 
         <!-- Column 2: Single account login (sky gradient) -->
-        <div class="relative flex items-center justify-center overflow-hidden p-4 lg:p-8"
-             style="background: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 50%, #7dd3fc 100%)">
+        <div class="relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-white via-sky-50/30 to-cyan-50/40 p-4 lg:p-8">
           <div class="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/15 blur-2xl"></div>
           <div class="absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-white/15 blur-xl"></div>
 
@@ -400,7 +376,7 @@ onMounted(async () => {
                   </svg>
                 </div>
                 <div>
-                  <h2 class="text-xl font-bold text-slate-800 tracking-tight">单账号登录</h2>
+                  <h2 class="card-title text-3xl font-bold text-sky-700 lg:text-4xl">单账号登录</h2>
                   <p class="text-sm text-sky-600 font-medium">掌上莲峰跑步助手</p>
                 </div>
               </div>
