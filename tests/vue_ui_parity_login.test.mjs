@@ -19,5 +19,5 @@ test('auth screens expose legacy semantic anchors', () => {
   assert.match(authPanel, /id="auth-login-form"/)
   assert.match(authPanel, /id="auth-login-captcha-display"/)
   assert.match(authPanel, /id="guest-login-section"/)
-  assert.match(authPanel, /id="auth-beian-footer"/)
+  assert.match(loginView, /id="auth-beian-footer"/)
 })

@@ -122,6 +122,22 @@ function onBackToAuth() {
   viewMode.value = 'auth'
 }
 
+async function openHelp() {
+  await Swal.fire({
+    title: '新手帮助',
+    html: `
+      <div class="text-left text-sm leading-6 text-slate-600">
+        <p>登录或注册后，您可以选择会话并进入跑步控制台。</p>
+        <p class="mt-2">游客模式需要保存页面地址，才能恢复当前状态。</p>
+      </div>
+    `,
+    confirmButtonText: '我知道了',
+    customClass: {
+      confirmButton: 'btn btn-primary',
+    },
+  })
+}
+
 // --- Import users from offline file ---
 function onImportUsers() {
   if (importFileInput.value) {
@@ -207,7 +223,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col" style="background: var(--base-color)">
+  <div class="flex min-h-screen flex-col">
 
     <!-- ============ Loading ============ -->
     <div v-if="viewMode === 'loading'" class="flex flex-1 items-center justify-center">
@@ -218,19 +234,64 @@ onMounted(async () => {
     </div>
 
     <!-- ============ Phase 1: System Login ============ -->
-    <div v-else-if="viewMode === 'auth'" class="flex flex-1 items-center justify-center p-4 md:p-8">
-      <div class="w-full max-w-[600px]">
-        <div class="panel rounded-2xl p-6 space-y-6">
-          <div class="text-center space-y-1">
-            <h1 class="text-2xl font-bold" style="color: var(--ink)">
-              <svg class="mb-1 mr-2 inline-block h-7 w-7" style="color: var(--accent)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              跑步助手
-            </h1>
-            <p class="text-sm" style="color: var(--ink-secondary)">请登录或注册以继续使用</p>
-          </div>
-          <AuthPanel @login-success="onAuthSuccess" />
+    <div
+      v-else-if="viewMode === 'auth'"
+      id="auth-login-container"
+      class="flex h-screen w-screen items-center justify-center p-0 md:p-4"
+    >
+      <header
+        v-if="app.isMobile"
+        id="mobile-header"
+        class="mobile-header"
+      >
+        <div class="flex w-full items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-[var(--accent)]" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z" />
+          </svg>
+          <span class="ml-2 text-lg font-bold text-slate-800">跑步助手</span>
+        </div>
+      </header>
+      <button
+        id="newbie-help-btn"
+        type="button"
+        class="btn btn-ghost fixed z-10 !px-4 !py-2"
+        style="
+          top: 100px;
+          right: 1rem;
+          min-height: 48px;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.8);
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+        "
+        @click="openHelp"
+      >
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        帮助
+      </button>
+      <div
+        id="auth-login-container_panel"
+        class="panel w-full max-w-[600px] space-y-6 rounded-2xl p-6"
+        style="
+          background: rgba(255, 255, 255, 0.52);
+          border: 1px solid rgba(255, 255, 255, 0.24);
+          box-shadow: 0 20px 60px rgba(15, 23, 42, 0.12);
+        "
+      >
+        <div class="text-center">
+          <h2 class="card-title mb-2 text-3xl font-bold text-sky-700">
+            {{ app.isMobile ? '欢迎使用跑步助手' : '跑步助手' }}
+          </h2>
+          <p class="text-sm text-slate-500">请登录或注册以继续使用</p>
+        </div>
+        <AuthPanel @login-success="onAuthSuccess" />
+        <div
+          id="auth-beian-footer"
+          class="mt-6 flex flex-col items-center justify-center gap-2 border-t border-slate-200 pt-4 text-xs text-slate-400"
+        >
+          <BeianFooter />
         </div>
       </div>
     </div>
@@ -461,6 +522,5 @@ onMounted(async () => {
       @change="handleImportFile"
     />
 
-    <BeianFooter v-if="viewMode !== 'school-login'" />
   </div>
 </template>

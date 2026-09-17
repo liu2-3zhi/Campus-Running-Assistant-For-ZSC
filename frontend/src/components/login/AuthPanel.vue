@@ -743,47 +743,73 @@ onUnmounted(() => {
 <template>
   <div class="w-full">
     <!-- 2FA form -->
-    <div v-if="show2FA" class="space-y-4">
-      <h3 class="text-lg font-semibold">双因素认证</h3>
-      <p class="text-sm" style="color: var(--ink-secondary)">
-        请输入您的验证器应用中的6位验证码
-      </p>
+    <div v-if="show2FA" id="auth-2fa-form" class="space-y-4">
+      <div class="mb-4 text-center">
+        <h3 class="mb-2 text-xl font-bold text-sky-700">双因素认证</h3>
+        <p class="text-sm text-slate-500">
+          请输入您的验证器应用中的6位验证码
+        </p>
+      </div>
+      <div id="auth-2fa-code-wrapper">
+        <label class="block text-sm font-semibold leading-6 text-slate-700">验证码</label>
       <input
+        id="auth-2fa-code"
         v-model="twoFACode"
         type="text"
         maxlength="6"
-        class="input-field text-center text-2xl tracking-[0.5em]"
-        placeholder="000000"
+        class="input-field mt-1"
+        placeholder="输入6位验证码"
+        inputmode="numeric"
+        pattern="[0-9]{6}"
+        autocomplete="one-time-code"
         @keyup.enter="handle2FAVerify"
       />
-      <div class="flex gap-2">
-        <button class="btn btn-secondary flex-1" @click="back2FA" :disabled="loading">
-          返回
-        </button>
-        <button class="btn btn-primary flex-1" @click="handle2FAVerify" :disabled="loading || twoFACode.length < 6">
-          {{ loading ? '验证中...' : '验证' }}
-        </button>
       </div>
+      <button
+        id="auth-2fa-verify-btn"
+        class="btn btn-primary w-full py-3"
+        :disabled="loading || twoFACode.length < 6"
+        @click="handle2FAVerify"
+      >
+        {{ loading ? '验证中...' : '验证' }}
+      </button>
+      <button
+        id="auth-2fa-back-btn"
+        class="btn btn-ghost w-full"
+        :disabled="loading"
+        @click="back2FA"
+      >
+        返回登录
+      </button>
     </div>
 
     <!-- Login / Register tabs -->
     <div v-else>
-      <TabPanel :tabs="tabs" v-model="activeTab">
+      <TabPanel class="auth-tabs" :tabs="tabs" v-model="activeTab">
         <!-- ====== LOGIN TAB ====== -->
         <template #login>
-          <div class="space-y-4">
+          <form
+            id="auth-login-form"
+            class="max-h-[60vh] space-y-4 overflow-y-auto p-1"
+            autocomplete="on"
+            @submit.prevent="handleLogin"
+          >
             <!-- Login mode toggle -->
-            <div class="flex gap-2 text-sm">
+            <div id="auth-login-type-toggle" class="flex justify-center gap-2 pb-2">
               <button
-                class="tab-button"
-                :class="{ active: loginMode === 'username' }"
+                id="auth-login-username-btn"
+                type="button"
+                class="rounded-lg px-4 py-2 text-sm font-semibold"
+                :class="loginMode === 'username' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'"
                 @click="loginMode = 'username'; passwordMode = 'password'"
               >
                 用户名登录
               </button>
               <button
-                class="tab-button"
-                :class="{ active: loginMode === 'phone' }"
+                id="auth-login-phone-btn"
+                type="button"
+                class="rounded-lg px-4 py-2 text-sm font-semibold"
+                :class="loginMode === 'phone' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'"
                 @click="loginMode = 'phone'"
               >
                 手机号登录
@@ -792,11 +818,13 @@ onUnmounted(() => {
 
             <!-- Username input (username mode) -->
             <div v-if="loginMode === 'username'">
-              <label class="mb-1 block text-sm font-medium">用户名</label>
+              <label class="block text-sm font-semibold leading-6 text-slate-700">用户名</label>
               <input
+                id="auth-username"
                 v-model="loginForm.username"
                 type="text"
-                class="input-field"
+                name="username"
+                class="input-field mt-1"
                 placeholder="请输入用户名"
                 autocomplete="username"
               />
@@ -804,41 +832,36 @@ onUnmounted(() => {
 
             <!-- Phone input (phone mode or SMS mode) -->
             <div v-if="loginMode === 'phone' || passwordMode === 'sms'">
-              <label class="mb-1 block text-sm font-medium">手机号</label>
+              <label class="block text-sm font-semibold leading-6 text-slate-700">手机号</label>
               <input
                 v-model="loginForm.phone"
                 type="tel"
-                class="input-field"
+                class="input-field mt-1"
                 placeholder="请输入手机号"
                 autocomplete="tel"
               />
             </div>
 
             <!-- Password/SMS toggle (only show SMS option in phone mode) -->
-            <div v-if="loginMode === 'phone'" class="flex gap-2 text-sm">
+            <div v-if="loginMode === 'phone'" class="flex justify-end">
               <button
-                class="tab-button"
-                :class="{ active: passwordMode === 'password' }"
-                @click="passwordMode = 'password'"
+                type="button"
+                class="text-xs text-sky-600 hover:text-sky-700"
+                @click="passwordMode = passwordMode === 'password' ? 'sms' : 'password'"
               >
-                密码登录
-              </button>
-              <button
-                class="tab-button"
-                :class="{ active: passwordMode === 'sms' }"
-                @click="passwordMode = 'sms'"
-              >
-                验证码登录
+                {{ passwordMode === 'password' ? '使用验证码登录' : '使用密码登录' }}
               </button>
             </div>
 
             <!-- Password input -->
             <div v-if="passwordMode === 'password'">
-              <label class="mb-1 block text-sm font-medium">密码</label>
+              <label class="block text-sm font-semibold leading-6 text-slate-700">密码</label>
               <input
+                id="auth-password"
                 v-model="loginForm.password"
                 type="password"
-                class="input-field"
+                name="password"
+                class="input-field mt-1"
                 placeholder="请输入密码"
                 autocomplete="current-password"
                 @keyup.enter="handleLogin"
@@ -847,18 +870,24 @@ onUnmounted(() => {
 
             <!-- SMS code input -->
             <div v-if="passwordMode === 'sms'">
-              <label class="mb-1 block text-sm font-medium">短信验证码</label>
-              <div class="flex gap-2">
+              <label class="block text-sm font-semibold leading-6 text-slate-700">验证码</label>
+              <div class="mt-1 flex gap-2">
                 <input
+                  id="auth-sms-code"
                   v-model="loginForm.smsCode"
                   type="text"
                   maxlength="6"
                   class="input-field flex-1"
                   placeholder="请输入验证码"
+                  inputmode="numeric"
+                  pattern="[0-9]{6}"
                   @keyup.enter="handleLogin"
                 />
                 <button
-                  class="btn btn-secondary shrink-0"
+                  id="auth-send-login-code"
+                  type="button"
+                  class="btn btn-primary shrink-0 whitespace-nowrap"
+                  style="min-height: 44px"
                   :disabled="loginSmsCooldown > 0 || !loginForm.phone"
                   @click="sendLoginSmsCode"
                 >
@@ -869,54 +898,67 @@ onUnmounted(() => {
 
             <!-- Captcha -->
             <div>
-              <label class="mb-1 block text-sm font-medium">{{ captchaProvider === 'behavior' ? '人机验证' : '验证码' }}</label>
+              <label class="block text-sm font-semibold leading-6 text-slate-700">
+                {{ captchaProvider === 'behavior' ? '人机验证' : '验证码' }}
+              </label>
               <!-- 本地图片验证码 -->
-              <div v-if="captchaProvider !== 'behavior'" class="flex items-center gap-2">
-                <input
-                  v-model="loginForm.captchaCode"
-                  type="text"
-                  maxlength="6"
-                  class="input-field flex-1"
-                  placeholder="请输入图形验证码"
-                  @keyup.enter="handleLogin"
-                />
+              <div v-if="captchaProvider !== 'behavior'">
                 <div
+                  id="auth-login-captcha-container_display"
                   ref="loginCaptchaContainerRef"
-                  class="flex min-w-[120px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border"
-                  :style="{
-                    borderColor: 'var(--border-color)',
-                    width: loginCaptchaDims.width ? loginCaptchaDims.width + 'px' : undefined,
-                    height: loginCaptchaDims.height ? loginCaptchaDims.height + 'px' : '80px',
-                  }"
-                  @click="loadCaptcha('login')"
-                  title="点击刷新验证码"
+                  class="flex justify-center"
                 >
-                  <iframe
-                    v-if="loginCaptchaIframeSrc"
-                    :src="loginCaptchaIframeSrc"
-                    scrolling="no"
-                    frameborder="0"
-                    :style="{
-                      width: loginCaptchaDims.width ? loginCaptchaDims.width + 'px' : '100%',
-                      height: loginCaptchaDims.height ? loginCaptchaDims.height + 'px' : '80px',
-                      border: 'none',
-                      overflow: 'hidden',
-                      display: 'block',
-                      margin: '0 auto',
-                      pointerEvents: 'none',
-                    }"
-                  ></iframe>
-                  <span v-else class="px-3 text-xs" style="color: var(--ink-muted)">加载中</span>
+                  <div class="mt-1 flex items-center gap-2">
+                    <div
+                      id="auth-login-captcha-display"
+                      class="flex h-auto w-auto flex-shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded border border-slate-300 bg-white transition-colors hover:border-sky-400"
+                      style="min-height: 64px"
+                      title="点击刷新验证码"
+                      @click="loadCaptcha('login')"
+                    >
+                      <iframe
+                        v-if="loginCaptchaIframeSrc"
+                        :src="loginCaptchaIframeSrc"
+                        scrolling="no"
+                        frameborder="0"
+                        :style="{
+                          width: loginCaptchaDims.width ? loginCaptchaDims.width + 'px' : '100%',
+                          height: loginCaptchaDims.height ? loginCaptchaDims.height + 'px' : '64px',
+                          border: 'none',
+                          overflow: 'hidden',
+                          display: 'block',
+                          margin: '0 auto',
+                          pointerEvents: 'none',
+                        }"
+                      ></iframe>
+                      <span v-else class="px-3 text-xs text-slate-400">加载中...</span>
+                    </div>
+                    <button
+                      id="auth-login-captcha-refresh"
+                      type="button"
+                      class="btn btn-ghost !p-2"
+                      title="刷新验证码"
+                      @click="loadCaptcha('login')"
+                    >
+                      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span class="auth-captcha-refresh-text">刷新验证码</span>
+                    </button>
+                  </div>
                 </div>
-                <button
-                  class="btn btn-ghost shrink-0 p-2"
-                  @click="loadCaptcha('login')"
-                  title="刷新验证码"
-                >
-                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114.3-3M20 15a8 8 0 01-14.3 3" />
-                  </svg>
-                </button>
+                <div class="mt-2">
+                  <input
+                    id="auth-login-captcha"
+                    v-model="loginForm.captchaCode"
+                    type="text"
+                    maxlength="6"
+                    class="input-field w-full"
+                    placeholder="请输入验证码"
+                    autocomplete="off"
+                    @keyup.enter="handleLogin"
+                  />
+                </div>
               </div>
               <!-- 验证码服务器 -->
               <div v-else>
@@ -928,85 +970,111 @@ onUnmounted(() => {
             </div>
 
             <!-- Login button -->
-            <div class="pt-2">
-              <button
-                class="btn btn-primary w-full"
-                :disabled="loading"
-                @click="handleLogin"
-              >
-                {{ loading ? '登录中...' : '登录' }}
-              </button>
-            </div>
+            <button
+              id="auth-login-btn"
+              class="btn btn-primary w-full py-3"
+              style="min-height: 44px"
+              type="submit"
+              :disabled="loading"
+            >
+              {{ loading ? '登录中...' : '登录' }}
+            </button>
 
             <!-- Guest login section (conditional based on backend config) -->
-            <div v-if="guestLoginEnabled" class="text-center">
-              <div class="relative flex py-2 items-center">
-                <div class="flex-grow border-t" style="border-color: var(--border-color)"></div>
-                <span class="mx-4 shrink-0 text-xs" style="color: var(--ink-muted)">或</span>
-                <div class="flex-grow border-t" style="border-color: var(--border-color)"></div>
+            <div v-if="guestLoginEnabled" id="guest-login-section" class="text-center">
+              <div class="relative flex items-center py-2">
+                <div class="flex-grow border-t border-slate-200"></div>
+                <span class="mx-4 shrink-0 text-xs text-slate-400">或</span>
+                <div class="flex-grow border-t border-slate-200"></div>
               </div>
               <button
+                id="auth-guest-btn"
+                type="button"
                 class="btn btn-ghost w-full"
                 :disabled="loading"
                 @click="handleGuestLogin"
               >
                 以游客身份继续
               </button>
-              <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-left dark:border-amber-700 dark:bg-amber-900/20">
+              <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-left">
                 <div class="flex items-start gap-2">
                   <svg class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
                     <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" />
                   </svg>
-                  <div class="text-xs text-amber-800 dark:text-amber-300">
-                    <p class="mb-1 font-semibold">游客模式提示</p>
+                  <div class="text-xs text-amber-800">
+                    <p class="mb-1 font-semibold">⚠️ 游客模式提示</p>
                     <ul class="space-y-1">
-                      <li>&#8226; 游客使用UUID恢复状态，请务必保存地址</li>
-                      <li>&#8226; 丢失URL将无法恢复您的数据和进度</li>
-                      <li>&#8226; 5分钟不活跃会话将被自动清理</li>
-                      <li>&#8226; 建议注册账号以获得更好的体验</li>
+                      <li>• 游客使用UUID恢复状态，请务必保存地址</li>
+                      <li>• 丢失URL将无法恢复您的数据和进度</li>
+                      <li>• 5分钟不活跃会话将被自动清理</li>
+                      <li>• 建议注册账号以获得更好的体验</li>
                     </ul>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          </form>
         </template>
 
         <!-- ====== REGISTER TAB ====== -->
         <template #register>
-          <div class="space-y-4">
+          <form
+            id="auth-register-form"
+            class="max-h-[60vh] space-y-4 overflow-y-auto p-1"
+            autocomplete="on"
+            @submit.prevent="handleRegister"
+          >
             <!-- Username -->
             <div>
-              <label class="mb-1 block text-sm font-medium">用户名 <span class="text-red-500">*</span></label>
+              <label class="block text-sm font-semibold leading-6 text-slate-700">用户名</label>
               <input
+                id="auth-reg-username"
                 v-model="registerForm.username"
                 type="text"
-                class="input-field"
+                name="username"
+                class="input-field mt-1"
                 placeholder="请输入用户名（3-20字符，不含中文）"
                 autocomplete="username"
               />
             </div>
 
             <!-- Phone + SMS -->
-            <div>
-              <label class="mb-1 block text-sm font-medium">手机号</label>
+            <div id="auth-reg-phone-wrapper">
+              <label class="block text-sm font-semibold leading-6 text-slate-700">手机号</label>
+              <div class="phone-input-wrapper mt-1">
+                <span class="phone-prefix">+86 </span>
+                <input
+                  id="auth-reg-phone"
+                  v-model="registerForm.phone"
+                  type="tel"
+                  class="input-field"
+                  placeholder="请输入手机号"
+                  autocomplete="tel"
+                  inputmode="numeric"
+                  pattern="[0-9]*"
+                  maxlength="11"
+                />
+              </div>
+            </div>
+
+            <div id="auth-reg-sms-wrapper">
+              <label class="block text-sm font-semibold leading-6 text-slate-700">验证码</label>
               <div class="flex gap-2">
-                <div class="relative flex-1">
-                  <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium" style="color: var(--ink-secondary)">+86</span>
-                  <input
-                    v-model="registerForm.phone"
-                    type="tel"
-                    class="input-field w-full"
-                    style="padding-left: 2.8rem"
-                    placeholder="请输入手机号"
-                    autocomplete="tel"
-                    inputmode="numeric"
-                    pattern="[0-9]*"
-                    maxlength="11"
-                  />
-                </div>
+                <input
+                  id="auth-reg-sms-code"
+                  v-model="registerForm.smsCode"
+                  type="text"
+                  class="input-field mt-1 flex-1"
+                  placeholder="请输入验证码"
+                  maxlength="6"
+                  inputmode="numeric"
+                  pattern="[0-9]{6}"
+                />
                 <button
-                  class="btn btn-secondary shrink-0"
+                  id="auth-reg-send-code-btn"
+                  type="button"
+                  class="btn btn-primary mt-1 shrink-0 whitespace-nowrap"
+                  style="min-height: 44px"
                   :disabled="registerSmsCooldown > 0 || !registerForm.phone"
                   @click="sendRegisterSmsCode"
                 >
@@ -1015,65 +1083,56 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div>
-              <label class="mb-1 block text-sm font-medium">短信验证码</label>
-              <input
-                v-model="registerForm.smsCode"
-                type="text"
-                maxlength="6"
-                class="input-field"
-                placeholder="请输入短信验证码"
-              />
-            </div>
-
             <!-- Nickname -->
             <div>
-              <label class="mb-1 block text-sm font-medium">昵称</label>
+              <label class="block text-sm font-semibold leading-6 text-slate-700">昵称</label>
               <input
+                id="auth-reg-nickname"
                 v-model="registerForm.nickname"
                 type="text"
-                class="input-field"
+                class="input-field mt-1"
                 placeholder="请输入昵称（可含中文）"
               />
             </div>
 
             <!-- Avatar -->
             <div>
-              <label class="mb-1 block text-sm font-medium">头像</label>
-              <div class="flex items-center gap-3">
-                <div
-                  class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border"
-                  style="border-color: var(--border-color); background: var(--glass)"
+              <label class="block text-sm font-semibold leading-6 text-slate-700">头像</label>
+              <div class="mt-1 flex items-center gap-3">
+                <img
+                  id="auth-reg-avatar-preview"
+                  :src="registerForm.avatarPreview || '/static/default_avatar.png'"
+                  alt="头像预览"
+                  class="h-16 w-16 rounded-full border-2 border-slate-200 object-cover"
+                />
+                <input
+                  id="auth-reg-avatar"
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  @change="handleAvatarChange"
+                />
+                <label
+                  for="auth-reg-avatar"
+                  class="btn btn-ghost cursor-pointer !px-3 !py-1.5 text-sm"
                 >
-                  <img
-                    v-if="registerForm.avatarPreview"
-                    :src="registerForm.avatarPreview"
-                    alt="头像预览"
-                    class="h-full w-full object-cover"
-                  />
-                  <svg v-else class="h-6 w-6" style="color: var(--ink-muted)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  <svg class="mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                   </svg>
-                </div>
-                <label class="btn btn-secondary cursor-pointer text-sm">
-                  选择头像
-                  <input
-                    type="file"
-                    accept="image/*"
-                    class="hidden"
-                    @change="handleAvatarChange"
-                  />
+                  上传头像
                 </label>
               </div>
             </div>
 
             <!-- Password -->
             <div>
-              <label class="mb-1 block text-sm font-medium">密码 <span class="text-red-500">*</span></label>
+              <label class="block text-sm font-semibold leading-6 text-slate-700">密码</label>
               <input
+                id="auth-reg-password"
                 v-model="registerForm.password"
                 type="password"
-                class="input-field"
+                name="new-password"
+                class="input-field mt-1"
                 placeholder="请输入密码（至少6字符）"
                 autocomplete="new-password"
               />
@@ -1081,11 +1140,13 @@ onUnmounted(() => {
 
             <!-- Confirm password -->
             <div>
-              <label class="mb-1 block text-sm font-medium">确认密码 <span class="text-red-500">*</span></label>
+              <label class="block text-sm font-semibold leading-6 text-slate-700">确认密码</label>
               <input
+                id="auth-reg-password-confirm"
                 v-model="registerForm.confirmPassword"
                 type="password"
-                class="input-field"
+                name="new-password-confirm"
+                class="input-field mt-1"
                 placeholder="请再次输入密码"
                 autocomplete="new-password"
                 @keyup.enter="handleRegister"
@@ -1094,54 +1155,65 @@ onUnmounted(() => {
 
             <!-- Captcha -->
             <div>
-              <label class="mb-1 block text-sm font-medium">{{ captchaProvider === 'behavior' ? '人机验证' : '验证码' }}</label>
+              <label class="block text-sm font-semibold leading-6 text-slate-700">
+                {{ captchaProvider === 'behavior' ? '人机验证' : '验证码' }}
+              </label>
               <!-- 本地图片验证码 -->
-              <div v-if="captchaProvider !== 'behavior'" class="flex items-center gap-2">
-                <input
-                  v-model="registerForm.captchaCode"
-                  type="text"
-                  maxlength="6"
-                  class="input-field flex-1"
-                  placeholder="请输入图形验证码"
-                  @keyup.enter="handleRegister"
-                />
+              <div v-if="captchaProvider !== 'behavior'">
                 <div
+                  id="auth-register-captcha-display_wrapper"
                   ref="registerCaptchaContainerRef"
-                  class="flex min-w-[120px] shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border"
-                  :style="{
-                    borderColor: 'var(--border-color)',
-                    width: registerCaptchaDims.width ? registerCaptchaDims.width + 'px' : undefined,
-                    height: registerCaptchaDims.height ? registerCaptchaDims.height + 'px' : '80px',
-                  }"
-                  @click="loadCaptcha('register')"
-                  title="点击刷新验证码"
+                  class="mt-1 flex items-center justify-center gap-2"
                 >
-                  <iframe
-                    v-if="registerCaptchaIframeSrc"
-                    :src="registerCaptchaIframeSrc"
-                    scrolling="no"
-                    frameborder="0"
-                    :style="{
-                      width: registerCaptchaDims.width ? registerCaptchaDims.width + 'px' : '100%',
-                      height: registerCaptchaDims.height ? registerCaptchaDims.height + 'px' : '80px',
-                      border: 'none',
-                      overflow: 'hidden',
-                      display: 'block',
-                      margin: '0 auto',
-                      pointerEvents: 'none',
-                    }"
-                  ></iframe>
-                  <span v-else class="px-3 text-xs" style="color: var(--ink-muted)">加载中</span>
+                  <div
+                    id="auth-register-captcha-display"
+                    class="flex h-auto w-auto flex-shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded border border-slate-300 bg-white transition-colors hover:border-sky-400"
+                    style="min-height: 64px"
+                    title="点击刷新验证码"
+                    @click="loadCaptcha('register')"
+                  >
+                    <iframe
+                      v-if="registerCaptchaIframeSrc"
+                      :src="registerCaptchaIframeSrc"
+                      scrolling="no"
+                      frameborder="0"
+                      :style="{
+                        width: registerCaptchaDims.width ? registerCaptchaDims.width + 'px' : '100%',
+                        height: registerCaptchaDims.height ? registerCaptchaDims.height + 'px' : '64px',
+                        border: 'none',
+                        overflow: 'hidden',
+                        display: 'block',
+                        margin: '0 auto',
+                        pointerEvents: 'none',
+                      }"
+                    ></iframe>
+                    <span v-else class="px-3 text-xs text-slate-400">加载中...</span>
+                  </div>
+                  <button
+                    id="auth-register-captcha-refresh"
+                    type="button"
+                    class="btn btn-ghost !p-2"
+                    title="刷新验证码"
+                    @click="loadCaptcha('register')"
+                  >
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span class="auth-captcha-refresh-text">刷新验证码</span>
+                  </button>
                 </div>
-                <button
-                  class="btn btn-ghost shrink-0 p-2"
-                  @click="loadCaptcha('register')"
-                  title="刷新验证码"
-                >
-                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114.3-3M20 15a8 8 0 01-14.3 3" />
-                  </svg>
-                </button>
+                <div class="mt-2">
+                  <input
+                    id="auth-register-captcha"
+                    v-model="registerForm.captchaCode"
+                    type="text"
+                    maxlength="6"
+                    class="input-field w-full"
+                    placeholder="请输入验证码"
+                    autocomplete="off"
+                    @keyup.enter="handleRegister"
+                  />
+                </div>
               </div>
               <!-- 验证码服务器 -->
               <div v-else>
@@ -1153,7 +1225,11 @@ onUnmounted(() => {
             </div>
 
             <!-- Available runs hint (conditional) -->
-            <div v-if="showAvailableRuns && availableRunsText" class="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-700 dark:bg-green-900/20">
+            <div
+              v-if="showAvailableRuns && availableRunsText"
+              id="auth-register-available-runs-hint"
+              class="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-700 dark:bg-green-900/20"
+            >
               <p class="text-center text-sm font-medium text-green-700 dark:text-green-400">
                 🎁 {{ availableRunsText }}
               </p>
@@ -1161,22 +1237,32 @@ onUnmounted(() => {
 
             <!-- Register button -->
             <button
-              class="btn btn-primary w-full"
+              id="auth-register-btn"
+              class="btn btn-success w-full py-3"
+              style="min-height: 44px"
+              type="submit"
               :disabled="loading"
-              @click="handleRegister"
             >
               {{ loading ? '注册中...' : '注册' }}
             </button>
-          </div>
+          </form>
         </template>
       </TabPanel>
     </div>
 
     <!-- Messages -->
-    <div v-if="errorMsg" class="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
+    <div
+      v-if="errorMsg"
+      id="auth-error-msg"
+      class="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-center text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400"
+    >
       {{ errorMsg }}
     </div>
-    <div v-if="successMsg" class="mt-3 rounded-lg bg-green-50 p-3 text-sm text-green-600 dark:bg-green-900/20 dark:text-green-400">
+    <div
+      v-if="successMsg"
+      id="auth-success-msg"
+      class="mt-3 rounded-lg border border-green-200 bg-green-50 p-3 text-center text-sm text-green-600 dark:bg-green-900/20 dark:text-green-400"
+    >
       {{ successMsg }}
     </div>
   </div>
