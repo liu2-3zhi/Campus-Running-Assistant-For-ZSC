@@ -67,3 +67,16 @@ test('admin ip ban uses the legacy card sections', () => {
   assert.match(ipBan, /添加封禁规则/)
   assert.doesNotMatch(ipBan, /<table class="w-full text-sm">/)
 })
+
+test('sms billing and restore use legacy page headers', () => {
+  const sms = read('frontend/src/components/admin/AdminSMS.vue')
+  const billing = read('frontend/src/components/admin/AdminBilling.vue')
+  const restore = read('frontend/src/components/admin/AdminRestoreAccount.vue')
+  assert.match(sms, /短信服务配置/)
+  assert.match(sms, /from-purple-50 to-pink-50/)
+  assert.match(billing, /from-green-50 to-emerald-50/)
+  assert.match(billing, /admin-billing-school-input/)
+  assert.match(restore, /from-amber-50 to-orange-50/)
+  assert.match(restore, /id="removed-accounts-list-container"/)
+  assert.doesNotMatch(restore, /<table class="w-full text-sm">/)
+})

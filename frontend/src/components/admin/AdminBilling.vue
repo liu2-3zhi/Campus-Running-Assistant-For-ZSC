@@ -274,16 +274,25 @@ onMounted(() => loadList(1))
 <template>
   <div class="space-y-4">
     <!-- 标题 + 操作 -->
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="text-lg font-semibold text-[var(--ink)]">账单管理</h2>
-        <p class="text-sm text-[var(--ink-secondary)]">查询所有用户或指定用户的账单记录</p>
-      </div>
-      <div class="flex items-center gap-2">
-        <button class="btn btn-secondary" :disabled="loading" @click="loadList(page)">
-          {{ loading ? '刷新中...' : '刷新' }}
-        </button>
-        <button class="btn btn-primary" @click="openAdd">添加账单</button>
+    <div class="rounded-xl border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-4 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-green-100">
+            <svg class="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div>
+            <h4 class="text-lg font-bold text-green-700">账单管理</h4>
+            <p class="text-xs text-green-600">查询所有用户或指定用户的账单记录</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn btn-ghost !px-3 !py-1.5 text-sm" :disabled="loading" @click="loadList(page)">
+            {{ loading ? '刷新中...' : '刷新' }}
+          </button>
+          <button class="btn btn-primary !px-3 !py-1.5 text-sm" @click="openAdd">添加账单</button>
+        </div>
       </div>
     </div>
 
@@ -298,37 +307,31 @@ onMounted(() => loadList(1))
     </div>
 
     <!-- 搜索栏 -->
-    <div class="panel p-4 flex flex-wrap items-end gap-3">
-      <div class="flex-1 min-w-[180px]">
-        <label class="block text-xs text-[var(--ink-secondary)] mb-1">学校账号筛选</label>
+    <div class="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <svg class="h-4 w-4 flex-shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <div class="min-w-[180px] flex-1">
         <input
+          id="admin-billing-school-input"
           v-model="schoolInput"
           type="text"
-          class="input-field w-full"
+          class="input-field !rounded-none !border-0 !p-0 !shadow-none"
           placeholder="输入学校账号筛选（留空查询有权限全部）"
           @keyup.enter="doSearch"
         />
       </div>
-      <div class="flex-[2] min-w-[220px]">
-        <label class="block text-xs text-[var(--ink-secondary)] mb-1">关键词搜索</label>
+      <div class="min-w-[220px] flex-[2]">
         <input
+          id="admin-billing-search-input"
           v-model="keyword"
           type="text"
-          class="input-field w-full"
+          class="input-field !rounded-none !border-0 !p-0 !shadow-none"
           placeholder="搜索昵称 / 用户名 / 手机号 / 学号 / 账单号 / 订单号 / 流水号"
           @keyup.enter="doSearch"
         />
       </div>
-      <button class="btn btn-primary" :disabled="loading" @click="doSearch">搜索</button>
-    </div>
-
-    <!-- 统计卡 -->
-    <div v-if="loaded && records.length" class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <div v-for="card in statCards" :key="card.key" class="panel p-4">
-        <div class="text-xs text-[var(--ink-secondary)]">{{ card.label }}</div>
-        <div class="mt-1 text-2xl font-semibold" :class="card.cls">{{ card.count }}</div>
-        <div class="text-xs text-[var(--ink-muted)] mt-0.5">{{ formatAmount(card.amount) }}</div>
-      </div>
+      <button class="btn btn-primary whitespace-nowrap !px-4 !py-1.5 text-sm" :disabled="loading" @click="doSearch">搜索</button>
     </div>
 
     <!-- 加载中 -->

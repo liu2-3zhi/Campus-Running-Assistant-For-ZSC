@@ -218,6 +218,14 @@ onMounted(fetchConfig)
 
 <template>
   <div class="space-y-6">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">📱</span>
+        <h4 class="text-lg font-semibold">短信服务配置</h4>
+      </div>
+      <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="fetchConfig">刷新</button>
+    </div>
+
     <!-- Alerts -->
     <div v-if="success" class="p-3 rounded-lg bg-[var(--success)]/10 text-[var(--success)] flex items-center justify-between">
       <span>{{ success }}</span>
@@ -233,7 +241,7 @@ onMounted(fetchConfig)
 
     <template v-else>
       <!-- Service switches -->
-      <div class="panel p-5 space-y-4">
+      <div class="space-y-4 rounded-lg border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50 p-5 shadow-sm">
         <h3 class="text-base font-semibold text-[var(--ink)]">短信服务开关</h3>
         <label class="flex items-center justify-between gap-3">
           <span class="text-sm text-[var(--ink)]">启用短信服务</span>
@@ -256,7 +264,7 @@ onMounted(fetchConfig)
       </div>
 
       <!-- SMSBao account config -->
-      <div class="panel p-5 space-y-4">
+      <div class="space-y-4 rounded-lg border-2 border-sky-200 bg-gradient-to-br from-sky-50 to-cyan-50 p-5 shadow-sm">
         <h3 class="text-base font-semibold text-[var(--ink)]">短信宝配置</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -283,7 +291,7 @@ onMounted(fetchConfig)
       </div>
 
       <!-- Rate limits -->
-      <div class="panel p-5 space-y-4">
+      <div class="space-y-4 rounded-lg border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-5 shadow-sm">
         <h3 class="text-base font-semibold text-[var(--ink)]">发送限流（每日）</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
@@ -319,7 +327,7 @@ onMounted(fetchConfig)
       </div>
 
       <!-- Test SMS -->
-      <div class="panel p-5 space-y-4">
+      <div class="space-y-4 rounded-lg border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-5 shadow-sm">
         <h3 class="text-base font-semibold text-[var(--ink)]">发送测试短信</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <input v-model="testPhone" type="tel" class="input-field w-full" placeholder="输入手机号" />
@@ -341,7 +349,7 @@ onMounted(fetchConfig)
       </div>
 
       <!-- SMS history -->
-      <div class="panel p-5 space-y-4">
+      <div class="space-y-4 rounded-lg border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-gray-50 p-5 shadow-sm">
         <div class="flex items-center justify-between">
           <h3 class="text-base font-semibold text-[var(--ink)]">短信发送历史</h3>
           <button @click="loadHistory" :disabled="loadingHistory" class="btn btn-ghost text-sm">
@@ -380,7 +388,7 @@ onMounted(fetchConfig)
       </div>
 
       <!-- SMS reply logs -->
-      <div class="panel p-5 space-y-4">
+      <div class="space-y-4 rounded-lg border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50 p-5 shadow-sm">
         <div class="flex items-center justify-between">
           <h3 class="text-base font-semibold text-[var(--ink)]">短信回复记录</h3>
           <button @click="loadReplyLogs" :disabled="loadingReplies" class="btn btn-ghost text-sm">
