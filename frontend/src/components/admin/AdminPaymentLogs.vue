@@ -1,7 +1,13 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { callRawAPI } from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
 import AppModal from '@/components/common/AppModal.vue'
+
+const auth = useAuthStore()
+const canViewAllUsers = computed(() => !!auth.permissions?.view_audit_logs)
+const showAllUsers = ref(false)
+const viewingAllUsers = computed(() => canViewAllUsers.value && showAllUsers.value)
 
 // ---- 列表状态 ----
 const logs = ref([])
@@ -82,12 +88,13 @@ async function fetchLogs(page = currentPage.value) {
     const params = new URLSearchParams()
     params.set('page', String(page))
     params.set('per_page', String(perPage.value))
-    if (filterUserId.value) params.set('user_id', filterUserId.value)
+    if (viewingAllUsers.value && filterUserId.value) params.set('user_id', filterUserId.value)
     if (filterAction.value) params.set('action', filterAction.value)
     if (filterStartDate.value) params.set('start_date', filterStartDate.value)
     if (filterEndDate.value) params.set('end_date', filterEndDate.value)
 
-    const data = await callRawAPI(`/api/admin/payment_logs?${params.toString()}`, 'GET')
+    const endpoint = viewingAllUsers.value ? '/api/admin/payment_logs' : '/api/payment_logs'
+    const data = await callRawAPI(`${endpoint}?${params.toString()}`, 'GET')
     if (data.success === false) {
       throw new Error(data.message || '获取支付日志失败')
     }
@@ -124,7 +131,15 @@ function goPage(page) {
   fetchLogs(page)
 }
 
-async function openDetail(logId) {
+async function openDetail(log) {
+  if (!viewingAllUsers.value) {
+    detailError.value = ''
+    detailLoading.value = false
+    detailData.value = log
+    detailVisible.value = true
+    return
+  }
+  const logId = log.log_id
   if (!logId) {
     detailError.value = '缺少日志 ID，无法查看详情'
     detailData.value = null
@@ -164,20 +179,24 @@ onMounted(() => fetchLogs(1))
 <template>
   <div class="space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h2 class="text-lg font-semibold text-[var(--ink)]">支付日志</h2>
+      <h2 class="text-lg font-semibold text-[var(--ink)]">支付历史</h2>
       <button class="btn btn-secondary text-sm" :disabled="loading" @click="fetchLogs(currentPage)">
         {{ loading ? '刷新中...' : '刷新' }}
       </button>
     </div>
 
     <p class="text-sm text-[var(--ink-secondary)]">
-      查看所有用户的支付操作日志（创建订单、查询、支付通知、退款等），支持按用户、操作类型与日期范围筛选。
+      {{ viewingAllUsers ? '查看所有用户的支付操作日志，支持按用户、操作类型与日期范围筛选。' : '查看自己的支付操作记录，支持按操作类型与日期范围筛选。' }}
     </p>
+    <label v-if="canViewAllUsers" class="flex items-center gap-2 text-sm text-[var(--ink-secondary)]">
+      <input v-model="showAllUsers" type="checkbox" class="h-4 w-4 accent-sky-600" @change="resetFilters" />
+      查看所有用户
+    </label>
 
     <!-- 筛选条件 -->
     <div class="panel p-4 space-y-4">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div>
+        <div v-if="viewingAllUsers">
           <label class="block text-sm text-[var(--ink-secondary)] mb-1">用户</label>
           <select v-model="filterUserId" class="select-field w-full text-sm">
             <option value="">全部用户</option>
@@ -269,7 +288,7 @@ onMounted(() => fetchLogs(1))
         </div>
 
         <div class="mt-3 flex justify-end">
-          <button class="btn btn-secondary text-xs px-3 py-1" @click="openDetail(log.log_id)">查看详情</button>
+          <button class="btn btn-secondary text-xs px-3 py-1" @click="openDetail(log)">查看详情</button>
         </div>
       </div>
     </div>

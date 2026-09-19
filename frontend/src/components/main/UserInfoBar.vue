@@ -37,10 +37,10 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div class="panel p-3">
+  <div id="user-info-bar" class="panel flex items-center gap-4 rounded-xl p-4">
     <!-- User avatar and name -->
-    <div class="flex items-center gap-3 mb-3">
-      <div class="w-10 h-10 rounded-full bg-[var(--accent)] flex items-center justify-center text-white font-semibold shrink-0">
+    <div class="flex min-w-0 flex-1 items-center gap-3">
+      <div class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] font-semibold text-white">
         <img
           v-if="auth.avatarUrl"
           :src="auth.avatarUrl"
@@ -50,26 +50,23 @@ async function handleLogout() {
         <span v-else>{{ (auth.displayName || auth.username || '?').charAt(0).toUpperCase() }}</span>
       </div>
       <div class="min-w-0 flex-1">
-        <div class="text-sm font-semibold text-[var(--ink)] truncate">
-          姓名: {{ auth.realName || auth.displayName || auth.username || '--' }}
+        <div class="font-bold text-slate-800 truncate">
+          姓名: {{ auth.realName || auth.displayName || auth.username || 'NULL' }}
         </div>
-        <div class="text-xs text-[var(--ink-muted)] truncate">
-          学号: {{ auth.studentId || '--' }}
+        <div class="text-sm text-slate-500 truncate">
+          学号: {{ auth.studentId || 'NULL' }}
         </div>
       </div>
     </div>
 
     <!-- Action buttons -->
-    <div class="flex flex-wrap gap-1.5">
+    <div class="contents">
       <!-- Notifications -->
       <button
-        class="btn btn-ghost text-xs relative"
+        class="btn btn-ghost !py-2 !px-3 relative"
         @click="emit('show-notifications')"
         title="通知"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-        </svg>
         通知
         <span
           v-if="notifStore.unreadCount > 0"
@@ -81,19 +78,16 @@ async function handleLogout() {
 
       <!-- User details -->
       <button
-        class="btn btn-ghost text-xs"
+        class="btn btn-ghost !py-2 !px-3"
         @click="emit('show-user-details')"
         title="用户详情"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-        </svg>
         详情
       </button>
 
       <!-- 我的订单 -->
       <button
-        class="btn btn-ghost text-xs"
+        class="user-info-secondary hidden btn btn-ghost text-xs"
         @click="showOrders = true"
         title="我的订单"
       >
@@ -105,7 +99,7 @@ async function handleLogout() {
 
       <!-- 我的账单 -->
       <button
-        class="btn btn-ghost text-xs"
+        class="user-info-secondary hidden btn btn-ghost text-xs"
         @click="showBilling = true"
         title="我的账单"
       >
@@ -117,7 +111,7 @@ async function handleLogout() {
 
       <!-- 发起支付 -->
       <button
-        class="btn btn-ghost text-xs"
+        class="user-info-secondary hidden btn btn-ghost text-xs"
         @click="showPayment = true"
         title="发起支付"
       >
@@ -130,7 +124,7 @@ async function handleLogout() {
       <!-- Admin panel -->
       <button
         v-if="auth.isAdmin"
-        class="btn btn-ghost text-xs"
+        class="btn btn-ghost !py-2 !px-3"
         @click="emit('show-admin')"
         title="管理面板"
       >
@@ -142,7 +136,7 @@ async function handleLogout() {
 
       <!-- Dark mode toggle -->
       <button
-        class="btn btn-ghost text-xs"
+        class="user-info-secondary hidden btn btn-ghost text-xs"
         @click="theme.toggleDark()"
         :title="theme.isDark ? '切换亮色' : '切换暗色'"
       >
@@ -156,13 +150,10 @@ async function handleLogout() {
 
       <!-- Logout -->
       <button
-        class="btn btn-danger text-xs ml-auto"
+        class="btn btn-ghost !py-2 !px-3 !text-red-600"
         @click="handleLogout"
         title="退出登录"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-        </svg>
         退出
       </button>
     </div>

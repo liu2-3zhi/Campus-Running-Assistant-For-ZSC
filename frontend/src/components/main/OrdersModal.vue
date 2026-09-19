@@ -106,26 +106,29 @@ onUnmounted(() => stopOrderPolling())
 </script>
 
 <template>
-  <AppModal :visible="visible" title="我的订单" width="max-w-lg" @close="emit('close')">
+  <AppModal :visible="visible" panel title="我的订单" width="max-w-2xl" @close="emit('close')">
+    <template #header>
+      <div class="flex w-full items-center justify-between">
+        <h3>我的订单</h3>
+        <button class="btn btn-ghost !py-1 !px-3 text-xs" :disabled="loading" @click="loadOrders(currentStatus, currentPage)">{{ loading ? '刷新中...' : '刷新' }}</button>
+      </div>
+    </template>
     <div class="space-y-3">
       <!-- 筛选 + 刷新 -->
-      <div class="flex items-center justify-between flex-wrap gap-2">
-        <div class="flex gap-1.5 flex-wrap">
+      <div class="border-b border-slate-200 pb-2">
+        <div class="flex gap-2 flex-wrap">
           <button
             v-for="f in filters"
             :key="f.key"
-            class="text-xs px-3 py-1 rounded-full border transition-colors"
+            class="text-sm px-4 py-2 rounded-lg font-medium transition-colors"
             :class="currentStatus === f.key
-              ? 'bg-sky-500 text-white border-sky-500'
-              : 'border-[var(--border-color)] text-[var(--ink-secondary)] hover:bg-[var(--glass)]'"
+              ? 'bg-sky-100 text-sky-700'
+              : 'text-slate-600 hover:bg-slate-100'"
             @click="setFilter(f.key)"
           >
             {{ f.label }}
           </button>
         </div>
-        <button class="btn btn-secondary text-xs px-3 py-1" :disabled="loading" @click="loadOrders(currentStatus, currentPage)">
-          {{ loading ? '刷新中...' : '刷新' }}
-        </button>
       </div>
 
       <!-- 列表 -->
@@ -194,15 +197,15 @@ onUnmounted(() => stopOrderPolling())
       </div>
 
       <!-- 分页 -->
-      <div v-if="!loading && orders.length" class="flex items-center justify-between text-xs text-[var(--ink-secondary)] pt-1">
+      <div class="flex items-center justify-between text-sm text-slate-600 pt-4 border-t border-slate-200">
         <button
-          class="btn btn-secondary text-xs px-3 py-1"
+          class="btn btn-ghost text-xs !px-3 !py-1"
           :disabled="currentPage <= 1"
           @click="prevPage"
         >上一页</button>
         <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
         <button
-          class="btn btn-secondary text-xs px-3 py-1"
+          class="btn btn-ghost text-xs !px-3 !py-1"
           :disabled="currentPage >= totalPages"
           @click="nextPage"
         >下一页</button>

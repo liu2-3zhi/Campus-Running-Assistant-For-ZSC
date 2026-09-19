@@ -199,7 +199,7 @@ onMounted(loadSessions)
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
-      <h3 class="text-lg font-semibold">选择会话</h3>
+      <h3 class="text-xl font-bold text-sky-600">会话管理</h3>
       <div class="flex items-center gap-3">
         <span class="text-sm" style="color: var(--ink-secondary)">
           会话数:
@@ -207,17 +207,22 @@ onMounted(loadSessions)
           <template v-if="maxSessions !== -1"> / {{ maxSessions }}</template>
           <template v-else> / 无限制</template>
         </span>
-        <button class="btn btn-ghost text-sm p-1.5" :disabled="loading" @click="loadSessions" title="刷新">
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114.3-3M20 15a8 8 0 01-14.3 3" />
-          </svg>
-        </button>
       </div>
     </div>
 
-    <p class="text-sm" style="color: var(--ink-muted)">
-      每个会话都是独立的学校账号登录状态，请选择一个会话继续，或创建新会话。
-    </p>
+    <div class="rounded-lg border border-sky-200 bg-sky-50 p-3">
+      <p class="mb-2 text-sm text-slate-700">选择现有会话或创建新会话</p>
+      <button
+        class="btn btn-primary w-full"
+        :disabled="creating"
+        @click="createSession"
+      >
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        {{ creating ? '创建中...' : '创建新会话' }}
+      </button>
+    </div>
 
     <div v-if="errorMsg" class="rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/20 dark:text-red-400">
       {{ errorMsg }}
@@ -229,75 +234,79 @@ onMounted(loadSessions)
     </div>
 
     <div v-else class="space-y-3">
-      <div v-if="sessions.length === 0" class="py-8 text-center text-sm" style="color: var(--ink-muted)">
-        暂无会话，请创建新会话
+      <div class="flex items-center justify-between">
+        <h4 class="font-semibold text-slate-700">现有会话</h4>
+        <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="loadSessions">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          刷新
+        </button>
       </div>
+      <div id="session-picker-list" class="max-h-[40vh] space-y-2 overflow-y-auto">
+        <div v-if="sessions.length === 0" class="py-8 text-center text-sm" style="color: var(--ink-muted)">
+          暂无会话，请创建新会话
+        </div>
 
-      <div
-        v-for="session in sessions"
-        :key="session.session_id"
-        class="rounded-lg border p-3 transition-shadow hover:shadow-md"
-        :class="session.is_current ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20' : ''"
-        :style="session.is_current ? '' : 'border-color: var(--border-color)'"
-      >
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <p class="break-all text-sm font-semibold" style="color: var(--ink)">
-              会话 {{ session.session_id }}
-            </p>
-            <span
-              v-if="session.is_current"
-              class="ml-1 inline-block rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-600 dark:bg-sky-800 dark:text-sky-300"
-            >(当前)</span>
-            <p class="mt-1 text-xs" style="color: var(--ink-muted)">
-              创建时间: {{ formatDate(session.created_at) }}
-            </p>
-            <p class="mt-1">
+        <div
+          v-for="session in sessions"
+          :key="session.session_id"
+          class="rounded-lg border p-3 transition-shadow hover:shadow-md"
+          :class="session.is_current ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20' : ''"
+          :style="session.is_current ? '' : 'border-color: var(--border-color)'"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="break-all text-sm font-semibold" style="color: var(--ink)">
+                会话 {{ session.session_id }}
+              </p>
               <span
-                class="rounded-full px-2 py-0.5 text-xs font-semibold"
-                :class="session.login_success ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'"
-              >
-                {{ session.login_success ? '✓ 已登录' : '○ 未登录' }}
-              </span>
-              <span v-if="session.is_multi_account_mode" class="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                多账号
-              </span>
-            </p>
-          </div>
-          <div class="flex shrink-0 flex-col gap-2">
-            <template v-if="!session.is_current">
-              <button class="btn btn-primary !px-3 !py-1 text-xs" @click="selectSession(session.session_id)">
-                <svg class="mr-1 inline-block h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-                进入
-              </button>
-              <button
-                class="btn btn-ghost !px-3 !py-1 text-xs !text-red-600 border border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
-                @click="deleteSession(session.session_id)"
-              >
-                <svg class="mr-1 inline-block h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                删除
-              </button>
-            </template>
-            <span v-else class="text-xs" style="color: var(--ink-muted)">当前会话</span>
+                v-if="session.is_current"
+                class="ml-1 inline-block rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-600 dark:bg-sky-800 dark:text-sky-300"
+              >(当前)</span>
+              <p class="mt-1 text-xs" style="color: var(--ink-muted)">
+                创建时间: {{ formatDate(session.created_at) }}
+              </p>
+              <p class="mt-1">
+                <span
+                  class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                  :class="session.login_success ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'"
+                >
+                  {{ session.login_success ? '✓ 已登录' : '○ 未登录' }}
+                </span>
+                <span v-if="session.is_multi_account_mode" class="ml-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                  多账号
+                </span>
+              </p>
+            </div>
+            <div class="flex shrink-0 flex-col gap-2">
+              <template v-if="!session.is_current">
+                <button class="btn btn-primary !px-3 !py-1 text-xs" @click="selectSession(session.session_id)">
+                  <svg class="mr-1 inline-block h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                  进入
+                </button>
+                <button
+                  class="btn btn-ghost !px-3 !py-1 text-xs !text-red-600 border border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
+                  @click="deleteSession(session.session_id)"
+                >
+                  <svg class="mr-1 inline-block h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  删除
+                </button>
+              </template>
+              <span v-else class="text-xs" style="color: var(--ink-muted)">当前会话</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <button
-      class="btn btn-primary w-full"
-      :disabled="creating"
-      @click="createSession"
-    >
-      <svg class="mr-2 inline-block h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-      </svg>
-      {{ creating ? '创建中...' : '创建新会话' }}
-    </button>
+    <div class="rounded-lg border-t pt-3 text-xs text-slate-500">
+      <p>💡 提示：每个会话都是独立的学校账号登录状态。您可以创建多个会话来管理不同的账号。</p>
+    </div>
 
     <button class="btn btn-ghost w-full text-sm" @click="emit('back')">
       返回登录

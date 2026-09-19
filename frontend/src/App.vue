@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
@@ -17,9 +17,17 @@ function handleResize() {
 
 onMounted(() => {
   app.detectMobile()
+  document.body.classList.toggle('mobile-mode', app.isMobile)
   theme.initFromStorage()
   window.addEventListener('resize', handleResize)
 })
+
+watch(
+  () => app.isMobile,
+  (isMobile) => {
+    document.body.classList.toggle('mobile-mode', isMobile)
+  },
+)
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)

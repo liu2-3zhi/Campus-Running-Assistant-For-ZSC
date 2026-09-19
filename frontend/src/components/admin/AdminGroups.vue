@@ -1,6 +1,12 @@
 <template>
   <div class="space-y-4">
-    <h2 class="text-lg font-semibold text-[var(--ink)]">权限组管理</h2>
+    <div class="flex items-center justify-between">
+      <h4 class="font-semibold">权限组列表</h4>
+      <div class="flex gap-2">
+        <button class="btn btn-primary !px-2 !py-1" @click="showCreateForm = true">新增权限组</button>
+        <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="fetchGroups">刷新</button>
+      </div>
+    </div>
 
     <!-- Error / Success messages -->
     <div
@@ -16,9 +22,9 @@
       {{ successMsg }}
     </div>
 
-    <div class="flex flex-col md:flex-row gap-4">
+    <div class="flex flex-col gap-4">
       <!-- Left: Group list -->
-      <div class="w-full md:w-64 flex-shrink-0 space-y-2">
+      <div class="w-full space-y-2">
         <div class="panel p-3 space-y-1">
           <div class="flex items-center justify-between mb-2">
             <span class="text-sm font-medium text-[var(--ink-secondary)]">权限组列表</span>
@@ -92,10 +98,8 @@
       </div>
 
       <!-- Right: Permissions editor -->
-      <div class="flex-1">
-        <div v-if="!selectedGroup" class="panel p-6 text-center text-[var(--ink-muted)] text-sm">
-          请从左侧选择一个权限组进行编辑
-        </div>
+      <div class="w-full">
+        <div v-if="!selectedGroup" class="hidden" />
 
         <div v-else class="panel p-4 space-y-4">
           <div class="flex items-center justify-between">

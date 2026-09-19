@@ -276,18 +276,20 @@ onMounted(loadAccounts)
 <template>
   <div class="space-y-4">
     <!-- 标题栏 -->
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="text-lg font-semibold text-[var(--ink)]">恢复账号</h2>
-        <p class="text-sm text-[var(--ink-secondary)]">从删除记录中恢复已删除的用户账号</p>
-      </div>
-      <div class="flex items-center gap-3">
-        <span class="text-sm text-[var(--ink-secondary)]">
-          共 <strong class="text-[var(--ink)]">{{ accountCount }}</strong> 个已删除账号
-        </span>
-        <button class="btn btn-secondary text-sm" :disabled="loading" @click="loadAccounts">
-          {{ loading ? '刷新中...' : '刷新' }}
-        </button>
+    <div class="rounded-lg border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h4 class="mb-1 text-lg font-bold text-amber-700">恢复账号</h4>
+          <p class="text-sm text-amber-600">从删除记录中恢复已删除的用户账号</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-sm text-amber-700">
+            共 <strong>{{ accountCount }}</strong> 个已删除账号
+          </span>
+          <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="loadAccounts">
+            {{ loading ? '刷新中...' : '刷新' }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -305,70 +307,45 @@ onMounted(loadAccounts)
     <div v-if="loading" class="py-12 text-center text-[var(--ink-secondary)]">加载中...</div>
 
     <!-- 列表 -->
-    <div v-else class="panel overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead class="border-b border-[var(--border-color)]">
-          <tr>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">账号</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">手机号</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">可用次数</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">2FA</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">最后登录</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">注销时间</th>
-            <th class="text-left px-3 py-2 text-[var(--ink-secondary)] font-medium whitespace-nowrap">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="sortedAccounts.length === 0">
-            <td colspan="7" class="px-3 py-8 text-center text-[var(--ink-secondary)]">
-              暂无已删除账号记录
-            </td>
-          </tr>
-          <tr
-            v-for="acc in sortedAccounts"
-            :key="acc.username"
-            class="border-b border-[var(--border-color)] hover:bg-[var(--glass)]"
-          >
-            <td class="px-3 py-2">
-              <div class="flex items-center gap-2">
-                <img
-                  :src="avatarSrc(acc.avatar_url)"
-                  class="w-8 h-8 rounded-full object-cover bg-[var(--glass)] shrink-0"
-                  alt="avatar"
-                  @error="onAvatarError"
-                />
-                <div class="min-w-0">
-                  <div class="font-mono text-[var(--ink)] truncate">{{ acc.username }}</div>
-                  <div class="text-xs text-[var(--ink-secondary)] truncate">{{ acc.nickname || acc.username }}</div>
-                </div>
-              </div>
-            </td>
-            <td class="px-3 py-2 font-mono">{{ acc.phone || '--' }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">{{ formatRuns(acc.available_runs) }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">{{ acc['2fa_enabled'] ? '已开启' : '未开启' }}</td>
-            <td class="px-3 py-2 whitespace-nowrap">
-              <div>{{ formatTime(acc.last_login) }}</div>
-              <div class="text-xs text-[var(--ink-secondary)]">
-                {{ acc.last_login_ip || '--' }}
-                <span v-if="acc.last_login_city && acc.last_login_city !== '未知'">· {{ acc.last_login_city }}</span>
-              </div>
-            </td>
-            <td class="px-3 py-2 whitespace-nowrap">{{ formatTime(acc.deleted_at) }}</td>
-            <td class="px-3 py-2">
-              <div class="flex items-center gap-2">
-                <button class="btn btn-secondary text-xs px-2 py-1" @click="openDetail(acc.username)">详情</button>
-                <button
-                  class="btn btn-primary text-xs px-2 py-1"
-                  :disabled="restoringUser === acc.username"
-                  @click="restoreAccount(acc.username)"
-                >
-                  {{ restoringUser === acc.username ? '恢复中...' : '恢复' }}
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-else id="removed-accounts-list-container" class="space-y-2 overflow-x-auto">
+      <p v-if="sortedAccounts.length === 0" class="py-10 text-center text-slate-400">
+        暂无已删除账号记录
+      </p>
+      <div
+        v-for="acc in sortedAccounts"
+        :key="acc.username"
+        class="rounded-lg border border-slate-200 bg-white p-3"
+      >
+        <div class="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+          <div class="flex min-w-0 flex-1 items-center gap-3">
+            <img
+              :src="avatarSrc(acc.avatar_url)"
+              class="h-12 w-12 flex-shrink-0 rounded-full bg-slate-100 object-cover"
+              alt="avatar"
+              @error="onAvatarError"
+            />
+            <div class="min-w-0">
+              <p class="truncate font-mono font-semibold text-slate-700">{{ acc.username }}</p>
+              <p class="truncate text-xs text-slate-500">昵称: {{ acc.nickname || acc.username }}</p>
+              <p class="text-xs text-slate-500">手机号: {{ acc.phone || '--' }}</p>
+              <p class="text-xs text-slate-500">可用次数: {{ formatRuns(acc.available_runs) }}</p>
+              <p class="text-xs text-slate-500">2FA: {{ acc['2fa_enabled'] ? '已开启' : '未开启' }}</p>
+              <p class="text-xs text-slate-500">最后登录: {{ formatTime(acc.last_login) }}</p>
+              <p class="text-xs text-slate-500">注销时间: {{ formatTime(acc.deleted_at) }}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-ghost !px-2 !py-1 text-xs" @click="openDetail(acc.username)">详情</button>
+            <button
+              class="btn btn-primary !px-2 !py-1 text-xs"
+              :disabled="restoringUser === acc.username"
+              @click="restoreAccount(acc.username)"
+            >
+              {{ restoringUser === acc.username ? '恢复中...' : '恢复' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 详情弹窗 -->
