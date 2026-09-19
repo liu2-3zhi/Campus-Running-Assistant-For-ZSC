@@ -7,6 +7,8 @@ import { checkOverdueBeforeStartByCurrentMode } from '@/composables/usePayment'
 import TabPanel from '@/components/common/TabPanel.vue'
 import LogPanel from '@/components/main/LogPanel.vue'
 import AppModal from '@/components/common/AppModal.vue'
+import { taskPoints, applyPathResult, clearTaskPath } from './taskData'
+import { paramDefs, paramGroups } from '@/utils/legacyParams'
 
 // openTab：允许父组件（移动端侧边栏导航）指定要打开的 Tab
 const props = defineProps({
@@ -28,13 +30,6 @@ const tabs = [
 ]
 
 const validTabKeys = tabs.map(t => t.key)
-watch(() => props.openTab, (v) => {
-  if (v && validTabKeys.includes(v) && v !== activeTab.value) {
-    activeTab.value = v
-    onTabChange(v)
-  }
-}, { immediate: true })
-
 // ── Execute tab ──
 const ignoreCompleted = ref(false)
 const autoGenAll = ref(false)
@@ -158,6 +153,14 @@ async function recordPath() {
 }
 
 async function autoGenPath() {
+  if (autoGenConfig.minTime > autoGenConfig.maxTime) {
+    app.addLog('最短时间不能大于最长时间', 'WARN')
+    return
+  }
+  if (!app.runData?.target_points?.length) {
+    app.addLog('请先选择一个有打卡点的任务', 'WARN')
+    return
+  }
   showAutoGenModal.value = false
   try {
     const result = await callAPI('auto_generate_path_with_provider', {
@@ -165,6 +168,7 @@ async function autoGenPath() {
       max_t_m: autoGenConfig.maxTime,
       min_d_m: autoGenConfig.minDist
     })
+    applyPathResult(app, result)
     app.addLog(result?.message || '路径自动生成完成', 'INFO')
   } catch (e) {
     app.addLog('自动生成路径失败: ' + (e.message || e), 'ERROR')
@@ -174,6 +178,7 @@ async function autoGenPath() {
 async function processPath() {
   try {
     const result = await callAPI('process_path')
+    applyPathResult(app, result)
     app.addLog(result?.message || '路径处理完成', 'INFO')
   } catch (e) {
     app.addLog('处理路径失败: ' + (e.message || e), 'ERROR')
@@ -183,6 +188,9 @@ async function processPath() {
 async function clearPath() {
   try {
     const result = await callAPI('clear_current_task_draft')
+    if (!result?.success) throw new Error(result?.message || '清除失败')
+    clearTaskPath(app)
+    mapStore.clearDraft()
     app.addLog(result?.message || '路径已清除', 'INFO')
   } catch (e) {
     app.addLog('清除路径失败: ' + (e.message || e), 'ERROR')
@@ -197,7 +205,7 @@ async function exportPath() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `path_${Date.now()}.json`
+      a.download = result.filename || `path_${Date.now()}.json`
       a.click()
       URL.revokeObjectURL(url)
       app.addLog('路径已导出', 'INFO')
@@ -210,12 +218,14 @@ async function exportPath() {
 }
 
 // ── Checkpoints ──
-const checkpoints = ref([])
+const checkpoints = computed(() => taskPoints(app.runData || {}))
 
 async function loadCheckpoints() {
   try {
-    const result = await callAPI('get_task_details', { index: app.selectedTaskIndex })
-    checkpoints.value = result?.target_points || result?.checkpoints || result?.points || []
+    if (app.selectedTaskIndex < 0) return
+    const result = await callAPI('get_task_details', app.selectedTaskIndex)
+    if (!result?.success) throw new Error(result?.message || '获取目标点失败')
+    app.runData = { ...result.details, task_index: app.selectedTaskIndex }
   } catch (e) {
     app.addLog('获取目标点失败: ' + (e.message || e), 'ERROR')
   }
@@ -272,7 +282,7 @@ const historyList = ref([])
 
 async function loadHistory() {
   try {
-    const result = await callAPI('get_task_history', { index: app.selectedTaskIndex })
+    const result = await callAPI('get_task_history', app.selectedTaskIndex)
     historyList.value = result?.history || result?.records || []
   } catch (e) {
     app.addLog('获取历史记录失败: ' + (e.message || e), 'ERROR')
@@ -282,13 +292,12 @@ async function loadHistory() {
 // ── Parameters ──
 const paramValues = reactive({})
 const paramKeys = computed(() => Object.keys(app.pythonParams))
+const visibleParamGroups = paramGroups.filter(group => group.title !== '自动签到')
 const hasParams = computed(() => paramKeys.value.length > 0)
 
 function initParamValues() {
   for (const [k, v] of Object.entries(app.pythonParams)) {
-    if (!(k in paramValues)) {
-      paramValues[k] = v
-    }
+    paramValues[k] = v
   }
 }
 
@@ -329,8 +338,8 @@ const progressPercent = computed(() => {
   const rd = app.runData
   if (!rd) return 0
   if (rd.progress != null) return Math.min(100, Math.max(0, Number(rd.progress)))
-  if (rd.total_distance && rd.current_distance) {
-    return Math.min(100, (rd.current_distance / rd.total_distance) * 100)
+  if ((rd.total_run_distance_m ?? rd.total_distance) && rd.current_distance) {
+    return Math.min(100, (rd.current_distance / (rd.total_run_distance_m ?? rd.total_distance)) * 100)
   }
   return 0
 })
@@ -355,7 +364,15 @@ function onTabChange(tab) {
   if (tab === 'checkpoints') loadCheckpoints()
   if (tab === 'history') loadHistory()
   if (tab === 'params') loadParams()
+  if (tab === 'attendance') refreshAttendanceList()
 }
+
+watch(() => props.openTab, (v) => {
+  if (v && validTabKeys.includes(v) && v !== activeTab.value) {
+    activeTab.value = v
+    onTabChange(v)
+  }
+}, { immediate: true })
 
 onMounted(() => {
   initParamValues()
@@ -363,7 +380,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="panel rounded-xl p-4">
+  <div id="task-section-desktop-inline" class="panel rounded-xl p-4">
     <TabPanel
       class="legacy-control-tabs"
       v-model="activeTab"
@@ -380,9 +397,9 @@ onMounted(() => {
           >
             <p class="text-sm text-slate-500">已选任务总览</p>
             <p id="run-stats-label" class="text-2xl font-bold text-sky-600">
-              {{ app.runData?.total_distance != null ? (Number(app.runData.total_distance) / 1000).toFixed(2) + ' km' : '-- km' }}
+              {{ (app.runData?.total_run_distance_m ?? app.runData?.total_distance) != null ? (Number((app.runData.total_run_distance_m ?? app.runData.total_distance)) / 1000).toFixed(2) + ' km' : '-- km' }}
               /
-              {{ app.runData?.total_time != null ? formatDuration(app.runData.total_time) : '--:--' }}
+              {{ (app.runData?.total_run_time_s ?? app.runData?.total_time) != null ? formatDuration((app.runData.total_run_time_s ?? app.runData.total_time)) : '--:--' }}
             </p>
           </div>
 
@@ -396,7 +413,7 @@ onMounted(() => {
             </div>
             <div class="flex justify-between text-xs mt-1">
               <span id="single-progress-text" class="text-slate-600">{{ progressStatusText }}</span>
-              <span id="single-progress-extra" class="text-slate-400">{{ progressPercent.toFixed(1) }}%</span>
+              <span v-if="app.runData" id="single-progress-extra" class="text-slate-400">{{ progressPercent.toFixed(1) }}%</span>
             </div>
           </div>
 
@@ -647,31 +664,18 @@ onMounted(() => {
             暂无参数数据
           </div>
           <template v-else>
-            <div class="space-y-2">
-              <div v-for="key in paramKeys" :key="key">
-                <div v-if="typeof paramValues[key] === 'boolean'">
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" v-model="paramValues[key]" class="w-4 h-4 rounded accent-[var(--accent)]" />
-                    <span class="text-sm text-[var(--ink)]">{{ key }}</span>
-                  </label>
-                </div>
-                <div v-else>
-                  <label class="text-xs text-[var(--ink-muted)] block mb-1">{{ key }}</label>
-                  <input
-                    v-if="typeof paramValues[key] === 'number'"
-                    type="number"
-                    v-model.number="paramValues[key]"
-                    class="input-field"
-                  />
-                  <input
-                    v-else
-                    type="text"
-                    v-model="paramValues[key]"
-                    class="input-field"
-                  />
-                </div>
+            <section v-for="group in visibleParamGroups" :key="group.title" class="space-y-3 rounded-lg border border-slate-200 p-3">
+              <h4 class="text-sm font-bold text-slate-700">{{ group.title }}</h4>
+              <div v-for="key in group.keys.filter(key => key in paramValues)" :key="key">
+                <label v-if="['api_fallback_line', 'ignore_task_time'].includes(key) || paramDefs[key].type === 'checkbox'" class="flex items-center gap-2 text-sm text-slate-700">
+                  <input v-model="paramValues[key]" type="checkbox" class="h-4 w-4 accent-sky-600" />{{ paramDefs[key].label }}
+                </label>
+                <label v-else class="block text-sm text-slate-700">{{ paramDefs[key].label }} <span class="text-xs text-slate-400">{{ paramDefs[key].unit }}</span>
+                  <input v-model.number="paramValues[key]" type="number" step="any" class="input-field mt-1" />
+                </label>
+                <p class="mt-1 text-xs text-slate-400">{{ paramDefs[key].help }}</p>
               </div>
-            </div>
+            </section>
             <div class="flex gap-2 pt-2 border-t border-[var(--border-color)]">
               <button class="btn btn-primary flex-1 justify-center" @click="saveParams">保存参数</button>
               <button class="btn btn-secondary flex-1 justify-center" @click="resetParams">恢复默认</button>
@@ -716,3 +720,15 @@ onMounted(() => {
     </AppModal>
   </div>
 </template>
+
+<style scoped>
+:deep(.legacy-control-tabs > div:first-child .tab-button) {
+  padding: 0.5rem 0.75rem;
+  font-size: 16px;
+  line-height: 24px;
+}
+:deep(.legacy-control-tabs > div:nth-child(2)) {
+  height: 14rem;
+  overflow-y: auto;
+}
+</style>

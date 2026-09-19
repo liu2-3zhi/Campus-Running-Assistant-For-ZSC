@@ -3,7 +3,7 @@ const emit = defineEmits(['toggle-sidebar'])
 </script>
 
 <template>
-  <header class="fixed top-0 left-0 right-0 z-40 h-12 flex items-center px-3 bg-[var(--card-bg)] border-b border-[var(--border-color)] backdrop-blur-md md:hidden">
+  <header class="fixed top-0 left-0 right-0 z-40 h-14 flex items-center px-3 bg-[var(--card-bg)] border-b border-[var(--border-color)] backdrop-blur-md md:hidden">
     <button
       class="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[var(--glass)] transition-colors"
       @click="emit('toggle-sidebar')"

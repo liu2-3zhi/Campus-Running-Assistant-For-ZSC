@@ -4,7 +4,6 @@
  * 金额 / 支付方式（动态加载启用方式）/ 商品描述 → 校验 → 验证域名 → 创建订单 → 新窗口支付 → 启动轮询。
  */
 import { ref, watch } from 'vue'
-import { callRawAPI } from '@/services/api'
 import AppModal from '@/components/common/AppModal.vue'
 import { sanitizeSvg } from '@/utils/sanitizeSvg'
 import {
@@ -13,6 +12,7 @@ import {
   verifyHost,
   createPaymentOrderRequest,
   startOrderPolling,
+  loadMethodsConfig,
 } from '@/composables/usePayment'
 
 const props = defineProps({
@@ -28,20 +28,9 @@ const loadingMethods = ref(false)
 const methodsError = ref('')
 const submitting = ref(false)
 
-function getSwal() { return window.Swal }
 function alertMsg(text, title = '提示', icon = 'info') {
   if (window.Swal) window.Swal.fire({ icon, title, text, confirmButtonText: '确定' })
   else window.alert(`${title}\n${text}`)
-}
-
-function normalizeMethods(raw) {
-  if (!raw) return {}
-  if (Array.isArray(raw)) {
-    const o = {}
-    raw.forEach((m) => { if (m && m.code) o[m.code] = m })
-    return o
-  }
-  return raw
 }
 
 async function loadEnabledMethods() {
@@ -49,28 +38,7 @@ async function loadEnabledMethods() {
   methodsError.value = ''
   methods.value = []
   try {
-    // 支付方式定义
-    let defs = {}
-    try {
-      const cfg = await callRawAPI('/api/payment/methods_config', 'GET')
-      defs = normalizeMethods(cfg.methods || cfg.payment_methods || {})
-    } catch (_) { /* ignore */ }
-
-    // 启用的支付方式
-    let enabled = []
-    try {
-      const c = await callRawAPI('/api/admin/payment/config', 'GET')
-      const conf = c.config || c
-      enabled = conf.enabled_payment_methods || []
-    } catch (_) { /* ignore */ }
-    if (!enabled.length) {
-      // 回退：methods_config 的 enabled_methods，或全部定义
-      try {
-        const cfg2 = await callRawAPI('/api/payment/methods_config', 'GET')
-        enabled = cfg2.enabled_methods || []
-      } catch (_) { /* ignore */ }
-    }
-    if (!enabled.length) enabled = Object.keys(defs)
+    const { enabledMethods: enabled, methods: defs } = await loadMethodsConfig()
 
     methods.value = enabled.map((code) => {
       const d = defs[code] || {}
@@ -84,8 +52,8 @@ async function loadEnabledMethods() {
         textColor: d.textColor || '',
       }
     })
-    if (methods.value.length) selectedMethod.value = methods.value[0].code
-    else methodsError.value = '暂无可用的支付方式'
+    selectedMethod.value = methods.value[0]?.code || ''
+    if (!methods.value.length) methodsError.value = '暂无可用的支付方式'
   } catch (e) {
     methodsError.value = e.message || '加载支付方式失败'
   } finally {
@@ -154,59 +122,61 @@ async function submit() {
 </script>
 
 <template>
-  <AppModal :visible="visible" title="发起支付" width="max-w-md" @close="emit('close')">
+  <AppModal :visible="visible" panel title="在线支付" width="max-w-md" @close="emit('close')">
     <div class="space-y-4">
       <!-- 金额 -->
       <div>
-        <label class="block text-sm text-[var(--ink-secondary)] mb-1">支付金额（元）</label>
+        <label for="payment-amount" class="block text-sm font-semibold leading-6 text-slate-700 mb-1">支付金额 <span class="text-red-500">*</span></label>
         <input
+          id="payment-amount"
           v-model="amount"
           type="number"
           min="0.01"
           step="0.01"
+          inputmode="decimal"
           class="input-field w-full"
-          placeholder="请输入支付金额（不低于 0.01）"
+          placeholder="请输入支付金额（最低0.01元）"
         />
-      </div>
-
-      <!-- 商品描述 -->
-      <div>
-        <label class="block text-sm text-[var(--ink-secondary)] mb-1">商品描述</label>
-        <input v-model="productName" type="text" class="input-field w-full" placeholder="在线支付" />
       </div>
 
       <!-- 支付方式 -->
       <div>
-        <label class="block text-sm text-[var(--ink-secondary)] mb-2">支付方式</label>
+        <label class="block text-sm font-semibold leading-6 text-slate-700 mb-2">支付方式 <span class="text-red-500">*</span></label>
         <div v-if="loadingMethods" class="text-center py-6 text-sm text-[var(--ink-muted)]">加载中...</div>
         <div v-else-if="methodsError" class="text-center py-6 text-sm text-[var(--ink-muted)]">{{ methodsError }}</div>
         <div v-else class="space-y-2">
           <label
             v-for="m in methods"
             :key="m.code"
-            class="flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all"
-            :style="{ borderColor: selectedMethod === m.code ? (m.borderColor || 'var(--accent)') : 'var(--border-color)' }"
+            class="flex items-center gap-3 p-3 rounded-lg border-2 border-slate-200 cursor-pointer transition-colors"
           >
-            <input type="radio" name="payment-method" :value="m.code" v-model="selectedMethod" class="w-4 h-4 accent-[var(--accent)]" />
-            <span class="w-7 h-7 flex items-center justify-center shrink-0">
+            <input type="radio" name="payment-method" :value="m.code" v-model="selectedMethod" class="w-4 h-4" />
+            <span class="flex items-center gap-2">
+            <span class="h-7 flex items-center justify-center shrink-0">
               <span v-if="m.svg" class="w-6 h-6 flex items-center justify-center" v-html="sanitizeSvg(m.svg)"></span>
               <img v-else-if="m.image" :src="m.image" class="w-6 h-6 object-contain" alt="" />
-              <span v-else class="text-lg">{{ m.icon || '💳' }}</span>
+              <span v-else class="text-lg">{{ m.icon && !['svg', 'image'].includes(m.icon) ? m.icon : '💳' }}</span>
             </span>
-            <span class="text-sm font-semibold" :style="{ color: m.textColor || 'var(--ink)' }">{{ m.name }}</span>
+            <span class="text-sm font-medium text-slate-700">{{ m.name }}</span>
+            </span>
           </label>
         </div>
       </div>
 
+      <div>
+        <label for="payment-product-name" class="block text-sm font-semibold leading-6 text-slate-700 mb-1">商品描述</label>
+        <input id="payment-product-name" v-model="productName" type="text" class="input-field w-full" placeholder="商品描述（例如：跑步服务费用）" />
+      </div>
+
       <!-- 操作按钮 -->
-      <div class="flex justify-end gap-2 pt-1">
-        <button class="btn btn-secondary" @click="emit('close')">取消</button>
+      <div class="flex justify-end gap-3 pt-4 border-t border-slate-200">
+        <button class="btn btn-ghost" @click="emit('close')">取消</button>
         <button
           class="btn btn-primary"
           :disabled="submitting || loadingMethods || !methods.length"
           @click="submit"
         >
-          {{ submitting ? '创建中...' : '确认支付' }}
+          {{ submitting ? '创建中...' : '立即支付' }}
         </button>
       </div>
     </div>

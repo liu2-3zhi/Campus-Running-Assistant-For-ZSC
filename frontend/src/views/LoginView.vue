@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { callRawAPI } from '@/services/api'
+import { callAPI, callRawAPI } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import AuthPanel from '@/components/login/AuthPanel.vue'
@@ -26,6 +26,7 @@ const importFileInput = ref(null)
 const viewMode = ref('loading')
 const errorMsg = ref('')
 const sessionData = ref({})
+const frontendConfig = ref({})
 
 // --- Inline session management (school-login right column) ---
 const inlineSessions = ref([])
@@ -69,6 +70,7 @@ async function checkUUID(uuid) {
       auth.loginInProgress = true
       sessionData.value = data
       viewMode.value = 'school-login'
+      await loadInlineSessions()
     } else {
       auth.sessionUUID = null
       auth.loginInProgress = false
@@ -149,35 +151,18 @@ async function handleImportFile(event) {
   const file = event.target.files?.[0]
   if (!file) return
 
-  const formData = new FormData()
-  formData.append('file', file)
-
   try {
-    const sessionId = auth.getAuthenticatedSessionHeaderValue()
-    const headers = {}
-    if (sessionId) headers['X-Session-ID'] = sessionId
-
-    const response = await fetch('/auth/import_users', {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: formData,
-    })
-
-    const data = await response.json()
-
-    if (response.ok && data.success !== false) {
-      await Swal.fire({
-        icon: 'success',
-        title: '导入成功',
-        text: data.message || '用户数据已成功导入',
-      })
-      window.location.reload()
+    const data = await callAPI('import_task_data', await file.text())
+    if (data.success) {
+      app.tasks = data.tasks || []
+      app.selectedTaskIndex = app.tasks.length ? 0 : -1
+      auth.setLoginResult({ ...data, ...(data.userInfo || {}), session_id: auth.sessionUUID })
+      onSchoolLoginSuccess(data)
     } else {
       await Swal.fire({
         icon: 'error',
         title: '导入失败',
-        text: data.message || '导入用户数据失败',
+        text: data.message || '导入离线任务失败',
       })
     }
   } catch (e) {
@@ -207,6 +192,7 @@ function formatSessionDate(timestamp) {
 
 // --- Lifecycle ---
 onMounted(async () => {
+  callRawAPI('/api/frontend-config', 'GET').then(data => { frontendConfig.value = data }).catch(() => {})
   if (auth.isAuthenticated) {
     router.push('/app')
     return
@@ -239,19 +225,8 @@ onMounted(async () => {
       id="auth-login-container"
       class="flex h-screen w-screen items-center justify-center p-0 md:p-4"
     >
-      <header
-        v-if="app.isMobile"
-        id="mobile-header"
-        class="mobile-header"
-      >
-        <div class="flex w-full items-center justify-center">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-[var(--accent)]" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-3.6 13.9l1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z" />
-          </svg>
-          <span class="ml-2 text-lg font-bold text-slate-800">跑步助手</span>
-        </div>
-      </header>
       <button
+        v-if="frontendConfig.show_newbie_help || app.isMobile"
         id="newbie-help-btn"
         type="button"
         class="btn btn-ghost fixed z-10 !px-4 !py-2"
@@ -286,7 +261,7 @@ onMounted(async () => {
           </h2>
           <p class="text-sm text-slate-500">请登录或注册以继续使用</p>
         </div>
-        <AuthPanel @login-success="onAuthSuccess" />
+        <AuthPanel :frontend-config="frontendConfig" @login-success="onAuthSuccess" />
         <div
           id="auth-beian-footer"
           class="mt-6 flex flex-col items-center justify-center gap-2 border-t border-slate-200 pt-4 text-xs text-slate-400"
@@ -319,81 +294,122 @@ onMounted(async () => {
 
     <!-- ============ Phase 3: School Login (3-column grid matching original) ============ -->
     <div v-else-if="viewMode === 'school-login'" class="flex-1">
-      <div class="h-screen w-full grid grid-cols-1 lg:grid-cols-3">
+      <div class="min-h-screen w-full grid grid-cols-1 gap-4 p-4 lg:h-screen lg:grid-cols-3 lg:gap-0 lg:p-0">
 
-        <!-- Column 1: Multi-account entry (purple gradient) -->
-        <div class="relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-purple-50 via-violet-50 to-purple-100 p-4 lg:p-8">
-          <div class="absolute -left-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-2xl"></div>
-          <div class="absolute -bottom-16 -right-16 h-48 w-48 rounded-full bg-white/10 blur-xl"></div>
+<div
+          class="school-multi-column order-2 lg:order-1 flex flex-col items-center justify-center p-8 lg:p-12 bg-gradient-to-br from-purple-50 via-violet-50 to-purple-100 relative overflow-hidden"
+        >
+          <div
+            class="absolute top-0 right-0 w-64 h-64 bg-violet-200 rounded-full opacity-20 blur-3xl -translate-y-1/2 translate-x-1/2"
+          ></div>
+          <div
+            class="absolute bottom-0 left-0 w-48 h-48 bg-purple-300 rounded-full opacity-20 blur-2xl translate-y-1/2 -translate-x-1/2"
+          ></div>
 
-          <div class="relative z-10 w-full max-w-sm">
-            <div class="rounded-3xl bg-white/60 backdrop-blur-xl shadow-2xl p-6 lg:p-8 space-y-5">
-              <div class="flex justify-center">
-                <svg class="h-16 w-16 drop-shadow-lg" fill="none" viewBox="0 0 64 64">
-                  <circle cx="22" cy="22" r="8" fill="#7c3aed" opacity="0.8"/>
-                  <circle cx="42" cy="22" r="8" fill="#a78bfa" opacity="0.8"/>
-                  <circle cx="32" cy="42" r="8" fill="#c4b5fd" opacity="0.8"/>
-                  <path d="M14 38c0-5 4-8 8-8s8 3 8 8" stroke="#7c3aed" stroke-width="2" fill="none" stroke-linecap="round"/>
-                  <path d="M34 38c0-5 4-8 8-8s8 3 8 8" stroke="#a78bfa" stroke-width="2" fill="none" stroke-linecap="round"/>
-                  <path d="M24 54c0-5 4-8 8-8s8 3 8 8" stroke="#c4b5fd" stroke-width="2" fill="none" stroke-linecap="round"/>
-                </svg>
-              </div>
-              <div class="text-center space-y-1.5">
-                <h2 class="card-title bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-3xl font-bold leading-tight text-transparent lg:text-4xl">
-                  掌上莲峰<br />
-                  多账号模式
-                </h2>
-              </div>
+          <div
+            class="relative text-center w-full max-w-sm space-y-7 panel rounded-3xl p-10 bg-white/60 backdrop-blur-xl shadow-2xl border border-white/50 hover:shadow-violet-200/50 transition-all duration-500 hover:scale-[1.02] overflow-auto"
+          >
+            <div class="relative inline-block">
+              <div
+                class="absolute inset-0 bg-violet-400 rounded-full blur-2xl opacity-30 animate-pulse"
+              ></div>
 
-              <p class="text-base leading-relaxed text-slate-600">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="relative w-20 h-20 mx-auto text-violet-600 drop-shadow-lg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path
+                  d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05c1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"
+                ></path>
+              </svg>
+            </div>
+
+            <h2
+              class="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent card-title leading-tight"
+            >
+              掌上莲峰<br />多账号模式
+            </h2>
+
+            <div class="space-y-3">
+              <p class="text-slate-600 text-base leading-relaxed">
                 ✨ 支持批量导入账号<br />
                 🎯 统一管理所有任务<br />
                 ⚡ 一键执行全部流程
               </p>
+            </div>
 
-              <button
-                class="btn btn-secondary w-full py-3.5 text-lg font-bold shadow-xl shadow-violet-300/40"
-                @click="onEnterMulti"
+            <button
+              id="multi-account-btn" @click="onEnterMulti"
+              class="btn btn-secondary w-full py-3.5 text-lg font-bold shadow-xl shadow-violet-300/40 hover:shadow-2xl hover:shadow-violet-400/50 transition-all duration-300"
+              title="多账号"
+              aria-label="多账号"
+            >
+              <span>进入多账号控制台</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="w-5 h-5"
+                viewBox="0 0 20 20"
+                fill="currentColor"
               >
-                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                进入多账号控制台
-              </button>
-            </div>
+                <path
+                  fill-rule="evenodd"
+                  d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+            </button>
           </div>
         </div>
 
-        <!-- Column 2: Single account login (sky gradient) -->
-        <div class="relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-white via-sky-50/30 to-cyan-50/40 p-4 lg:p-8">
-          <div class="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/15 blur-2xl"></div>
-          <div class="absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-white/15 blur-xl"></div>
+        <div
+          class="school-single-column order-1 lg:order-2 flex items-center justify-center p-6 lg:p-8 bg-gradient-to-br from-white via-sky-50/30 to-cyan-50/40 relative overflow-hidden"
+        >
+          <div
+            class="absolute top-0 right-0 w-64 h-64 bg-sky-300 rounded-full opacity-10 blur-3xl translate-x-1/3 -translate-y-1/3"
+          ></div>
+          <div
+            class="absolute bottom-0 left-0 w-48 h-48 bg-cyan-200 rounded-full opacity-15 blur-2xl -translate-x-1/4 translate-y-1/4"
+          ></div>
 
-          <div class="relative z-10 w-full max-w-md">
-            <div class="rounded-3xl bg-white/80 backdrop-blur-xl shadow-2xl p-6 lg:p-8 space-y-5">
-              <div class="text-center space-y-3">
-                <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-sky-600 text-white shadow-lg shadow-sky-200/60">
-                  <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 class="card-title text-3xl font-bold text-sky-700 lg:text-4xl">单账号登录</h2>
-                  <p class="text-sm text-sky-600 font-medium">掌上莲峰跑步助手</p>
-                </div>
-              </div>
-
-              <SessionLogin
-                :initial-data="sessionData"
-                @login-success="onSchoolLoginSuccess"
-                @import-users="onImportUsers"
-              />
+          <div
+            class="relative panel rounded-3xl w-full max-w-md p-10 space-y-4 shadow-2xl border border-white/60 hover:shadow-sky-200/40 transition-all duration-300 overflow-y-auto max-h-full"
+            id="desktop-container-single-login-panel-wrapper"
+          >
+            <div class="flex items-center justify-center gap-3 pb-2">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="w-8 h-8 text-sky-600"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                ></path>
+              </svg>
+              <h2
+                class="text-3xl lg:text-4xl font-bold text-sky-700 card-title"
+              >
+                单账号登录
+              </h2>
             </div>
-          </div>
-        </div>
 
+            <div class="text-center">
+              <p class="text-slate-500 text-sm">掌上莲峰跑步助手</p>
+            </div>
+
+            <SessionLogin :initial-data="sessionData" @login-success="onSchoolLoginSuccess" @import-users="onImportUsers" />
+</div>
+</div>
         <!-- Column 3: Session management -->
-        <div class="relative flex flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-6 md:p-10 lg:p-12">
+        <div class="relative order-3 flex flex-col items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-6 md:p-10 lg:rounded-none lg:p-12">
           <div class="relative w-full max-w-2xl">
-            <div class="panel flex max-h-[calc(100vh-12rem)] flex-col space-y-5 overflow-x-hidden rounded-3xl p-8 shadow-xl">
+            <div class="panel flex max-h-[calc(100vh-12rem)] flex-col space-y-5 overflow-x-hidden rounded-3xl p-8 border border-white/60 bg-white/80 shadow-2xl">
               <div class="flex items-center justify-center gap-2 border-b border-sky-100 pb-2">
                 <svg class="h-6 w-6 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -491,10 +507,22 @@ onMounted(async () => {
     <input
       ref="importFileInput"
       type="file"
-      accept=".json,.csv,.xlsx,.xls"
+      accept=".json"
       class="hidden"
       @change="handleImportFile"
     />
 
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 767px) {
+  :global(body.mobile-mode #auth-login-container) { padding-top: 56px; }
+  :global(body.mobile-mode #auth-login-container_panel) { border-radius: 16px; }
+  :global(body.mobile-mode #auth-login-container_panel h2) {
+    color: #0f172a;
+    font-family: "Noto Sans SC", sans-serif;
+    line-height: 36px;
+  }
+}
+</style>

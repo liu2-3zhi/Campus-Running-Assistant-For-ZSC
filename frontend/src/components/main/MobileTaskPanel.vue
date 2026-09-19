@@ -1,9 +1,14 @@
 <script setup>
 import { ref } from 'vue'
 import { useAppStore } from '@/stores/app'
-import { callAPI } from '@/services/api'
+import { callAPI, callRawAPI } from '@/services/api'
+
+import { useMapStore } from '@/stores/map'
+import { loadSelectedTask, taskName, taskStatus } from './taskData'
 
 const app = useAppStore()
+const mapStore = useMapStore()
+const selecting = ref(false)
 const refreshing = ref(false)
 
 async function refreshTasks() {
@@ -18,13 +23,21 @@ async function refreshTasks() {
   }
 }
 
-function selectTask(index) {
-  app.selectedTaskIndex = index
+async function selectTask(index) {
+  if (selecting.value) return
+  selecting.value = true
+  try {
+    await loadSelectedTask(app, index, { callAPI, callRawAPI }, mapStore.isDrawing)
+  } catch (error) {
+    app.addLog(error.message || String(error), 'ERROR')
+  } finally {
+    selecting.value = false
+  }
 }
 </script>
 
 <template>
-  <div id="mobile-task-panel" class="mobile-card flex min-h-screen flex-col p-0">
+  <div id="mobile-task-panel" class="mobile-card flex min-h-full flex-col p-0">
     <div class="mb-4 flex items-center justify-between border-b border-green-100 p-4 pb-3">
       <div class="flex items-center gap-2">
         <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -45,16 +58,17 @@ function selectTask(index) {
     <div id="mobile-task-list" class="flex-1 space-y-2 px-4">
       <button
         v-for="(task, index) in app.tasks"
-        :key="task.id || index"
-        class="w-full rounded-xl border p-3 text-left transition"
-        :class="index === app.selectedTaskIndex ? 'border-sky-300 bg-sky-50' : 'border-slate-200 bg-white'"
+        :key="task.errand_schedule || task.id || index"
+        class="w-full max-w-full rounded-lg border p-3 text-left transition"
+        :disabled="selecting || refreshing"
+        :style="{ opacity: task.status === 1 ? 0.6 : 1 }"
+        :class="index === app.selectedTaskIndex ? 'border-2 border-l-[6px] border-blue-500 bg-blue-50 shadow-md' : 'border-slate-200 bg-white'"
         @click="selectTask(index)"
       >
-        <div class="flex items-center justify-between gap-3">
-          <span class="truncate text-sm font-medium text-slate-700">
-            {{ task.name || task.task_name || `任务 ${index + 1}` }}
-          </span>
-          <span class="text-xs text-slate-400">{{ task.status || '待执行' }}</span>
+        <p class="mb-2 w-full break-words text-sm font-semibold text-slate-800">{{ taskName(task, index) }}</p>
+        <div class="flex w-full flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between">
+          <span class="flex items-center gap-1 font-medium" :class="taskStatus(task).className">{{ taskStatus(task).icon }} {{ taskStatus(task).label }}</span>
+          <span class="break-words text-slate-500">{{ task.info_text || '' }}</span>
         </div>
       </button>
       <p v-if="app.tasks.length === 0" class="py-8 text-center text-sm text-slate-400">

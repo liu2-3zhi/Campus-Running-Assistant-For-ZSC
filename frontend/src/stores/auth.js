@@ -16,6 +16,7 @@ export const useAuthStore = defineStore('auth', () => {
   const bannedData = ref(null)
   const isGuest = ref(false)
   const isAdmin = ref(false)
+  const group = ref('')
 
   const username = ref('')
   const displayName = ref('')
@@ -69,19 +70,62 @@ export const useAuthStore = defineStore('auth', () => {
       authSessionUUID.value = data.session_id
     }
     isAuthenticated.value = true
-    username.value = data.username || ''
-    displayName.value = data.display_name || data.username || ''
-    realName.value = data.real_name || data.name || ''
-    studentId.value = data.student_id || data.user_id || ''
-    avatarUrl.value = data.avatar_url || ''
-    theme.value = data.theme || 'light'
-    themeStyle.value = data.theme_style || 'default'
-    isGuest.value = data.is_guest || false
-    isAdmin.value = data.is_admin || false
-    permissions.value = data.permissions || {}
-    sessionLimitInfo.value = data.session_limit_info || null
-    token.value = data.token || ''
+    applyAuthInfo(data)
     loginInProgress.value = false
+  }
+
+  function activateSession(sessionId) {
+    if (!isUsableUUID(sessionId)) return
+    sessionUUID.value = sessionId
+    authSessionUUID.value = sessionId
+    sessionStorage.setItem('session_uuid', sessionId)
+  }
+
+  function applyAuthInfo(data) {
+    if (!data || data.success === false) return
+    const identity = data.auth_username ?? data.username
+    if (identity !== undefined && identity !== username.value) {
+      permissions.value = {}
+      group.value = ''
+      isAdmin.value = false
+      displayName.value = ''
+    }
+    if (identity != null) username.value = identity
+    if (data.auth_group != null || data.group != null) {
+      group.value = data.auth_group ?? data.group
+      isAdmin.value = ['admin', 'super_admin'].includes(group.value)
+    } else if (data.is_admin !== undefined) isAdmin.value = !!data.is_admin
+    if (data.is_authenticated !== undefined) isAuthenticated.value = !!data.is_authenticated
+    if (data.is_guest !== undefined) isGuest.value = !!data.is_guest
+    displayName.value = data.display_name ?? data.nickname ?? (displayName.value || username.value)
+    const user = data.userInfo || data.user_info || data
+    realName.value = user.real_name ?? user.realName ?? user.name ?? realName.value
+    studentId.value = user.student_id ?? user.studentId ?? user.user_id ?? studentId.value
+    if (data.avatar_url !== undefined) avatarUrl.value = data.avatar_url || ''
+    if (data.theme) theme.value = data.theme
+    if (data.theme_style) themeStyle.value = data.theme_style
+    if (data.permissions) permissions.value = data.permissions
+    if (data.session_limit_info !== undefined) sessionLimitInfo.value = data.session_limit_info
+    if (data.token !== undefined) token.value = data.token || ''
+  }
+
+  async function loadPermissions(keys) {
+    const sessionId = getAuthenticatedSessionHeaderValue()
+    if (!sessionId) return
+    const entries = await Promise.all([...new Set(keys)].map(async permission => {
+      try {
+        const response = await fetch('/auth/check_permission', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'X-Session-ID': sessionId },
+          body: JSON.stringify({ permission }),
+        })
+        const result = await response.json()
+        return [permission, !!(response.ok && result.success && result.has_permission)]
+      } catch (_) { return [permission, false] }
+    }))
+    if (sessionId === getAuthenticatedSessionHeaderValue()) {
+      permissions.value = { ...permissions.value, ...Object.fromEntries(entries) }
+    }
   }
 
   function setBanned(banned, data = null) {
@@ -162,6 +206,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated.value = false
     isGuest.value = false
     isAdmin.value = false
+    group.value = ''
     username.value = ''
     displayName.value = ''
     realName.value = ''
@@ -176,10 +221,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     sessionUUID, authSessionUUID, loginInProgress,
-    isAuthenticated, isBanned, bannedData, isGuest, isAdmin,
+    isAuthenticated, isBanned, bannedData, isGuest, isAdmin, group,
     username, displayName, realName, studentId, avatarUrl, theme, themeStyle,
     permissions, sessionLimitInfo, token, hasSession,
     getAuthenticatedSessionHeaderValue, getSessionHeaderValue,
-    setLoginResult, setBanned, handleSessionExpired, handleLoggedOutElsewhere, logout,
+    setLoginResult, applyAuthInfo, activateSession, loadPermissions, setBanned, handleSessionExpired, handleLoggedOutElsewhere, logout,
   }
 })

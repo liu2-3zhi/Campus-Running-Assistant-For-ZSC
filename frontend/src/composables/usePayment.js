@@ -719,23 +719,29 @@ export async function showOverduePaymentModal(overdueAccounts) {
 /* ============================================================================
  * 账单支付方式选择 / 创建订单 / 轮询（§7.3 / §7.4 / §7.8 / §7.10）
  * ==========================================================================*/
-async function loadMethodsConfig() {
-  let enabledMethods = []
+export async function loadMethodsConfig() {
+  let enabledMethods = null
   let methods = {}
+  const readEnabled = (value) => Array.isArray(value)
+    ? value.filter(code => typeof code === 'string' && code.trim())
+    : typeof value === 'string' ? value.split(',').map(code => code.trim()).filter(Boolean) : null
   try {
     const r = await callRawAPI('/api/payment/methods_config', 'GET')
-    enabledMethods = r.enabled_methods || r.enabled_payment_methods || []
-    methods = normalizeMethods(r.methods || r.payment_methods || {})
+    if (r.success !== false) {
+      enabledMethods = readEnabled(r.enabled_methods ?? r.enabled_payment_methods)
+      methods = normalizeMethods(r.methods || r.payment_methods || {})
+    }
   } catch (_) { /* ignore */ }
   try {
     const c = await callRawAPI('/api/admin/payment/config', 'GET')
     const cfg = c.config || c
-    const full = normalizeMethods(cfg.payment_methods || {})
-    if (Object.keys(full).length) methods = { ...methods, ...full }
-    if (!enabledMethods.length) enabledMethods = cfg.enabled_payment_methods || []
+    if (c.success !== false) {
+      const full = normalizeMethods(cfg.payment_methods || {})
+      if (Object.keys(full).length) methods = { ...methods, ...full }
+      enabledMethods = readEnabled(cfg.enabled_payment_methods) ?? enabledMethods
+    }
   } catch (_) { /* ignore */ }
-  if (!enabledMethods.length) enabledMethods = Object.keys(methods)
-  return { enabledMethods, methods }
+  return { enabledMethods: enabledMethods || [], methods }
 }
 
 /**

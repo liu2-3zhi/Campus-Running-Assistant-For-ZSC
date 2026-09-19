@@ -6,6 +6,7 @@ import TabPanel from '@/components/common/TabPanel.vue'
 import Swal from 'sweetalert2'
 
 const emit = defineEmits(['login-success'])
+const props = defineProps({ frontendConfig: { type: Object, default: () => ({}) } })
 const auth = useAuthStore()
 
 // --- State ---
@@ -795,7 +796,7 @@ onUnmounted(() => {
             @submit.prevent="handleLogin"
           >
             <!-- Login mode toggle -->
-            <div id="auth-login-type-toggle" class="flex justify-center gap-2 pb-2">
+            <div v-if="props.frontendConfig.enable_phone_login" id="auth-login-type-toggle" class="flex justify-center gap-2 pb-2">
               <button
                 id="auth-login-username-btn"
                 type="button"
@@ -1039,7 +1040,7 @@ onUnmounted(() => {
             </div>
 
             <!-- Phone + SMS -->
-            <div id="auth-reg-phone-wrapper">
+            <div v-if="props.frontendConfig.reg_verify_enabled" id="auth-reg-phone-wrapper">
               <label class="block text-sm font-semibold leading-6 text-slate-700">手机号</label>
               <div class="phone-input-wrapper mt-1">
                 <span class="phone-prefix">+86 </span>
@@ -1057,7 +1058,7 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div id="auth-reg-sms-wrapper">
+            <div v-if="props.frontendConfig.reg_verify_enabled" id="auth-reg-sms-wrapper">
               <label class="block text-sm font-semibold leading-6 text-slate-700">验证码</label>
               <div class="flex gap-2">
                 <input
@@ -1267,3 +1268,17 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.auth-tabs :deep(> div:first-child) { margin-bottom: 24px; }
+@media (max-width: 767px) {
+  .auth-tabs :deep(> div:first-child) { margin-bottom: 16px; }
+  #auth-login-form, #auth-register-form { max-height: none; overflow: visible; padding: 0; }
+  #auth-login-form > div:not(#guest-login-section), #auth-register-form > div { margin-bottom: 20px; }
+  #auth-login-form label, #auth-register-form label { font-size: 14px !important; line-height: 21px !important; margin-bottom: 8px; }
+  .input-field { height: 52px; margin-top: 0; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 12px; box-shadow: none; font-size: 16px; }
+  #auth-login-captcha-container_display > div { margin-top: 0; }
+  #auth-login-captcha-refresh { background: #f1f5f9; border: none; box-shadow: none; }
+  #auth-login-btn { box-shadow: 0 4px 8px rgba(37, 99, 235, 0.3); }
+}
+</style>

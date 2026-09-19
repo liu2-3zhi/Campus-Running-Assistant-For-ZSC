@@ -13,6 +13,7 @@ import Swal from 'sweetalert2'
 
 import UserInfoBar from '@/components/main/UserInfoBar.vue'
 import TaskPanel from '@/components/main/TaskPanel.vue'
+import TaskDetails from '@/components/main/TaskDetails.vue'
 import ControlTabs from '@/components/main/ControlTabs.vue'
 import MobileControlPanel from '@/components/main/MobileControlPanel.vue'
 import MobileTaskPanel from '@/components/main/MobileTaskPanel.vue'
@@ -75,6 +76,7 @@ async function loadInitialData() {
     const responseData = await callAPI('get_initial_data')
     const data = await hydrateMapProviderSecrets(responseData)
     if (data) {
+      auth.applyAuthInfo(data)
       if (data.tasks) app.tasks = data.tasks
       if (data.users) app.users = data.users
       if (data.notifications || data.notices) {
@@ -88,6 +90,11 @@ async function loadInitialData() {
       if (data.run_data) app.runData = data.run_data
       if (data.is_running != null) app.isRunning = data.is_running
       if (data.selected_task_index != null) app.selectedTaskIndex = data.selected_task_index
+      if (data.isLoggedIn && !data.tasks) {
+        const taskResult = await callAPI('load_tasks')
+        if (taskResult?.success) app.tasks = taskResult.tasks || []
+      }
+      if (data.isLoggedIn && !data.params) app.pythonParams = await callAPI('get_params')
 
       const mapConfig = {}
       const providers = data.map_providers || {}
@@ -114,6 +121,7 @@ async function refreshUsers() {
   try {
     const data = await callAPI('get_initial_data')
     if (data) {
+      auth.applyAuthInfo(data)
       if (data.users) app.users = data.users
       if (data.tasks) app.tasks = data.tasks
       if (data.run_data) app.runData = data.run_data
@@ -183,20 +191,10 @@ onUnmounted(() => {
 
 <template>
   <div class="min-h-screen">
-    <!-- ==================== MOBILE LAYOUT ==================== -->
-    <template v-if="app.isMobile">
-      <MobileHeader @toggle-sidebar="sidebarVisible = !sidebarVisible" />
-      <MobileSidebar
-        :visible="sidebarVisible"
-        :is-multi-mode="app.isMultiMode"
-        @close="sidebarVisible = false"
-        @navigate="handleMobileNavigate"
-        @back="handleBack"
-      />
       <button
         id="newbie-help-btn"
         type="button"
-        class="btn btn-ghost fixed z-[1001] !px-4 !py-2"
+        class="btn btn-ghost fixed z-[1001] !px-5 !py-2"
         style="
           top: 100px;
           right: 1rem;
@@ -209,10 +207,21 @@ onUnmounted(() => {
         @click="openHelp"
       >
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         帮助
       </button>
+    <!-- ==================== MOBILE LAYOUT ==================== -->
+    <template v-if="app.isMobile">
+      <MobileHeader @toggle-sidebar="sidebarVisible = !sidebarVisible" />
+      <MobileSidebar
+        :visible="sidebarVisible"
+        :is-multi-mode="app.isMultiMode"
+        @close="sidebarVisible = false"
+        @navigate="handleMobileNavigate"
+        @back="handleBack"
+      />
+
 
       <!-- Loading overlay -->
       <div
@@ -226,14 +235,14 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <main class="h-screen overflow-hidden pb-16 pt-14">
+      <main class="mobile-main-content h-screen overflow-hidden pb-16 pt-14">
         <!-- control panel -->
         <div v-show="mobileActivePanel === 'control'" class="h-full overflow-y-auto">
           <MobileControlPanel />
         </div>
 
         <!-- map panel -->
-        <div v-show="mobileActivePanel === 'map'" class="h-full">
+        <div v-if="mobileActivePanel === 'map'" class="h-full">
           <MobileMapPanel />
         </div>
 
@@ -261,31 +270,7 @@ onUnmounted(() => {
             <div class="mb-4 border-b border-slate-100 pb-3 text-center">
               <h3 class="text-xl font-bold text-slate-700">任务详情</h3>
             </div>
-            <div v-if="!app.selectedTask" class="text-sm text-[var(--ink-muted)] py-6 text-center">
-              请先在「任务」中选择一个任务
-            </div>
-            <div v-else class="space-y-2 text-sm">
-              <div class="flex justify-between">
-                <span class="text-[var(--ink-muted)]">任务名称</span>
-                <span class="text-[var(--ink)] font-medium">{{ app.selectedTask.name || app.selectedTask.task_name || ('任务 #' + (app.selectedTaskIndex + 1)) }}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-[var(--ink-muted)]">状态</span>
-                <span class="text-[var(--ink)]">{{ app.selectedTask.status || '待执行' }}</span>
-              </div>
-              <div v-if="app.selectedTask.distance != null" class="flex justify-between">
-                <span class="text-[var(--ink-muted)]">距离</span>
-                <span class="text-[var(--ink)]">{{ (Number(app.selectedTask.distance) / 1000).toFixed(2) }} km</span>
-              </div>
-              <div v-if="app.selectedTask.duration != null" class="flex justify-between">
-                <span class="text-[var(--ink-muted)]">时长</span>
-                <span class="text-[var(--ink)]">{{ app.selectedTask.duration }}</span>
-              </div>
-              <div v-if="app.selectedTask.target_points || app.selectedTask.checkpoints" class="flex justify-between">
-                <span class="text-[var(--ink-muted)]">打卡点数</span>
-                <span class="text-[var(--ink)]">{{ (app.selectedTask.target_points || app.selectedTask.checkpoints || []).length }}</span>
-              </div>
-            </div>
+            <TaskDetails :task="app.runData || app.selectedTask" mobile />
           </div>
         </div>
 
@@ -392,9 +377,9 @@ onUnmounted(() => {
 
     <!-- ==================== DESKTOP LAYOUT ==================== -->
     <template v-else>
-      <div class="grid h-screen grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-3 xl:grid-cols-4">
+      <div id="main-app" class="grid h-screen grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-3 xl:grid-cols-4">
         <!-- Column 1: User info, tasks, controls -->
-        <div class="col-span-1 flex min-h-0 min-w-[320px] flex-col gap-4 overflow-y-auto pr-1">
+        <div class="col-span-1 flex min-h-0 min-w-[320px] flex-col gap-4 overflow-y-auto">
           <UserInfoBar
             @show-notifications="handleShowNotifications"
             @show-user-details="showUserDetails = true"
@@ -478,3 +463,12 @@ onUnmounted(() => {
     <AdminPanel :visible="showAdmin" @close="showAdmin = false" />
   </div>
 </template>
+
+<style scoped>
+.mobile-main-content > div {
+  scrollbar-width: none;
+}
+.mobile-main-content > div::-webkit-scrollbar {
+  display: none;
+}
+</style>

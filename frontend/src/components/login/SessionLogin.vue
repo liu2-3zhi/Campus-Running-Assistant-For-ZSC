@@ -24,14 +24,16 @@ const loading = ref(false)
 const errorMsg = ref('')
 const successMsg = ref('')
 const userList = ref([])
+const changingUA = ref(false)
 
 // --- User list ---
 function populateUsers(data) {
+  if (data?.ua) userAgent.value = data.ua
   if (data?.users && Array.isArray(data.users) && data.users.length > 0) {
-    userList.value = data.users
+    userList.value = data.users.map(user => typeof user === 'string' ? { username: user } : user)
     if (!selectedUser.value) {
       const last = data.last_user || data.lastUser
-      selectedUser.value = last || data.users[0].username || data.users[0].name || ''
+      selectedUser.value = last || userList.value[0].username || userList.value[0].name || ''
       onUserSelect()
     }
   }
@@ -58,30 +60,29 @@ function onUserSelect() {
 
 // --- Auto-fill password & UA via backend (on_user_selected) ---
 async function autoFillPassword() {
-  if (!loginForm.username) return
+  const username = loginForm.username.trim()
+  if (!username) return
   try {
-    const data = await callAPI('on_user_selected', { username: loginForm.username })
-    if (data?.password) {
-      loginForm.password = data.password
-    }
+    const data = await callAPI('on_user_selected', { username })
+    if (username !== loginForm.username.trim()) return
+    loginForm.password = data?.password || ''
     const ua = data?.ua || data?.user_agent
-    if (ua) userAgent.value = ua
+    userAgent.value = ua || '(新用户将在登录时自动生成)'
+    if (data?.params) app.pythonParams = data.params
   } catch (_) {}
 }
 
 // --- Random UA ---
-const uaPresets = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15',
-  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
-  'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125.0.0.0 Mobile Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0',
-]
-
-function randomUA() {
-  const idx = Math.floor(Math.random() * uaPresets.length)
-  userAgent.value = uaPresets[idx]
+async function randomUA() {
+  changingUA.value = true
+  errorMsg.value = ''
+  try {
+    userAgent.value = await callAPI('generate_new_ua')
+  } catch (e) {
+    errorMsg.value = e.message || '生成 User-Agent 失败'
+  } finally {
+    changingUA.value = false
+  }
 }
 
 // --- Login ---
@@ -128,109 +129,205 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <!-- User combo select -->
-    <div v-if="userList.length > 0">
-      <label class="mb-1 block text-sm font-semibold text-slate-700">选择用户</label>
-      <select
-        v-model="selectedUser"
-        class="select-field"
-        @change="onUserSelect"
-      >
-        <option value="">请选择用户</option>
-        <option v-for="user in userList" :key="user.username || user.name" :value="user.username || user.name">
-          {{ user.display_name || user.nickname || user.username || user.name }}
-        </option>
-      </select>
-    </div>
+<div class="space-y-5 w-full">
+              <div class="space-y-2">
+                <label
+                  class="block text-sm font-bold leading-6 text-slate-700 flex items-center gap-2"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="w-4 h-4 text-slate-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                    ></path>
+                  </svg>
+                  {{ app.isMobile ? "选择用户" : "选择账号" }}
+                </label>
+                <select
+                  id="user-combo" v-model="selectedUser" @change="onUserSelect"
+                  class="select-field hover:border-sky-400 focus:border-sky-600 cursor-pointer transition-all duration-200"
+                  title="选择已保存的账号或创建新账号"
+                  aria-label="选择账号"
+                ><option value="">{{ app.isMobile ? "请选择用户" : "" }}</option><option v-for="user in userList" :key="user.username || user.name" :value="user.username || user.name">{{ user.display_name || user.nickname || user.username || user.name }}</option></select>
+              </div>
 
-    <!-- Username -->
-    <div>
-      <label class="mb-1 block text-sm font-semibold text-slate-700">用户名</label>
-      <input
-        v-model="loginForm.username"
-        type="text"
-        class="input-field"
-        placeholder="请输入学号或工号"
-        autocomplete="username"
-        @blur="autoFillPassword"
-      />
-    </div>
+              <div class="space-y-2">
+                <label
+                  class="block text-sm font-bold leading-6 text-slate-700 flex items-center gap-2"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="w-4 h-4 text-slate-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    ></path>
+                  </svg>
+                  用户名
+                </label>
+                <input
+                  type="text"
+                  id="username-entry" v-model="loginForm.username" @blur="autoFillPassword"
+                  class="input-field hover:border-sky-400 focus:border-sky-600 transition-all duration-200"
+                  placeholder="请输入学号或工号"
+                  autocomplete="username"
+                />
+              </div>
 
-    <!-- Password -->
-    <div>
-      <label class="mb-1 block text-sm font-semibold text-slate-700">密码</label>
-      <input
-        v-model="loginForm.password"
-        type="password"
-        class="input-field"
-        placeholder="请输入密码，一般为身份证后六位"
-        autocomplete="current-password"
-        @keyup.enter="handleLogin"
-      />
-    </div>
+              <div class="space-y-2">
+                <label
+                  class="block text-sm font-bold leading-6 text-slate-700 flex items-center gap-2"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="w-4 h-4 text-slate-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                    ></path>
+                  </svg>
+                  密码
+                </label>
+                <input
+                  type="password"
+                  id="password-entry" v-model="loginForm.password" @keyup.enter="handleLogin"
+                  class="input-field hover:border-sky-400 focus:border-sky-600 transition-all duration-200"
+                  placeholder="请输入密码，一般为身份证后六位"
+                  autocomplete="current-password"
+                />
+              </div>
+            </div>
 
-    <!-- Login button -->
-    <button
-      class="btn btn-primary w-full py-3"
-      :disabled="loading"
-      @click="handleLogin"
-    >
-      <span>{{ loading ? '登录中...' : '登录' }}</span>
-      <svg v-if="!loading" class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-      </svg>
-    </button>
+            <button
+              id="login-button" :disabled="loading" @click="handleLogin"
+              class="btn btn-primary w-full py-3.5 text-lg font-bold shadow-xl shadow-sky-300/40 hover:shadow-2xl hover:shadow-sky-400/50 transition-all duration-300"
+              title="登录"
+              aria-label="登录"
+            >
+              <span>{{ loading ? "登录中..." : app.isMobile ? "登录" : "立即登录" }}</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="w-5 h-5"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M10.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L12.586 11H5a1 1 0 110-2h7.586l-2.293-2.293a1 1 0 010-1.414z"
+                  clip-rule="evenodd"
+                ></path>
+              </svg>
+            </button>
 
-    <!-- Divider -->
-    <div class="relative flex items-center py-1">
-      <div class="flex-grow border-t border-slate-200"></div>
-      <span class="mx-4 shrink-0 text-xs text-slate-400">或者</span>
-      <div class="flex-grow border-t border-slate-200"></div>
-    </div>
+            <div class="relative flex py-3 items-center">
+              <div class="flex-grow border-t border-slate-300"></div>
+              <span class="flex-shrink mx-5 text-slate-400 text-sm font-medium"
+                >或者</span
+              >
+              <div class="flex-grow border-t border-slate-300"></div>
+            </div>
 
-    <!-- Import button (green) -->
-    <button
-      class="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-green-500 text-white font-semibold shadow-lg shadow-green-300/40 hover:from-emerald-600 hover:to-green-600 transition-all duration-300 active:scale-[0.98]"
-      @click="handleImport"
-    >
-      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-      </svg>
-      导入离线文件
-    </button>
+            <button
+              id="import-button" @click="handleImport"
+              class="btn btn-success w-full py-3 font-bold shadow-lg shadow-green-300/30 hover:shadow-xl hover:shadow-green-400/40 transition-all duration-300"
+              title="导入"
+              aria-label="导入"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                ></path>
+              </svg>
+              <span>导入离线文件</span>
+            </button>
 
-    <!-- User-Agent section -->
-    <div class="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          User-Agent 标识
-        </div>
-        <button
-          class="shrink-0 flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
-          @click="randomUA"
-          title="随机生成新的User-Agent，用于模拟不同设备和浏览器"
-        >
-          <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114.3-3M20 15a8 8 0 01-14.3 3" />
-          </svg>
-          随机
-        </button>
-      </div>
-      <p class="break-all text-xs text-slate-400" :title="userAgent">
-        {{ userAgent || '(未加载)' }}
-      </p>
-    </div>
+            <div class="pt-4 space-y-3 border-t border-slate-200">
+              <div class="flex justify-between items-center">
+                <span
+                  class="text-sm font-semibold text-slate-600 flex items-center gap-2"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="w-4 h-4 text-slate-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    ></path>
+                  </svg>
+                  User-Agent 标识
+                </span>
 
-    <!-- Messages -->
-    <div v-if="errorMsg" class="rounded-lg bg-red-50 p-3 text-sm text-red-600">
-      {{ errorMsg }}
-    </div>
-    <div v-if="successMsg" class="rounded-lg bg-green-50 p-3 text-sm text-green-600">
-      {{ successMsg }}
-    </div>
-  </div>
+                <button
+                  id="random-ua-btn" :disabled="changingUA" @click="randomUA"
+                  title="随机生成新的User-Agent，用于模拟不同设备和浏览器"
+                  class="btn btn-ghost !py-1.5 !px-3 text-xs hover:bg-sky-100 transition-colors"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="w-3.5 h-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    ></path>
+                  </svg>
+                  <span>随机</span>
+                </button>
+              </div>
+
+              <p
+                id="ua-label"
+                class="text-xs text-slate-600 break-all bg-gradient-to-br from-white to-slate-50 border border-slate-300 p-3 rounded-xl leading-relaxed shadow-inner"
+              >
+                {{ userAgent || '(未加载)' }}
+              </p>
+            </div>
+<div v-if="errorMsg" class="rounded-lg bg-red-50 p-3 text-sm text-red-600">{{ errorMsg }}</div>
 </template>
+<style scoped>
+@media(max-width: 767px) {
+label svg, #login-button svg { display: none; }
+label { margin-bottom: 8px; font-size: 14px; }
+.input-field, .select-field { padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 12px; box-shadow: none; font-size: 16px; min-height: 52px; }
+#login-button { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); border-radius: 12px; min-height: 50px; font-size: 17px; }
+}
+</style>

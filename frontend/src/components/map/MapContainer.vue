@@ -1,6 +1,8 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useMapStore } from '@/stores/map'
+import { useAppStore } from '@/stores/app'
+import { gcj02ToBd09, wgs84ToGcj02 } from '@/utils/coordinates'
 import MapPlaceholder from './MapPlaceholder.vue'
 import MapControls from './MapControls.vue'
 
@@ -10,11 +12,13 @@ const props = defineProps({
 })
 
 const mapStore = useMapStore()
+const app = useAppStore()
+let lastFittedTask = null
 
 const mapReady = ref(false)
 const showPlaceholder = ref(false)
 const placeholderError = ref('')
-const zoomLevel = ref(13)
+const zoomLevel = ref(17)
 
 let map = null
 let markers = []
@@ -112,7 +116,7 @@ async function initAmap() {
     }
 
     map = new AMap.Map(props.containerId, {
-      zoom: 13,
+      zoom: 17,
       center: [116.397428, 39.90923],
       resizeEnable: true,
     })
@@ -162,10 +166,10 @@ async function initTencent() {
 
     map = new TMap.Map(container, {
       center: new TMap.LatLng(39.90923, 116.397428),
-      zoom: 13,
+      zoom: 17,
     })
 
-    map.on('zoom_changed', () => {
+    map.on('zoom', () => {
       zoomLevel.value = Math.round(map.getZoom())
     })
 
@@ -205,7 +209,7 @@ async function initTianditu() {
     }
 
     map = new T.Map(props.containerId)
-    map.centerAndZoom(new T.LngLat(116.397428, 39.90923), 13)
+    map.centerAndZoom(new T.LngLat(116.397428, 39.90923), 17)
 
     map.addEventListener('zoomend', () => {
       zoomLevel.value = map.getZoom()
@@ -231,7 +235,7 @@ async function initBaidu() {
   try {
     // Baidu map requires a callback
     await new Promise((resolve, reject) => {
-      if (window.BMap || window.BMapGL) {
+      if (window.BMapGL) {
         resolve()
         return
       }
@@ -240,14 +244,14 @@ async function initBaidu() {
         delete window.__baiduMapCallback
       }
       loadScript(
-        `https://api.map.baidu.com/api?v=3.0&ak=${config.baiduKey}&callback=__baiduMapCallback`,
+        `https://api.map.baidu.com/api?v=1.0&type=webgl&ak=${config.baiduKey}&callback=__baiduMapCallback`,
         'baidu-map-sdk'
       ).catch(reject)
     })
 
     await nextTick()
 
-    const BMap = window.BMap || window.BMapGL
+    const BMap = window.BMapGL
     if (!BMap) {
       throw new Error('百度地图 SDK 未加载')
     }
@@ -258,7 +262,7 @@ async function initBaidu() {
     }
 
     map = new BMap.Map(props.containerId)
-    map.centerAndZoom(new BMap.Point(116.397428, 39.90923), 13)
+    map.centerAndZoom(new BMap.Point(116.397428, 39.90923), 18)
     map.enableScrollWheelZoom(true)
 
     map.addEventListener('zoomend', () => {
@@ -318,6 +322,7 @@ function destroyMap() {
     map = null
   }
   mapStore.setMapInstance(null)
+  lastFittedTask = null
 }
 
 // --- Public methods ---
@@ -344,7 +349,7 @@ function fitView(coords) {
     })
     map.setViewport(coords.map(c => new T.LngLat(c[0], c[1])))
   } else if (provider === 'baidu') {
-    const BMap = window.BMap || window.BMapGL
+    const BMap = window.BMapGL
     if (!BMap) return
     const points = coords.map(c => new BMap.Point(c[0], c[1]))
     const viewport = map.getViewport(points)
@@ -366,6 +371,11 @@ function addMarker(pos, opts = {}) {
       title: opts.title || '',
       ...opts,
     })
+    if (opts.title && typeof marker.setLabel === 'function') {
+      const label = document.createElement('span')
+      label.textContent = opts.title
+      marker.setLabel({ content: label, direction: 'top' })
+    }
     map.add(marker)
   } else if (provider === 'tencent') {
     const TMap = window.TMap
@@ -377,6 +387,13 @@ function addMarker(pos, opts = {}) {
         id: opts.id || `marker_${Date.now()}`,
       }],
     })
+    if (opts.title && TMap.MultiLabel && TMap.LabelStyle) {
+      markers.push(new TMap.MultiLabel({
+        map,
+        styles: { name: new TMap.LabelStyle({ color: '#ffffff', backgroundColor: '#059669', padding: '4px 8px', borderRadius: 12, offset: { x: 0, y: -35 } }) },
+        geometries: [{ id: `${opts.id || 'marker'}-name`, styleId: 'name', position: new TMap.LatLng(pos[1], pos[0]), content: opts.title }],
+      }))
+    }
   } else if (provider === 'tianditu') {
     const T = window.T
     if (!T) return null
@@ -384,14 +401,24 @@ function addMarker(pos, opts = {}) {
     map.addOverLay(marker)
     if (opts.title) {
       marker.setTitle(opts.title)
+      if (T.Label) {
+        const label = new T.Label({ text: opts.title, position: new T.LngLat(pos[0], pos[1]) })
+        map.addOverLay(label)
+        markers.push(label)
+      }
     }
   } else if (provider === 'baidu') {
-    const BMap = window.BMap || window.BMapGL
+    const BMap = window.BMapGL
     if (!BMap) return null
     marker = new BMap.Marker(new BMap.Point(pos[0], pos[1]))
     map.addOverlay(marker)
     if (opts.title) {
       marker.setTitle(opts.title)
+      if (BMap.Label) {
+        const label = document.createElement('span')
+        label.textContent = opts.title
+        marker.setLabel(new BMap.Label(label.outerHTML))
+      }
     }
   }
 
@@ -443,7 +470,7 @@ function drawPolyline(path, opts = {}) {
     )
     map.addOverLay(polyline)
   } else if (provider === 'baidu') {
-    const BMap = window.BMap || window.BMapGL
+    const BMap = window.BMapGL
     if (!BMap) return null
     polyline = new BMap.Polyline(
       path.map(p => new BMap.Point(p[0], p[1])),
@@ -475,6 +502,73 @@ function clearOverlays() {
   markers = []
   polylines = []
 }
+
+// Task coordinates are GCJ-02; conversion only affects the map display.
+function providerPoint(point) {
+  const lng = Number(Array.isArray(point) ? point[0] : point?.lng ?? point?.lon)
+  const lat = Number(Array.isArray(point) ? point[1] : point?.lat)
+  if (!Number.isFinite(lng) || !Number.isFinite(lat) || (lng === 0 && lat === 0)) return null
+  if (mapStore.activeProvider === 'baidu') {
+    const converted = gcj02ToBd09(lng, lat)
+    return [converted.lng, converted.lat]
+  }
+  if (mapStore.activeProvider === 'tianditu') {
+    let wgsLng = lng
+    let wgsLat = lat
+    for (let i = 0; i < 10; i++) {
+      const converted = wgs84ToGcj02(wgsLng, wgsLat)
+      const dLng = converted.lng - lng
+      const dLat = converted.lat - lat
+      wgsLng -= dLng
+      wgsLat -= dLat
+      if (Math.abs(dLng) < 1e-9 && Math.abs(dLat) < 1e-9) break
+    }
+    return [wgsLng, wgsLat]
+  }
+  return [lng, lat]
+}
+
+function taskCoordinates(data) {
+  if (!data) return []
+  return [...(data.run_coords || []), ...(data.target_points || []), ...(data.draft_coords || []), ...(data.recommended_coords || [])].map(providerPoint).filter(Boolean)
+}
+
+function drawTaskSegments(coords, options) {
+  let segment = []
+  for (const point of coords || []) {
+    const converted = providerPoint(point)
+    if (converted) segment.push(converted)
+    else {
+      drawPolyline(segment, options)
+      segment = []
+    }
+  }
+  drawPolyline(segment, options)
+}
+
+function renderTask() {
+  if (!mapReady.value || !map || props.isMultiAccount) return
+  clearOverlays()
+  const data = app.runData
+  if (!data) { lastFittedTask = null; return }
+  drawTaskSegments(data.recommended_coords, { color: '#10b981', weight: 5, opacity: 0.6 })
+  drawTaskSegments(data.draft_coords, { color: '#1f2937', weight: 6 })
+  drawTaskSegments(data.run_coords, { color: '#0ea5e9', weight: 6 })
+  const names = String(data.target_point_names || '').split('|')
+  for (const [index, point] of (data.target_points || []).entries()) {
+    const position = providerPoint(point)
+    if (position) addMarker(position, { title: names[index] || `点 ${index + 1}`, id: `target-${index}` })
+  }
+  const taskKey = data.task_index ?? app.selectedTaskIndex
+  const coords = taskCoordinates(data)
+  if (lastFittedTask !== taskKey && coords.length) {
+    fitView(coords)
+    lastFittedTask = taskKey
+  }
+  if (mapStore.isDrawing) redrawDraft()
+}
+
+watch([() => app.runData, () => mapReady.value], renderTask, { deep: true })
 
 // --- Interactive path drawing ---
 // 从各 provider 的点击事件对象中提取 { lng, lat }。
@@ -588,6 +682,7 @@ function handleZoomIn() {
   const provider = mapStore.activeProvider
   if (provider === 'amap' || provider === 'tencent') {
     map.setZoom(map.getZoom() + 1)
+    zoomLevel.value = Math.round(map.getZoom())
   } else if (provider === 'tianditu') {
     map.zoomIn()
   } else if (provider === 'baidu') {
@@ -600,6 +695,7 @@ function handleZoomOut() {
   const provider = mapStore.activeProvider
   if (provider === 'amap' || provider === 'tencent') {
     map.setZoom(map.getZoom() - 1)
+    zoomLevel.value = Math.round(map.getZoom())
   } else if (provider === 'tianditu') {
     map.zoomOut()
   } else if (provider === 'baidu') {
@@ -609,31 +705,36 @@ function handleZoomOut() {
 
 function handleResetView() {
   if (!map) return
+  const coords = taskCoordinates(app.runData)
+  if (coords.length) {
+    fitView(coords)
+    return
+  }
   const provider = mapStore.activeProvider
   if (provider === 'amap') {
-    map.setZoomAndCenter(13, [116.397428, 39.90923])
+    map.setZoomAndCenter(17, [116.397428, 39.90923])
   } else if (provider === 'tencent') {
     const TMap = window.TMap
     if (TMap) {
       map.setCenter(new TMap.LatLng(39.90923, 116.397428))
-      map.setZoom(13)
+      map.setZoom(17)
     }
   } else if (provider === 'tianditu') {
     const T = window.T
     if (T) {
-      map.centerAndZoom(new T.LngLat(116.397428, 39.90923), 13)
+      map.centerAndZoom(new T.LngLat(116.397428, 39.90923), 17)
     }
   } else if (provider === 'baidu') {
-    const BMap = window.BMap || window.BMapGL
+    const BMap = window.BMapGL
     if (BMap) {
-      map.centerAndZoom(new BMap.Point(116.397428, 39.90923), 13)
+      map.centerAndZoom(new BMap.Point(116.397428, 39.90923), 18)
     }
   }
-  zoomLevel.value = 13
+  zoomLevel.value = 17
 }
 
 // --- Watch provider changes ---
-watch(() => mapStore.activeProvider, async () => {
+watch([() => mapStore.activeProvider, () => mapStore.getKeyRequirement().value], async () => {
   await initMap()
   // 切换 provider 后若仍处于录制模式，为新地图实例重新绑定绘制点击
   if (mapStore.isDrawing) bindDrawingClick()
@@ -693,9 +794,16 @@ defineExpose({
     <!-- Placeholder when map is not ready -->
     <MapPlaceholder
       v-if="showPlaceholder"
+      class="legacy-map-placeholder"
       :provider-name="mapStore.displayName"
       :has-key="!!mapStore.getKeyRequirement().value"
       :error-reason="placeholderError"
     />
   </div>
 </template>
+
+<style scoped>
+.legacy-map-placeholder {
+  background: #e2e8f0;
+}
+</style>

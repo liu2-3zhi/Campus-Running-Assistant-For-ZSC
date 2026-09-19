@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { callRawAPI } from '@/services/api'
+import AdminUserTools from './AdminUserTools.vue'
 
 /* ── reactive state ── */
 const users = ref([])
@@ -8,6 +9,7 @@ const groups = ref({})          // dict: { key: { name, is_system, permissions }
 const loading = ref(false)
 const error = ref('')
 const success = ref('')
+const userTool = ref(null)
 
 /* ── search / filter ── */
 const searchQuery = ref('')
@@ -70,7 +72,9 @@ const filteredUsers = computed(() => {
     list = list.filter(u =>
       (u.auth_username || '').toLowerCase().includes(q) ||
       (u.nickname || '').toLowerCase().includes(q) ||
-      (u.phone || '').toLowerCase().includes(q)
+      (u.phone || '').toLowerCase().includes(q) ||
+      (Array.isArray(u.school_accounts) ? u.school_accounts : Object.keys(u.school_accounts || {}))
+        .some(account => String(account).toLowerCase().includes(q))
     )
   }
   if (groupFilter.value) {
@@ -170,10 +174,10 @@ async function submitAddUser() {
       phone: addForm.value.phone,
       group: addForm.value.group,
     })
-    success.value = '用户已添加'
     addForm.value = { username: '', password: '', nickname: '', phone: '', group: 'user' }
     showAddForm.value = false
     await loadUsers()
+    success.value = '用户已添加'
   } catch (e) {
     error.value = e.message || '添加用户失败'
   } finally {
@@ -187,8 +191,8 @@ async function runOp(fn, okMsg) {
   try {
     const res = await fn()
     if (res && res.success === false) throw new Error(res.message || '操作失败')
-    if (okMsg) success.value = okMsg
     await loadUsers()
+    if (okMsg) success.value = okMsg
   } catch (e) {
     error.value = e.message || '操作失败'
   }
@@ -268,14 +272,27 @@ function modifyNickname(user) {
 }
 
 /* ── modify phone（可选短信验证码） ── */
-function modifyPhone(user) {
+async function modifyPhone(user) {
   const input = prompt('修改用户 "' + user.auth_username + '" 的手机号：', user.phone || '')
   if (input === null) return
   const new_phone = input.trim()
   if (!/^1[3-9]\d{9}$/.test(new_phone)) { error.value = '手机号格式不正确'; return }
   const code = prompt('短信验证码（如无需验证可留空）：', '')
   if (code === null) return
-  runOp(
+  clearMessages()
+  try {
+    const binding = await callRawAPI('/api/auth/check_phone', 'POST', { phone: new_phone })
+    if (binding.success === false) throw new Error(binding.message || '检查手机号绑定失败')
+    if (binding.is_bound && binding.bound_to_user === user.auth_username) {
+      success.value = '此手机号已绑定到该用户'
+      return
+    }
+    if (binding.is_bound && !confirm(`手机号 ${new_phone} 已被用户 ${binding.bound_to_user} 绑定。继续将从原账号解绑并绑定到 ${user.auth_username}，是否继续？`)) return
+  } catch (e) {
+    error.value = e.message || '检查手机号绑定失败，请稍后重试'
+    return
+  }
+  await runOp(
     () => callRawAPI('/auth/admin/update_user_phone', 'POST', { username: user.auth_username, new_phone, sms_code: code.trim() }),
     '手机号已更新'
   )
@@ -390,7 +407,7 @@ onMounted(loadUsers)
     <div
       v-else
       id="admin-users-list_modal"
-      class="-mr-2 max-h-[50vh] space-y-2 overflow-y-auto pr-2"
+      class="space-y-2 md:-mr-2 md:max-h-[50vh] md:overflow-y-auto md:pr-2"
     >
       <p v-if="sortedUsers.length === 0" class="py-10 text-center text-slate-400">
         暂无用户
@@ -412,7 +429,7 @@ onMounted(loadUsers)
               <span v-else class="text-2xl text-slate-400">👤</span>
             </div>
             <div class="min-w-0 flex-1">
-              <p class="font-semibold text-slate-800">
+              <p class="break-all font-semibold text-slate-800">
                 {{ user.auth_username }}
                 <span v-if="user.banned" class="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-600">
                   已封禁
@@ -448,7 +465,11 @@ onMounted(loadUsers)
               </select>
             </div>
             <div class="mt-2 grid w-full grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 md:grid-cols-6">
-              <button class="btn h-7 min-h-0 border border-indigo-100 bg-indigo-50 px-2 text-xs text-indigo-600" @click="editAvailableRuns(user)">修改次数</button>
+              <button class="btn h-7 min-h-0 border border-indigo-100 bg-indigo-50 px-2 text-xs text-indigo-600" @click="userTool = { username: user.auth_username, mode: 'accounts' }">账户密码</button>
+              <button class="btn h-7 min-h-0 border border-blue-100 bg-blue-50 px-2 text-xs text-blue-600" @click="userTool = { username: user.auth_username, mode: 'logs' }">查看日志</button>
+              <button class="btn h-7 min-h-0 border border-blue-100 bg-blue-50 px-2 text-xs text-blue-600" @click="setMaxSessions(user)">会话管理</button>
+              <button class="btn h-7 min-h-0 border border-cyan-100 bg-cyan-50 px-2 text-xs text-cyan-600" @click="editAvailableRuns(user)">修改次数</button>
+              <button class="btn h-7 min-h-0 border border-emerald-100 bg-emerald-50 px-2 text-xs text-emerald-600" @click="userTool = { username: user.auth_username, mode: 'permissions' }">权限设置</button>
               <button class="btn h-7 min-h-0 border border-teal-100 bg-teal-50 px-2 text-xs text-teal-600" @click="modifyNickname(user)">修改昵称</button>
               <button class="btn h-7 min-h-0 border border-teal-100 bg-teal-50 px-2 text-xs text-teal-600" @click="modifyPhone(user)">修改手机</button>
               <button class="btn h-7 min-h-0 border border-purple-100 bg-purple-50 px-2 text-xs text-purple-600" @click="resetPassword(user)">重置密码</button>
@@ -476,4 +497,5 @@ onMounted(loadUsers)
     </div>
 
   </div>
+  <AdminUserTools v-if="userTool" :username="userTool.username" :mode="userTool.mode" @close="userTool = null" @updated="loadUsers" />
 </template>

@@ -18,7 +18,7 @@ function resetView() {
 </script>
 
 <template>
-  <div class="mobile-card flex h-screen flex-col overflow-hidden p-0">
+  <div class="mobile-card flex h-full min-h-0 flex-col overflow-hidden p-0">
     <MapContainer
       ref="mapRef"
       container-id="mobile-map"

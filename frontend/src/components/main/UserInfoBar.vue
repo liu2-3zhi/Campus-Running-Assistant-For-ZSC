@@ -37,7 +37,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div class="panel flex items-center gap-4 rounded-xl p-4">
+  <div id="user-info-bar" class="panel flex items-center gap-4 rounded-xl p-4">
     <!-- User avatar and name -->
     <div class="flex min-w-0 flex-1 items-center gap-3">
       <div class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] font-semibold text-white">
@@ -50,20 +50,20 @@ async function handleLogout() {
         <span v-else>{{ (auth.displayName || auth.username || '?').charAt(0).toUpperCase() }}</span>
       </div>
       <div class="min-w-0 flex-1">
-        <div class="text-sm font-semibold text-[var(--ink)] truncate">
-          姓名: {{ auth.realName || auth.displayName || auth.username || '--' }}
+        <div class="font-bold text-slate-800 truncate">
+          姓名: {{ auth.realName || auth.displayName || auth.username || 'NULL' }}
         </div>
-        <div class="text-xs text-[var(--ink-muted)] truncate">
-          学号: {{ auth.studentId || '--' }}
+        <div class="text-sm text-slate-500 truncate">
+          学号: {{ auth.studentId || 'NULL' }}
         </div>
       </div>
     </div>
 
     <!-- Action buttons -->
-    <div class="user-info-actions flex max-w-[210px] flex-wrap justify-end gap-1.5">
+    <div class="contents">
       <!-- Notifications -->
       <button
-        class="btn btn-ghost text-xs relative"
+        class="btn btn-ghost !py-2 !px-3 relative"
         @click="emit('show-notifications')"
         title="通知"
       >
@@ -78,7 +78,7 @@ async function handleLogout() {
 
       <!-- User details -->
       <button
-        class="btn btn-ghost text-xs"
+        class="btn btn-ghost !py-2 !px-3"
         @click="emit('show-user-details')"
         title="用户详情"
       >
@@ -87,7 +87,7 @@ async function handleLogout() {
 
       <!-- 我的订单 -->
       <button
-        class="user-info-secondary btn btn-ghost text-xs"
+        class="user-info-secondary hidden btn btn-ghost text-xs"
         @click="showOrders = true"
         title="我的订单"
       >
@@ -99,7 +99,7 @@ async function handleLogout() {
 
       <!-- 我的账单 -->
       <button
-        class="user-info-secondary btn btn-ghost text-xs"
+        class="user-info-secondary hidden btn btn-ghost text-xs"
         @click="showBilling = true"
         title="我的账单"
       >
@@ -111,7 +111,7 @@ async function handleLogout() {
 
       <!-- 发起支付 -->
       <button
-        class="user-info-secondary btn btn-ghost text-xs"
+        class="user-info-secondary hidden btn btn-ghost text-xs"
         @click="showPayment = true"
         title="发起支付"
       >
@@ -124,7 +124,7 @@ async function handleLogout() {
       <!-- Admin panel -->
       <button
         v-if="auth.isAdmin"
-        class="btn btn-ghost text-xs"
+        class="btn btn-ghost !py-2 !px-3"
         @click="emit('show-admin')"
         title="管理面板"
       >
@@ -136,7 +136,7 @@ async function handleLogout() {
 
       <!-- Dark mode toggle -->
       <button
-        class="user-info-secondary btn btn-ghost text-xs"
+        class="user-info-secondary hidden btn btn-ghost text-xs"
         @click="theme.toggleDark()"
         :title="theme.isDark ? '切换亮色' : '切换暗色'"
       >
@@ -150,7 +150,7 @@ async function handleLogout() {
 
       <!-- Logout -->
       <button
-        class="btn btn-danger text-xs"
+        class="btn btn-ghost !py-2 !px-3 !text-red-600"
         @click="handleLogout"
         title="退出登录"
       >
