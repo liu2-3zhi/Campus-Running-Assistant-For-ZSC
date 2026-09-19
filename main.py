@@ -843,7 +843,7 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
     return clientKeyPairPromise;
   }
 
-  async function decryptMapProviderKeys(bundle) {
+  async function decryptMapProviderKeys(bundle, explicitSessionId) {
     assertDebugAllowed();
     const clientKeyPair = await getClientKeyPair();
     const clientPublicKey = await crypto.subtle.exportKey(
@@ -851,7 +851,7 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
       clientKeyPair.publicKey
     );
     const headers = { "Content-Type": "application/json" };
-    const sessionId = getSessionId();
+    const sessionId = explicitSessionId || getSessionId();
     if (sessionId) headers["X-Session-ID"] = sessionId;
     const endpointUrl = runtimeVersion
       ? decryptEndpoint + "?v=" + encodeURIComponent(runtimeVersion)

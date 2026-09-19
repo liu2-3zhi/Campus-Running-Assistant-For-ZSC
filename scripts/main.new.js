@@ -12004,8 +12004,10 @@ async function saveMobilePricingConfig() {
 // --- Next Script Block ---
 
 const LEGACY_MAP_KEY_RUNTIME_NAMESPACE = "__MAP_KEY_RUNTIME__";
+const LEGACY_MAP_KEY_RUNTIME_RETRY_DELAYS = [100, 300];
 let legacyMapKeyRuntimeLoadPromise = null;
 let legacyMapKeyRuntimeLoadVersion = "";
+let legacyMapKeyRuntimeLoadSession = "";
 
 function getLegacyMapKeyRuntimeUrl(scriptUrl, runtimeVersion) {
   const baseUrl = scriptUrl || "/api/map_key_runtime.js";
@@ -12016,9 +12018,142 @@ function getLegacyMapKeyRuntimeUrl(scriptUrl, runtimeVersion) {
   return `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`;
 }
 
-function loadLegacyMapKeyRuntime(keyBundle) {
+function getLegacyMapKeyRuntimeSessionId(explicitSessionId) {
+  const explicit = String(explicitSessionId || "").trim();
+  if (
+    explicit &&
+    (
+      typeof isUsableClientSessionUUID !== "function" ||
+      isUsableClientSessionUUID(explicit)
+    )
+  ) {
+    return explicit;
+  }
+  if (
+    typeof isUsableClientSessionUUID === "function" &&
+    isUsableClientSessionUUID(sessionUUID)
+  ) {
+    return sessionUUID;
+  }
+  try {
+    const storedSession = window.sessionStorage
+      ? window.sessionStorage.getItem("session_uuid")
+      : "";
+    if (
+      typeof isUsableClientSessionUUID === "function" &&
+      isUsableClientSessionUUID(storedSession)
+    ) {
+      return storedSession;
+    }
+  } catch (_error) {
+    // Restricted storage is non-fatal; URL fallback remains available.
+  }
+  const urlSession = getUUIDFromURL();
+  return (
+    typeof isUsableClientSessionUUID === "function" &&
+    isUsableClientSessionUUID(urlSession)
+  )
+    ? urlSession
+    : "";
+}
+
+function createLegacyMapKeyRuntimeLoadError(message, details = {}) {
+  const error = new Error(message);
+  Object.assign(error, details);
+  return error;
+}
+
+function waitForLegacyMapKeyRuntimeRetry(delayMs) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function fetchLegacyMapKeyRuntimeScript(
+  runtimeUrl,
+  expectedVersion,
+  explicitSessionId,
+) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= LEGACY_MAP_KEY_RUNTIME_RETRY_DELAYS.length; attempt += 1) {
+    const sessionId = getLegacyMapKeyRuntimeSessionId(explicitSessionId);
+    const headers = {};
+    if (sessionId) {
+      headers["X-Session-ID"] = sessionId;
+    }
+    let response;
+    try {
+      response = await fetch(runtimeUrl, {
+        credentials: "include",
+        cache: "no-store",
+        headers,
+      });
+    } catch (error) {
+      throw createLegacyMapKeyRuntimeLoadError(
+        "地图密钥运行时脚本加载失败",
+        {
+          cause: error,
+          runtimeVersion: expectedVersion,
+          attempt: attempt + 1,
+        },
+      );
+    }
+    if (response.ok) {
+      return {
+        scriptText: await response.text(),
+        sessionId,
+      };
+    }
+    lastError = createLegacyMapKeyRuntimeLoadError(
+      `地图密钥运行时脚本加载失败: HTTP ${response.status}`,
+      {
+        status: response.status,
+        runtimeVersion: expectedVersion,
+        attempt: attempt + 1,
+      },
+    );
+    if (
+      response.status === 404 &&
+      attempt < LEGACY_MAP_KEY_RUNTIME_RETRY_DELAYS.length
+    ) {
+      await waitForLegacyMapKeyRuntimeRetry(
+        LEGACY_MAP_KEY_RUNTIME_RETRY_DELAYS[attempt],
+      );
+      continue;
+    }
+    break;
+  }
+  throw lastError || createLegacyMapKeyRuntimeLoadError(
+    "地图密钥运行时脚本加载失败",
+    { runtimeVersion: expectedVersion },
+  );
+}
+
+function removeLegacyMapKeyRuntimeScripts(expectedVersion) {
+  Array.from(document.querySelectorAll('script[data-map-key-runtime="1"]'))
+    .forEach((script) => {
+      if (
+        !expectedVersion ||
+        String(script.dataset.mapKeyRuntimeVersion || "") === expectedVersion
+      ) {
+        script.remove();
+      }
+    });
+}
+
+function injectLegacyMapKeyRuntimeScript(scriptText, expectedVersion) {
+  const script = document.createElement("script");
+  script.async = false;
+  script.dataset.mapKeyRuntime = "1";
+  script.dataset.mapKeyRuntimeVersion = expectedVersion;
+  script.text = scriptText;
+  script.textContent = scriptText;
+  document.head.appendChild(script);
+  return script;
+}
+
+function loadLegacyMapKeyRuntime(keyBundle, explicitSessionId) {
   const bundle = keyBundle && typeof keyBundle === "object" ? keyBundle : {};
   const expectedVersion = String(bundle.runtime_version || "").trim();
+  const runtimeSessionId = getLegacyMapKeyRuntimeSessionId(explicitSessionId);
   const currentRuntime = window[LEGACY_MAP_KEY_RUNTIME_NAMESPACE];
   if (
     expectedVersion &&
@@ -12029,13 +12164,15 @@ function loadLegacyMapKeyRuntime(keyBundle) {
   }
   if (
     legacyMapKeyRuntimeLoadPromise &&
-    legacyMapKeyRuntimeLoadVersion === expectedVersion
+    legacyMapKeyRuntimeLoadVersion === expectedVersion &&
+    legacyMapKeyRuntimeLoadSession === runtimeSessionId
   ) {
     return legacyMapKeyRuntimeLoadPromise;
   }
 
   legacyMapKeyRuntimeLoadVersion = expectedVersion;
-  legacyMapKeyRuntimeLoadPromise = new Promise((resolve, reject) => {
+  legacyMapKeyRuntimeLoadSession = runtimeSessionId;
+  legacyMapKeyRuntimeLoadPromise = (async () => {
     const existingScripts = Array.from(
       document.querySelectorAll('script[data-map-key-runtime="1"]'),
     );
@@ -12048,7 +12185,7 @@ function loadLegacyMapKeyRuntime(keyBundle) {
         !expectedVersion ||
         window[LEGACY_MAP_KEY_RUNTIME_NAMESPACE]?.version === expectedVersion
       ) {
-        resolve();
+        return;
       } else {
         existingScript.remove();
       }
@@ -12060,35 +12197,46 @@ function loadLegacyMapKeyRuntime(keyBundle) {
       }
     }
 
-    const script = document.createElement("script");
-    script.src = getLegacyMapKeyRuntimeUrl(
+    const runtimeUrl = getLegacyMapKeyRuntimeUrl(
       bundle.runtime_script,
       expectedVersion,
     );
-    script.async = true;
-    script.dataset.mapKeyRuntime = "1";
-    script.dataset.mapKeyRuntimeVersion = expectedVersion;
-    script.onload = () => {
+    let script = null;
+    try {
+      const { scriptText } = await fetchLegacyMapKeyRuntimeScript(
+        runtimeUrl,
+        expectedVersion,
+        runtimeSessionId,
+      );
+      removeLegacyMapKeyRuntimeScripts(expectedVersion);
+      script = injectLegacyMapKeyRuntimeScript(scriptText, expectedVersion);
       if (
         expectedVersion &&
         window[LEGACY_MAP_KEY_RUNTIME_NAMESPACE]?.version !== expectedVersion
       ) {
-        reject(new Error("地图密钥运行时版本不匹配"));
-        return;
+        throw createLegacyMapKeyRuntimeLoadError(
+          "地图密钥运行时版本不匹配",
+          { runtimeVersion: expectedVersion },
+        );
       }
-      resolve();
-    };
-    script.onerror = () => reject(new Error("地图密钥运行时脚本加载失败"));
-    document.head.appendChild(script);
-  }).catch((error) => {
+    } catch (error) {
+      if (script && typeof script.remove === "function") {
+        script.remove();
+      } else {
+        removeLegacyMapKeyRuntimeScripts(expectedVersion);
+      }
+      throw error;
+    }
+  })().catch((error) => {
     legacyMapKeyRuntimeLoadPromise = null;
     legacyMapKeyRuntimeLoadVersion = "";
+    legacyMapKeyRuntimeLoadSession = "";
     throw error;
   });
   return legacyMapKeyRuntimeLoadPromise;
 }
 
-async function hydrateMapProviderSecretsForLegacy(initialData) {
+async function hydrateMapProviderSecretsForLegacy(initialData, explicitSessionId) {
   if (!initialData || typeof initialData !== "object") {
     return initialData;
   }
@@ -12100,13 +12248,20 @@ async function hydrateMapProviderSecretsForLegacy(initialData) {
     return initialData;
   }
 
-  await loadLegacyMapKeyRuntime(keyBundle);
+  const runtimeSessionId = getLegacyMapKeyRuntimeSessionId(explicitSessionId);
+  if (!runtimeSessionId) {
+    throw new Error("地图密钥运行时缺少会话ID");
+  }
+  await loadLegacyMapKeyRuntime(keyBundle, runtimeSessionId);
   const runtime = window[LEGACY_MAP_KEY_RUNTIME_NAMESPACE];
   if (!runtime || typeof runtime.decryptMapProviderKeys !== "function") {
     throw new Error("地图密钥运行时不可用");
   }
 
-  const decryptedProviders = await runtime.decryptMapProviderKeys(keyBundle);
+  const decryptedProviders = await runtime.decryptMapProviderKeys(
+    keyBundle,
+    runtimeSessionId,
+  );
   const nextProviders = { ...(initialData.map_providers || {}) };
   Object.entries(decryptedProviders || {}).forEach(([provider, secrets]) => {
     const current = nextProviders[provider];
@@ -12151,10 +12306,11 @@ function createLegacyPublicConfigSnapshot(config) {
   return snapshot;
 }
 
-function applyLegacyAppConfig(config) {
+function applyLegacyAppConfig(config, explicitSessionId) {
   const safeConfig = config && typeof config === "object" ? config : {};
   window.__mapKeyRuntimeReady = hydrateMapProviderSecretsForLegacy(
     safeConfig,
+    explicitSessionId,
   )
     .then((hydratedConfig) => {
       window.APP_CONFIG = hydratedConfig;
@@ -12197,7 +12353,7 @@ function applyLegacyAppConfig(config) {
   // 如果服务端已经注入了配置（旧方式，用于兼容），直接使用
   if (typeof window.APP_CONFIG !== "undefined") {
     console.log("[配置] 使用服务端注入的配置");
-    applyLegacyAppConfig(window.APP_CONFIG);
+    applyLegacyAppConfig(window.APP_CONFIG, getLegacyMapKeyRuntimeSessionId());
     return;
   }
 
@@ -12222,6 +12378,9 @@ function applyLegacyAppConfig(config) {
   );
   if (uuidMatch && uuidMatch[1]) {
     extractedSessionUUID = uuidMatch[1]; // 提取到的 UUID
+  }
+  if (!extractedSessionUUID) {
+    extractedSessionUUID = getLegacyMapKeyRuntimeSessionId();
   }
 
   // 构建请求配置对象，包含超时控制和会话认证
@@ -12249,7 +12408,7 @@ function applyLegacyAppConfig(config) {
     })
     .then(function (config) {
       console.log("[配置] API配置加载完成");
-      applyLegacyAppConfig(config);
+      applyLegacyAppConfig(config, extractedSessionUUID);
     })
     .catch(function (error) {
       clearTimeout(timeoutId);
@@ -12259,7 +12418,7 @@ function applyLegacyAppConfig(config) {
         console.error("[配置] 加载配置失败，使用默认配置:", error);
       }
       // 保持默认配置
-      applyLegacyAppConfig(DEFAULT_CONFIG);
+      applyLegacyAppConfig(DEFAULT_CONFIG, extractedSessionUUID);
     });
 })();
 
@@ -16676,8 +16835,7 @@ function ensureAuthLoginSessionUUID() {
 
   const uuidFromUrl = getUUIDFromURL();
   if (isUsableClientSessionUUID(uuidFromUrl)) {
-    sessionUUID = uuidFromUrl;
-    return sessionUUID;
+    return setActiveLegacySession(uuidFromUrl, { promoteAuth: false });
   }
 
   return null;
@@ -16699,6 +16857,23 @@ function getAuthenticatedSessionHeaderValue() {
   return "";
 }
 
+function setActiveLegacySession(sessionId, options = {}) {
+  const normalized = String(sessionId || "").trim();
+  if (!isUsableClientSessionUUID(normalized)) {
+    return "";
+  }
+  sessionUUID = normalized;
+  if (options.promoteAuth !== false) {
+    authSessionUUID = normalized;
+  }
+  try {
+    sessionStorage.setItem("session_uuid", normalized);
+  } catch (_error) {
+    // Storage may be unavailable in restricted browser contexts.
+  }
+  return normalized;
+}
+
 const AUTH_CONTEXT_API_METHODS = new Set(["get_initial_data"]);
 
 function isAuthContextApiMethod(method) {
@@ -16717,8 +16892,7 @@ function getApiRequestSessionHeaderValue(method) {
   const uuidFromUrl = getUUIDFromURL();
   if (isUsableClientSessionUUID(uuidFromUrl)) {
     if (!isUsableClientSessionUUID(authSessionUUID)) {
-      sessionUUID = uuidFromUrl;
-      return sessionUUID;
+      return setActiveLegacySession(uuidFromUrl, { promoteAuth: false });
     }
   }
 
@@ -20271,8 +20445,10 @@ async function handleAuthLogin(isMobile_use = false) {
       }
 
       if (result.session_id) {
-        sessionUUID = result.session_id;
-        authSessionUUID = result.auth_session_id || result.session_id;
+        const activeSessionId = setActiveLegacySession(result.session_id, {
+          promoteAuth: false,
+        });
+        authSessionUUID = result.auth_session_id || activeSessionId;
         logMessage_Info(
           "[登录成功] 会话ID已设置:",
           sessionUUID.substring(0, 16) + "...",
@@ -20727,8 +20903,10 @@ async function handle2FAVerify() {
       delete window.temp2FAUsername;
 
       if (result.session_id) {
-        sessionUUID = result.session_id;
-        authSessionUUID = result.auth_session_id || result.session_id;
+        const activeSessionId = setActiveLegacySession(result.session_id, {
+          promoteAuth: false,
+        });
+        authSessionUUID = result.auth_session_id || activeSessionId;
         logMessage_Info(
           "[2FA验证成功] 会话ID已设置:",
           sessionUUID.substring(0, 16) + "...",
@@ -33836,8 +34014,7 @@ async function createNewSessionFromPicker() {
 
     if (result.success) {
       logMessage_Info(`会话持久化文件已创建: ${result.message}`);
-      sessionUUID = result.session_id || newUUID;
-      authSessionUUID = sessionUUID;
+      setActiveLegacySession(result.session_id || newUUID);
       if (result.cleanup_message) {
         logMessage_Info(`提示: ${result.cleanup_message}`);
       }
@@ -33846,7 +34023,7 @@ async function createNewSessionFromPicker() {
       } else {
         closeSessionPicker();
       }
-      window.location.href = `/uuid=${newUUID}`;
+      window.location.replace(`/uuid=${sessionUUID}`);
     } else {
       logMessage_Info(`创建会话失败: ${result.message}`);
       if (isMobileMode) {
@@ -38783,11 +38960,12 @@ async function onConfirmAmapKey() {
   btn.innerHTML = `<span class="inline-block animate-spin mr-2">⏳</span>保存中...`;
 
   try {
+    const mapProviderSessionUUID = getAuthenticatedSessionHeaderValue();
     let result = await callPythonAPI("save_map_provider_key", {
       provider: requirement.provider,
       api_key: newKey,
     });
-    result = await hydrateMapProviderSecretsForLegacy(result);
+    result = await hydrateMapProviderSecretsForLegacy(result, mapProviderSessionUUID);
     if (result.success) {
       syncMapProviderConfigFromInitialData(result);
       const modal = $("amap-key-modal");
@@ -52589,7 +52767,10 @@ async function saveSystemConfig() {
             "X-Session-ID": sessionUUID,
           },
         }).then((r) => r.json());
-        freshConfig = await hydrateMapProviderSecretsForLegacy(freshConfig);
+        freshConfig = await hydrateMapProviderSecretsForLegacy(
+          freshConfig,
+          getAuthenticatedSessionHeaderValue(),
+        );
         queuedMapProviderConfig = queuePendingMapProviderConfig(freshConfig);
       } catch (_syncErr) {
         const directUpdate = { map_provider: newProvider, map_providers: {} };
@@ -61707,12 +61888,13 @@ async function loadInitialData(options = {}) {
 
     // 更新最后请求时间戳
     lastInitialDataRequest = now;
+    const initialDataSessionUUID = getApiRequestSessionHeaderValue("get_initial_data");
 
     // 使用await关键字等待callPythonAPI的Promise完成
     // callPythonAPI是应用中已存在的函数，负责与Python后端通信
     // "get_initial_data"是API端点的标识符，后端会据此返回相应数据
     let response = await callPythonAPI("get_initial_data", params);
-    response = await hydrateMapProviderSecretsForLegacy(response);
+    response = await hydrateMapProviderSecretsForLegacy(response, initialDataSessionUUID);
 
     // 此时response已包含后端返回的完整数据对象
     // 如果API调用失败，callPythonAPI可能会抛出异常，会被catch块捕获

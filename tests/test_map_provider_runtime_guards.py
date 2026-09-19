@@ -34,11 +34,22 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
 
         self.assertIn("function createSafeClientLogValue(", source)
         self.assertIn("function formatSafeClientLogArgs(", source)
+        self.assertIn("function setActiveLegacySession(", source)
         self.assertIn("function loadLegacyMapKeyRuntime(", source)
         self.assertIn("function hydrateMapProviderSecretsForLegacy(", source)
         self.assertIn('"/api/map_key_runtime.js"', source)
         self.assertIn("window.__mapKeyRuntimeReady", source)
-        self.assertIn("await hydrateMapProviderSecretsForLegacy(response)", source)
+        self.assertIn(
+            'const initialDataSessionUUID = getApiRequestSessionHeaderValue("get_initial_data");',
+            source,
+        )
+        self.assertIn(
+            "response = await hydrateMapProviderSecretsForLegacy(response, initialDataSessionUUID);",
+            source,
+        )
+        self.assertIn('sessionStorage.setItem("session_uuid", normalized)', source)
+        self.assertIn("setActiveLegacySession(result.session_id || newUUID)", source)
+        self.assertIn("window.location.replace(`/uuid=${sessionUUID}`)", source)
         self.assertNotIn('console.log("[配置] 成功从API加载配置:", config);', source)
         self.assertIn('console.log("[验证码设置] 测试生成成功");', source)
         self.assertNotIn(

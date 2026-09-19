@@ -682,6 +682,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
                 "script": context["runtime_script"],
                 "runtime_version": context["runtime_version"],
                 "session_id": session_id,
+                "stale_session_id": "22222222-2222-4222-8222-222222222222",
                 "secret": secret,
             }
         )
@@ -692,10 +693,10 @@ globalThis.TextDecoder = TextDecoder;
 globalThis.TextEncoder = TextEncoder;
 globalThis.window = globalThis;
 Object.defineProperty(globalThis, "crypto", { value: require("crypto").webcrypto, configurable: true });
-globalThis.location = { pathname: `/uuid=${payload.session_id}` };
+globalThis.location = { pathname: "/" };
 globalThis.sessionStorage = {
   getItem(name) {
-    return name === "session_uuid" ? payload.session_id : "";
+    return name === "session_uuid" ? payload.stale_session_id : "";
   },
 };
 if (!globalThis.atob) {
@@ -770,7 +771,7 @@ globalThis.fetch = async (url, options) => {
     providers: {
       amap: { field: "js_key", ciphertext: "server-only-ciphertext" },
     },
-  });
+  }, payload.session_id);
   if (!result.amap || result.amap.js_key !== payload.secret) {
     throw new Error("server decrypt result mismatch");
   }
