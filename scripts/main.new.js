@@ -12078,6 +12078,7 @@ async function fetchLegacyMapKeyRuntimeScript(
     const headers = {};
     if (sessionId) {
       headers["X-Session-ID"] = sessionId;
+      addAdminViewOriginSessionHeader(headers, sessionId);
     }
     let response;
     try {
@@ -14268,10 +14269,10 @@ function checkWeakPassword(password) {
 
 // 新增：返回管理员会话逻辑
 function returnToAdminSession() {
-  const originSession = localStorage.getItem("admin_return_origin");
+  const originSession = getStoredAdminReturnOriginSession();
   if (originSession) {
     // 清除记录并跳转回原会话
-    localStorage.removeItem("admin_return_origin");
+    localStorage.removeItem(ADMIN_RETURN_ORIGIN_STORAGE_KEY);
     window.location.href = `/uuid=${originSession}`;
   } else {
     // 异常情况，回首页
@@ -14281,7 +14282,7 @@ function returnToAdminSession() {
 
 // 新增：检查是否需要显示返回按钮
 function checkAdminReturnState() {
-  const originSession = localStorage.getItem("admin_return_origin");
+  const originSession = getStoredAdminReturnOriginSession();
   const overlay = document.getElementById("admin-return-overlay");
 
   logMessage_Info(
@@ -14291,9 +14292,7 @@ function checkAdminReturnState() {
 
   if (!overlay) return;
 
-  // 从URL提取当前UUID，确保比对准确
-  const match = window.location.pathname.match(/\/uuid=([a-f0-9-]{36})/i);
-  const currentUUID = match ? match[1] : null;
+  const currentUUID = getCurrentLegacySessionUUID();
 
   // 只有当存在来源记录，且当前页面UUID与来源UUID不一致时才显示
   if (
@@ -14314,7 +14313,7 @@ function checkAdminReturnState() {
     // 修正：如果当前就在来源会话（管理员自己的会话），则清理掉localStorage标记
     // 防止脏数据导致逻辑混乱
     if (originSession && currentUUID && originSession === currentUUID) {
-      localStorage.removeItem("admin_return_origin");
+      localStorage.removeItem(ADMIN_RETURN_ORIGIN_STORAGE_KEY);
       console.log("[上帝模式] 检测到已位于管理员原会话，自动清除返回记录");
     }
   }
@@ -14508,6 +14507,9 @@ async function loadMobileSessionPickerList() {
           session.is_current || session.session_id === sessionUUID;
         const sessionHash =
           session.session_hash || session.session_id.substring(0, 16);
+        const ownerUsername = String(session.username || currentAuthUsername || "");
+        const sessionIdArg = JSON.stringify(session.session_id);
+        const ownerUsernameArg = JSON.stringify(ownerUsername);
 
         const is_multi_mode = session.is_multi_account_mode;
         const session_login_success = session.login_success;
@@ -14532,10 +14534,10 @@ async function loadMobileSessionPickerList() {
         isCurrent ? "border-2 border-sky-500 bg-sky-50" : "bg-white"
       }" 
            ${
-             !isCurrent
-               ? `onclick="selectSessionFromPicker('${session.session_id}')" style="cursor: pointer;"`
-               : 'style="cursor: default;"'
-           }
+              !isCurrent
+                ? `onclick="selectSessionFromPicker(${sessionIdArg}, ${ownerUsernameArg})" style="cursor: pointer;"`
+                : 'style="cursor: default;"'
+            }
            title="${!isCurrent ? "点击进入此会话" : "这是当前会话"}">
         
         <div class="flex-1 min-w-0 pr-3">
@@ -16142,6 +16144,7 @@ async function loadMobileSessionsList() {
         session.is_current || session.session_id === sessionUUID;
       // 【修改点1】不再截断UUID，保存完整字符串
       const fullSessionId = session.session_id || "未知";
+      const ownerUsername = String(session.username || currentAuthUsername || "");
 
       const isMulti = session.is_multi_account_mode;
       const loginStatus = session.login_success;
@@ -16355,7 +16358,7 @@ async function loadMobileSessionsList() {
               "切换会话",
               `确定要切换到此会话吗？\nUUID: ${fullSessionId}`,
               () => {
-                selectSessionFromPicker(session.session_id);
+                selectSessionFromPicker(session.session_id, ownerUsername);
               },
             );
           }
@@ -16379,7 +16382,7 @@ async function loadMobileSessionsList() {
             "切换会话",
             `确定要切换到此会话吗？\nUUID: ${fullSessionId}`,
             () => {
-              selectSessionFromPicker(session.session_id);
+              selectSessionFromPicker(session.session_id, ownerUsername);
             },
           );
         }
@@ -16828,6 +16831,100 @@ function isUsableClientSessionUUID(value) {
   );
 }
 
+const ADMIN_RETURN_ORIGIN_STORAGE_KEY = "admin_return_origin";
+const ADMIN_VIEW_ORIGIN_HEADER = "X-Admin-Origin-Session-ID";
+
+function normalizeClientSessionUUID(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return isUsableClientSessionUUID(normalized) ? normalized : "";
+}
+
+function getStoredAdminReturnOriginSession() {
+  try {
+    return normalizeClientSessionUUID(
+      localStorage.getItem(ADMIN_RETURN_ORIGIN_STORAGE_KEY),
+    );
+  } catch (_error) {
+    return "";
+  }
+}
+
+function getCurrentLegacySessionUUID() {
+  return (
+    normalizeClientSessionUUID(sessionUUID) ||
+    normalizeClientSessionUUID(getUUIDFromURL())
+  );
+}
+
+function getAdminViewOriginSessionUUID(currentSessionId = getCurrentLegacySessionUUID()) {
+  const originSession = getStoredAdminReturnOriginSession();
+  const currentSession = normalizeClientSessionUUID(currentSessionId);
+  if (!originSession || !currentSession || originSession === currentSession) {
+    return "";
+  }
+  return originSession;
+}
+
+function addAdminViewOriginSessionHeader(headers, currentSessionId) {
+  const originSession = getAdminViewOriginSessionUUID(currentSessionId);
+  if (originSession) {
+    headers[ADMIN_VIEW_ORIGIN_HEADER] = originSession;
+  }
+  return headers;
+}
+
+function isAdminLikeLegacyUser() {
+  const group = String(
+    currentUserData?.group || currentUserData?.auth_group || "",
+  ).trim();
+  if (group === "admin" || group === "super_admin") {
+    return true;
+  }
+  const permissions =
+    currentUserData?.permissions ||
+    currentUserData?.all_permissions ||
+    currentUserData?.group_permissions ||
+    {};
+  return Boolean(permissions.view_all_sessions || permissions.manage_user_sessions);
+}
+
+function rememberAdminReturnOriginSession() {
+  const existingOrigin = getStoredAdminReturnOriginSession();
+  if (existingOrigin) {
+    return existingOrigin;
+  }
+  const currentSession = getCurrentLegacySessionUUID();
+  if (currentSession) {
+    try {
+      localStorage.setItem(ADMIN_RETURN_ORIGIN_STORAGE_KEY, currentSession);
+    } catch (_error) {
+      // Storage failures should not force a token-switching fallback.
+    }
+  }
+  return currentSession;
+}
+
+function shouldUseAdminSessionViewMode(targetSessionId, targetUsername = "") {
+  const targetSession = normalizeClientSessionUUID(targetSessionId);
+  const currentSession = getCurrentLegacySessionUUID();
+  if (!targetSession || !currentSession || targetSession === currentSession) {
+    return false;
+  }
+  if (!isAdminLikeLegacyUser()) {
+    return false;
+  }
+  const normalizedTargetUsername = String(targetUsername || "").trim();
+  const normalizedCurrentUsername = String(currentAuthUsername || "").trim();
+  if (
+    normalizedTargetUsername &&
+    normalizedCurrentUsername &&
+    normalizedTargetUsername === normalizedCurrentUsername
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function ensureAuthLoginSessionUUID() {
   if (isUsableClientSessionUUID(sessionUUID)) {
     return sessionUUID;
@@ -17089,6 +17186,7 @@ async function callPythonAPI(method, ...args) {
   const requestSessionHeaderValue = getApiRequestSessionHeaderValue(method);
   if (isUsableClientSessionUUID(requestSessionHeaderValue)) {
     headers["X-Session-ID"] = requestSessionHeaderValue;
+    addAdminViewOriginSessionHeader(headers, requestSessionHeaderValue);
     logMessage_Info(`[API调用] 会话ID: ${requestSessionHeaderValue}`);
   } else if (isAuthContextApiMethod(method)) {
     logMessage_Warning(
@@ -24313,10 +24411,12 @@ async function loadAdminSessions_inline() {
 
     let response;
     if (isGodMode) {
+      const headers = {
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
+      };
+      addAdminViewOriginSessionHeader(headers, headers["X-Session-ID"]);
       response = await fetch("/auth/admin/all_sessions", {
-        headers: {
-          "X-Session-ID": getAuthenticatedSessionHeaderValue(),
-        },
+        headers,
       });
     } else {
       response = await fetch("/auth/user/sessions", {
@@ -24387,6 +24487,11 @@ async function loadAdminSessions_inline() {
             session.is_current || session.session_id === sessionUUID;
           const sessionHash =
             session.session_hash || session.session_id.substring(0, 16);
+          const ownerUsername = String(
+            session.username || (isGodMode ? "" : currentAuthUsername || ""),
+          );
+          const sessionIdArg = JSON.stringify(session.session_id);
+          const ownerUsernameArg = JSON.stringify(ownerUsername);
 
           let ownerInfo = "";
           if (isGodMode) {
@@ -24429,7 +24534,7 @@ async function loadAdminSessions_inline() {
                             ${
                               !isCurrent
                                 ? `
-                              <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="selectSession('${session.session_id}')">选择</button>
+                              <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="selectSession(${sessionIdArg}, ${ownerUsernameArg})">选择</button>
                               <button class="btn btn-ghost !py-1 !px-2 !text-red-600 text-xs" onclick="deleteSession('${session.session_id}')">删除</button>
                             `
                                 : ""
@@ -30336,10 +30441,12 @@ async function loadAdminSessions() {
 
     let response;
     if (isGodMode) {
+      const headers = {
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
+      };
+      addAdminViewOriginSessionHeader(headers, headers["X-Session-ID"]);
       response = await fetch("/auth/admin/all_sessions", {
-        headers: {
-          "X-Session-ID": getAuthenticatedSessionHeaderValue(),
-        },
+        headers,
       });
     } else {
       response = await fetch("/auth/user/sessions", {
@@ -30402,6 +30509,11 @@ async function loadAdminSessions() {
             session.is_current || session.session_id === sessionUUID;
           const sessionHash =
             session.session_hash || session.session_id.substring(0, 16);
+          const ownerUsername = String(
+            session.username || (isGodMode ? "" : currentAuthUsername || ""),
+          );
+          const sessionIdArg = JSON.stringify(session.session_id);
+          const ownerUsernameArg = JSON.stringify(ownerUsername);
 
           let ownerInfo = "";
           if (isGodMode) {
@@ -30442,7 +30554,7 @@ async function loadAdminSessions() {
                 ${
                   !isCurrent
                     ? `
-                  <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="selectSession('${session.session_id}')">选择</button>
+                  <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="selectSession(${sessionIdArg}, ${ownerUsernameArg})">选择</button>
                   <button class="btn btn-ghost !py-1 !px-2 !text-red-600 text-xs" onclick="deleteSession('${session.session_id}')">删除</button>
                 `
                     : ""
@@ -30499,8 +30611,12 @@ async function loadMobileAdminSessionsList() {
 
     let response;
     if (isGodMode) {
+      const headers = {
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
+      };
+      addAdminViewOriginSessionHeader(headers, headers["X-Session-ID"]);
       response = await fetch("/auth/admin/all_sessions", {
-        headers: { "X-Session-ID": getAuthenticatedSessionHeaderValue() },
+        headers,
       });
     } else {
       response = await fetch("/auth/user/sessions", {
@@ -30594,6 +30710,9 @@ async function loadMobileAdminSessionsList() {
       const isCurrent =
         session.is_current || session.session_id === sessionUUID;
       const fullSessionId = session.session_id;
+      const ownerUsername = String(
+        session.username || (isGodMode ? "" : currentAuthUsername || ""),
+      );
       const isMulti = session.is_multi_account_mode;
       const loginStatus = session.login_success;
 
@@ -30759,7 +30878,7 @@ async function loadMobileAdminSessionsList() {
               "切换会话",
               `确定要切换到此会话吗？\nUUID: ${fullSessionId}`,
               () => {
-                selectSessionFromPicker(session.session_id);
+                selectSessionFromPicker(session.session_id, ownerUsername);
               },
             );
           }
@@ -30783,7 +30902,7 @@ async function loadMobileAdminSessionsList() {
             "切换会话",
             `确定要切换到此会话吗？\nUUID: ${fullSessionId}`,
             () => {
-              selectSessionFromPicker(session.session_id);
+              selectSessionFromPicker(session.session_id, ownerUsername);
             },
           );
         }
@@ -33387,7 +33506,7 @@ async function destroySession(sessionId, confirm = true) {
   }
 }
 
-async function selectSession(sessionId) {
+async function selectSession(sessionId, sessionUsername = "") {
   const confirmed = await jsShowConfirm(
     "确认切换",
     `确定要切换到会话\n ${sessionId} \n吗？`,
@@ -33398,16 +33517,9 @@ async function selectSession(sessionId) {
     return;
   }
 
-  // ========== 修改开始：上帝模式直接跳转 ==========
-  // 检查当前用户是否为超级管理员
-  if (currentUserData && currentUserData.group === "super_admin") {
-    logMessage_Info("[上帝模式] 识别到管理员身份，保留Token并直接跳转...");
-
-    // 保存当前管理员的会话ID作为返回点
-    // 注意：如果已经是通过上帝模式进入的二级页面，不要覆盖原始的来源
-    if (!localStorage.getItem("admin_return_origin")) {
-      localStorage.setItem("admin_return_origin", sessionUUID);
-    }
+  if (shouldUseAdminSessionViewMode(sessionId, sessionUsername)) {
+    logMessage_Info("[管理员查看] 保留管理员Token并直接进入目标会话...");
+    rememberAdminReturnOriginSession();
 
     Swal.fire({
       icon: "success",
@@ -33662,6 +33774,9 @@ async function loadSessionPickerList() {
           session.is_current || session.session_id === sessionUUID;
         const sessionHash =
           session.session_hash || session.session_id.substring(0, 16);
+        const ownerUsername = String(session.username || currentAuthUsername || "");
+        const sessionIdArg = JSON.stringify(session.session_id);
+        const ownerUsernameArg = JSON.stringify(ownerUsername);
 
         return `
             <div class="border ${
@@ -33706,7 +33821,7 @@ async function loadSessionPickerList() {
                   ${
                     !isCurrent
                       ? `
-                    <button class="btn btn-primary !py-1 !px-3 text-xs" onclick="selectSessionFromPicker('${session.session_id}')">
+                    <button class="btn btn-primary !py-1 !px-3 text-xs" onclick="selectSessionFromPicker(${sessionIdArg}, ${ownerUsernameArg})">
                       <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
                       </svg>
@@ -33757,22 +33872,18 @@ function updateSessionCountDisplay() {
   }
 }
 
-async function selectSessionFromPicker(sessionId) {
+async function selectSessionFromPicker(sessionId, sessionUsername = "") {
   logMessage_Info(`准备切换到会话 ${sessionId.substring(0, 16)}...`);
   closeSessionPicker();
 
-  // ========== 修改开始：上帝模式直接跳转 ==========
-  if (currentUserData && currentUserData.group === "super_admin") {
+  if (shouldUseAdminSessionViewMode(sessionId, sessionUsername)) {
     logMessage_Info(
-      "[上帝模式-移动端] 识别到管理员身份，保留Token并直接跳转...",
+      "[管理员查看-移动端] 保留管理员Token并直接进入目标会话...",
     );
-    if (!localStorage.getItem("admin_return_origin")) {
-      localStorage.setItem("admin_return_origin", sessionUUID);
-    }
+    rememberAdminReturnOriginSession();
     window.location.href = `/uuid=${sessionId}`;
     return;
   }
-  // ========== 修改结束 ==========
 
   try {
     logMessage_Info(

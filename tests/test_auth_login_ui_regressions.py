@@ -1,6 +1,7 @@
 import json
 import re
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -14,6 +15,30 @@ def _extract_js_section(source: str, start_marker: str, end_marker: str) -> str:
     start = source.index(start_marker)
     end = source.index(end_marker, start)
     return source[start:end]
+
+
+def _run_node_script(script: str):
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            suffix=".mjs",
+            dir=PROJECT_ROOT,
+            encoding="utf-8",
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            temp_file.write(script)
+        return subprocess.run(
+            ["node", str(temp_path)],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=False,
+            check=False,
+        )
+    finally:
+        if temp_path:
+            temp_path.unlink(missing_ok=True)
 
 
 class TestAuthLoginUiRegressions(unittest.TestCase):
@@ -439,6 +464,182 @@ eval(callPythonAPISource);
             },
         )
         self.assertEqual(payload[1]["headers"], {"Content-Type": "application/json"})
+
+    def test_admin_view_api_keeps_target_session_and_sends_origin_header(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        resolver_source = _extract_js_section(
+            source,
+            "function isUsableClientSessionUUID(value) {",
+            "\n\nfunction shouldSuppressLoggedOutElsewhereNotice",
+        )
+        call_python_api_source = _extract_js_section(
+            source,
+            "async function callPythonAPI(method, ...args) {",
+            "\n\nasync function callPythonAPI_raw",
+        )
+
+        node_script = f"""
+const resolverSource = {json.dumps(resolver_source)};
+const callPythonAPISource = {json.dumps(call_python_api_source)};
+const originSession = '11111111-1111-4111-8111-111111111111';
+const targetSession = '22222222-2222-4222-8222-222222222222';
+const fetchCalls = [];
+const storage = new Map([['admin_return_origin', originSession]]);
+globalThis.console = {{ log() {{}}, info() {{}}, warn() {{}}, error() {{}} }};
+globalThis.window = {{ location: {{ pathname: `/uuid=${{targetSession}}` }} }};
+globalThis.document = {{ getElementById() {{ return null; }} }};
+globalThis.localStorage = {{
+  getItem(key) {{ return storage.has(key) ? storage.get(key) : null; }},
+  setItem(key, value) {{ storage.set(key, value); }},
+  removeItem(key) {{ storage.delete(key); }},
+}};
+globalThis.sessionStorage = {{ setItem() {{}}, getItem() {{ return ''; }} }};
+globalThis.Swal = {{ fire() {{ return Promise.resolve({{ isConfirmed: true }}); }} }};
+globalThis.logMessage_Info = () => {{}};
+globalThis.logMessage_Warning = () => {{}};
+globalThis.logMessage_Error = () => {{}};
+globalThis.getServerConnectionGuidanceMessage = () => '';
+globalThis.showMobileMessage = () => {{}};
+globalThis.setInterval = () => 1;
+globalThis.clearInterval = () => {{}};
+globalThis.isInNetworkErrorState = false;
+globalThis.refreshUserListInterval = null;
+globalThis.socket = null;
+globalThis.isMobileMode = false;
+globalThis.sessionUUID = null;
+globalThis.authSessionUUID = null;
+globalThis.authRequestGeneration = 1;
+globalThis.authLoginInProgress = false;
+globalThis.getUUIDFromURL = () => targetSession;
+globalThis.fetch = async (url, options) => {{
+  fetchCalls.push({{ url, headers: options.headers }});
+  return {{
+    ok: true,
+    json: async () => ({{ success: true }}),
+  }};
+}};
+
+const {{ callPythonAPI }} = Function(
+  resolverSource + "\\n" + callPythonAPISource + "\\nreturn {{ callPythonAPI }};",
+)();
+
+(async () => {{
+  await callPythonAPI('get_initial_data', {{}});
+  process.stdout.write(JSON.stringify(fetchCalls));
+}})().catch((error) => {{
+  process.stderr.write(error.stack || String(error));
+  process.exit(1);
+}});
+"""
+
+        result = _run_node_script(node_script)
+
+        stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
+        stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+
+        if result.returncode != 0:
+            self.fail(
+                "Node admin view API header regression failed\n"
+                f"STDOUT:\n{stdout}\n"
+                f"STDERR:\n{stderr}"
+            )
+
+        payload = json.loads(stdout)
+        self.assertEqual(
+            payload[0]["headers"],
+            {
+                "Content-Type": "application/json",
+                "X-Session-ID": "22222222-2222-4222-8222-222222222222",
+                "X-Admin-Origin-Session-ID": "11111111-1111-4111-8111-111111111111",
+            },
+        )
+
+    def test_admin_select_session_views_without_switching_auth_cookie(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        resolver_source = _extract_js_section(
+            source,
+            "function isUsableClientSessionUUID(value) {",
+            "\n\nfunction shouldSuppressLoggedOutElsewhereNotice",
+        )
+        select_session_source = _extract_js_section(
+            source,
+            "async function selectSession(sessionId",
+            "\n\nasync function createNewSessionFromPicker",
+        )
+
+        node_script = f"""
+const resolverSource = {json.dumps(resolver_source)};
+const selectSessionSource = {json.dumps(select_session_source)};
+const originSession = '11111111-1111-4111-8111-111111111111';
+const targetSession = '22222222-2222-4222-8222-222222222222';
+const storage = new Map();
+const fetchCalls = [];
+let navigatedTo = '';
+globalThis.console = {{ log() {{}}, info() {{}}, warn() {{}}, error() {{}} }};
+globalThis.window = {{
+  location: {{
+    pathname: `/uuid=${{originSession}}`,
+    set href(value) {{ navigatedTo = value; }},
+    get href() {{ return navigatedTo; }},
+  }},
+}};
+globalThis.document = {{ getElementById() {{ return null; }} }};
+globalThis.localStorage = {{
+  getItem(key) {{ return storage.has(key) ? storage.get(key) : null; }},
+  setItem(key, value) {{ storage.set(key, value); }},
+  removeItem(key) {{ storage.delete(key); }},
+}};
+globalThis.sessionStorage = {{ setItem() {{}}, getItem() {{ return ''; }} }};
+globalThis.currentUserData = {{ group: 'admin' }};
+globalThis.currentAuthUsername = 'manager';
+globalThis.sessionUUID = originSession;
+globalThis.authSessionUUID = originSession;
+globalThis.logMessage_Info = () => {{}};
+globalThis.Swal = {{
+  close() {{}},
+  fire() {{
+    return {{ then(callback) {{ callback(); return Promise.resolve(); }} }};
+  }},
+}};
+globalThis.jsShowConfirm = async () => true;
+globalThis.fetch = async (url, options) => {{
+  fetchCalls.push({{ url, options }});
+  throw new Error('switch_session should not be called for admin view');
+}};
+
+const {{ selectSession }} = Function(
+  resolverSource + "\\n" + selectSessionSource + "\\nreturn {{ selectSession }};",
+)();
+
+(async () => {{
+  await selectSession(targetSession, 'alice');
+  process.stdout.write(JSON.stringify({{
+    fetchCalls,
+    navigatedTo,
+    origin: storage.get('admin_return_origin') || '',
+  }}));
+}})().catch((error) => {{
+  process.stderr.write(error.stack || String(error));
+  process.exit(1);
+}});
+"""
+
+        result = _run_node_script(node_script)
+
+        stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
+        stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+
+        if result.returncode != 0:
+            self.fail(
+                "Node admin select session regression failed\n"
+                f"STDOUT:\n{stdout}\n"
+                f"STDERR:\n{stderr}"
+            )
+
+        payload = json.loads(stdout)
+        self.assertEqual(payload["fetchCalls"], [])
+        self.assertEqual(payload["navigatedTo"], "/uuid=22222222-2222-4222-8222-222222222222")
+        self.assertEqual(payload["origin"], "11111111-1111-4111-8111-111111111111")
 
     def test_registration_avatar_preview_object_urls_are_revoked_after_preview_load(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")

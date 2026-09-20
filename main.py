@@ -9029,6 +9029,8 @@ SESSION_UUID_V4_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+ADMIN_ORIGIN_SESSION_HEADER = "X-Admin-Origin-Session-ID"
+
 
 def normalize_session_uuid(session_id):
     """返回有效 UUID v4 字符串；无效或空值返回空字符串。"""
@@ -9038,6 +9040,76 @@ def normalize_session_uuid(session_id):
     if not SESSION_UUID_V4_PATTERN.match(normalized):
         return ""
     return normalized.lower()
+
+
+def resolve_admin_origin_session_context(
+    target_session_id, origin_session_id, token, lock_held=False
+):
+    """验证管理员查看态的来源会话，返回来源管理员身份上下文。"""
+    target_session_id = normalize_session_uuid(target_session_id)
+    origin_session_id = normalize_session_uuid(origin_session_id)
+    if (
+        not target_session_id
+        or not origin_session_id
+        or target_session_id == origin_session_id
+        or not token
+    ):
+        return None
+
+    def _read_origin_api_context():
+        origin_api = web_sessions.get(origin_session_id)
+        if origin_api is None:
+            return None, False, True, None, "guest"
+        is_authenticated = getattr(origin_api, "is_authenticated", False)
+        is_guest = getattr(origin_api, "is_guest", True)
+        origin_username = getattr(origin_api, "auth_username", None)
+        origin_group = getattr(origin_api, "auth_group", "guest")
+        return origin_api, is_authenticated, is_guest, origin_username, origin_group
+
+    if lock_held:
+        (
+            origin_api,
+            is_authenticated,
+            is_guest,
+            origin_username,
+            origin_group,
+        ) = _read_origin_api_context()
+    else:
+        with web_sessions_lock:
+            (
+                origin_api,
+                is_authenticated,
+                is_guest,
+                origin_username,
+                origin_group,
+            ) = _read_origin_api_context()
+
+    if not is_authenticated or is_guest or not origin_username:
+        return None
+
+    is_valid, reason = token_manager.verify_token(
+        origin_username,
+        origin_session_id,
+        token,
+    )
+    if not is_valid:
+        logging.warning(
+            f"[管理员查看] 来源会话 {origin_session_id[:8]} token 无效 ({reason})"
+        )
+        return None
+
+    if not auth_system.check_permission(origin_username, "view_all_sessions"):
+        logging.warning(
+            f"[管理员查看] 用户 {origin_username} 缺少 view_all_sessions 权限"
+        )
+        return None
+
+    return {
+        "session_id": origin_session_id,
+        "username": origin_username,
+        "group": origin_group,
+        "api_instance": origin_api,
+    }
 
 
 def is_persistent_business_session(api_instance):
@@ -29723,7 +29795,23 @@ def start_web_server(args_param):
 
         @functools.wraps(f)
         def decorated_function(*args, **kwargs):
-            session_id = request.headers.get("X-Session-ID", "")
+            session_id = normalize_session_uuid(request.headers.get("X-Session-ID", ""))
+            admin_origin_session_id = normalize_session_uuid(
+                request.headers.get(ADMIN_ORIGIN_SESSION_HEADER, "")
+            )
+            token = request.cookies.get("auth_token")
+            admin_origin_context = resolve_admin_origin_session_context(
+                session_id,
+                admin_origin_session_id,
+                token,
+            )
+            if admin_origin_context:
+                g.user = admin_origin_context["username"]
+                g.api_instance = admin_origin_context["api_instance"]
+                g.session_id = admin_origin_context["session_id"]
+                g.viewed_session_id = session_id
+                return f(*args, **kwargs)
+
             api_instance = None
             is_authenticated = False
             auth_username = None
@@ -34619,26 +34707,40 @@ def start_web_server(args_param):
         if not auth_system.check_permission(auth_username, "view_all_sessions"):
             return jsonify({"success": False, "message": "权限不足，需要查看所有会话权限（view_all_sessions）"}), 403
 
-        session_id = request.headers.get("X-Session-ID", "")
+        session_id = normalize_session_uuid(request.headers.get("X-Session-ID", ""))
+        auth_session_id = normalize_session_uuid(getattr(g, "session_id", ""))
+        is_admin_origin_view = (
+            auth_session_id
+            and session_id
+            and auth_session_id != session_id
+            and getattr(g, "viewed_session_id", "") == session_id
+        )
 
-        with web_sessions_lock:
-            if session_id not in web_sessions:
-                state = load_session_state(session_id)
-                if not state:
-                    return (
-                        jsonify({"success": False, "message": "当前会话无效或已过期"}),
-                        401,
-                    )
-                api_instance = Api(args)
-                restore_session_to_api_instance(api_instance, state)
-                web_sessions[session_id] = api_instance
-                logging.info(f"创建新会话时，按需恢复了发起请求的会话 {session_id[:8]}")
-            else:
-                api_instance = web_sessions[session_id]
+        if is_admin_origin_view:
+            api_instance = g.api_instance
+            auth_username = g.user
+            is_guest = getattr(api_instance, "is_guest", False)
+        else:
+            with web_sessions_lock:
+                if session_id not in web_sessions:
+                    state = load_session_state(session_id)
+                    if not state:
+                        return (
+                            jsonify({"success": False, "message": "当前会话无效或已过期"}),
+                            401,
+                        )
+                    api_instance = Api(args)
+                    restore_session_to_api_instance(api_instance, state)
+                    web_sessions[session_id] = api_instance
+                    logging.info(f"创建新会话时，按需恢复了发起请求的会话 {session_id[:8]}")
+                else:
+                    api_instance = web_sessions[session_id]
 
-        auth_username = getattr(api_instance, "auth_username", None)
-        is_guest = getattr(api_instance, "is_guest", True)
+            auth_username = getattr(api_instance, "auth_username", None)
+            is_guest = getattr(api_instance, "is_guest", True)
+
         if not is_guest and auth_username:
+            token_session_id = auth_session_id if is_admin_origin_view else session_id
             token_from_cookie = request.cookies.get("auth_token")
             if not token_from_cookie:
                 logging.warning(
@@ -34656,7 +34758,7 @@ def start_web_server(args_param):
                 )
 
             is_valid, reason = token_manager.verify_token(
-                auth_username, session_id, token_from_cookie
+                auth_username, token_session_id, token_from_cookie
             )
             if not is_valid:
                 logging.warning(
@@ -34671,9 +34773,9 @@ def start_web_server(args_param):
                 response.set_cookie("auth_token", "", max_age=0)
                 return response
             else:
-                token_manager.refresh_token(auth_username, session_id)
+                token_manager.refresh_token(auth_username, token_session_id)
                 logging.debug(
-                    f"用户 {auth_username} (会话 {session_id[:8]}) Token 验证通过并已刷新"
+                    f"用户 {auth_username} (会话 {token_session_id[:8]}) Token 验证通过并已刷新"
                 )
         elif not is_guest and not auth_username:
             logging.error(f"会话 {session_id[:8]} 存在但缺少用户名，无法创建新会话")
@@ -40438,7 +40540,11 @@ def start_web_server(args_param):
             # 如果在检查过程中出现异常，不阻止后续逻辑（以防止意外影响正常 API）
             logging.exception("检查 API 黑名单时出错")
         """API调用端点：将前端调用转发到Python后端"""
-        session_id = request.headers.get("X-Session-ID", "")
+        session_id = normalize_session_uuid(request.headers.get("X-Session-ID", ""))
+        admin_origin_session_id = normalize_session_uuid(
+            request.headers.get(ADMIN_ORIGIN_SESSION_HEADER, "")
+        )
+        admin_origin_context = None
 
         def _make_auth_optional_api_instance(context_reason):
             api = Api(args)
@@ -40489,6 +40595,23 @@ def start_web_server(args_param):
 
                             # 如果Token验证失败，检查是否是超级管理员在访问其他用户的会话
                             validated_user = username  # 默认验证的是会话拥有者
+                            if not is_valid and reason == "token_mismatch":
+                                admin_origin_context = (
+                                    resolve_admin_origin_session_context(
+                                        session_id,
+                                        admin_origin_session_id,
+                                        token,
+                                        lock_held=True,
+                                    )
+                                )
+                                if admin_origin_context:
+                                    is_valid = True
+                                    validated_user = admin_origin_context["username"]
+                                    logging.info(
+                                        "[API鉴权] 管理员查看态：允许管理员 "
+                                        f"{validated_user} 访问用户 {username} 的会话"
+                                    )
+
                             if not is_valid and reason == "token_mismatch":
                                 try:
                                     # 获取超级管理员用户名
@@ -40670,9 +40793,14 @@ def start_web_server(args_param):
 
             if method in permission_required_methods:
                 required_permission = permission_required_methods[method]
-                if hasattr(api_instance, "auth_username"):
+                permission_username = (
+                    admin_origin_context["username"]
+                    if admin_origin_context
+                    else getattr(api_instance, "auth_username", None)
+                )
+                if permission_username:
                     if not auth_system.check_permission(
-                        api_instance.auth_username, required_permission
+                        permission_username, required_permission
                     ):
                         return (
                             jsonify(

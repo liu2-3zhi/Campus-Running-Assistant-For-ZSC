@@ -209,6 +209,60 @@ class TestAuthSessionLifecycle(unittest.TestCase):
             self.assertEqual(list(Path(main_module.SESSION_STORAGE_DIR).glob("*.json")), [])
             self.assertFalse(Path(main_module.SESSION_INDEX_FILE).exists())
 
+    def test_admin_origin_session_context_uses_origin_identity(self):
+        target_session_id = "22222222-2222-4222-8222-222222222222"
+        origin_session_id = "11111111-1111-4111-8111-111111111111"
+        target_api = SimpleNamespace(
+            _web_session_id=target_session_id,
+            is_authenticated=True,
+            is_guest=False,
+            auth_username="alice",
+            auth_group="user",
+        )
+        origin_api = SimpleNamespace(
+            _web_session_id=origin_session_id,
+            is_authenticated=True,
+            is_guest=False,
+            auth_username="manager",
+            auth_group="admin",
+        )
+        token_manager = SimpleNamespace(
+            verify_token=mock.Mock(return_value=(True, "valid")),
+        )
+        auth_system = SimpleNamespace(
+            check_permission=mock.Mock(return_value=True),
+        )
+
+        with mock.patch.multiple(
+            main_module,
+            web_sessions={
+                target_session_id: target_api,
+                origin_session_id: origin_api,
+            },
+            web_sessions_lock=main_module.threading.Lock(),
+            token_manager=token_manager,
+            auth_system=auth_system,
+            create=True,
+        ):
+            context = main_module.resolve_admin_origin_session_context(
+                target_session_id,
+                origin_session_id,
+                "admin-cookie",
+            )
+
+        self.assertIsNotNone(context)
+        self.assertEqual(context["username"], "manager")
+        self.assertIs(context["api_instance"], origin_api)
+        token_manager.verify_token.assert_called_once_with(
+            "manager",
+            origin_session_id,
+            "admin-cookie",
+        )
+        auth_system.check_permission.assert_called_once_with(
+            "manager",
+            "view_all_sessions",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

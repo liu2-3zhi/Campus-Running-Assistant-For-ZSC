@@ -107,6 +107,7 @@
 - `get_initial_data` 属于认证可选初始化链路，后端要允许不可恢复 session 降级到只读初始化上下文；这个临时上下文不能污染后续 session 活动。
 - 前端相关链路重点看 `getApiRequestSessionHeaderValue()`、`callPythonAPI()`、`handleAuthLogin()`、`loadInitialData()` 和 `showAuthLogin()`。
 - 切回登录页或认证登录页时应清理旧的 `logout-elsewhere-overlay`；当登录页已可见、登录中、或当前没有可用 session 时，应抑制过期会话和多设备登录旧响应，避免未登录状态继续显示倒计时提示。
+- 管理员从老版 UI 查看不属于自己的会话时，只能进入“查看态”：前端记录来源会话并随 API 请求发送 `X-Admin-Origin-Session-ID`，后端用来源会话验证管理员身份和权限，但业务 API 仍操作目标会话；切到管理员自己的会话才允许走普通 `/auth/switch_session`。
 
 ## 验证清单
 
