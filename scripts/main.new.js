@@ -14508,8 +14508,8 @@ async function loadMobileSessionPickerList() {
         const sessionHash =
           session.session_hash || session.session_id.substring(0, 16);
         const ownerUsername = String(session.username || currentAuthUsername || "");
-        const sessionIdArg = JSON.stringify(session.session_id);
-        const ownerUsernameArg = JSON.stringify(ownerUsername);
+        const sessionIdArg = escapeHtml(JSON.stringify(session.session_id));
+        const ownerUsernameArg = escapeHtml(JSON.stringify(ownerUsername));
 
         const is_multi_mode = session.is_multi_account_mode;
         const session_login_success = session.login_success;
@@ -14535,7 +14535,7 @@ async function loadMobileSessionPickerList() {
       }" 
            ${
               !isCurrent
-                ? `onclick="selectSessionFromPicker(${sessionIdArg}, ${ownerUsernameArg})" style="cursor: pointer;"`
+                ? `onclick='selectSessionFromPicker(${sessionIdArg}, ${ownerUsernameArg})' style="cursor: pointer;"`
                 : 'style="cursor: default;"'
             }
            title="${!isCurrent ? "点击进入此会话" : "这是当前会话"}">
@@ -24490,8 +24490,8 @@ async function loadAdminSessions_inline() {
           const ownerUsername = String(
             session.username || (isGodMode ? "" : currentAuthUsername || ""),
           );
-          const sessionIdArg = JSON.stringify(session.session_id);
-          const ownerUsernameArg = JSON.stringify(ownerUsername);
+          const sessionIdArg = escapeHtml(JSON.stringify(session.session_id));
+          const ownerUsernameArg = escapeHtml(JSON.stringify(ownerUsername));
 
           let ownerInfo = "";
           if (isGodMode) {
@@ -24534,7 +24534,7 @@ async function loadAdminSessions_inline() {
                             ${
                               !isCurrent
                                 ? `
-                              <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="selectSession(${sessionIdArg}, ${ownerUsernameArg})">选择</button>
+                              <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick='selectSession(${sessionIdArg}, ${ownerUsernameArg})'>选择</button>
                               <button class="btn btn-ghost !py-1 !px-2 !text-red-600 text-xs" onclick="deleteSession('${session.session_id}')">删除</button>
                             `
                                 : ""
@@ -30706,8 +30706,8 @@ async function loadAdminSessions() {
           const ownerUsername = String(
             session.username || (isGodMode ? "" : currentAuthUsername || ""),
           );
-          const sessionIdArg = JSON.stringify(session.session_id);
-          const ownerUsernameArg = JSON.stringify(ownerUsername);
+          const sessionIdArg = escapeHtml(JSON.stringify(session.session_id));
+          const ownerUsernameArg = escapeHtml(JSON.stringify(ownerUsername));
 
           let ownerInfo = "";
           if (isGodMode) {
@@ -30748,7 +30748,7 @@ async function loadAdminSessions() {
                 ${
                   !isCurrent
                     ? `
-                  <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick="selectSession(${sessionIdArg}, ${ownerUsernameArg})">选择</button>
+                  <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick='selectSession(${sessionIdArg}, ${ownerUsernameArg})'>选择</button>
                   <button class="btn btn-ghost !py-1 !px-2 !text-red-600 text-xs" onclick="deleteSession('${session.session_id}')">删除</button>
                 `
                     : ""
@@ -33969,8 +33969,8 @@ async function loadSessionPickerList() {
         const sessionHash =
           session.session_hash || session.session_id.substring(0, 16);
         const ownerUsername = String(session.username || currentAuthUsername || "");
-        const sessionIdArg = JSON.stringify(session.session_id);
-        const ownerUsernameArg = JSON.stringify(ownerUsername);
+        const sessionIdArg = escapeHtml(JSON.stringify(session.session_id));
+        const ownerUsernameArg = escapeHtml(JSON.stringify(ownerUsername));
 
         return `
             <div class="border ${
@@ -34015,7 +34015,7 @@ async function loadSessionPickerList() {
                   ${
                     !isCurrent
                       ? `
-                    <button class="btn btn-primary !py-1 !px-3 text-xs" onclick="selectSessionFromPicker(${sessionIdArg}, ${ownerUsernameArg})">
+                    <button class="btn btn-primary !py-1 !px-3 text-xs" onclick='selectSessionFromPicker(${sessionIdArg}, ${ownerUsernameArg})'>
                       <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
                       </svg>

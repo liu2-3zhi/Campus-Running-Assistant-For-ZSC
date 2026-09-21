@@ -641,6 +641,41 @@ const {{ selectSession }} = Function(
         self.assertEqual(payload["navigatedTo"], "/uuid=22222222-2222-4222-8222-222222222222")
         self.assertEqual(payload["origin"], "11111111-1111-4111-8111-111111111111")
 
+    def test_legacy_session_buttons_keep_inline_handlers_valid(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        self.assertEqual(
+            source.count(
+                "const sessionIdArg = escapeHtml(JSON.stringify(session.session_id));"
+            ),
+            4,
+        )
+        self.assertEqual(
+            source.count(
+                "const ownerUsernameArg = escapeHtml(JSON.stringify(ownerUsername));"
+            ),
+            4,
+        )
+        self.assertEqual(
+            source.count(
+                "onclick='selectSession(${sessionIdArg}, ${ownerUsernameArg})'"
+            ),
+            2,
+        )
+        self.assertEqual(
+            source.count(
+                "onclick='selectSessionFromPicker(${sessionIdArg}, ${ownerUsernameArg})'"
+            ),
+            2,
+        )
+        self.assertNotIn(
+            'onclick="selectSession(${sessionIdArg}, ${ownerUsernameArg})"',
+            source,
+        )
+        self.assertNotIn(
+            'onclick="selectSessionFromPicker(${sessionIdArg}, ${ownerUsernameArg})"',
+            source,
+        )
+
     def test_registration_avatar_preview_object_urls_are_revoked_after_preview_load(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
         crop_registration_source = _extract_js_section(
