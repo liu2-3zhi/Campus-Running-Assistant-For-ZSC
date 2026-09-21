@@ -24795,6 +24795,178 @@ function getHealthStatusPresentation(status) {
   }
 }
 
+function getHealthScrollableElements(contentEl) {
+  if (!contentEl) {
+    return [];
+  }
+
+  const elements = [];
+  const visited = new Set();
+  let current = contentEl;
+  while (current && !visited.has(current)) {
+    visited.add(current);
+    const style =
+      typeof window !== "undefined" && typeof window.getComputedStyle === "function"
+        ? window.getComputedStyle(current)
+        : null;
+    const overflowY = style ? style.overflowY : "";
+    const canScroll =
+      current === contentEl ||
+      current.scrollHeight > current.clientHeight ||
+      /auto|scroll|overlay/i.test(overflowY);
+    if (canScroll) {
+      elements.push(current);
+    }
+    current = current.parentElement;
+  }
+
+  const scrollingElement =
+    typeof document !== "undefined" ? document.scrollingElement : null;
+  if (scrollingElement && !visited.has(scrollingElement)) {
+    elements.push(scrollingElement);
+  }
+
+  return elements;
+}
+
+function captureHealthScrollPositions(contentEl) {
+  const elements = getHealthScrollableElements(contentEl);
+  return {
+    elements: elements.map((element) => ({
+      element,
+      scrollTop: element.scrollTop,
+      scrollLeft: element.scrollLeft,
+    })),
+    windowX: typeof window !== "undefined" ? window.scrollX || 0 : 0,
+    windowY: typeof window !== "undefined" ? window.scrollY || 0 : 0,
+  };
+}
+
+function restoreHealthScrollPositions(snapshot) {
+  if (!snapshot) {
+    return;
+  }
+
+  const restore = () => {
+    snapshot.elements.forEach(({ element, scrollTop, scrollLeft }) => {
+      if (!element) {
+        return;
+      }
+      element.scrollTop = scrollTop;
+      element.scrollLeft = scrollLeft;
+    });
+
+    if (
+      typeof window !== "undefined" &&
+      typeof window.scrollTo === "function"
+    ) {
+      try {
+        window.scrollTo(snapshot.windowX, snapshot.windowY);
+      } catch (error) {
+        // Ignore browser-specific scroll restoration failures.
+      }
+    }
+  };
+
+  restore();
+  if (
+    typeof window !== "undefined" &&
+    typeof window.requestAnimationFrame === "function"
+  ) {
+    window.requestAnimationFrame(restore);
+  } else if (typeof setTimeout === "function") {
+    setTimeout(restore, 0);
+  }
+}
+
+function renderHealthMemoryDiagnostics(result, compact = false) {
+  const diagnostics =
+    result && result.memory_diagnostics
+      ? result.memory_diagnostics
+      : null;
+  if (!diagnostics || typeof diagnostics !== "object") {
+    return "";
+  }
+
+  const formatValue = (value) => {
+    if (value === null || typeof value === "undefined") {
+      return "-";
+    }
+    if (Array.isArray(value)) {
+      return escapeHtml(value.join(", "));
+    }
+    return escapeHtml(String(value));
+  };
+  const fields = [
+    ["进程 PID", diagnostics.process_id],
+    ["启动时间", diagnostics.server_start_time_formatted],
+    ["当前 RSS", diagnostics.rss_mb === null ? null : `${diagnostics.rss_mb} MB`],
+    [
+      "峰值 RSS",
+      diagnostics.max_rss_mb === null ? null : `${diagnostics.max_rss_mb} MB`,
+    ],
+    ["活动线程", diagnostics.active_threads],
+    ["账号刷新线程", diagnostics.account_refresh_threads],
+    ["多账号监控线程", diagnostics.multi_monitor_threads],
+    ["Playwright 上下文", diagnostics.playwright_contexts],
+    ["网页会话", diagnostics.web_sessions],
+    ["IP 缓存", diagnostics.ip_cache],
+    ["手机号缓存", diagnostics.phone_cache],
+    ["短信验证码", diagnostics.sms_codes],
+    ["GC 计数", diagnostics.gc_counts],
+  ];
+  const wrapperClass = compact
+    ? "bg-sky-50 border border-sky-200 rounded-lg p-3 mb-3"
+    : "mt-4 bg-sky-50 border border-sky-200 rounded-lg p-4";
+  const gridClass = compact
+    ? "grid grid-cols-2 gap-2"
+    : "grid grid-cols-2 md:grid-cols-3 gap-3";
+
+  return `
+    <div class="${wrapperClass}">
+      <h5 class="font-semibold text-sky-800 mb-3">运行时内存诊断</h5>
+      <div class="${gridClass}">
+        ${fields
+          .map(
+            ([label, value]) => `
+              <div class="bg-white/70 rounded p-2">
+                <div class="text-xs text-slate-500">${label}</div>
+                <div class="text-sm font-semibold text-slate-700 break-words">${formatValue(value)}</div>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+      <p class="text-xs text-sky-700 mt-3">连续刷新时重点观察 RSS、峰值 RSS、线程数、浏览器上下文和会话数是否持续增长。</p>
+    </div>
+  `;
+}
+
+function showHealthRefreshFailure(contentEl, error) {
+  if (!contentEl) {
+    return;
+  }
+
+  const errorMessage = escapeHtml(
+    error && error.message ? error.message : "未知错误",
+  );
+  const lastSuccess = contentEl.dataset.healthLastSuccess;
+  const lastSuccessText = lastSuccess
+    ? `上次成功刷新：${escapeHtml(lastSuccess)}。`
+    : "";
+  const errorHtml = `
+    <div data-health-refresh-error class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+      刷新失败，以下健康数据可能已过期。${lastSuccessText} ${errorMessage}
+    </div>
+  `;
+  const existingError = contentEl.querySelector("[data-health-refresh-error]");
+  if (existingError) {
+    existingError.outerHTML = errorHtml;
+  } else {
+    contentEl.insertAdjacentHTML("afterbegin", errorHtml);
+  }
+}
+
 // ====================
 // 健康状态检测
 // ====================
@@ -24806,14 +24978,26 @@ async function loadHealthStatus() {
     return;
   }
 
-  contentEl.innerHTML =
-    '<p class="text-slate-400 text-center py-10">检测中...</p>';
+  const scrollSnapshot = captureHealthScrollPositions(contentEl);
+  const hasRenderedHealth = contentEl.dataset.healthLoaded === "true";
+  if (!hasRenderedHealth) {
+    contentEl.innerHTML =
+      '<p class="text-slate-400 text-center py-10">检测中...</p>';
+  }
 
   try {
     const startTime = Date.now();
-    const response = await fetch("/health");
+    const response = await fetch("/health", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
     const responseTime = Date.now() - startTime;
     const result = await response.json();
+    const memoryDiagnostics = result.memory_diagnostics;
 
     const presentation = getHealthStatusPresentation(result.status);
     const statusColor = presentation.color;
@@ -24884,6 +25068,7 @@ async function loadHealthStatus() {
           </div>
         `
       : "";
+    const memoryDiagnosticsHtml = renderHealthMemoryDiagnostics(result, false);
 
     contentEl.innerHTML = `
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -24902,6 +25087,7 @@ async function loadHealthStatus() {
           </div>
           ${summaryHtml}
           ${componentsHtml}
+          ${memoryDiagnosticsHtml}
           <div class="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
             <h5 class="font-semibold text-slate-800 mb-2">JSON 原文</h5>
             <pre class="text-xs text-slate-600 whitespace-pre-wrap"></pre>
@@ -24911,9 +25097,17 @@ async function loadHealthStatus() {
     if (detailPre) {
       detailPre.textContent = JSON.stringify(result, null, 2);
     }
+    contentEl.dataset.healthLoaded = "true";
+    contentEl.dataset.healthLastSuccess = new Date().toLocaleString();
   } catch (e) {
     logMessage_Error("加载健康状态失败:", e);
-    contentEl.innerHTML = `<p class="text-red-500 text-center py-10">加载失败: ${e.message}</p>`;
+    if (!hasRenderedHealth) {
+      contentEl.innerHTML = `<p class="text-red-500 text-center py-10">加载失败: ${escapeHtml(e.message || "未知错误")}</p>`;
+    } else {
+      showHealthRefreshFailure(contentEl, e);
+    }
+  } finally {
+    restoreHealthScrollPositions(scrollSnapshot);
   }
 }
 
@@ -53985,14 +54179,26 @@ async function loadMobileMultiHealthStatus() {
     return;
   }
 
-  contentEl.innerHTML =
-    '<p class="text-slate-400 text-center py-10 text-xs">检测中...</p>';
+  const scrollSnapshot = captureHealthScrollPositions(contentEl);
+  const hasRenderedHealth = contentEl.dataset.healthLoaded === "true";
+  if (!hasRenderedHealth) {
+    contentEl.innerHTML =
+      '<p class="text-slate-400 text-center py-10 text-xs">检测中...</p>';
+  }
 
   try {
     const startTime = Date.now();
-    const response = await fetch("/health");
+    const response = await fetch("/health", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
     const responseTime = Date.now() - startTime;
     const result = await response.json();
+    const memoryDiagnostics = result.memory_diagnostics;
 
     const presentation = getHealthStatusPresentation(result.status);
     const statusColor = presentation.color;
@@ -54057,6 +54263,10 @@ async function loadMobileMultiHealthStatus() {
           </div>
         `
       : "";
+    const memoryDiagnosticsHtml = renderHealthMemoryDiagnostics(
+      { memory_diagnostics: memoryDiagnostics },
+      true,
+    );
 
     contentEl.innerHTML = `
       <div class="grid grid-cols-3 gap-2 mb-3">
@@ -54075,6 +54285,7 @@ async function loadMobileMultiHealthStatus() {
       </div>
       ${summaryHtml}
       ${componentsHtml}
+      ${memoryDiagnosticsHtml}
       <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
         <h5 class="font-semibold text-slate-800 text-xs mb-2">JSON 原文</h5>
         <pre class="text-[10px] text-slate-600 whitespace-pre-wrap font-mono overflow-x-auto"></pre>
@@ -54084,9 +54295,17 @@ async function loadMobileMultiHealthStatus() {
     if (detailPre) {
       detailPre.textContent = JSON.stringify(result, null, 2);
     }
+    contentEl.dataset.healthLoaded = "true";
+    contentEl.dataset.healthLastSuccess = new Date().toLocaleString();
   } catch (e) {
     console.error("[移动端健康状态] 加载失败:", e);
-    contentEl.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">检测失败: ${e.message}</p>`;
+    if (!hasRenderedHealth) {
+      contentEl.innerHTML = `<p class="text-red-500 text-center py-10 text-xs">检测失败: ${escapeHtml(e.message || "未知错误")}</p>`;
+    } else {
+      showHealthRefreshFailure(contentEl, e);
+    }
+  } finally {
+    restoreHealthScrollPositions(scrollSnapshot);
   }
 }
 
@@ -55266,8 +55485,9 @@ function switchMobileAdminTab(tabId, prefix) {
         setTimeout(() => copyAdminContentToPanelVersion("logs"), 500);
         break;
       case "health":
-        loadHealthStatus();
-        setTimeout(() => copyAdminContentToPanelVersion("health"), 500);
+        loadHealthStatus().finally(() =>
+          copyAdminContentToPanelVersion("health"),
+        );
         break;
       case "profile":
         loadPersonalInfo();
@@ -55556,8 +55776,9 @@ function switchMobileAdminTab(tabId, prefix) {
       setTimeout(() => copyAdminContentToMobile("logs", contentId), 500);
       break;
     case "health":
-      loadHealthStatus();
-      setTimeout(() => copyAdminContentToMobile("health", contentId), 500);
+      loadHealthStatus().finally(() =>
+        copyAdminContentToMobile("health", contentId),
+      );
       break;
     case "profile":
       loadPersonalInfo();
@@ -55663,6 +55884,10 @@ function copyAdminContentToMobile(tabType, mobileContentId) {
       '<p class="text-red-500 text-center py-10 text-sm">加载失败</p>';
     return;
   }
+  const scrollSnapshot =
+    tabType === "health"
+      ? captureHealthScrollPositions(mobileContainer)
+      : null;
   mobileContainer.innerHTML = pcContainer.innerHTML;
   mobileContainer.querySelectorAll("button").forEach((btn) => {
     btn.classList.add("!text-xs", "!py-1", "!px-2");
@@ -55670,6 +55895,7 @@ function copyAdminContentToMobile(tabType, mobileContentId) {
   mobileContainer.querySelectorAll("h4, h5").forEach((heading) => {
     heading.classList.add("!text-sm");
   });
+  restoreHealthScrollPositions(scrollSnapshot);
 }
 function copyAdminContentToPanelVersion(tabType) {
   const pcToMobileMap = {
@@ -55741,6 +55967,10 @@ function copyAdminContentToPanelVersion(tabType) {
     }
     return;
   }
+  const scrollSnapshot =
+    tabType === "health"
+      ? captureHealthScrollPositions(mobileContainer)
+      : null;
   mobileContainer.innerHTML = pcContainer.innerHTML;
   mobileContainer.querySelectorAll("button").forEach((btn) => {
     btn.classList.add("!text-xs", "!py-1", "!px-2");
@@ -55753,6 +55983,7 @@ function copyAdminContentToPanelVersion(tabType) {
     .forEach((input) => {
       input.classList.add("!text-xs");
     });
+  restoreHealthScrollPositions(scrollSnapshot);
 }
 // ========================================
 // 将PC端管理面板内容复制到多账号移动端面板

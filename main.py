@@ -23057,7 +23057,58 @@ def _cleanup_chrome_context_for_session(session_id):
         )
 
 
+def _get_windows_process_memory_counters():
+    if os.name != "nt":
+        return None
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        counters = PROCESS_MEMORY_COUNTERS()
+        counters.cb = ctypes.sizeof(counters)
+        get_current_process = ctypes.windll.kernel32.GetCurrentProcess
+        get_current_process.restype = wintypes.HANDLE
+        get_process_memory_info = ctypes.windll.psapi.GetProcessMemoryInfo
+        get_process_memory_info.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+            wintypes.DWORD,
+        ]
+        get_process_memory_info.restype = wintypes.BOOL
+        if get_process_memory_info(
+            get_current_process(),
+            ctypes.byref(counters),
+            counters.cb,
+        ):
+            return counters
+    except Exception:
+        pass
+    return None
+
+
 def _get_process_max_rss_mb():
+    counters = _get_windows_process_memory_counters()
+    if counters is not None:
+        return round(
+            float(counters.PeakWorkingSetSize) / (1024 * 1024),
+            2,
+        )
+
     try:
         import resource
 
@@ -23070,6 +23121,10 @@ def _get_process_max_rss_mb():
 
 
 def _get_process_rss_mb():
+    counters = _get_windows_process_memory_counters()
+    if counters is not None:
+        return round(float(counters.WorkingSetSize) / (1024 * 1024), 2)
+
     try:
         with open("/proc/self/statm", "r", encoding="ascii") as statm_file:
             resident_pages = int(statm_file.read().split()[1])
@@ -23082,7 +23137,33 @@ def _get_process_rss_mb():
         return None
 
 
-def _log_runtime_memory_diagnostics(context):
+def _get_health_uptime_seconds():
+    monotonic_start = globals().get("server_start_monotonic")
+    if monotonic_start is None:
+        return 0.0
+
+    try:
+        return max(time.monotonic() - float(monotonic_start), 0.0)
+    except Exception:
+        return 0.0
+
+
+def _safe_runtime_collection_size(collection_name, lock_name=None):
+    collection = globals().get(collection_name)
+    if collection is None:
+        return 0
+
+    lock = globals().get(lock_name) if lock_name else None
+    try:
+        if lock is not None:
+            with lock:
+                return len(collection)
+        return len(collection)
+    except Exception:
+        return -1
+
+
+def _collect_runtime_memory_diagnostics():
     account_threads = [
         thread
         for thread in threading.enumerate()
@@ -23102,10 +23183,50 @@ def _log_runtime_memory_diagnostics(context):
         except Exception:
             playwright_contexts = -1
 
-    with ip_cache_lock:
-        ip_cache_size = len(ip_location_cache)
-    with phone_cache_lock:
-        phone_cache_size = len(phone_location_cache)
+    server_start_time = globals().get("server_start_time")
+    server_start_time_formatted = None
+    if server_start_time is not None:
+        try:
+            server_start_time_formatted = datetime.datetime.fromtimestamp(
+                float(server_start_time)
+            ).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            server_start_time_formatted = None
+
+    gc_counts = None
+    gc_thresholds = None
+    if gc is not None:
+        try:
+            gc_counts = list(gc.get_count())
+            gc_thresholds = list(gc.get_threshold())
+        except Exception:
+            pass
+
+    return {
+        "process_id": os.getpid(),
+        "server_start_time": server_start_time,
+        "server_start_time_formatted": server_start_time_formatted,
+        "rss_mb": _get_process_rss_mb(),
+        "max_rss_mb": _get_process_max_rss_mb(),
+        "active_threads": threading.active_count(),
+        "account_refresh_threads": len(account_threads),
+        "multi_monitor_threads": len(multi_monitor_threads),
+        "playwright_contexts": playwright_contexts,
+        "web_sessions": _safe_runtime_collection_size(
+            "web_sessions", "web_sessions_lock"
+        ),
+        "ip_cache": _safe_runtime_collection_size("ip_location_cache", "ip_cache_lock"),
+        "phone_cache": _safe_runtime_collection_size(
+            "phone_location_cache", "phone_cache_lock"
+        ),
+        "sms_codes": _safe_runtime_collection_size("sms_verification_codes"),
+        "gc_counts": gc_counts,
+        "gc_thresholds": gc_thresholds,
+    }
+
+
+def _log_runtime_memory_diagnostics(context):
+    diagnostics = _collect_runtime_memory_diagnostics()
 
     logging.info(
         "[内存诊断] 快照: context=%s, web_sessions=%d, "
@@ -23113,16 +23234,16 @@ def _log_runtime_memory_diagnostics(context):
         "process_threads=%d, playwright_contexts=%s, ip_cache=%d, "
         "phone_cache=%d, sms_codes=%d, rss_mb=%s, max_rss_mb=%s",
         context,
-        len(web_sessions),
-        len(account_threads),
-        len(multi_monitor_threads),
-        threading.active_count(),
-        playwright_contexts,
-        ip_cache_size,
-        phone_cache_size,
-        len(sms_verification_codes),
-        _get_process_rss_mb(),
-        _get_process_max_rss_mb(),
+        diagnostics["web_sessions"],
+        diagnostics["account_refresh_threads"],
+        diagnostics["multi_monitor_threads"],
+        diagnostics["active_threads"],
+        diagnostics["playwright_contexts"],
+        diagnostics["ip_cache"],
+        diagnostics["phone_cache"],
+        diagnostics["sms_codes"],
+        diagnostics["rss_mb"],
+        diagnostics["max_rss_mb"],
     )
 
 
@@ -27879,6 +28000,19 @@ def _build_health_comment_fields(is_admin=False):
                 "critical_failed_count": "核心异常组件数量",
                 "non_critical_failed_count": "非核心异常组件数量",
             },
+            "memory_diagnostics": {
+                "rss_mb": "当前进程常驻内存（MB）",
+                "max_rss_mb": "进程峰值常驻内存（MB）",
+                "active_threads": "当前活动线程数",
+                "account_refresh_threads": "账号刷新线程数",
+                "multi_monitor_threads": "多账号监控线程数",
+                "playwright_contexts": "Playwright 浏览器上下文数",
+                "web_sessions": "内存中的网页会话数",
+                "ip_cache": "IP 位置缓存条数",
+                "phone_cache": "手机号位置缓存条数",
+                "sms_codes": "短信验证码条数",
+                "gc_counts": "各代垃圾回收计数",
+            },
         },
     }
 
@@ -27892,10 +28026,7 @@ def _register_health_route(app):
         """
 
         request_start_time = time.time()
-        current_time = time.time()
-        uptime_seconds = (
-            current_time - server_start_time if "server_start_time" in globals() else 0
-        )
+        uptime_seconds = _get_health_uptime_seconds()
 
         def format_uptime(seconds):
             days = int(seconds // 86400)
@@ -27941,8 +28072,14 @@ def _register_health_route(app):
         if is_admin:
             payload["components"] = {c["name"]: c for c in components}
             payload["summary"] = summary
+            payload["memory_diagnostics"] = _collect_runtime_memory_diagnostics()
 
-        return jsonify(payload), http_status
+        response = jsonify(payload)
+        response.status_code = http_status
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 
 
 def _register_payment_routes(app, login_required):
@@ -28222,8 +28359,9 @@ def start_web_server(args_param):
     global chrome_pool, background_task_manager, web_sessions, web_sessions_lock, session_file_locks, session_file_locks_lock, session_activity, session_activity_lock, args
     global CDN_FILES, js_cache_storage, js_cache_lock, js_cache_last_update
     global font_cache_storage, font_cache_lock, source_map_storage, source_map_lock
-    global server_start_time
+    global server_start_time, server_start_monotonic
     server_start_time = time.time()
+    server_start_monotonic = time.monotonic()
     logging.info(
         f"服务器启动时间: {datetime.datetime.fromtimestamp(server_start_time).strftime('%Y-%m-%d %H:%M:%S')}"
     )

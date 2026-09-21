@@ -123,3 +123,58 @@ test('health detail rendering uses dedicated HTML sections and keeps JSON raw bl
   assert.ok(loadMobileHealthStatusSource.includes('result.components'));
   assert.ok(loadMobileHealthStatusSource.includes('JSON 原文'));
 });
+
+test('health panel preserves scroll positions while refreshing', () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  globalThis.window = { scrollX: 0, scrollY: 0 };
+  globalThis.document = { body: {}, scrollingElement: null };
+
+  try {
+    const { captureHealthScrollPositions, restoreHealthScrollPositions } = loadFunctions([
+      'getHealthScrollableElements',
+      'captureHealthScrollPositions',
+      'restoreHealthScrollPositions',
+    ]);
+    const contentEl = {
+      parentElement: null,
+      scrollHeight: 100,
+      clientHeight: 50,
+      scrollTop: 37,
+      scrollLeft: 4,
+    };
+
+    const snapshot = captureHealthScrollPositions(contentEl);
+    contentEl.scrollTop = 0;
+    contentEl.scrollLeft = 0;
+    restoreHealthScrollPositions(snapshot);
+
+    assert.equal(contentEl.scrollTop, 37);
+    assert.equal(contentEl.scrollLeft, 4);
+  } finally {
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
+  }
+});
+
+test('desktop and both legacy mobile health loaders use diagnostics and no-store refreshes', () => {
+  const source = readFileSync(resolve('scripts/main.new.js'), 'utf8');
+  const desktopSource = extractFunctionSource(source, 'loadHealthStatus');
+  const multiMobileSource = extractFunctionSource(source, 'loadMobileMultiHealthStatus');
+  const mobileTabSource = extractFunctionSource(source, 'switchMobileAdminTab');
+  const singleMobileCopySource = extractFunctionSource(source, 'copyAdminContentToPanelVersion');
+
+  for (const loaderSource of [desktopSource, multiMobileSource]) {
+    assert.ok(loaderSource.includes('captureHealthScrollPositions'));
+    assert.ok(loaderSource.includes('restoreHealthScrollPositions'));
+    assert.ok(loaderSource.includes('memory_diagnostics'));
+    assert.ok(loaderSource.includes('cache: "no-store"'));
+    assert.ok(loaderSource.includes('showHealthRefreshFailure'));
+  }
+
+  assert.ok(mobileTabSource.includes('loadHealthStatus().finally'));
+  assert.ok(!mobileTabSource.includes('setTimeout(() => copyAdminContentToPanelVersion("health"), 500)'));
+  assert.ok(!mobileTabSource.includes('setTimeout(() => copyAdminContentToMobile("health", contentId), 500)'));
+  assert.ok(singleMobileCopySource.includes('captureHealthScrollPositions'));
+  assert.ok(singleMobileCopySource.includes('restoreHealthScrollPositions'));
+});

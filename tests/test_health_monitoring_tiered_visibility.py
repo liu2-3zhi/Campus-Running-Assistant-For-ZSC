@@ -12,6 +12,14 @@ class TestHealthMonitoringTieredVisibility(unittest.TestCase):
         self.assertTrue(hasattr(main_module, "_aggregate_health_status"))
         self.assertTrue(hasattr(main_module, "_resolve_username_by_token"))
         self.assertTrue(hasattr(main_module, "_is_admin_health_view_from_token"))
+        self.assertTrue(hasattr(main_module, "_collect_runtime_memory_diagnostics"))
+
+    def test_windows_process_memory_diagnostics_are_available(self):
+        if main_module.os.name != "nt":
+            self.skipTest("Windows-specific process memory API")
+
+        self.assertIsNotNone(main_module._get_process_rss_mb())
+        self.assertIsNotNone(main_module._get_process_max_rss_mb())
 
     def test_core_error_should_escalate_to_error(self):
         components = [
@@ -167,6 +175,82 @@ class TestHealthMonitoringTieredVisibility(unittest.TestCase):
                 self.assertIn("summary", admin_payload)
                 self.assertIn("_meta_zh", admin_payload)
                 fake_auth.get_user_group.assert_called_with("admin")
+
+    def test_health_route_uses_monotonic_uptime_and_no_store_headers(self):
+        app = Flask(__name__)
+        component_results = [
+            {"name": "running_core", "critical": True, "status": "ok", "message": "ok", "checks": {}},
+            {"name": "payment_system", "critical": False, "status": "ok", "message": "ok", "checks": {}},
+            {"name": "sms_system", "critical": False, "status": "ok", "message": "ok", "checks": {}},
+        ]
+
+        with mock.patch.object(main_module, "server_start_time", 1000, create=True), \
+             mock.patch.object(main_module, "server_start_monotonic", 10, create=True), \
+             mock.patch.object(main_module.time, "time", side_effect=[2000, 2000, 2000]), \
+             mock.patch.object(main_module.time, "monotonic", return_value=301), \
+             mock.patch.object(main_module, "request", flask_request, create=True), \
+             mock.patch.object(main_module, "jsonify", jsonify, create=True), \
+             mock.patch.object(main_module, "_is_admin_health_view_from_token", return_value=False), \
+             mock.patch.object(main_module, "_check_running_core_health", return_value=component_results[0]), \
+             mock.patch.object(main_module, "_check_payment_system_health", return_value=component_results[1]), \
+             mock.patch.object(main_module, "_check_sms_system_health", return_value=component_results[2]):
+            main_module._register_health_route(app)
+
+            with app.test_client() as client:
+                response = client.get("/health")
+                payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload.get("uptime_seconds"), 291)
+        self.assertEqual(payload.get("uptime_formatted"), "4分钟51秒")
+        self.assertEqual(response.headers.get("Cache-Control"), "no-store, no-cache, must-revalidate, max-age=0")
+        self.assertEqual(response.headers.get("Pragma"), "no-cache")
+        self.assertEqual(response.headers.get("Expires"), "0")
+
+    def test_health_uptime_does_not_fall_back_to_wall_clock(self):
+        with mock.patch.object(main_module, "server_start_monotonic", None, create=True), \
+             mock.patch.object(main_module.time, "time", return_value=2000):
+            self.assertEqual(main_module._get_health_uptime_seconds(), 0.0)
+
+    def test_health_route_exposes_memory_diagnostics_only_to_admin(self):
+        app = Flask(__name__)
+        component_results = [
+            {"name": "running_core", "critical": True, "status": "ok", "message": "ok", "checks": {}},
+            {"name": "payment_system", "critical": False, "status": "ok", "message": "ok", "checks": {}},
+            {"name": "sms_system", "critical": False, "status": "ok", "message": "ok", "checks": {}},
+        ]
+        diagnostics = {
+            "process_id": 123,
+            "rss_mb": 42.5,
+            "max_rss_mb": 48.0,
+            "active_threads": 7,
+            "playwright_contexts": 2,
+            "gc_counts": [1, 2, 3],
+        }
+
+        with mock.patch.object(main_module, "server_start_time", 1000, create=True), \
+             mock.patch.object(main_module, "server_start_monotonic", 10, create=True), \
+             mock.patch.object(main_module.time, "time", side_effect=[2000, 2000, 2000, 2000, 2000, 2000]), \
+             mock.patch.object(main_module.time, "monotonic", return_value=301), \
+             mock.patch.object(main_module, "request", flask_request, create=True), \
+             mock.patch.object(main_module, "jsonify", jsonify, create=True), \
+             mock.patch.object(main_module, "_is_admin_health_view_from_token", side_effect=[False, True]), \
+             mock.patch.object(main_module, "_collect_runtime_memory_diagnostics", return_value=diagnostics), \
+             mock.patch.object(main_module, "_check_running_core_health", return_value=component_results[0]), \
+             mock.patch.object(main_module, "_check_payment_system_health", return_value=component_results[1]), \
+             mock.patch.object(main_module, "_check_sms_system_health", return_value=component_results[2]):
+            main_module._register_health_route(app)
+
+            with app.test_client() as client:
+                public_response = client.get("/health")
+                public_payload = public_response.get_json()
+
+                client.set_cookie("auth_token", "admin-token")
+                admin_response = client.get("/health")
+                admin_payload = admin_response.get_json()
+
+        self.assertNotIn("memory_diagnostics", public_payload)
+        self.assertEqual(admin_payload.get("memory_diagnostics"), diagnostics)
 
     def test_register_health_route_hides_details_for_non_admin_token(self):
         app = Flask(__name__)
