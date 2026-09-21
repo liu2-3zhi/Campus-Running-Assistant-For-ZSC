@@ -3,6 +3,7 @@ import re
 import subprocess
 import tempfile
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 
 
@@ -39,6 +40,16 @@ def _run_node_script(script: str):
     finally:
         if temp_path:
             temp_path.unlink(missing_ok=True)
+
+
+class _FirstTagAttributeParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.attributes = {}
+
+    def handle_starttag(self, _tag, attrs):
+        if not self.attributes:
+            self.attributes = dict(attrs)
 
 
 class TestAuthLoginUiRegressions(unittest.TestCase):
@@ -641,17 +652,56 @@ const {{ selectSession }} = Function(
         self.assertEqual(payload["navigatedTo"], "/uuid=22222222-2222-4222-8222-222222222222")
         self.assertEqual(payload["origin"], "11111111-1111-4111-8111-111111111111")
 
+    def test_admin_view_mode_distinguishes_own_and_other_users_sessions(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        resolver_source = _extract_js_section(
+            source,
+            "function isUsableClientSessionUUID(value)",
+            "\n\nfunction ensureAuthLoginSessionUUID",
+        )
+        node_script = f"""
+{resolver_source}
+globalThis.localStorage = {{ getItem() {{ return null; }} }};
+globalThis.window = {{
+  location: {{ pathname: '/uuid=11111111-1111-4111-8111-111111111111' }},
+}};
+globalThis.sessionUUID = '11111111-1111-4111-8111-111111111111';
+globalThis.currentUserData = {{ group: 'admin' }};
+globalThis.currentAuthUsername = 'manager';
+globalThis.getUUIDFromURL = () => '';
+process.stdout.write(JSON.stringify({{
+  own: shouldUseAdminSessionViewMode(
+    '22222222-2222-4222-8222-222222222222',
+    'manager',
+  ),
+  other: shouldUseAdminSessionViewMode(
+    '33333333-3333-4333-8333-333333333333',
+    'alice',
+  ),
+}}));
+"""
+        result = _run_node_script(node_script)
+        stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
+        stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        if result.returncode != 0:
+            self.fail(
+                "Node admin view-mode ownership regression failed\n"
+                f"STDOUT:\n{stdout}\n"
+                f"STDERR:\n{stderr}"
+            )
+        self.assertEqual(json.loads(stdout), {"own": False, "other": True})
+
     def test_legacy_session_buttons_keep_inline_handlers_valid(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
         self.assertEqual(
             source.count(
-                "const sessionIdArg = escapeHtml(JSON.stringify(session.session_id));"
+                "const sessionIdArg = escapeInlineJsArg(session.session_id);"
             ),
             4,
         )
         self.assertEqual(
             source.count(
-                "const ownerUsernameArg = escapeHtml(JSON.stringify(ownerUsername));"
+                "const ownerUsernameArg = escapeInlineJsArg(ownerUsername);"
             ),
             4,
         )
@@ -675,6 +725,79 @@ const {{ selectSession }} = Function(
             'onclick="selectSessionFromPicker(${sessionIdArg}, ${ownerUsernameArg})"',
             source,
         )
+
+    def test_dynamic_inline_handlers_use_js_literals_for_string_arguments(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("function escapeInlineJsArg(value)", source)
+        self.assertIn(
+            "onclick=\"deleteWatermarkUser(${escapeInlineJsArg(username)})\"",
+            source,
+        )
+        self.assertIn(
+            "onclick=\"addWatermarkUser(${escapeInlineJsArg(username)})\"",
+            source,
+        )
+        self.assertNotIn(
+            "onclick=\"deleteWatermarkUser('${safeUsername}')\"",
+            source,
+        )
+        self.assertNotIn(
+            "onclick=\"addWatermarkUser('${safeUsername}')\"",
+            source,
+        )
+
+    def test_dynamic_inline_handlers_escape_json_arguments_for_html_attributes(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("function escapeInlineJsonArg(value)", source)
+        self.assertIn(
+            "onclick='adminEditBilling(${escapeInlineJsonArg(r)})'",
+            source,
+        )
+        self.assertNotIn(
+            "onclick='adminEditBilling(${JSON.stringify(r)})'",
+            source,
+        )
+
+    def test_inline_argument_helper_survives_html_attribute_parsing(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        helper_source = _extract_js_section(
+            source,
+            "function escapeInlineJsArg(value)",
+            "\n\nfunction escapeInlineJsonArg(value)",
+        )
+        value = "admin \"quoted\" 'owner' <test>"
+        node_script = (
+            helper_source
+            + "\nprocess.stdout.write(escapeInlineJsArg("
+            + json.dumps(value)
+            + "));"
+        )
+        result = _run_node_script(node_script)
+        stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        self.assertEqual(result.returncode, 0, stderr)
+
+        encoded_value = result.stdout.decode("utf-8")
+        parser = _FirstTagAttributeParser()
+        parser.feed(
+            "<button onclick='selectSession(&quot;session-id&quot;, "
+            + encoded_value
+            + ")'>选择</button>"
+        )
+
+        handler = parser.attributes["onclick"]
+        self.assertEqual(
+            handler,
+            "selectSession(\"session-id\", \"admin \\\"quoted\\\" 'owner' <test>\")",
+        )
+        compile_result = _run_node_script("new Function(" + json.dumps(handler) + ");")
+        compile_stderr = (
+            compile_result.stderr.decode("utf-8", errors="replace")
+            if compile_result.stderr
+            else ""
+        )
+        self.assertEqual(compile_result.returncode, 0, compile_stderr)
 
     def test_registration_avatar_preview_object_urls_are_revoked_after_preview_load(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")

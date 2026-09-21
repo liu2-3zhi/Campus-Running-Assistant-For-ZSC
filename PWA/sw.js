@@ -1,8 +1,7 @@
 // Service Worker for 跑步助手 PWA
-const CACHE_NAME = 'paobuzs-v3';
+const CACHE_NAME = 'paobuzs-v4';
 const STATIC_ASSETS = [
   '/styles/style.css',
-  '/scripts/main.new.js',
   '/favicon.ico',
   '/icon-192x192.png',
   '/icon-512x512.png',
@@ -65,7 +64,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first strategy for API and dynamic routes
+  // Application scripts must prefer the network so deployed handler fixes are
+  // not hidden by an older cached main.new.js.
+  if (url.pathname.startsWith('/scripts/')) {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response && response.status === 200) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseClone);
+          });
+        }
+        return response;
+      }).catch(() => {
+        return caches.match(event.request).then((cached) => {
+          if (cached) return cached;
+          return new Response('', {
+            status: 503,
+            headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+          });
+        });
+      })
+    );
+    return;
+  }
+
+  // Network-first strategy for API and dynamic routes.
   if (NETWORK_FIRST_PATH_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
     event.respondWith(
       fetch(event.request).catch(() => {

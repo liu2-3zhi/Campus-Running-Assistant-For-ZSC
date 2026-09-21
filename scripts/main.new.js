@@ -766,7 +766,7 @@ function loadPaymentLogs(page) {
               <!-- 查看详情按钮 -->
               <!-- 点击后调用 showPaymentLogDetail 函数显示完整的日志详情 -->
               <!-- 按钮设计为全宽，适合移动端触摸操作（min-height: 44px） -->
-              <button onclick="showPaymentLogDetail('${log.log_id || ""}')" 
+              <button onclick="showPaymentLogDetail(${escapeInlineJsArg(log.log_id || "")})"
                 class="w-full py-2.5 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors min-h-[44px] flex items-center justify-center gap-1">
                 <!-- 眼睛图标：表示"查看"操作 -->
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1654,7 +1654,7 @@ function loadAdminPaymentLogs(page) {
               </div>
               
               <!-- 查看详情按钮 -->
-              <button onclick="showPaymentLogDetail('${log.log_id || ""}')" 
+              <button onclick="showPaymentLogDetail(${escapeInlineJsArg(log.log_id || "")})"
                 class="w-full py-2 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors">
                 <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
@@ -2122,7 +2122,7 @@ async function loadMobileBillingLogs(page = 1) {
               </div>
               <div class="text-xs text-slate-600 bg-slate-50 rounded-lg px-2.5 py-1.5">说明：${details}</div>
             </div>
-            <button type="button" class="w-full px-3 py-2 text-xs text-slate-500 bg-slate-50 border-t border-slate-200 flex items-center justify-center gap-1 active:bg-slate-100 transition-colors" onclick="var d=document.getElementById('${detailId}');if(d){d.classList.toggle('hidden');this.querySelector('svg').style.transform=d.classList.contains('hidden')?'':'rotate(180deg)'}">
+            <button type="button" class="w-full px-3 py-2 text-xs text-slate-500 bg-slate-50 border-t border-slate-200 flex items-center justify-center gap-1 active:bg-slate-100 transition-colors" onclick="var d=document.getElementById(${escapeInlineJsArg(detailId)});if(d){d.classList.toggle('hidden');this.querySelector('svg').style.transform=d.classList.contains('hidden')?'':'rotate(180deg)'}">
               <span>变更详情</span>
               <svg class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
             </button>
@@ -2866,6 +2866,32 @@ function escapeHtml(str) {
     // match 是正则匹配到的字符，从映射表中查找对应的HTML实体
     return htmlEscapeMap[match];
   });
+}
+
+// Inline handlers receive HTML-decoded attribute values, so pass JSON literals
+// through HTML escaping instead of embedding raw user data in JavaScript code.
+function escapeInlineJsArg(value) {
+  const json = JSON.stringify(value == null ? "" : String(value));
+  return json
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function escapeInlineJsonArg(value) {
+  const json = JSON.stringify(value == null ? null : value) ?? "null";
+  return json
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 /**
@@ -12798,7 +12824,7 @@ async function loadWatermarkControlConfig() {
                 <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
               <button 
-                onclick="deleteWatermarkUser('${safeUsername}')" 
+                onclick="deleteWatermarkUser(${escapeInlineJsArg(username)})"
                 class="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
                 title="删除此用户的自定义配置，恢复使用默认值"
               >
@@ -13259,7 +13285,7 @@ async function openAddWatermarkUserModal() {
           <div class="flex-1">
             <span class="text-sm font-medium text-slate-700">${safeUsername}</span>
           </div>
-          <button onclick="addWatermarkUser('${safeUsername}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
+          <button onclick="addWatermarkUser(${escapeInlineJsArg(username)})" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
             <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -13551,7 +13577,7 @@ async function refreshWatermarkUserList() {
           <div class="flex-1">
             <span class="text-sm font-medium text-slate-700">${safeUsername}</span>
           </div>
-          <button onclick="addWatermarkUser('${safeUsername}')" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
+          <button onclick="addWatermarkUser(${escapeInlineJsArg(username)})" class="px-3 py-1 bg-green-500 text-white text-xs rounded-md hover:bg-green-600 active:bg-green-700 transition-colors" title="添加此用户">
             <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
             </svg>
@@ -14508,8 +14534,8 @@ async function loadMobileSessionPickerList() {
         const sessionHash =
           session.session_hash || session.session_id.substring(0, 16);
         const ownerUsername = String(session.username || currentAuthUsername || "");
-        const sessionIdArg = escapeHtml(JSON.stringify(session.session_id));
-        const ownerUsernameArg = escapeHtml(JSON.stringify(ownerUsername));
+        const sessionIdArg = escapeInlineJsArg(session.session_id);
+        const ownerUsernameArg = escapeInlineJsArg(ownerUsername);
 
         const is_multi_mode = session.is_multi_account_mode;
         const session_login_success = session.login_success;
@@ -14568,7 +14594,7 @@ async function loadMobileSessionPickerList() {
             !isCurrent
               ? `
             <button class="btn btn-ghost !text-red-500 !py-3 !px-4 !rounded-lg" 
-                    onclick="event.stopPropagation(); deleteSessionFromPicker('${session.session_id}');"
+                    onclick="event.stopPropagation(); deleteSessionFromPicker(${escapeInlineJsArg(session.session_id)});"
                     title="删除此会话">
               <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                 <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path>
@@ -17115,46 +17141,136 @@ function isAuthLoginViewVisible() {
 
 function getServerConnectionGuidanceMessage() {
   return `
-    <div style="font-size:12px;color:#334155;line-height:1.2;">
 
-      <div style="margin:0 0 4px 0;">
-        <span style="font-weight:600;color:#0f172a;">连接检查：</span>请确认设备已正常联网。
+  <div style="
+    text-align:left;
+    font-size:13px;
+    color:#334155;
+    line-height:1.6;
+  ">
+
+    <div style="
+      background:#f8fafc;
+      border:1px solid #e2e8f0;
+      border-radius:10px;
+      padding:10px;
+      margin-bottom:10px;
+    ">
+      <div style="
+        font-weight:600;
+        color:#0f172a;
+        margin-bottom:4px;
+      ">
+        🔗 连接检查
       </div>
-
-      <div style="margin:0 0 4px 0;">
-        <span style="font-weight:600;color:#78350f;">可能的网络干扰：</span>
-        若您位于 <span style="font-weight:600;">福建 / 江苏 / 贵州 / 广西</span>，可能存在运营商干扰，可尝试：
-        <ul style="margin:2px 0 0 14px;padding:0;line-height:1.15;">
-          <li>切换网络</li>
-          <li>启用加密 DNS</li>
-          <li>使用国际联网工具</li>
-        </ul>
+      <div>
+        请确认设备已正常联网。
       </div>
-
-      <div style="margin:0 0 4px 0;">
-        <span style="font-weight:600;color:#1e3a8a;">本地环境排查：</span>请检查是否启用了广告拦截工具。
-      </div>
-
-      <div style="margin:0 0 4px 0;">
-        <span style="font-weight:600;color:#9f1239;">DNS 刷新建议：</span>
-        如服务器遭受攻击，可尝试刷新 DNS：
-        <ul style="margin:2px 0 0 14px;padding:0;line-height:1.15;">
-          <li>手机：开关飞行模式并重启浏览器</li>
-          <li>电脑：参考“刷新 DNS 方法”</li>
-        </ul>
-      </div>
-
-      <div style="margin:0;">
-        <span style="font-weight:600;color:#0f172a;">快速排查总结：</span>
-        <ul style="margin:2px 0 0 14px;padding:0;line-height:1.15;">
-          <li>确认联网</li>
-          <li>切换网络 / 加密 DNS / 关闭拦截</li>
-          <li>刷新 DNS 或稍后重试</li>
-        </ul>
-        <div style="font-size:11px;color:#64748b;margin-top:2px;">若问题持续，请反馈给支持人员。</div>
-      </div>
-
     </div>
+
+    <div style="
+      background:#fffbeb;
+      border:1px solid #fde68a;
+      border-radius:10px;
+      padding:10px;
+      margin-bottom:10px;
+    ">
+      <div style="
+        font-weight:600;
+        color:#92400e;
+        margin-bottom:4px;
+      ">
+        ⚠️ 网络访问异常
+      </div>
+
+      <div>
+        若您位于
+        <strong>福建 / 江苏 / 贵州 / 广西</strong>
+        ，可能存在运营商网络干扰，可尝试：
+      </div>
+
+      <ul style="
+        margin:6px 0 0 18px;
+        padding:0;
+      ">
+        <li>切换网络</li>
+        <li>启用加密 DNS</li>
+        <li>使用国际联网工具</li>
+      </ul>
+    </div>
+
+    <div style="
+      background:#eff6ff;
+      border:1px solid #bfdbfe;
+      border-radius:10px;
+      padding:10px;
+      margin-bottom:10px;
+    ">
+      <div style="
+        font-weight:600;
+        color:#1d4ed8;
+        margin-bottom:4px;
+      ">
+        🛡️ 本地环境检查
+      </div>
+
+      <div>
+        请检查是否启用了广告拦截工具、浏览器插件或安全软件。
+      </div>
+    </div>
+
+    <div style="
+      background:#fdf2f8;
+      border:1px solid #fbcfe8;
+      border-radius:10px;
+      padding:10px;
+      margin-bottom:10px;
+    ">
+      <div style="
+        font-weight:600;
+        color:#be185d;
+        margin-bottom:4px;
+      ">
+        🔄 DNS 刷新
+      </div>
+
+      <div>
+        <strong>手机：</strong>开关飞行模式并重启浏览器<br>
+        <strong>电脑：</strong>刷新 DNS 缓存后重新访问
+      </div>
+    </div>
+
+    <div style="
+      border-top:1px solid #e2e8f0;
+      padding-top:10px;
+    ">
+      <div style="
+        font-weight:600;
+        color:#0f172a;
+        margin-bottom:4px;
+      ">
+        📋 快速排查
+      </div>
+
+      <div>
+        ✅ 确认联网<br>
+        ✅ 切换网络<br>
+        ✅ 关闭拦截工具<br>
+        ✅ 刷新 DNS
+      </div>
+
+      <div style="
+        margin-top:8px;
+        font-size:12px;
+        color:#64748b;
+      ">
+        若问题持续存在，请联系支持人员。
+      </div>
+    </div>
+
+  </div>
+
+
   `;
 }
 
@@ -24490,8 +24606,8 @@ async function loadAdminSessions_inline() {
           const ownerUsername = String(
             session.username || (isGodMode ? "" : currentAuthUsername || ""),
           );
-          const sessionIdArg = escapeHtml(JSON.stringify(session.session_id));
-          const ownerUsernameArg = escapeHtml(JSON.stringify(ownerUsername));
+          const sessionIdArg = escapeInlineJsArg(session.session_id);
+          const ownerUsernameArg = escapeInlineJsArg(ownerUsername);
 
           let ownerInfo = "";
           if (isGodMode) {
@@ -24535,13 +24651,13 @@ async function loadAdminSessions_inline() {
                               !isCurrent
                                 ? `
                               <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick='selectSession(${sessionIdArg}, ${ownerUsernameArg})'>选择</button>
-                              <button class="btn btn-ghost !py-1 !px-2 !text-red-600 text-xs" onclick="deleteSession('${session.session_id}')">删除</button>
+                              <button class="btn btn-ghost !py-1 !px-2 !text-red-600 text-xs" onclick="deleteSession(${escapeInlineJsArg(session.session_id)})">删除</button>
                             `
                                 : ""
                             }
                             ${
                               isGodMode
-                                ? `<button class="btn btn-danger !py-1 !px-2 text-xs" onclick="destroySession('${session.session_id}')">销毁</button>`
+                                ? `<button class="btn btn-danger !py-1 !px-2 text-xs" onclick="destroySession(${escapeInlineJsArg(session.session_id)})">销毁</button>`
                                 : ""
                             }
                           </div>
@@ -26925,9 +27041,9 @@ async function loadSchoolAccounts() {
                 </h4>
                 <!-- "添加 School Account" 按钮 - 使用拟态风格 -->
                 <button 
-                  onclick="openSchoolAccountModal('${escapeHtml(
+                  onclick="openSchoolAccountModal(${escapeInlineJsArg(
                     authUsername,
-                  )}')"
+                  )})"
                   class="px-4 py-2 rounded-lg text-sm font-medium text-sky-600 bg-white border border-sky-300 hover:bg-sky-50 hover:border-sky-400 transition-all flex items-center gap-2"
                   style="box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1), -1px -1px 2px rgba(255, 255, 255, 0.8);"
                   title="为此用户添加新的学校账号">
@@ -26969,11 +27085,11 @@ async function loadSchoolAccounts() {
                     <div class="flex gap-2">
                       <!-- 编辑按钮 - 拟态风格 -->
                       <button 
-                        onclick="openSchoolAccountModal('${escapeHtml(
+                        onclick="openSchoolAccountModal(${escapeInlineJsArg(
                           authUsername,
-                        )}', '${escapeHtml(schoolUsername)}', '${escapeHtml(
+                        )}, ${escapeInlineJsArg(schoolUsername)}, ${escapeInlineJsArg(
                           password,
-                        )}', '${escapeHtml(ua)}')"
+                        )}, ${escapeInlineJsArg(ua)})"
                         class="px-3 py-1.5 rounded-lg text-xs font-medium text-blue-600 bg-white border border-blue-300 hover:bg-blue-50 hover:border-blue-400 transition-all flex items-center gap-1"
                         style="box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.08), -0.5px -0.5px 1px rgba(255, 255, 255, 0.8);"
                         title="编辑此学校账号">
@@ -26985,9 +27101,9 @@ async function loadSchoolAccounts() {
                       
                       <!-- 删除按钮 - 拟态风格 -->
                       <button 
-                        onclick="deleteSchoolAccount('${escapeHtml(
+                        onclick="deleteSchoolAccount(${escapeInlineJsArg(
                           authUsername,
-                        )}', '${escapeHtml(schoolUsername)}')"
+                        )}, ${escapeInlineJsArg(schoolUsername)})"
                         class="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-white border border-red-300 hover:bg-red-50 hover:border-red-400 transition-all flex items-center gap-1"
                         style="box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.08), -0.5px -0.5px 1px rgba(255, 255, 255, 0.8);"
                         title="删除此学校账号">
@@ -27496,27 +27612,27 @@ function _rerenderAdminUsersList() {
             </div>
             <div class="flex flex-col gap-1.5 mt-2 w-full" id="user-actions-${user.auth_username}">
               <div class="grid grid-cols-3 md:grid-cols-6 gap-2 w-full p-2 bg-base-100 rounded-xl border border-base-200 shadow-sm">
-                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-indigo-100 border" onclick="showUserSchoolAccounts('${user.auth_username}')">账户密码</button>
-                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" onclick="showUserLogs('${user.auth_username}')">查看日志</button>
-                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" onclick="setUserMaxSessions('${user.auth_username}', ${user.max_sessions || 1})">会话管理</button>
-                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-cyan-50 text-cyan-600 hover:bg-cyan-100 border-cyan-100 border" onclick="editAvailableRuns('${user.auth_username}', ${user.available_runs !== undefined ? user.available_runs : 0})">修改次数</button>
-                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-100 border" onclick="manageUserPermissions('${user.auth_username}')">权限设置</button>
-                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" onclick="modifyUserNickname('${user.auth_username}', '${escapeHtml(user.nickname || "")}')">修改昵称</button>
-                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" onclick="modifyUserPhone('${user.auth_username}', '${user.phone || ""}')">修改手机</button>
-                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-purple-50 text-purple-600 hover:bg-purple-100 border-purple-100 border" onclick="resetUserPassword('${user.auth_username}')">重置密码</button>
-                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-100 border" onclick="forceLogoutUser('${user.auth_username}')">强制登出</button>
-                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100 border" onclick="clearUserAvatar('${user.auth_username}')">清除头像</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border-indigo-100 border" onclick="showUserSchoolAccounts(${escapeInlineJsArg(user.auth_username)})">账户密码</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" onclick="showUserLogs(${escapeInlineJsArg(user.auth_username)})">查看日志</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-blue-50 text-blue-600 hover:bg-blue-100 border-blue-100 border" onclick="setUserMaxSessions(${escapeInlineJsArg(user.auth_username)}, ${user.max_sessions || 1})">会话管理</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-cyan-50 text-cyan-600 hover:bg-cyan-100 border-cyan-100 border" onclick="editAvailableRuns(${escapeInlineJsArg(user.auth_username)}, ${user.available_runs !== undefined ? user.available_runs : 0})">修改次数</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-100 border" onclick="manageUserPermissions(${escapeInlineJsArg(user.auth_username)})">权限设置</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" onclick="modifyUserNickname(${escapeInlineJsArg(user.auth_username)}, ${escapeInlineJsArg(user.nickname || "")})">修改昵称</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-teal-50 text-teal-600 hover:bg-teal-100 border-teal-100 border" onclick="modifyUserPhone(${escapeInlineJsArg(user.auth_username)}, ${escapeInlineJsArg(user.phone || "")})">修改手机</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-purple-50 text-purple-600 hover:bg-purple-100 border-purple-100 border" onclick="resetUserPassword(${escapeInlineJsArg(user.auth_username)})">重置密码</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-100 border" onclick="forceLogoutUser(${escapeInlineJsArg(user.auth_username)})">强制登出</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-rose-50 text-rose-600 hover:bg-rose-100 border-rose-100 border" onclick="clearUserAvatar(${escapeInlineJsArg(user.auth_username)})">清除头像</button>
                 ${
                   user["2fa_enabled"] || user.tfa_enabled
-                    ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-orange-50 text-orange-600 hover:bg-orange-100 border-orange-100 border" onclick="forceDisable2FA('${user.auth_username}')">关闭2FA</button>`
-                    : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-slate-50 text-slate-300 border-slate-200 border cursor-not-allowed" disabled onclick="forceDisable2FA('${user.auth_username}')">2FA未启用</button>`
+                    ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-orange-50 text-orange-600 hover:bg-orange-100 border-orange-100 border" onclick="forceDisable2FA(${escapeInlineJsArg(user.auth_username)})">关闭2FA</button>`
+                    : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-slate-50 text-slate-300 border-slate-200 border cursor-not-allowed" disabled onclick="forceDisable2FA(${escapeInlineJsArg(user.auth_username)})">2FA未启用</button>`
                 }
                 ${
                   isBanned
-                    ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-green-100 text-green-700 hover:bg-green-200 border-green-200 border font-bold" onclick="unbanUser('${user.auth_username}')">解封用户</button>`
-                    : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-100 text-red-700 hover:bg-red-200 border-red-200 border font-bold" onclick="banUser('${user.auth_username}')">封禁用户</button>`
+                    ? `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-green-100 text-green-700 hover:bg-green-200 border-green-200 border font-bold" onclick="unbanUser(${escapeInlineJsArg(user.auth_username)})">解封用户</button>`
+                    : `<button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-100 text-red-700 hover:bg-red-200 border-red-200 border font-bold" onclick="banUser(${escapeInlineJsArg(user.auth_username)})">封禁用户</button>`
                 }
-                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-600 text-white hover:bg-red-700 border-red-600 border shadow-md" onclick="deleteUser('${user.auth_username}')">彻底删除</button>
+                <button class="btn !btn-xs !h-7 !min-h-0 !text-xs flex-1 bg-red-600 text-white hover:bg-red-700 border-red-600 border shadow-md" onclick="deleteUser(${escapeInlineJsArg(user.auth_username)})">彻底删除</button>
               </div>
             </div>
           </div>
@@ -28796,9 +28912,9 @@ async function showUserSchoolAccounts(username) {
                   -->
                   <button 
                     class="btn btn-sm !py-1 !px-3 !text-xs bg-sky-500 text-white hover:bg-sky-600 border-sky-500" 
-                    onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
+                    onclick="View_details_of_users_with_outstanding_payments(${escapeInlineJsArg(
                       schoolUsername,
-                    )}')"
+                    )})"
                     title="查看此账户的详细信息">
                     查看详情
                   </button>
@@ -29756,9 +29872,9 @@ async function showMobileUserSchoolAccounts(username) {
                       <!-- 【尺寸优化】与编辑按钮保持一致：min-h-[36px] + py-1 px-2 -->
                       <button 
                         class="py-1 px-2 bg-emerald-500 text-white rounded text-xs font-medium hover:bg-emerald-600 transition min-h-[36px]" 
-                        onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
+                        onclick="View_details_of_users_with_outstanding_payments(${escapeInlineJsArg(
                           schoolUsername,
-                        )}')"
+                        )})"
                         title="查看此账户的详细信息">
                         详情
                       </button>
@@ -30565,9 +30681,6 @@ async function loadAdminGroups() {
         const systemBadge = isSystemGroup
           ? '<span class="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full ml-2">系统预设</span>'
           : "";
-        const escapedGroupKey = groupKey
-          .replace(/'/g, "&#39;")
-          .replace(/"/g, "&quot;");
         const displayGroupKey = groupKey
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;");
@@ -30579,10 +30692,10 @@ async function loadAdminGroups() {
               group.name
             } (${displayGroupKey})${systemBadge}</h5>
             <div class="flex gap-2">
-              <button class="btn btn-ghost !py-0.5 !px-2 !text-xs" onclick="editGroupPermissions('${escapedGroupKey}')">编辑权限</button>
+              <button class="btn btn-ghost !py-0.5 !px-2 !text-xs" onclick="editGroupPermissions(${escapeInlineJsArg(groupKey)})">编辑权限</button>
               ${
                 !isSystemGroup
-                  ? `<button class="btn btn-danger !py-0.5 !px-2 !text-xs" onclick="deleteGroup('${escapedGroupKey}')">删除</button>`
+                  ? `<button class="btn btn-danger !py-0.5 !px-2 !text-xs" onclick="deleteGroup(${escapeInlineJsArg(groupKey)})">删除</button>`
                   : ""
               }
             </div>
@@ -30706,8 +30819,8 @@ async function loadAdminSessions() {
           const ownerUsername = String(
             session.username || (isGodMode ? "" : currentAuthUsername || ""),
           );
-          const sessionIdArg = escapeHtml(JSON.stringify(session.session_id));
-          const ownerUsernameArg = escapeHtml(JSON.stringify(ownerUsername));
+          const sessionIdArg = escapeInlineJsArg(session.session_id);
+          const ownerUsernameArg = escapeInlineJsArg(ownerUsername);
 
           let ownerInfo = "";
           if (isGodMode) {
@@ -30749,13 +30862,13 @@ async function loadAdminSessions() {
                   !isCurrent
                     ? `
                   <button class="btn btn-ghost !py-1 !px-2 text-xs" onclick='selectSession(${sessionIdArg}, ${ownerUsernameArg})'>选择</button>
-                  <button class="btn btn-ghost !py-1 !px-2 !text-red-600 text-xs" onclick="deleteSession('${session.session_id}')">删除</button>
+                  <button class="btn btn-ghost !py-1 !px-2 !text-red-600 text-xs" onclick="deleteSession(${escapeInlineJsArg(session.session_id)})">删除</button>
                 `
                     : ""
                 }
                 ${
                   isGodMode
-                    ? `<button class="btn btn-danger !py-1 !px-2 text-xs" onclick="destroySession('${session.session_id}')">销毁</button>`
+                    ? `<button class="btn btn-danger !py-1 !px-2 text-xs" onclick="destroySession(${escapeInlineJsArg(session.session_id)})">销毁</button>`
                     : ""
                 }
               </div>
@@ -31249,7 +31362,7 @@ async function loadMessages() {
                   canDelete
                     ? `
                   <button class="btn btn-ghost !py-1 !px-2 !text-red-600 text-xs" 
-                    onclick="deleteMessage('${msg.id}')">删除</button>
+                    onclick="deleteMessage(${escapeInlineJsArg(msg.id)})">删除</button>
                 `
                     : ""
                 }
@@ -33009,7 +33122,7 @@ async function loadVerificationCodes() {
                     </p>
                   </div>
                 </div>
-                <button onclick="invalidateVerificationCode('${item.phone}')"
+                <button onclick="invalidateVerificationCode(${escapeInlineJsArg(item.phone)})"
                   class="btn btn-ghost border border-red-300 text-red-600 hover:bg-red-50 whitespace-nowrap">
                   ❌ 失效
                 </button>
@@ -33969,8 +34082,8 @@ async function loadSessionPickerList() {
         const sessionHash =
           session.session_hash || session.session_id.substring(0, 16);
         const ownerUsername = String(session.username || currentAuthUsername || "");
-        const sessionIdArg = escapeHtml(JSON.stringify(session.session_id));
-        const ownerUsernameArg = escapeHtml(JSON.stringify(ownerUsername));
+        const sessionIdArg = escapeInlineJsArg(session.session_id);
+        const ownerUsernameArg = escapeInlineJsArg(ownerUsername);
 
         return `
             <div class="border ${
@@ -34021,7 +34134,7 @@ async function loadSessionPickerList() {
                       </svg>
                       进入
                     </button>
-                    <button class="btn btn-ghost !py-1 !px-3 !text-red-600 text-xs border border-red-200 hover:bg-red-50" onclick="deleteSessionFromPicker('${session.session_id}')">
+                    <button class="btn btn-ghost !py-1 !px-3 !text-red-600 text-xs border border-red-200 hover:bg-red-50" onclick="deleteSessionFromPicker(${escapeInlineJsArg(session.session_id)})">
                       <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                       </svg>
@@ -45636,7 +45749,7 @@ function renderNotificationBatch(notices, container) {
     const isReadClass = isEffectivelyRead ? "opacity-60" : "font-bold";
     let readButtonHtml = "";
     if (!isEffectivelyRead) {
-      readButtonHtml = `<button class="btn btn-ghost !py-0 !px-2 !text-xs text-sky-600" onclick="markAsRead(event, '${n.id}')">设为已读</button>`;
+      readButtonHtml = `<button class="btn btn-ghost !py-0 !px-2 !text-xs text-sky-600" onclick="markAsRead(event, ${escapeInlineJsArg(n.id)})">设为已读</button>`;
     }
     let attendanceHtml = "";
     const isAttendanceTask =
@@ -45660,8 +45773,8 @@ function renderNotificationBatch(notices, container) {
                           <svg class="w-2.5 h-2.5 ml-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/></svg>
                         </button>
                         <div class="hidden group-hover:block absolute right-0 z-[1051] pt-1 w-32 bg-white/90 backdrop-blur-sm rounded-lg shadow-xl border border-slate-200 p-1 space-y-1">
-                          <button class="btn btn-warning !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleMakeupAttendance(event, '${n.id}', ${targetCoords})">随机补签</button>
-                          <button class="btn btn-warning !bg-orange-400 hover:!bg-orange-500 !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleManualMakeupAttendance(event, '${n.id}', ${targetCoords})">手动选点补签</button>
+                          <button class="btn btn-warning !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleMakeupAttendance(event, ${escapeInlineJsArg(n.id)}, ${targetCoords})">随机补签</button>
+                          <button class="btn btn-warning !bg-orange-400 hover:!bg-orange-500 !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleManualMakeupAttendance(event, ${escapeInlineJsArg(n.id)}, ${targetCoords})">手动选点补签</button>
                         </div>
                       </div>
                     `;
@@ -45689,11 +45802,11 @@ function renderNotificationBatch(notices, container) {
                         <svg class="w-2.5 h-2.5 ml-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/></svg>
                       </button>
                       <div class="hidden group-hover:block absolute right-0 z-[1051] pt-1 w-28 bg-white/90 backdrop-blur-sm rounded-lg shadow-xl border border-slate-200 p-1 space-y-1">
-                        <button class="btn btn-success !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleAttendance(event, '${rollCallId}', ${targetCoords})">随机签到</button>
-                        <button class="btn btn-secondary !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleManualAttendance(event, '${rollCallId}', ${targetCoords})">手动选点</button>
+                        <button class="btn btn-success !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleAttendance(event, ${escapeInlineJsArg(rollCallId)}, ${targetCoords})">随机签到</button>
+                        <button class="btn btn-secondary !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleManualAttendance(event, ${escapeInlineJsArg(rollCallId)}, ${targetCoords})">手动选点</button>
                       </div>
                     </div>
-                    <button class="btn btn-warning !py-0 !px-2 !text-xs" onclick="handleMakeupAttendance(event, '${rollCallId}', ${targetCoords})">
+                    <button class="btn btn-warning !py-0 !px-2 !text-xs" onclick="handleMakeupAttendance(event, ${escapeInlineJsArg(rollCallId)}, ${targetCoords})">
                       补签
                     </button>
                   `;
@@ -45794,8 +45907,8 @@ function onNotificationsUpdated(result) {
                     <svg class="w-2.5 h-2.5 ml-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/></svg>
                   </button>
                   <div class="hidden group-hover:block absolute right-0 z-[1051] pt-1 w-32 bg-white/90 backdrop-blur-sm rounded-lg shadow-xl border border-slate-200 p-1 space-y-1">
-                    <button class="btn btn-warning !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleMakeupAttendance(event, '${n.id}', ${targetCoords})">随机补签</button>
-                    <button class="btn btn-warning !bg-orange-400 hover:!bg-orange-500 !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleManualMakeupAttendance(event, '${n.id}', ${targetCoords})">手动选点补签</button>
+                    <button class="btn btn-warning !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleMakeupAttendance(event, ${escapeInlineJsArg(n.id)}, ${targetCoords})">随机补签</button>
+                    <button class="btn btn-warning !bg-orange-400 hover:!bg-orange-500 !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleManualMakeupAttendance(event, ${escapeInlineJsArg(n.id)}, ${targetCoords})">手动选点补签</button>
                   </div>
                 </div>
               `;
@@ -45816,11 +45929,11 @@ function onNotificationsUpdated(result) {
                     <svg class="w-2.5 h-2.5 ml-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/></svg>
                   </button>
                   <div class="hidden group-hover:block absolute right-0 z-[1051] pt-1 w-28 bg-white/90 backdrop-blur-sm rounded-lg shadow-xl border border-slate-200 p-1 space-y-1">
-                    <button class="btn btn-success !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleAttendance(event, '${n.id}', ${targetCoords})">随机签到</button>
-                    <button class="btn btn-secondary !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleManualAttendance(event, '${n.id}', ${targetCoords})">手动选点</button>
+                    <button class="btn btn-success !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleAttendance(event, ${escapeInlineJsArg(n.id)}, ${targetCoords})">随机签到</button>
+                    <button class="btn btn-secondary !py-1 !px-3 !text-xs !w-full !justify-start" onclick="handleManualAttendance(event, ${escapeInlineJsArg(n.id)}, ${targetCoords})">手动选点</button>
                   </div>
                 </div>
-                <button class="btn btn-warning !py-0 !px-2 !text-xs" onclick="handleMakeupAttendance(event, '${n.id}', ${targetCoords})">
+                <button class="btn btn-warning !py-0 !px-2 !text-xs" onclick="handleMakeupAttendance(event, ${escapeInlineJsArg(n.id)}, ${targetCoords})">
                   补签
                 </button>
               `;
@@ -46388,7 +46501,7 @@ function updateMobileNotificationUI() {
           statusBadge =
             '<span class="text-xs font-semibold px-2 py-1 rounded-full bg-yellow-100 text-yellow-600">待签到</span>';
           actionButtons = `
-          <button class="py-1 px-3 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 transition" onclick="event.stopPropagation(); mobileHandleAttendance('${notice.id}')">
+          <button class="py-1 px-3 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 transition" onclick="event.stopPropagation(); mobileHandleAttendance(${escapeInlineJsArg(notice.id)})">
             签到
           </button>
         `;
@@ -46454,7 +46567,7 @@ function syncMobileAttendanceList() {
         if (canSign) {
           buttonHtml = `
           <button class="w-full mt-2 py-2 px-4 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition" 
-            onclick="event.stopPropagation(); handleMakeupAttendance(event, '${n.id}', ${targetCoords})">
+            onclick="event.stopPropagation(); handleMakeupAttendance(event, ${escapeInlineJsArg(n.id)}, ${targetCoords})">
             随机补签
           </button>
         `;
@@ -46473,17 +46586,17 @@ function syncMobileAttendanceList() {
             <!-- 第一行：随机签到和随机补签 -->
             <div class="flex gap-2">
               <button class="flex-1 py-2 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 transition" 
-                onclick="event.stopPropagation(); handleAttendance(event, '${n.id}', ${targetCoords})">
+                onclick="event.stopPropagation(); handleAttendance(event, ${escapeInlineJsArg(n.id)}, ${targetCoords})">
                 随机签到
               </button>
               <button class="flex-1 py-2 px-4 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition" 
-                onclick="event.stopPropagation(); handleMakeupAttendance(event, '${n.id}', ${targetCoords})">
+                onclick="event.stopPropagation(); handleMakeupAttendance(event, ${escapeInlineJsArg(n.id)}, ${targetCoords})">
                 随机补签
               </button>
             </div>
             <!-- 第二行：地图选点签到按钮 -->
             <button class="w-full py-2 px-4 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg text-sm font-bold hover:from-purple-600 hover:to-purple-700 transition-all shadow-md flex items-center justify-center gap-2" 
-              onclick="event.stopPropagation(); openMobileMapAttendanceModal('${n.id}', ${targetCoords})">
+              onclick="event.stopPropagation(); openMobileMapAttendanceModal(${escapeInlineJsArg(n.id)}, ${targetCoords})">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -48047,7 +48160,7 @@ async function loadMobileTaskHistoryPanel() {
           </div>
         </div>
         <button class="w-full mt-2 py-1 text-xs bg-slate-50 text-slate-600 rounded border border-slate-200 hover:bg-slate-100" 
-          onclick="showHistoricalTrack('${rec.trid}')">
+          onclick="showHistoricalTrack(${escapeInlineJsArg(rec.trid)})">
           查看轨迹
         </button>
       `;
@@ -50631,7 +50744,7 @@ async function loadCaptchaHistory(need_weight = "") {
             <div>客户端IP: ${record.client_ip || "N/A"}</div>
           </div>
         </div>
-        <button onclick="showCaptchaDetail('${record.captcha_id}')" 
+        <button onclick="showCaptchaDetail(${escapeInlineJsArg(record.captcha_id)})"
           class="text-sm text-blue-600 hover:text-blue-800 ml-2 bg-blue-50 px-2 py-1 rounded">
           详情
         </button>
@@ -50854,7 +50967,7 @@ async function loadReminders() {
         <!-- 右侧：操作按钮 -->
         <div class="flex flex-col gap-2 ml-4">
           <!-- 编辑按钮 -->
-          <button onclick="openReminderEditModal('${reminder.id}')" 
+          <button onclick="openReminderEditModal(${escapeInlineJsArg(reminder.id)})"
             class="btn btn-ghost !py-1 !px-3 text-xs whitespace-nowrap hover:bg-sky-50 hover:text-sky-600"
             title="编辑提醒">
             <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -50885,9 +50998,9 @@ async function loadReminders() {
           </button>
 
           <!-- 删除按钮 -->
-          <button onclick="deleteReminder('${reminder.id}', '${escapeHtml(
+          <button onclick="deleteReminder(${escapeInlineJsArg(reminder.id)}, ${escapeInlineJsArg(
             reminder.title,
-          )}')" 
+          )})"
             class="btn btn-ghost !py-1 !px-3 text-xs whitespace-nowrap hover:bg-red-50 hover:text-red-600"
             title="删除提醒">
             <svg class="w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -52624,9 +52737,9 @@ async function loadBruteforceStatus() {
                 </div>
                 ${
                   task.status === "running"
-                    ? `<button class="btn btn-sm btn-secondary !py-1 !px-2 text-xs" onclick="stopBruteforce('${escapeHtml(
+                    ? `<button class="btn btn-sm btn-secondary !py-1 !px-2 text-xs" onclick="stopBruteforce(${escapeInlineJsArg(
                         task.account,
-                      )}')">停止</button>`
+                      )})">停止</button>`
                     : ""
                 }
               </div>
@@ -54427,7 +54540,7 @@ async function loadMobileMultiMessages() {
               canDelete
                 ? `
               <button class="btn btn-ghost min-h-[44px] py-2 px-4 text-red-600 hover:bg-red-50 active:bg-red-100 text-sm flex-shrink-0 border border-red-300 rounded-lg shadow-sm transition-all duration-150 ease-in-out active:scale-95" 
-                onclick="deleteMobileMultiMessage('${msg.id}')">删除</button>
+                onclick="deleteMobileMultiMessage(${escapeInlineJsArg(msg.id)})">删除</button>
             `
                 : ""
             }
@@ -57719,9 +57832,9 @@ async function showMobileUserSchoolAccounts(username) {
             <!-- 该函数会显示一个包含详细信息的弹窗（学号、姓名、欠费次数等） -->
             <button 
               class="w-full py-2.5 px-4 bg-sky-500 text-white rounded-lg text-sm font-medium hover:bg-sky-600 active:bg-sky-700 transition-colors max-h-[36px] flex items-center justify-center gap-2"
-              onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
+              onclick="View_details_of_users_with_outstanding_payments(${escapeInlineJsArg(
                 schoolUsername,
-              )}')"
+              )})"
               title="查看此账户的详细信息（备份数据、欠费次数等）">
               <!-- 眼睛图标 -->
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -59193,7 +59306,7 @@ async function openMobileHistoryModal(taskId, taskName) {
         const statusText = statusTexts[record.status] || record.status;
         html += `
         <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-100 transition"
-          onclick="openMobileTrackModal('${record.id}', '${record.task_id}')">
+          onclick="openMobileTrackModal(${escapeInlineJsArg(record.id)}, ${escapeInlineJsArg(record.task_id)})">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-slate-600">${timeStr}</span>
             <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-${statusColor}-100 text-${statusColor}-700">${statusText}</span>
@@ -59945,7 +60058,7 @@ async function mobileRefreshIPBanList() {
                 </div>
               </div>
               <button
-                onclick="mobileRemoveIPBan('${ban.id}')"
+                onclick="mobileRemoveIPBan(${escapeInlineJsArg(ban.id)})"
                 class="btn btn-danger !py-1 !px-3 text-xs min-h-[36px]"
               >
                 删除
@@ -61011,7 +61124,7 @@ async function loadMobileCaptchaHistoryModal() {
                 ? record.timestamp_readable.split(" ")[1]
                 : "N/A"
             }</span>
-            <button class="btn btn-ghost btn-sm !py-1 !px-2 text-xs" onclick="showCaptchaDetail('${record.captcha_id}')">详情</button>
+            <button class="btn btn-ghost btn-sm !py-1 !px-2 text-xs" onclick="showCaptchaDetail(${escapeInlineJsArg(record.captcha_id)})">详情</button>
           </div>
         </div>
         <div class="text-xs text-slate-500 flex flex-col gap-1">
@@ -61980,7 +62093,7 @@ function updateBruteforceTaskList(tasks) {
                         <!-- 右侧：仅在任务运行中时显示停止按钮 -->
                         <!-- 使用三元表达式进行条件渲染 -->
                         
-                        <button onclick="stopBruteforce('${task.account}')" class="text-xs btn btn-ghost !py-1 !px-2">
+                        <button onclick="stopBruteforce(${escapeInlineJsArg(task.account)})" class="text-xs btn btn-ghost !py-1 !px-2">
                             <!-- 停止按钮：调用stopBruteforce函数，传入账号名称 -->
                             <!-- btn-ghost: 幽灵按钮样式（透明背景） -->
                             <!-- !py-1 !px-2: 使用!important覆盖默认按钮尺寸 -->
@@ -63228,11 +63341,11 @@ function createOrderCard(order) {
   if (order.status === "pending") {
     // 待支付订单：显示"继续支付"和"查询状态"按钮
     actionButtons = `
-            <button onclick="continuePay('${order.order_id}')" 
+            <button onclick="continuePay(${escapeInlineJsArg(order.order_id)})"
                 class="flex-1 py-2 px-3 bg-sky-500 text-white rounded-lg text-xs font-medium hover:bg-sky-600 transition">
                 继续支付
             </button>
-            <button onclick="refreshOrderStatus('${order.order_id}')" 
+            <button onclick="refreshOrderStatus(${escapeInlineJsArg(order.order_id)})"
                 class="flex-1 py-2 px-3 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200 transition">
                 查询状态
             </button>
@@ -63240,7 +63353,7 @@ function createOrderCard(order) {
   } else {
     // 已支付或已关闭订单：只显示"查询状态"按钮
     actionButtons = `
-            <button onclick="refreshOrderStatus('${order.order_id}')" 
+            <button onclick="refreshOrderStatus(${escapeInlineJsArg(order.order_id)})"
                 class="w-full py-2 px-3 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200 transition">
                 查询状态
             </button>
@@ -64247,7 +64360,7 @@ function createPaymentLogCard(log) {
     }
   }
 
-  const safeLogId = String(log.log_id || "").replace(/'/g, "\\'");
+  const safeLogId = escapeInlineJsArg(log.log_id || "");
   const amountText =
     log.amount !== undefined && log.amount !== null && log.amount !== ""
       ? `¥${parseFloat(log.amount).toFixed(2)}`
@@ -64255,7 +64368,7 @@ function createPaymentLogCard(log) {
   const statusText = log.status || "-";
   const detailButton = log.log_id
     ? `
-            <button onclick="showPaymentLogDetail('${safeLogId}')" class="w-full min-h-[44px] rounded-2xl px-4 py-3 text-sm font-medium text-white transition-colors ${actionConfig.buttonClass}">
+            <button onclick="showPaymentLogDetail(${safeLogId})" class="w-full min-h-[44px] rounded-2xl px-4 py-3 text-sm font-medium text-white transition-colors ${actionConfig.buttonClass}">
                 查看详情
             </button>
         `
@@ -65020,7 +65133,7 @@ async function clearOverduePlaceholder(selectedAccounts, singleRunCost) {
       return `
             <div class="payment-method-option ${borderColor}" 
                  data-method="${escapeHtml(method)}"
-                 onclick="selectPaymentMethod('${escapeHtml(method)}')"
+                 onclick="selectPaymentMethod(${escapeInlineJsArg(method)})"
                  style="
                      padding: 15px 20px;
                      margin: 10px 0;
@@ -65732,9 +65845,9 @@ async function loadOverdueAccounts() {
                             <!-- 右侧：操作按钮组 -->
                             <div class="flex gap-2 ml-2 flex-shrink-0">
                                 <!-- 查看详情按钮：只有在有备份数据时才启用 -->
-                                <button onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
+                                <button onclick="View_details_of_users_with_outstanding_payments(${escapeInlineJsArg(
                                   account.school_username,
-                                )}')" 
+                                )})"
                                         class="btn btn-sm btn-primary"
                                         ${
                                           !account.has_backup ? "disabled" : ""
@@ -65744,9 +65857,9 @@ async function loadOverdueAccounts() {
                                 <!-- 结清按钮：无论是否有备份数据都可以使用 -->
                                 <!-- 使用 escapeHtml() 防止XSS攻击 -->
                                 <!-- auth_username传空字符串，让后端自动查找该学校账号所属的用户 -->
-                                <button onclick="adminClearOverdue(school_username=${escapeHtml(
+                                <button onclick="adminClearOverdue(${escapeInlineJsArg(
                                   account.school_username,
-                                )},auth_username='',is_detail_view=false)" 
+                                )}, '', false)"
                                         class="px-3 py-1.5 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition-colors">
                                     结算
                                 </button>
@@ -65773,16 +65886,16 @@ async function loadOverdueAccounts() {
                         </div>
                         <!-- 操作按钮独占一行 -->
                         <div class="flex gap-2">
-                            <button onclick="View_details_of_users_with_outstanding_payments('${escapeHtml(
+                            <button onclick="View_details_of_users_with_outstanding_payments(${escapeInlineJsArg(
                               account.school_username,
-                            )}')"
+                            )})"
                                     class="flex-1 py-2 px-3 bg-sky-500 text-white text-xs rounded-lg hover:bg-sky-600 active:bg-sky-700 transition-colors font-medium"
                                     ${!account.has_backup ? "disabled" : ""}>
                                 查看详情
                             </button>
-                            <button onclick="adminClearOverdue(school_username=${escapeHtml(
+                            <button onclick="adminClearOverdue(${escapeInlineJsArg(
                               account.school_username,
-                            )},auth_username='',is_detail_view=false)"
+                            )}, '', false)"
                                     class="flex-1 py-2 px-3 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 active:bg-emerald-700 transition-colors font-medium">
                                 结算
                             </button>
@@ -66237,7 +66350,7 @@ async function View_details_of_users_with_outstanding_payments(
                 <span class="text-[10px] text-slate-400">金额：</span>
                 <span class="text-sm font-bold ${r.status === "paid" ? "text-green-600" : "text-amber-600"}">${r.amount != null ? "¥" + escapeHtml(String(r.amount)) : "-"}</span>
               </div>
-              ${r.status === "pending" ? `<button onclick="Swal.close();paySingleBilling('admin-billing-list-container','${escapeHtml(r.billing_id || "")}','${escapeHtml(r.school_username || "")}')" class="px-2 py-1 text-[11px] bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md border border-emerald-200 transition-colors">支付</button>` : ""}
+              ${r.status === "pending" ? `<button onclick="Swal.close();paySingleBilling(${escapeInlineJsArg("admin-billing-list-container")}, ${escapeInlineJsArg(r.billing_id || "")}, ${escapeInlineJsArg(r.school_username || "")})" class="px-2 py-1 text-[11px] bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md border border-emerald-200 transition-colors">支付</button>` : ""}
             </div>
           </div>`,
           )
@@ -66290,9 +66403,9 @@ async function View_details_of_users_with_outstanding_payments(
                             ${
                               data.overdue_count > 0
                                 ? `
-                                <button onclick="adminClearOverdue('${escapeHtml(
+                                <button onclick="adminClearOverdue(${escapeInlineJsArg(
                                   school_username,
-                                )}', '${escapeHtml(user.username || "")}')" 
+                                )}, ${escapeInlineJsArg(user.username || "")})"
                                     class="ml-3 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-500 text-white text-xs font-bold rounded-lg hover:from-emerald-600 hover:to-green-600 active:from-emerald-700 active:to-green-700 transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
                                     title="管理员：清除此账号的欠费">
                                     <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -67243,8 +67356,10 @@ function _buildBillingSelectionDetailHtml(containerId, items) {
 function _renderMobileUserBillingCards(records, containerId) {
   let html = `<div class="space-y-3">`;
   records.forEach((r) => {
-    const billingId = _escapeAttr(r.billing_id || "");
-    const school = _escapeAttr(r.school_username || "-");
+    const rawBillingId = r.billing_id || "";
+    const rawSchool = r.school_username || "-";
+    const billingId = _escapeAttr(rawBillingId);
+    const school = _escapeAttr(rawSchool);
     const schoolName = _escapeAttr(r.school_name || r.school_username || "-");
     const reason = _escapeAttr(r.reason || "-");
     const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
@@ -67312,7 +67427,7 @@ function _renderMobileUserBillingCards(records, containerId) {
             </div>
             ${
               canPay
-                ? `<button class="flex-shrink-0 px-3 py-1 text-[11px] font-medium bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg border border-emerald-200 transition-colors" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`
+                ? `<button class="flex-shrink-0 px-3 py-1 text-[11px] font-medium bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg border border-emerald-200 transition-colors" onclick="paySingleBilling(${escapeInlineJsArg(containerId)}, ${escapeInlineJsArg(rawBillingId)}, ${escapeInlineJsArg(rawSchool)})">支付</button>`
                 : `<span class="flex-shrink-0 text-[11px] ${r.status === "admin_cleared" ? "text-sky-500" : "text-slate-500"}">${_escapeAttr(getBillingStatusLabel(r.status))}</span>`
             }
           </div>
@@ -67333,12 +67448,14 @@ function _renderBillingTableCommon(records, opts = {}) {
   let html = `<div class="rounded-xl border border-slate-200 overflow-hidden"><div class="overflow-x-auto">`;
   html += `<table class="${tableClass}">`;
   html += `<thead><tr class="bg-slate-100">`;
-  html += `<th class="p-2 text-center w-10"><input type="checkbox" onclick="toggleBillingSelectAll('${containerId}', this.checked)"></th>`;
+  html += `<th class="p-2 text-center w-10"><input type="checkbox" onclick="toggleBillingSelectAll(${escapeInlineJsArg(containerId)}, this.checked)"></th>`;
   html += `<th class="p-2 text-left">学校账号</th><th class="p-2 text-left">姓名</th><th class="p-2 text-left">原因</th><th class="p-2 text-left">金额</th><th class="p-2 text-left whitespace-nowrap">状态</th><th class="p-2 text-left">创建时间</th><th class="p-2 text-left">支付/清除时间</th><th class="p-2 text-left whitespace-nowrap">操作</th>`;
   html += `</tr></thead><tbody class="divide-y divide-slate-100">`;
   records.forEach((r) => {
-    const billingId = _escapeAttr(r.billing_id || "");
-    const school = _escapeAttr(r.school_username || "-");
+    const rawBillingId = r.billing_id || "";
+    const rawSchool = r.school_username || "-";
+    const billingId = _escapeAttr(rawBillingId);
+    const school = _escapeAttr(rawSchool);
     const schoolName = _escapeAttr(r.school_name || "-");
     const reason = _escapeAttr(r.reason || "-");
     const amount = r.amount != null ? "¥" + _escapeAttr(r.amount) : "-";
@@ -67355,7 +67472,7 @@ function _renderBillingTableCommon(records, opts = {}) {
     html += `<td class="p-2">${r.status === "admin_cleared" ? _escapeAttr(_fmtBillTime(_getBillingTime(r, "admin_cleared_at"))) : _escapeAttr(_fmtBillTime(_getBillingTime(r, "paid_at")))}</td>`;
     html += `<td class="p-2 whitespace-nowrap">`;
     if (canPay) {
-      html += `<button class="btn btn-ghost border border-emerald-300 !py-0.5 !px-2 ${isMobile ? "text-[11px]" : "text-xs"} text-emerald-700" onclick="paySingleBilling('${containerId}', '${billingId}', '${school}')">支付</button>`;
+      html += `<button class="btn btn-ghost border border-emerald-300 !py-0.5 !px-2 ${isMobile ? "text-[11px]" : "text-xs"} text-emerald-700" onclick="paySingleBilling(${escapeInlineJsArg(containerId)}, ${escapeInlineJsArg(rawBillingId)}, ${escapeInlineJsArg(rawSchool)})">支付</button>`;
     } else {
       html += `<span class="text-slate-400 text-xs">-</span>`;
     }
@@ -67538,7 +67655,7 @@ async function _chooseBillingPayType(options = {}) {
       return `
         <div class="payment-method-option ${borderColor}" 
              data-method="${escapeHtml(method)}"
-             onclick="selectBillingPaymentMethod('${escapeHtml(method)}')"
+             onclick="selectBillingPaymentMethod(${escapeInlineJsArg(method)})"
              style="
                  padding: 15px 20px;
                  margin: 10px 0;
@@ -68352,11 +68469,11 @@ async function loadAdminBillingList(usernameOverride = null) {
         <td class="px-3 py-2.5 text-slate-500">${_fmtBillTime(_getBillingTime(r, "paid_at"))}</td>
         <td class="px-3 py-2.5 text-center">
           <div class="flex items-center justify-center gap-1.5">
-            <button onclick='View_details_of_users_with_outstanding_payments(${JSON.stringify(r.school_username || "")})'
+            <button onclick='View_details_of_users_with_outstanding_payments(${escapeInlineJsonArg(r.school_username || "")})'
               class="px-2 py-1 text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-md border border-indigo-200 transition-colors whitespace-nowrap">🔍 查看详情</button>
-            <button onclick='adminEditBilling(${JSON.stringify(r)})'
+            <button onclick='adminEditBilling(${escapeInlineJsonArg(r)})'
               class="px-2 py-1 text-xs bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-md border border-sky-200 transition-colors whitespace-nowrap">✏️ 修改账单</button>
-            <button onclick='adminDeleteBilling(${JSON.stringify(r.billing_id)},${JSON.stringify(r.school_username || "")})'
+            <button onclick='adminDeleteBilling(${escapeInlineJsonArg(r.billing_id)},${escapeInlineJsonArg(r.school_username || "")})'
               class="px-2 py-1 text-xs bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md border border-rose-200 transition-colors whitespace-nowrap">🗑 删除</button>
           </div>
         </td>
@@ -68837,8 +68954,8 @@ async function loadRemovedAccountsList() {
               <span class="px-2 py-1 rounded-lg text-[11px] border ${tfaEnabled ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-400 border-slate-200"}">2FA: ${tfaEnabled ? "已启用" : "未启用"}</span>
             </div>
             <div class="flex items-center justify-end gap-2">
-              <button class="px-2.5 py-1 text-[11px] font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors" onclick='showRemovedAccountDetail(${JSON.stringify(username)})'>查看详情</button>
-              <button class="px-2.5 py-1 text-[11px] font-medium bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg border border-amber-200 transition-colors" onclick='restoreAccount(${JSON.stringify(username)})'>恢复</button>
+              <button class="px-2.5 py-1 text-[11px] font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors" onclick='showRemovedAccountDetail(${escapeInlineJsonArg(username)})'>查看详情</button>
+              <button class="px-2.5 py-1 text-[11px] font-medium bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg border border-amber-200 transition-colors" onclick='restoreAccount(${escapeInlineJsonArg(username)})'>恢复</button>
             </div>
           </div>
         </div>`;
@@ -68981,9 +69098,9 @@ async function loadMobileMultiAdminBillingList() {
             <div class="flex items-center justify-between gap-2">
               ${timeRow}
               <div class="flex-shrink-0 flex items-center gap-1">
-                <button class="px-2 py-1 text-[11px] font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors" onclick='View_details_of_users_with_outstanding_payments(${JSON.stringify(r.school_username || "")})'>详情</button>
-                <button class="px-2 py-1 text-[11px] font-medium bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg border border-sky-200 transition-colors" onclick='adminEditBilling(${JSON.stringify(r)})'>修改</button>
-                <button class="px-2 py-1 text-[11px] font-medium bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors" onclick='adminDeleteBilling(${JSON.stringify(r.billing_id)}, ${JSON.stringify(r.school_username || "")})'>删除</button>
+                <button class="px-2 py-1 text-[11px] font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-colors" onclick='View_details_of_users_with_outstanding_payments(${escapeInlineJsonArg(r.school_username || "")})'>详情</button>
+                <button class="px-2 py-1 text-[11px] font-medium bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg border border-sky-200 transition-colors" onclick='adminEditBilling(${escapeInlineJsonArg(r)})'>修改</button>
+                <button class="px-2 py-1 text-[11px] font-medium bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors" onclick='adminDeleteBilling(${escapeInlineJsonArg(r.billing_id)}, ${escapeInlineJsonArg(r.school_username || "")})'>删除</button>
               </div>
             </div>
           </div>
@@ -69076,8 +69193,8 @@ async function loadMobileMultiRemovedAccountsList() {
             <div class="px-3 py-2 rounded-xl text-[12px] border ${tfaEnabled ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-500 border-slate-200"}">2FA: ${tfaEnabled ? "已启用" : "未启用"}</div>
           </div>
           <div class="grid grid-cols-2 gap-2">
-            <button class="w-full min-h-[38px] px-3 py-2 text-[12px] font-medium bg-indigo-50 active:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 transition-colors" onclick='showRemovedAccountDetail(${JSON.stringify(username)})'>查看详情</button>
-            <button class="w-full min-h-[38px] px-3 py-2 text-[12px] font-medium bg-amber-50 active:bg-amber-100 text-amber-700 rounded-xl border border-amber-200 transition-colors" onclick='restoreAccountAndRefreshMobile(${JSON.stringify(username)})'>恢复账号</button>
+            <button class="w-full min-h-[38px] px-3 py-2 text-[12px] font-medium bg-indigo-50 active:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 transition-colors" onclick='showRemovedAccountDetail(${escapeInlineJsonArg(username)})'>查看详情</button>
+            <button class="w-full min-h-[38px] px-3 py-2 text-[12px] font-medium bg-amber-50 active:bg-amber-100 text-amber-700 rounded-xl border border-amber-200 transition-colors" onclick='restoreAccountAndRefreshMobile(${escapeInlineJsonArg(username)})'>恢复账号</button>
           </div>
         </div>
       </div>`;
@@ -69111,7 +69228,7 @@ function _buildRemovedSchoolAccountsHtml(schoolAccounts) {
       return `<div class="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
         <span class="text-xs font-mono text-slate-700 break-all">${safeSchool}</span>
         <button class="px-2 py-0.5 text-[11px] font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-md border border-indigo-200 transition-colors"
-          onclick='View_details_of_users_with_outstanding_payments(${JSON.stringify(school)})'>查看账号详情</button>
+          onclick='View_details_of_users_with_outstanding_payments(${escapeInlineJsonArg(school)})'>查看账号详情</button>
       </div>`;
     })
     .join("");

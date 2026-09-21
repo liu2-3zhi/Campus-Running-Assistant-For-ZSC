@@ -39341,7 +39341,7 @@ def start_web_server(args_param):
                     404,
                 )
 
-            return _send_frontend_static_file(script_dir, filename)
+            return _send_frontend_static_file(script_dir, filename, no_cache=True)
         except Exception as e:
             logging.error(f"Serving script error: {e}")
             return jsonify({"success": False, "message": "File not found"}), 404

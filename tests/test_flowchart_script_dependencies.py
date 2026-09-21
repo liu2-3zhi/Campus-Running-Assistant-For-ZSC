@@ -77,6 +77,39 @@ class TestFlowchartScriptDependencies(unittest.TestCase):
             "navigation handling must happen before generic static asset cache-first logic",
         )
 
+    def test_service_worker_does_not_serve_legacy_main_script_from_static_cache(self):
+        source = SERVICE_WORKER_PATH.read_text(encoding="utf-8")
+
+        self.assertNotIn("'/scripts/main.new.js'", source)
+        self.assertNotIn('"/scripts/main.new.js"', source)
+        self.assertRegex(
+            source,
+            re.compile(
+                r"if\s*\(\s*url\.pathname\.startsWith\(\s*['\"]\/scripts\/['\"]\s*\)\s*\)\s*\{[\s\S]*?fetch\(event\.request\)",
+                re.MULTILINE,
+            ),
+        )
+
+    def test_legacy_main_script_bypasses_old_worker_and_http_caches(self):
+        index_source = INDEX_HTML_PATH.read_text(encoding="utf-8")
+        main_source = MAIN_PY_PATH.read_text(encoding="utf-8")
+        scripts_route_source = _extract_section(
+            main_source,
+            '    @app.route("/scripts/<path:filename>")',
+            '    @app.route("/styles/<path:filename>")',
+        )
+
+        self.assertRegex(
+            index_source,
+            re.compile(
+                r'<script\s+src="/scripts/main\.new\.js\?v=[^"]+"\s+defer',
+            ),
+        )
+        self.assertIn(
+            "return _send_frontend_static_file(script_dir, filename, no_cache=True)",
+            scripts_route_source,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
