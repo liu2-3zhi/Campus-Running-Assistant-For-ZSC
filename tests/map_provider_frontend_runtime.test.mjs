@@ -1211,6 +1211,25 @@ test('running background tasks lock map provider and defer newer provider config
   assert.equal(getAppConfig().map_provider, 'baidu');
 });
 
+test('syncing sanitized provider config preserves an already hydrated map key', () => {
+  const runtime = createRuntime('tencent');
+  const getAppConfig = () => runtime.getWindow().APP_CONFIG;
+
+  runtime.syncMapProviderConfigFromInitialData({
+    map_provider: 'tencent',
+    map_providers: {
+      tencent: {
+        provider: 'tencent',
+        display_name: '腾讯地图',
+        coordinate_system: 'gcj02',
+        business_coordinate_system: 'gcj02',
+      },
+    },
+  });
+
+  assert.equal(getAppConfig().map_providers.tencent.map_key, 'tencent-key');
+});
+
 test('running background tasks without recorded provider preserve current provider', () => {
   const runtime = createRuntime('amap', { strictDocumentIds: true });
   const getAppConfig = () => runtime.getWindow().APP_CONFIG;

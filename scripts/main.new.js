@@ -36343,10 +36343,15 @@ function syncMapProviderConfigFromInitialData(data) {
     nextConfig.map_provider = incomingProvider;
   }
   if (data.map_providers && typeof data.map_providers === "object") {
-    nextConfig.map_providers = {
-      ...nextConfig.map_providers,
-      ...data.map_providers,
-    };
+    Object.entries(data.map_providers).forEach(([provider, value]) => {
+      const currentProviderConfig = nextConfig.map_providers[provider];
+      nextConfig.map_providers[provider] = {
+        ...(currentProviderConfig && typeof currentProviderConfig === "object"
+          ? currentProviderConfig
+          : {}),
+        ...(value && typeof value === "object" ? value : {}),
+      };
+    });
   }
   if (data.amap_key) {
     nextConfig.map_providers.amap = {
@@ -39649,8 +39654,17 @@ async function onLogin() {
   setButtonLoading("login-button", true, "登录中...");
 
   logMessage_Info("[前端-登录] 调用后端API进行登录验证...");
-  const result = await callPythonAPI("login", user, pass);
+  const mapProviderSessionUUID = getApiRequestSessionHeaderValue("login");
+  let result = await callPythonAPI("login", user, pass);
   if (result.success) {
+    try {
+      result = await hydrateMapProviderSecretsForLegacy(
+        result,
+        mapProviderSessionUUID,
+      );
+    } catch (error) {
+      logMessage_Error("[前端-登录] 地图密钥运行时解密失败:", error);
+    }
     await syncThemeFromServer(result.theme, result.theme_style);
     logMessage_Info("[前端-登录] ✓ 登录成功！");
     showButtonSuccess("login-button", "登录成功");

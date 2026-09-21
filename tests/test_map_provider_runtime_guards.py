@@ -27,7 +27,10 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
 
         self.assertIn('<script src="/api/frontend_config.js"></script>', html)
         self.assertIn('<script src="/scripts/load_amap_watermark.js"></script>', html)
-        self.assertIn('<script src="scripts/main.new.js" defer=""></script>', html)
+        self.assertIn(
+            '<script src="/scripts/main.new.js?v=20260921-legacy-map-login-key" defer=""></script>',
+            html,
+        )
 
     def test_legacy_ui_hydrates_map_keys_from_api_runtime(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
@@ -89,6 +92,26 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertNotIn(
             'console.log("[水印控制] 准备保存配置（移动端）:", requestBody);',
             source,
+        )
+
+    def test_legacy_login_hydrates_map_keys_before_syncing_config(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        login_start = source.index("async function onLogin()")
+        login_end = source.index("async function onLogout()", login_start)
+        login_source = source[login_start:login_end]
+
+        self.assertIn(
+            'const mapProviderSessionUUID = getApiRequestSessionHeaderValue("login");',
+            login_source,
+        )
+        self.assertIn("let result = await callPythonAPI(\"login\", user, pass);", login_source)
+        self.assertIn(
+            "result = await hydrateMapProviderSecretsForLegacy(\n        result,\n        mapProviderSessionUUID,\n      );",
+            login_source,
+        )
+        self.assertLess(
+            login_source.index("hydrateMapProviderSecretsForLegacy"),
+            login_source.index("syncMapProviderConfigFromInitialData(result)"),
         )
 
     def test_vue_runtime_loader_reloads_stale_same_version_script(self):
