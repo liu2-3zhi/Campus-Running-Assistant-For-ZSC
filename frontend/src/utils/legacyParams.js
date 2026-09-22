@@ -98,6 +98,19 @@ export const paramDefs = {
     help: "开启后，将在后台自动刷新通知并尝试签到",
     type: "checkbox",
   },
+  auto_attendance_stop_after_success: {
+    label: "完成指定次数后自动关闭",
+    unit: "",
+    help: "勾选后，后台成功提交指定次数的新签到任务就会自动关闭自动签到。",
+    type: "checkbox",
+  },
+  auto_attendance_success_limit: {
+    label: "自动关闭次数",
+    unit: "次",
+    help: "达到该成功签到次数后自动关闭，最小值为1。",
+    type: "number",
+    min: 1,
+  },
   auto_attendance_refresh_s: {
     label: "刷新间隔",
     unit: "秒",
@@ -142,6 +155,8 @@ export const paramGroups = [
     title: "自动签到",
     keys: [
       "auto_attendance_enabled",
+      "auto_attendance_stop_after_success",
+      "auto_attendance_success_limit",
       "auto_attendance_refresh_s",
       "attendance_user_radius_m",
     ],

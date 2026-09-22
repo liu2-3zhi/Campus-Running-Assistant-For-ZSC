@@ -5643,6 +5643,61 @@ def _save_auto_attendance_config(config):
         return False
 
 
+def _record_auto_attendance_success(school_username, params):
+    """记录一次新的自动签到成功，并在达到阈值时关闭自动签到。"""
+    if not params.get("auto_attendance_stop_after_success", True):
+        return False
+
+    try:
+        success_limit = max(
+            1, int(params.get("auto_attendance_success_limit", 1))
+        )
+    except (TypeError, ValueError):
+        success_limit = 1
+
+    with CONFIG_JSON_LOCK:
+        config = _load_auto_attendance_config()
+        account_info = config.get("enabled_accounts", {}).get(school_username)
+        if not account_info:
+            return False
+
+        try:
+            successful_count = max(0, int(account_info.get("successful_count", 0))) + 1
+        except (TypeError, ValueError):
+            successful_count = 1
+
+        account_info["successful_count"] = successful_count
+        reached_limit = successful_count >= success_limit
+        if reached_limit:
+            del config["enabled_accounts"][school_username]
+
+        if not _save_auto_attendance_config(config):
+            return False
+
+        if reached_limit:
+            logging.info(
+                f"[自动签到配置] 账号 {school_username} 已完成 {successful_count} 次签到，自动关闭自动签到"
+            )
+            session_uuid = account_info.get("session_uuid")
+            sio = globals().get("socketio")
+            if session_uuid and sio:
+                try:
+                    sio.emit(
+                        "auto_attendance_updated",
+                        {
+                            "enabled": False,
+                            "successful_count": successful_count,
+                            "success_limit": success_limit,
+                        },
+                        room=session_uuid,
+                    )
+                except Exception as e:
+                    logging.warning(
+                        f"[自动签到配置] 推送自动关闭状态失败: {e}"
+                    )
+        return reached_limit
+
+
 def _enable_auto_attendance(school_username, session_uuid, auth_username):
     """
     启用指定学校账号的自动签到功能
@@ -5681,7 +5736,9 @@ def _enable_auto_attendance(school_username, session_uuid, auth_username):
             # + "Z"表示这是UTC时区时间
             "enabled_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             # 记录账号所有者的认证用户名
-            "auth_username": auth_username
+            "auth_username": auth_username,
+            # 每次重新启用时重新累计自动签到成功次数
+            "successful_count": 0,
         }
 
         # 保存更新后的配置到JSON文件
@@ -6898,6 +6955,8 @@ def _write_config_with_comments(config_obj, filepath):
             known_keys = [
                 "theme_base_color",
                 "theme_style",
+                "auto_attendance_stop_after_success",
+                "auto_attendance_success_limit",
                 "auto_attendance_refresh_s",
                 "attendance_user_radius_m",
             ]
@@ -13760,6 +13819,8 @@ class Api:
             "max_time_m": 30,
             "min_dist_m": 2000,
             "auto_attendance_enabled": False,
+            "auto_attendance_stop_after_success": True,
+            "auto_attendance_success_limit": 1,
             "auto_attendance_refresh_s": 15,
             "attendance_user_radius_m": 40,
             "amap_js_key": "",
@@ -15344,10 +15405,31 @@ class Api:
                     "Config", "auto_attendance_refresh_s"
                 )
 
+            if cfg.has_option("Config", "auto_attendance_stop_after_success"):
+                self.global_params["auto_attendance_stop_after_success"] = cfg.getboolean(
+                    "Config", "auto_attendance_stop_after_success"
+                )
+
+            if cfg.has_option("Config", "auto_attendance_success_limit"):
+                self.global_params["auto_attendance_success_limit"] = max(
+                    1, cfg.getint("Config", "auto_attendance_success_limit")
+                )
+
             if cfg.has_option("Config", "attendance_user_radius_m"):
                 self.global_params["attendance_user_radius_m"] = cfg.getint(
                     "Config", "attendance_user_radius_m"
                 )
+
+            # Keep the single-account parameter view aligned with persisted globals.
+            if not self.is_multi_account_mode:
+                for key in (
+                    "auto_attendance_stop_after_success",
+                    "auto_attendance_success_limit",
+                    "auto_attendance_refresh_s",
+                    "attendance_user_radius_m",
+                ):
+                    if key in self.global_params:
+                        self.params[key] = self.global_params[key]
 
             logging.info(
                 f"Loaded global config: AmapKey={'Yes' if amap_key else 'No'}, Theme={self.global_params.get('theme_base_color')}"
@@ -18242,11 +18324,16 @@ class Api:
                 else:
                     target_params[key] = original_type(value)
 
+                if key == "auto_attendance_success_limit":
+                    target_params[key] = max(1, int(target_params[key]))
+
                 # [修正] 如果是全局配置项，立即保存到 config.ini
                 # auto_attendance_enabled 已移除，它将仅保存在会话中
                 global_keys = [
                     "theme_base_color",
                     "theme_style",
+                    "auto_attendance_stop_after_success",
+                    "auto_attendance_success_limit",
                     "auto_attendance_refresh_s",
                     "attendance_user_radius_m",
                 ]
@@ -18576,6 +18663,8 @@ class Api:
                 "theme_base_color": "#7dd3fc",
                 "theme_style": "default",
                 "auto_attendance_enabled": False,
+                "auto_attendance_stop_after_success": True,
+                "auto_attendance_success_limit": 1,
                 "auto_attendance_refresh_s": 15,
                 "attendance_user_radius_m": 40,
             }
@@ -20172,6 +20261,9 @@ class Api:
                     )
                 else:
                     target_params[key] = original_type(value)
+
+                if key == "auto_attendance_success_limit":
+                    target_params[key] = max(1, int(target_params[key]))
 
                 self._save_config(username, self.accounts[username].password)
                 self.log(f"已更新账号 [{username}] 的参数 {key}。")
@@ -22303,7 +22395,9 @@ class Api:
 
                     # 调用签到检查函数
                     # 这个函数会检查是否有需要签到的活动，并自动执行签到
-                    self._check_and_trigger_auto_attendance(account)
+                    auto_attendance_closed = self._check_and_trigger_auto_attendance(account)
+                    if auto_attendance_closed:
+                        break
 
                     # === 第六步：刷新通知 ===
                     logging.info(f"[账号刷新线程] 账号 {account_id} 刷新通知")
@@ -22505,7 +22599,9 @@ class Api:
 
                 if is_enabled:
                     self.log("(后台) 自动签到已启用，正在检查...")
-                    self._check_and_trigger_auto_attendance(self)
+                    auto_attendance_closed = self._check_and_trigger_auto_attendance(self)
+                    if auto_attendance_closed:
+                        break
                     self.log("正在自动刷新通知 (后台)...")
                     result = self.get_notifications(is_auto_refresh=True)
                     if result.get("success"):
@@ -22559,7 +22655,7 @@ class Api:
             # 从JSON配置读取启用状态
             school_username = user.username if user and user.username else None
             if not school_username or not _is_auto_attendance_enabled(school_username):
-                return
+                return False
         else:
             client = self.api_client
             log_func = self.log
@@ -22568,11 +22664,11 @@ class Api:
             # 从JSON配置读取启用状态
             school_username = user.username if user and user.username else None
             if not school_username or not _is_auto_attendance_enabled(school_username):
-                return
+                return False
 
         if not user.id:
             log_func("用户未登录，跳过自动签到。")
-            return
+            return False
 
         log_func("(后台) 正在检查自动签到任务...")
 
@@ -22589,12 +22685,12 @@ class Api:
                 offset=0, limit=AUTO_ATTENDANCE_NOTICE_LIMIT, type_id=0)
             if not (list_resp and list_resp.get("success")):
                 log_func("获取通知列表失败，跳过自动签到。")
-                return
+                return False
 
             notices = list_resp.get("data", {}).get("noticeList", [])
             if not notices:
                 log_func("(后台) 通知列表为空。")
-                return
+                return False
 
             log_func(f"(后台) 获取到 {len(notices)} 条通知，正在检查签到任务...")
             logging.debug(f"(后台) 通知列表原始数据: {notices}")
@@ -22662,9 +22758,14 @@ class Api:
                             ),
                         )
 
-                        if auto_result.get("success"):
+                        if auto_result.get("success") and auto_result.get("message") != "已签到":
                             log_func(f"自动签到 '{notice.get('title')}' 成功。")
                             triggered_count += 1
+                            if _record_auto_attendance_success(school_username, params):
+                                log_func(
+                                    "自动签到已达到设定次数，自动签到已关闭。"
+                                )
+                                return True
                         else:
                             log_func(
                                 f"自动签到 '{notice.get('title')}' 失败: {auto_result.get('message', '')}"
@@ -22676,12 +22777,14 @@ class Api:
 
             if triggered_count == 0:
                 log_func("(后台) 未发现待处理的签到任务。")
+            return False
 
         except Exception as e:
             log_func(f"自动签到检查时出错: {e}")
             logging.error(
                 f"[_check_and_trigger_auto_attendance] Error: {e}", exc_info=True
             )
+            return False
 
     def _multi_auto_attendance_worker(self):
         """
@@ -22722,7 +22825,9 @@ class Api:
                     school_username = acc.user_data.username if acc.user_data and acc.user_data.username else None
                     if school_username and _is_auto_attendance_enabled(school_username):
                         if acc.user_data.id:
-                            self._check_and_trigger_auto_attendance(acc)
+                            if self._check_and_trigger_auto_attendance(acc):
+                                acc.log("(后台) 自动签到已达到设定次数，停止本账号自动刷新。")
+                                continue
                             self._multi_fetch_attendance_stats(acc)
                             self._update_account_status_js(
                                 acc, summary=acc.summary)
@@ -23969,7 +24074,9 @@ def restore_session_to_api_instance(api_instance, state):
         if "user_info" in state:
             api_instance.user_info = state["user_info"]
         if "params" in state:
-            api_instance.params = state["params"]
+            saved_params = state["params"]
+            if isinstance(saved_params, dict):
+                api_instance.params.update(saved_params)
         if "device_ua" in state:
             api_instance.device_ua = state["device_ua"]
         if "cached_notifications" in state:
@@ -24034,7 +24141,15 @@ def restore_session_to_api_instance(api_instance, state):
             api_instance.is_multi_account_mode = state["is_multi_account_mode"]
             if state["is_multi_account_mode"]:
                 if "multi_global_params" in state:
-                    api_instance.global_params = state["multi_global_params"]
+                    saved_global_params = state["multi_global_params"]
+                    if isinstance(saved_global_params, dict):
+                        api_instance.global_params.update(saved_global_params)
+                api_instance.global_params.setdefault(
+                    "auto_attendance_stop_after_success", True
+                )
+                api_instance.global_params.setdefault(
+                    "auto_attendance_success_limit", 1
+                )
                 if "multi_account_states" in state:
                     multi_account_states = state["multi_account_states"]
 
@@ -24067,8 +24182,9 @@ def restore_session_to_api_instance(api_instance, state):
                                 acc.status_text = account_state.get(
                                     "status_text", "待命"
                                 )
-                                acc.params = account_state.get(
-                                    "params", acc.params)
+                                saved_params = account_state.get("params", {})
+                                if isinstance(saved_params, dict):
+                                    acc.params.update(saved_params)
                                 acc.summary = account_state.get(
                                     "summary",
                                     {

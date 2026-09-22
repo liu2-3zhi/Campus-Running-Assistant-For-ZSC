@@ -15115,8 +15115,20 @@ async function saveMobileAttendanceParams() {
   const radiusInput = document.getElementById(
     "mobile-param-attendance_user_radius_m",
   );
+  const stopAfterSuccessInput = document.getElementById(
+    "mobile-param-auto_attendance_stop_after_success",
+  );
+  const successLimitInput = document.getElementById(
+    "mobile-param-auto_attendance_success_limit",
+  );
 
-  if (!enabledInput || !refreshInput || !radiusInput) {
+  if (
+    !enabledInput ||
+    !refreshInput ||
+    !radiusInput ||
+    !stopAfterSuccessInput ||
+    !successLimitInput
+  ) {
     // showModalAlert("无法获取参数输入框", "错误");
     Swal.fire({
       icon: "error",
@@ -15129,8 +15141,10 @@ async function saveMobileAttendanceParams() {
   const enabled = enabledInput.checked;
   const refresh = parseInt(refreshInput.value);
   const radius = parseInt(radiusInput.value);
+  const stopAfterSuccess = stopAfterSuccessInput.checked;
+  const successLimit = parseInt(successLimitInput.value);
 
-  if (isNaN(refresh) || refresh < 10) {
+  if (isNaN(refresh) || refresh < 10 || isNaN(successLimit) || successLimit < 1) {
     // showModalAlert("刷新间隔不能小于10秒", "错误");
     Swal.fire({
       icon: "error",
@@ -15142,11 +15156,23 @@ async function saveMobileAttendanceParams() {
 
   try {
     await callPythonAPI("update_param", "auto_attendance_enabled", enabled);
+    await callPythonAPI(
+      "update_param",
+      "auto_attendance_stop_after_success",
+      stopAfterSuccess,
+    );
+    await callPythonAPI(
+      "update_param",
+      "auto_attendance_success_limit",
+      successLimit,
+    );
     await callPythonAPI("update_param", "auto_attendance_refresh_s", refresh);
     await callPythonAPI("update_param", "attendance_user_radius_m", radius);
 
     if (typeof pythonParams !== "undefined") {
       pythonParams["auto_attendance_enabled"] = enabled;
+      pythonParams["auto_attendance_stop_after_success"] = stopAfterSuccess;
+      pythonParams["auto_attendance_success_limit"] = successLimit;
       pythonParams["auto_attendance_refresh_s"] = refresh;
       pythonParams["attendance_user_radius_m"] = radius;
     }
@@ -18101,6 +18127,19 @@ const paramDefs = {
     help: "开启后，将在后台自动刷新通知并尝试签到",
     type: "checkbox",
   },
+  auto_attendance_stop_after_success: {
+    label: "完成指定次数后自动关闭",
+    unit: "",
+    help: "勾选后，后台成功提交指定次数的新签到任务就会自动关闭自动签到。",
+    type: "checkbox",
+  },
+  auto_attendance_success_limit: {
+    label: "自动关闭次数",
+    unit: "次",
+    help: "达到该成功签到次数后自动关闭，最小值为1。",
+    type: "number",
+    min: 1,
+  },
   auto_attendance_refresh_s: {
     label: "刷新间隔",
     unit: "秒",
@@ -18145,6 +18184,8 @@ const paramGroups = [
     title: "自动签到",
     keys: [
       "auto_attendance_enabled",
+      "auto_attendance_stop_after_success",
+      "auto_attendance_success_limit",
       "auto_attendance_refresh_s",
       "attendance_user_radius_m",
     ],
@@ -35695,9 +35736,15 @@ async function initializeApp() {
     bindImmediateRefreshForUserSelects();
 
     const attEnabled = $("param-auto_attendance_enabled");
+    const attStopAfterSuccess = $("param-auto_attendance_stop_after_success");
+    const attSuccessLimit = $("param-auto_attendance_success_limit");
     const attRefresh = $("param-auto_attendance_refresh_s");
     const attRadius = $("param-attendance_user_radius_m");
     if (attEnabled) attEnabled.addEventListener("change", onParamChange);
+    if (attStopAfterSuccess)
+      attStopAfterSuccess.addEventListener("change", onParamChange);
+    if (attSuccessLimit)
+      attSuccessLimit.addEventListener("change", onParamChange);
     if (attRefresh) attRefresh.addEventListener("change", onParamChange);
     if (attRadius) attRadius.addEventListener("change", onParamChange);
 
@@ -35944,6 +35991,22 @@ function connectWebSocket() {
     if (data && data.success) {
       onNotificationsUpdated(data);
     }
+  });
+
+  socket.on("auto_attendance_updated", (data) => {
+    if (!data || data.enabled !== false) return;
+    if (typeof pythonParams !== "undefined") {
+      pythonParams.auto_attendance_enabled = false;
+    }
+    [
+      "param-auto_attendance_enabled",
+      "mobile-param-auto_attendance_enabled",
+      "mobile-multi-auto_attendance_enabled",
+    ].forEach((id) => {
+      const checkbox = $(id);
+      if (checkbox) checkbox.checked = false;
+    });
+    logMessage_Info("自动签到已完成设定次数，已自动关闭");
   });
 
   socket.on("verification_codes_updated", () => {
@@ -48388,6 +48451,19 @@ function switchMobileSinglePanel(panelId, showalert = true) {
             "米",
           );
         }
+        const stopAfterSuccess = document.getElementById(
+          "mobile-param-auto_attendance_stop_after_success",
+        );
+        if (stopAfterSuccess && typeof pythonParams !== "undefined") {
+          stopAfterSuccess.checked =
+            pythonParams.auto_attendance_stop_after_success !== false;
+        }
+        const successLimit = document.getElementById(
+          "mobile-param-auto_attendance_success_limit",
+        );
+        if (successLimit && typeof pythonParams !== "undefined") {
+          successLimit.value = pythonParams.auto_attendance_success_limit || 1;
+        }
         logMessage_Info("[移动端单账号] 签到面板配置已自动加载");
         refreshNotificationsUI(true, true);
       }, 50);
@@ -53513,6 +53589,40 @@ document.addEventListener("DOMContentLoaded", function () {
           const value = parseFloat(this.value) || 0;
           callPythonAPI("update_param", "auto_attendance_refresh_s", value);
           console.log(`[移动端多账号] 刷新间隔已更新: ${value}`);
+        }
+      });
+    }
+
+    const autoAttendanceStopAfterSuccess = document.getElementById(
+      "mobile-multi-auto_attendance_stop_after_success",
+    );
+    if (autoAttendanceStopAfterSuccess) {
+      autoAttendanceStopAfterSuccess.checked =
+        pythonParams["auto_attendance_stop_after_success"] !== false;
+      autoAttendanceStopAfterSuccess.addEventListener("change", function () {
+        if (typeof callPythonAPI === "function") {
+          callPythonAPI(
+            "update_param",
+            "auto_attendance_stop_after_success",
+            this.checked,
+          );
+          console.log(`[移动端多账号] 自动关闭开关已更新: ${this.checked}`);
+        }
+      });
+    }
+
+    const autoAttendanceSuccessLimit = document.getElementById(
+      "mobile-multi-auto_attendance_success_limit",
+    );
+    if (autoAttendanceSuccessLimit) {
+      autoAttendanceSuccessLimit.value =
+        pythonParams["auto_attendance_success_limit"] || 1;
+      autoAttendanceSuccessLimit.addEventListener("change", function () {
+        if (typeof callPythonAPI === "function") {
+          const value = Math.max(1, parseInt(this.value, 10) || 1);
+          this.value = value;
+          callPythonAPI("update_param", "auto_attendance_success_limit", value);
+          console.log(`[移动端多账号] 自动关闭次数已更新: ${value}`);
         }
       });
     }

@@ -124,6 +124,16 @@ export function connectWebSocket() {
     })
   })
 
+  socket.on('auto_attendance_updated', (data) => {
+    if (data?.enabled !== false) return
+    const app = useAppStore()
+    app.pythonParams = {
+      ...app.pythonParams,
+      auto_attendance_enabled: false,
+    }
+    app.addLog('自动签到已完成设定次数，已自动关闭', 'INFO', 'Backend')
+  })
+
   socket.on('verification_codes_updated', () => {
     const app = useAppStore()
     app.handleVerificationCodesUpdated()

@@ -233,15 +233,60 @@ async function loadCheckpoints() {
 
 // ── Attendance ──
 const autoAttendance = ref(false)
+const autoAttendanceStopAfterSuccess = ref(true)
+const autoAttendanceSuccessLimit = ref(1)
 const attendanceInterval = ref(30)
 const attendanceRadius = ref(100)
 
-async function saveAttendanceParams() {
-  // 与 original 保持一致的 data-key：auto_attendance_enabled / auto_attendance_refresh_s / attendance_user_radius_m
+function syncAttendanceParams() {
+  autoAttendance.value = app.pythonParams.auto_attendance_enabled ?? false
+  autoAttendanceStopAfterSuccess.value =
+    app.pythonParams.auto_attendance_stop_after_success ?? true
+  autoAttendanceSuccessLimit.value = Math.max(
+    1,
+    Number(app.pythonParams.auto_attendance_success_limit ?? 1),
+  )
+  attendanceInterval.value = app.pythonParams.auto_attendance_refresh_s ?? 15
+  attendanceRadius.value = app.pythonParams.attendance_user_radius_m ?? 40
+}
+
+watch(
+  () => [
+    app.pythonParams.auto_attendance_enabled,
+    app.pythonParams.auto_attendance_stop_after_success,
+    app.pythonParams.auto_attendance_success_limit,
+    app.pythonParams.auto_attendance_refresh_s,
+    app.pythonParams.attendance_user_radius_m,
+  ],
+  syncAttendanceParams,
+)
+
+async function saveAttendanceParams({ includeEnabled = false } = {}) {
+  // 与 original 保持一致的 data-key。
   try {
-    await callAPI('update_param', { key: 'auto_attendance_enabled', value: autoAttendance.value })
+    if (includeEnabled) {
+      await callAPI('update_param', { key: 'auto_attendance_enabled', value: autoAttendance.value })
+    }
+    await callAPI('update_param', {
+      key: 'auto_attendance_stop_after_success',
+      value: autoAttendanceStopAfterSuccess.value
+    })
+    await callAPI('update_param', {
+      key: 'auto_attendance_success_limit',
+      value: Math.max(1, Number(autoAttendanceSuccessLimit.value) || 1)
+    })
     await callAPI('update_param', { key: 'auto_attendance_refresh_s', value: attendanceInterval.value })
     await callAPI('update_param', { key: 'attendance_user_radius_m', value: attendanceRadius.value })
+    app.pythonParams = {
+      ...app.pythonParams,
+      auto_attendance_enabled: includeEnabled
+        ? autoAttendance.value
+        : app.pythonParams.auto_attendance_enabled,
+      auto_attendance_stop_after_success: autoAttendanceStopAfterSuccess.value,
+      auto_attendance_success_limit: Math.max(1, Number(autoAttendanceSuccessLimit.value) || 1),
+      auto_attendance_refresh_s: attendanceInterval.value,
+      attendance_user_radius_m: attendanceRadius.value,
+    }
     app.addLog(autoAttendance.value ? '自动签到已开启' : '自动签到已关闭', 'INFO')
   } catch (e) {
     app.addLog('设置签到失败: ' + (e.message || e), 'ERROR')
@@ -249,7 +294,7 @@ async function saveAttendanceParams() {
 }
 
 // 兼容旧调用名
-const toggleAutoAttendance = saveAttendanceParams
+const toggleAutoAttendance = () => saveAttendanceParams({ includeEnabled: true })
 
 // 签到任务列表（对应 original attendance-list + refreshNotificationsUI）
 const attendanceTasks = ref([])
@@ -364,7 +409,10 @@ function onTabChange(tab) {
   if (tab === 'checkpoints') loadCheckpoints()
   if (tab === 'history') loadHistory()
   if (tab === 'params') loadParams()
-  if (tab === 'attendance') refreshAttendanceList()
+  if (tab === 'attendance') {
+    syncAttendanceParams()
+    refreshAttendanceList()
+  }
 }
 
 watch(() => props.openTab, (v) => {
@@ -376,6 +424,7 @@ watch(() => props.openTab, (v) => {
 
 onMounted(() => {
   initParamValues()
+  syncAttendanceParams()
 })
 </script>
 
@@ -564,6 +613,29 @@ onMounted(() => {
           <p class="text-xs text-amber-600 leading-relaxed">
             ⏱ 自动签到启用后将在 120 分钟内自动关闭。
           </p>
+
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              v-model="autoAttendanceStopAfterSuccess"
+              class="w-5 h-5 rounded accent-[var(--accent)] cursor-pointer flex-shrink-0"
+              @change="saveAttendanceParams()"
+            />
+            <span class="text-[var(--ink)] font-semibold">完成指定次数后自动关闭</span>
+          </label>
+
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-[var(--ink)] font-semibold flex-shrink-0">自动关闭次数</label>
+            <input
+              type="number"
+              v-model.number="autoAttendanceSuccessLimit"
+              class="input-field !py-1 w-full"
+              min="1"
+              step="1"
+              @change="saveAttendanceParams()"
+            />
+            <span class="text-sm text-[var(--ink-muted)] flex-shrink-0">次</span>
+          </div>
 
           <div class="flex items-center gap-2">
             <label class="text-sm text-[var(--ink)] font-semibold flex-shrink-0">刷新间隔(秒)</label>

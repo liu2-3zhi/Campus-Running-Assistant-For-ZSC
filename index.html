@@ -2854,6 +2854,38 @@
                     ⏱ 自动签到启用后将在 120 分钟内自动关闭。
                   </p>
 
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="param-auto_attendance_stop_after_success"
+                      data-key="auto_attendance_stop_after_success"
+                      checked
+                      class="w-5 h-5 accent-sky-600 rounded cursor-pointer flex-shrink-0"
+                      aria-label="完成指定次数后自动关闭"
+                      title="完成指定次数的新签到后自动关闭"
+                    />
+                    <span class="text-slate-700 font-semibold"
+                      >完成指定次数后自动关闭</span
+                    >
+                  </label>
+                  <div class="flex items-center gap-2">
+                    <label
+                      class="text-sm text-slate-700 font-semibold flex-shrink-0"
+                      >自动关闭次数</label
+                    >
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      id="param-auto_attendance_success_limit"
+                      data-key="auto_attendance_success_limit"
+                      class="input-field !py-1 w-full"
+                      value="1"
+                      title="成功提交新签到的次数，达到后自动关闭"
+                    />
+                    <span class="text-sm text-slate-600 flex-shrink-0">次</span>
+                  </div>
+
                   <div class="flex items-center gap-2">
                     <label
                       class="text-sm text-slate-700 font-semibold flex-shrink-0"
@@ -5457,6 +5489,41 @@
                     >
                   </div>
                 </label>
+
+                <label class="flex items-center gap-3 cursor-pointer p-4 bg-white border border-blue-100 rounded-xl">
+                  <input
+                    type="checkbox"
+                    id="mobile-param-auto_attendance_stop_after_success"
+                    data-key="auto_attendance_stop_after_success"
+                    checked
+                    class="w-6 h-6 accent-blue-600 rounded-md cursor-pointer flex-shrink-0 shadow-sm"
+                    aria-label="完成指定次数后自动关闭"
+                    title="完成指定次数的新签到后自动关闭"
+                  />
+                  <span class="text-slate-800 font-bold text-base"
+                    >完成指定次数后自动关闭</span
+                  >
+                </label>
+
+                <div class="bg-slate-50 rounded-xl p-4 space-y-2">
+                  <label class="text-sm text-slate-700 font-bold block"
+                    >自动关闭次数</label
+                  >
+                  <div class="flex items-center gap-3 w-full">
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      id="mobile-param-auto_attendance_success_limit"
+                      data-key="auto_attendance_success_limit"
+                      class="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm font-semibold text-slate-700 text-base appearance-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      value="1"
+                      placeholder="1"
+                      title="成功提交新签到的次数，达到后自动关闭"
+                    />
+                    <span class="text-sm text-slate-600 font-semibold flex-shrink-0">次</span>
+                  </div>
+                </div>
 
                 <div class="bg-slate-50 rounded-xl p-4 space-y-2">
                   <div class="flex items-center gap-2 mb-2">
@@ -11431,6 +11498,40 @@
               <p class="text-[10px] text-amber-600 leading-relaxed">
                 ⏱ 自动签到启用后将在 120 分钟内自动关闭。
               </p>
+
+              <div class="flex items-center justify-between">
+                <label class="text-xs text-slate-700">完成指定次数后自动关闭</label>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    id="mobile-multi-auto_attendance_stop_after_success"
+                    data-key="auto_attendance_stop_after_success"
+                    checked
+                    class="sr-only peer"
+                    aria-label="完成指定次数后自动关闭"
+                    title="完成指定次数的新签到后自动关闭"
+                  />
+                  <div
+                    class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"
+                  ></div>
+                </label>
+              </div>
+
+              <div>
+                <label class="block text-xs text-slate-600 mb-1"
+                  >自动关闭次数</label
+                >
+                <input
+                  type="number"
+                  id="mobile-multi-auto_attendance_success_limit"
+                  data-key="auto_attendance_success_limit"
+                  class="input-field !text-xs !py-1.5 w-full"
+                  value="1"
+                  placeholder="默认值：1次"
+                  min="1"
+                  step="1"
+                />
+              </div>
 
               <!-- 刷新间隔设置：控制自动刷新通知的时间间隔 -->
               <div>
