@@ -112,6 +112,8 @@
 
 ## 验证清单
 
+- 本次验证码刷新按钮需求先落在旧版 UI：桌面/移动端登录、注册和短信验证弹窗的外层刷新按钮仅服务于本地验证码，必须在 `setCaptchaDisplayBehaviorMode()` 中统一隐藏，切回本地时恢复；后台刷新配置和历史记录不受影响。后续修改同一验证码功能时，应继续核对两套 UI 的行为一致性，并一并修复发现的 Vue 问题。回归测试：`node --test tests/legacy_captcha_refresh_visibility.test.mjs`。
+
 - 修改 `scripts/main.new.js` 后至少运行 `node --check scripts/main.new.js`。
 - 地图供应商前端改动运行 `node --test tests/map_provider_frontend_runtime.test.mjs`。
 - 后端路线规划或供应商配置改动运行：

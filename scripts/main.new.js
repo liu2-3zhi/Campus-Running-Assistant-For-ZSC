@@ -19634,6 +19634,20 @@ function setCaptchaInputBehaviorMode(formType, enabled) {
 
 function setCaptchaDisplayBehaviorMode(displayElement, enabled) {
   if (!displayElement) return;
+  const refreshButtonId = {
+    "auth-login-captcha-display": "auth-login-captcha-refresh",
+    "auth-register-captcha-display": "auth-register-captcha-refresh",
+    "mobile-login-captcha-display": "mobile-login-captcha-refresh",
+    "mobile-register-captcha-display": "mobile-register-captcha-refresh",
+    "captcha-modal-display": "modal-login-captcha-refresh",
+  }[displayElement.id];
+  const refreshButton = refreshButtonId
+    ? document.getElementById(refreshButtonId)
+    : null;
+  if (refreshButton) {
+    refreshButton.style.display = enabled ? "none" : "";
+  }
+
   if (enabled) {
     displayElement.dataset.behaviorCaptcha = "true";
     if (
