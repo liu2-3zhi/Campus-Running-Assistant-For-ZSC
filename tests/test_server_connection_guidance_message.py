@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MAIN_JS = PROJECT_ROOT / "scripts" / "main.new.js"
+MAIN_JS = PROJECT_ROOT / "scripts" / "main.js"
 
 
 class TestServerConnectionGuidanceMessage(unittest.TestCase):

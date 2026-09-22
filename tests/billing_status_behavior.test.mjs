@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 function extractFunctionSource(source, functionName) {
   const signature = `function ${functionName}`;
   const start = source.indexOf(signature);
-  assert.notEqual(start, -1, `${functionName} should exist in scripts/main.new.js`);
+  assert.notEqual(start, -1, `${functionName} should exist in scripts/main.js`);
 
   const bodyStart = source.indexOf('{', start);
   assert.notEqual(bodyStart, -1, `${functionName} should have a body`);
@@ -74,7 +74,7 @@ function extractFunctionSource(source, functionName) {
 }
 
 function loadFunctions(functionNames) {
-  const filePath = resolve('scripts/main.new.js');
+  const filePath = resolve('scripts/main.js');
   const source = readFileSync(filePath, 'utf8');
   const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
   return Function(`${functionSources.join('\n\n')} return { ${functionNames.join(', ')} };`)();
@@ -107,7 +107,7 @@ test('network connectivity guidance text is complete', () => {
 });
 
 test('network connectivity guidance text uses structured popup html', () => {
-  const source = readFileSync(resolve('scripts/main.new.js'), 'utf8');
+  const source = readFileSync(resolve('scripts/main.js'), 'utf8');
   const guidanceSource = extractFunctionSource(source, 'getServerConnectionGuidanceMessage');
 
   assert.ok(guidanceSource.includes('<div class="text-left '));

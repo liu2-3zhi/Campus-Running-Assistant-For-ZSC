@@ -10,7 +10,7 @@ function extractFunctionSource(source, functionName) {
   if (start === -1) {
     start = source.indexOf(syncSignature);
   }
-  assert.notEqual(start, -1, `${functionName} should exist in scripts/main.new.js`);
+  assert.notEqual(start, -1, `${functionName} should exist in scripts/main.js`);
 
   const paramsEnd = source.indexOf(')', start);
   assert.notEqual(paramsEnd, -1, `${functionName} should have a parameter list`);
@@ -629,7 +629,7 @@ function createAmapSdk() {
 }
 
 function createRuntime(provider, options = {}) {
-  const source = readFileSync(resolve('scripts/main.new.js'), 'utf8');
+  const source = readFileSync(resolve('scripts/main.js'), 'utf8');
   const functionNames = [
     'normalizeSupportedMapProvider',
     'getActiveMapProvider',

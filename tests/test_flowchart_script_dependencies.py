@@ -80,8 +80,8 @@ class TestFlowchartScriptDependencies(unittest.TestCase):
     def test_service_worker_does_not_serve_legacy_main_script_from_static_cache(self):
         source = SERVICE_WORKER_PATH.read_text(encoding="utf-8")
 
-        self.assertNotIn("'/scripts/main.new.js'", source)
-        self.assertNotIn('"/scripts/main.new.js"', source)
+        self.assertNotIn("'/scripts/main.js'", source)
+        self.assertNotIn('"/scripts/main.js"', source)
         self.assertRegex(
             source,
             re.compile(
@@ -102,7 +102,7 @@ class TestFlowchartScriptDependencies(unittest.TestCase):
         self.assertRegex(
             index_source,
             re.compile(
-                r'<script\s+src="/scripts/main\.new\.js\?v=[^"]+"\s+defer',
+                r'<script\s+src="/scripts/Check_for_updates\.js\?loader=[^"]+"',
             ),
         )
         self.assertIn(

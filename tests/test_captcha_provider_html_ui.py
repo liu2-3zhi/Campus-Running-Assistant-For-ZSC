@@ -5,7 +5,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_PATH = PROJECT_ROOT / "index.html"
-SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.new.js"
+SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
 MAIN_PATH = PROJECT_ROOT / "main.py"
 VUE_ADMIN_CAPTCHA_PATH = PROJECT_ROOT / "frontend" / "src" / "components" / "admin" / "AdminCaptcha.vue"
 VUE_AUTH_PANEL_PATH = PROJECT_ROOT / "frontend" / "src" / "components" / "login" / "AuthPanel.vue"
@@ -130,7 +130,7 @@ class TestCaptchaProviderHtmlUi(unittest.TestCase):
         repo_segment_pattern = "Documents" + r"[/\\]" + "GitHub"
         sources = {
             "index.html": INDEX_PATH.read_text(encoding="utf-8"),
-            "scripts/main.new.js": SCRIPT_PATH.read_text(encoding="utf-8"),
+            "scripts/main.js": SCRIPT_PATH.read_text(encoding="utf-8"),
             "main.py": MAIN_PATH.read_text(encoding="utf-8"),
             "AdminCaptcha.vue": VUE_ADMIN_CAPTCHA_PATH.read_text(encoding="utf-8"),
             "AuthPanel.vue": VUE_AUTH_PANEL_PATH.read_text(encoding="utf-8"),

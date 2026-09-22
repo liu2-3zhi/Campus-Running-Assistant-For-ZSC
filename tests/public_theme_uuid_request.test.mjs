@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 function extractFunctionSource(source, functionName) {
   const signature = `function ${functionName}`;
   const start = source.indexOf(signature);
-  assert.notEqual(start, -1, `${functionName} should exist in scripts/main.new.js`);
+  assert.notEqual(start, -1, `${functionName} should exist in scripts/main.js`);
 
   const bodyStart = source.indexOf('{', start);
   assert.notEqual(bodyStart, -1, `${functionName} should have a body`);
@@ -79,7 +79,7 @@ function extractFunctionSource(source, functionName) {
 }
 
 function loadFunctions(functionNames) {
-  const filePath = resolve('scripts/main.new.js');
+  const filePath = resolve('scripts/main.js');
   const source = readFileSync(filePath, 'utf8');
   const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
   return Function(`${functionSources.join('\n\n')} return { ${functionNames.join(', ')} };`)();

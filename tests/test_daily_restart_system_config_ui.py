@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.new.js"
+SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
 
 
 def _extract_js_section(source, start_marker, end_marker):

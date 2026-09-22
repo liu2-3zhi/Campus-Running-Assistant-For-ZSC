@@ -1,6 +1,6 @@
 # Original 前端结构总览（Structure Map）
 
-> 本目录用于对 **original 前端**（根目录 `index.html` + `scripts/main.new.js` + `styles/style.css` + 辅助脚本）进行逐行完整解析，作为 Vue 版复刻的权威依据。
+> 本目录用于对 **original 前端**（根目录 `index.html` + `scripts/main.js` + `styles/style.css` + 辅助脚本）进行逐行完整解析，作为 Vue 版复刻的权威依据。
 > 生成时间：2026-07-14
 
 ## 1. 文件规模
@@ -8,7 +8,7 @@
 | 文件 | 行数 / 大小 | 角色 |
 |---|---|---|
 | `index.html` | 22894 行 (987 KB) | 页面结构 / 模板 / 内联样式片段 |
-| `scripts/main.new.js` | 66131 行 (2.5 MB) | 主应用逻辑（由原内联脚本块拼接而成，12 个 script block） |
+| `scripts/main.js` | 66131 行 (2.5 MB) | 主应用逻辑（由原内联脚本块拼接而成，12 个 script block） |
 | `styles/style.css` | 56 KB | 全局样式 |
 | `scripts/ie_detect.js` | 294 行 | IE 浏览器检测 |
 | `scripts/load_amap_watermark.js` | 281 行 | 高德地图水印加载控制 |
@@ -44,7 +44,7 @@
 | 22586 | `#payment-modal` | 支付模态框 |
 | 22697 | `#orders-modal` | 订单列表模态框 |
 
-## 3. main.new.js 脚本块边界（`// --- Next Script Block ---`）
+## 3. main.js 脚本块边界（`// --- Next Script Block ---`）
 
 | Block | 起始行 | 主要内容 |
 |---|---|---|
@@ -61,7 +61,7 @@
 | 11 | 49751 | 移动端多账号管理面板全套功能 |
 | 12 | 58399 | 密码恢复任务、彩虹易支付前端+管理员、欠费检查、欠费查询、退款金额填充、账单函数 |
 
-## 4. main.new.js 功能区目录（banner 标题）
+## 4. main.js 功能区目录（banner 标题）
 
 见 `01-JS-功能区目录.md`（逐段详解拆分到 JS-*.md）。
 
@@ -74,11 +74,11 @@
 | 12-HTML-mobile-main.md | index.html 3577–10482 | ✅ |
 | 13-HTML-mobile-multiaccount.md | index.html 10482–19524 | ✅ |
 | 14-HTML-modals-tail.md | index.html 19524–22894 | ✅ |
-| 20-JS-支付与核心.md | main.new.js 1–14139 | ✅ |
-| 21-JS-主应用A.md | main.new.js 14139–26329 | ✅ |
-| 22-JS-主应用B.md | main.new.js 26329–43148 | ✅ |
-| 23-JS-移动端与多账号.md | main.new.js 43148–58399 | ✅ |
-| 24-JS-易支付与账单.md | main.new.js 58399–66131 | ✅ |
+| 20-JS-支付与核心.md | main.js 1–14139 | ✅ |
+| 21-JS-主应用A.md | main.js 14139–26329 | ✅ |
+| 22-JS-主应用B.md | main.js 26329–43148 | ✅ |
+| 23-JS-移动端与多账号.md | main.js 43148–58399 | ✅ |
+| 24-JS-易支付与账单.md | main.js 58399–66131 | ✅ |
 | 30-CSS-与辅助脚本.md | style.css + 4 个辅助脚本 | ✅ |
 | 40-API与Socket对照.md | API/Socket 端点对照 | ✅ |
 | 90-Vue版差异与复刻计划.md | Vue 版 gap 分析与计划 | ✅（随修改推进更新） |
@@ -87,6 +87,6 @@
 
 - **行覆盖**：HTML 1–22894、JS 1–66131 均由分段文档**连续无缝覆盖**（边界共享，无空洞）。
 - **id 交叉核验**：index.html 共 **1262 个 distinct id**，逐一比对 HTML 文档，仅 4 个子容器 id 未字面出现（`auth-login-captcha-container_display`@1687、`mobile-multi-admin-captcha-list`@7714、`mobile-multi-admin-pricing-content`@9955、`mobile-captcha-history-modal-content`@11929），均落在已覆盖范围内且被父面板描述涵盖 → **字面命中 99.7%，范围命中 100%**。
-- **banner 区块核验**：main.new.js 全部功能区 banner（约 90 个）已在 JS 文档目录中体现。
+- **banner 区块核验**：main.js 全部功能区 banner（约 90 个）已在 JS 文档目录中体现。
 - **Socket 事件核验**：14 个 `socket.on` + `heartbeat`/`join` 全部记录，且 Vue 版已复刻。
 - 结论：**original 前端解析无实质遗漏，可进入 Vue 复刻修改阶段。**

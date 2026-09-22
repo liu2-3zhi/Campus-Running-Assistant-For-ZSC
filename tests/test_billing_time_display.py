@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MAIN_JS_PATH = PROJECT_ROOT / "scripts" / "main.new.js"
+MAIN_JS_PATH = PROJECT_ROOT / "scripts" / "main.js"
 
 
 class TestBillingTimeDisplay(unittest.TestCase):
@@ -15,7 +15,7 @@ class TestBillingTimeDisplay(unittest.TestCase):
             r"function\s+_fmtBillTime\s*\([^)]*\)\s*\{(?P<body>[\s\S]*?)\n\}",
             source,
         )
-        self.assertIsNotNone(formatter_match, "scripts/main.new.js must define _fmtBillTime")
+        self.assertIsNotNone(formatter_match, "scripts/main.js must define _fmtBillTime")
         formatter_body = formatter_match.group("body")
 
         self.assertIn("Date.UTC", formatter_body)

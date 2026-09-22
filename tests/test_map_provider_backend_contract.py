@@ -1120,7 +1120,7 @@ globalThis.fetch = async (url, options) => {
     def test_sensitive_frontend_logs_do_not_dump_payment_or_pricing_payloads(self):
         source = MAIN_PATH.read_text(encoding="utf-8")
         legacy_source = (
-            PROJECT_ROOT / "scripts" / "main.new.js"
+            PROJECT_ROOT / "scripts" / "main.js"
         ).read_text(encoding="utf-8")
         request_log_start = legacy_source.index(
             "[PC端测试支付] 发送创建订单请求"

@@ -65,7 +65,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Application scripts must prefer the network so deployed handler fixes are
-  // not hidden by an older cached main.new.js.
+  // not hidden by an older cached main.js.
   if (url.pathname.startsWith('/scripts/')) {
     event.respondWith(
       fetch(event.request).then((response) => {

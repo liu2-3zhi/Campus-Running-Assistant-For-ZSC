@@ -9,7 +9,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML_PATH = PROJECT_ROOT / "index.html"
-SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.new.js"
+SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
 
 
 def _extract_js_section(source: str, start_marker: str, end_marker: str) -> str:

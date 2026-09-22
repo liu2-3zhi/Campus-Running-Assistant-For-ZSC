@@ -1,5 +1,38 @@
 // 检查更新
 (function () {
+  const currentVersion = readStoredVersion();
+
+  function readStoredVersion() {
+    try {
+      return String(localStorage.getItem("siteVersion") || "").trim();
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function storeVersion(version) {
+    try {
+      localStorage.setItem("siteVersion", version);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function loadMainScript() {
+    if (
+      document.readyState !== "loading" ||
+      document.getElementById("main-script")
+    ) return;
+
+    const url = new URL("/scripts/main.js", window.location.href);
+    url.searchParams.set("version", currentVersion || Date.now().toString());
+    // Insert during HTML parsing to preserve defer and DOMContentLoaded order.
+    document.write(
+      `<script id="main-script" src="${url.pathname}${url.search}" defer=""></script>`,
+    );
+  }
+
   function getSessionId() {
     try {
       if (typeof sessionUUID !== "undefined" && sessionUUID)
@@ -49,10 +82,6 @@
       }
       const data = await res.json();
       const latestVersion = String(data?.version || "").trim();
-      const currentVersion = String(
-        localStorage.getItem("siteVersion") || "",
-      ).trim();
-
       await sendUpdateLog("INFO", "版本信息获取成功", {
         currentVersion,
         latestVersion,
@@ -64,7 +93,10 @@
           from: currentVersion,
           to: latestVersion,
         });
-        localStorage.setItem("siteVersion", latestVersion);
+        if (!storeVersion(latestVersion)) {
+          await sendUpdateLog("WARNING", "无法保存新版本号，跳过自动刷新");
+          return;
+        }
 
         // 1) 清除 Cache API 缓存
         if ("caches" in window) {
@@ -93,7 +125,7 @@
         await sendUpdateLog("INFO", "版本一致，无需刷新");
       }
 
-      localStorage.setItem("siteVersion", latestVersion);
+      storeVersion(latestVersion);
       await sendUpdateLog("DEBUG", "版本一致或首次加载，无需刷新");
     } catch (e) {
       await sendUpdateLog("ERROR", "版本检测失败", {
@@ -102,5 +134,6 @@
     }
   }
 
+  loadMainScript();
   checkVersion();
 })();

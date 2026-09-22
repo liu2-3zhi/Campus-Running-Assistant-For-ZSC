@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
 
-const source = readFileSync(new URL('../scripts/main.new.js', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../scripts/main.js', import.meta.url), 'utf8')
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
 const start = source.indexOf('function normalizeRuntimeCaptchaProviderConfig(')
 const end = source.indexOf('\nfunction openCaptchaModal(', start)

@@ -78,7 +78,7 @@ test('Vue invalid or expired UUID returns to the root route', () => {
 })
 
 test('original expired-session helper replaces uuid routes with root', () => {
-  const source = readProjectFile('scripts/main.new.js')
+  const source = readProjectFile('scripts/main.js')
   const helperStart = source.indexOf(
     'function redirectToLoginAfterSessionExpiry()',
   )
@@ -112,7 +112,7 @@ test('original expired-session helper replaces uuid routes with root', () => {
 })
 
 test('original initialization and mobile 401 paths use the expiry redirect', () => {
-  const source = readProjectFile('scripts/main.new.js')
+  const source = readProjectFile('scripts/main.js')
 
   assert.match(
     source,

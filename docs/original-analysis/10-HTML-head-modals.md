@@ -27,7 +27,7 @@
 | O | 1541–2157 | `#auth-login-container` | 认证登录容器（登录表单 + 注册表单 + `#auth-2fa-form` + 备案 footer） |
 | — | 2162 | `#desktop-container` | 下一区块起点（不在本文覆盖内） |
 
-> 说明：本段中**绝大多数按钮的 id 存在，但点击事件在 `scripts/main.new.js` 中通过 `addEventListener` 绑定**（非内联）。凡是写在 HTML 里的内联事件（`onclick`/`oninput`/`onerror` 等）在下文用「内联」标注；仅有 id、需在 JS 中查绑定的用「JS 绑定」标注。
+> 说明：本段中**绝大多数按钮的 id 存在，但点击事件在 `scripts/main.js` 中通过 `addEventListener` 绑定**（非内联）。凡是写在 HTML 里的内联事件（`onclick`/`oninput`/`onerror` 等）在下文用「内联」标注；仅有 id、需在 JS 中查绑定的用「JS 绑定」标注。
 
 ---
 
@@ -88,7 +88,7 @@
 | 行 | 资源 |
 |---|---|
 | 74 | `styles/style.css`（全局样式） |
-| 75 | `scripts/main.new.js`（`defer`，主应用逻辑） |
+| 75 | `scripts/main.js`（`defer`，主应用逻辑） |
 | 76 | `/editor.md/css/editormd.css` |
 
 #### 内联 `<style>`（77–216）
@@ -143,7 +143,7 @@
 
 - 容器 `div#admin-return-overlay`，class `fixed top-4 left-4 z-[10000] hidden`（**初始 hidden**），内联 `style="touch-action:none; user-select:none"`（支持拖拽）。
 - 内部按钮 `button#admin-return-btn`，class 含 `cursor-move`（可拖动），文案 **「返回管理员会话」**（536）。
-- 事件：**JS 绑定**（main.new.js）。SVG 图标被注释（533–535）。
+- 事件：**JS 绑定**（main.js）。SVG 图标被注释（533–535）。
 
 ---
 
@@ -182,7 +182,7 @@
 - **`openNewbieModal()`**（659–661）：`#newbie-help-modal` `style.display="flex"`。
 - **`window.closeNewbieModal()`**（662–664）：`display="none"`（全局暴露，供 D 中内联 `onclick` 调用）。
 - **`DOMContentLoaded`**（666–752）：
-  - 调 `applyConfig()`；若配置启用且存在 `makeDraggable`（**外部函数，main.new.js**）则 `makeDraggable("newbie-help-btn")` 使按钮可拖拽（673）。
+  - 调 `applyConfig()`；若配置启用且存在 `makeDraggable`（**外部函数，main.js**）则 `makeDraggable("newbie-help-btn")` 使按钮可拖拽（673）。
   - 按钮 click：若 `btn._hasMoved()` 为真（发生拖动）则阻止；否则 `openNewbieModal()`。
   - `#newbie-help-cancel` → `closeNewbieModal`。
   - `#newbie-help-copy` → 复制 `APP_CONFIG.newbie_help_url`（优先 `navigator.clipboard.writeText`，回退 `textarea + execCommand('copy')`），成功后文案变「已复制」1.5s 复原。
@@ -407,7 +407,7 @@
 | 函数 / 全局标识 | 出处 | 用途 |
 |---|---|---|
 | `closeNewbieModal` / `openNewbieModal` / `applyConfig` | 内联脚本 E | 新手帮助模态框显隐与配置 |
-| `makeDraggable` | E（外部，main.new.js） | 悬浮按钮拖拽（`newbie-help-btn` 等） |
+| `makeDraggable` | E（外部，main.js） | 悬浮按钮拖拽（`newbie-help-btn` 等） |
 | `_hasMoved` | E | 拖拽后抑制点击 |
 | `window.__maybeLoadJqueryFlowchart` | head 436–467 | 惰性加载 jquery.flowchart |
 | `closeEditSchoolAccountModal` / `generateRandomUAForSchoolAccount` / `submitSchoolAccount` | L | 编辑校园账号 |

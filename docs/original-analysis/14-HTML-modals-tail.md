@@ -8,7 +8,7 @@
 > 2. 一大批**独立的顶层模态框**（`fixed inset-0 ... hidden z-[...]`），以及末尾两个使用 `.modal` 类的支付/订单弹窗。
 > 3. 文件结尾的**内联 `<script>`**：无障碍名称自动注入器。
 >
-> 说明：本段所有交互元素采用**内联 `onclick`/`onchange`/`onkeyup`/`oninput` 引用全局 JS 函数**（函数定义在 `scripts/main.new.js`）。本文只登记引用名，不含函数实现。
+> 说明：本段所有交互元素采用**内联 `onclick`/`onchange`/`onkeyup`/`oninput` 引用全局 JS 函数**（函数定义在 `scripts/main.js`）。本文只登记引用名，不含函数实现。
 
 ---
 
@@ -548,7 +548,7 @@
   - 取消 id `payment-cancel-btn`（**无内联 onclick**，JS 绑定），`btn-ghost`，文案“取消”。
   - 立即支付 id `payment-submit-btn`（**无内联 onclick**，JS 绑定），`btn-primary`，文案“立即支付”。
 
-> **复刻要点**：此弹窗关闭/取消/提交按钮均**无内联 onclick**，全部由 `scripts/main.new.js` 事件绑定（`addEventListener`）驱动。
+> **复刻要点**：此弹窗关闭/取消/提交按钮均**无内联 onclick**，全部由 `scripts/main.js` 事件绑定（`addEventListener`）驱动。
 
 ---
 
@@ -619,7 +619,7 @@
 
 1. **两套显隐机制并存**：模态框 1–27 用 Tailwind `hidden` + `fixed inset-0`（JS 增删 `hidden`）；模态框 28–30 用自定义 `.modal` / `.modal-content` 类（CSS 动画，JS 用 `.show` 或 `style.display`）。Vue 版需区分。
 2. **z-index 层级约定**：`confirm-modal`=50000（最高），`add-watermark-user-modal`=20001，其余在 1052–1055。`confirm-modal` 与 `session-picker-modal` 的遮罩**无 onclick**（不可点背景关闭）。
-3. **内联事件 vs JS 绑定**：绝大多数按钮用内联 `onclick`；但 `confirm-modal`、`payment-modal`、`orders-modal` 的按钮**无内联 onclick**，回调全靠 `scripts/main.new.js` 的 `addEventListener` 动态绑定。
+3. **内联事件 vs JS 绑定**：绝大多数按钮用内联 `onclick`；但 `confirm-modal`、`payment-modal`、`orders-modal` 的按钮**无内联 onclick**，回调全靠 `scripts/main.js` 的 `addEventListener` 动态绑定。
 4. **默认隐藏子元素**：`captcha-detail-modal` 内 4 处容器默认 `hidden`（验证时间/过期时间/验证信息卡片/验证码图片卡片）；`sms-test-result` 默认 `hidden`；`user-logs-secondary-modal` 的 audit 内容默认 `hidden`。
 5. **`_modal` 后缀面板**（定价/水印/账单/账单日志/恢复账号）属于上文管理模态框 `#admin-modal-content` 的标签子页，非独立顶层模态框。
 

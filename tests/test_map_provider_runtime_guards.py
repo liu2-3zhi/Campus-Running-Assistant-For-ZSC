@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.new.js"
+SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
 LOAD_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "load_amap_watermark.js"
 MAIN_PATH = PROJECT_ROOT / "main.py"
 INDEX_PATH = PROJECT_ROOT / "index.html"
@@ -28,7 +28,7 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn('<script src="/api/frontend_config.js"></script>', html)
         self.assertIn('<script src="/scripts/load_amap_watermark.js"></script>', html)
         self.assertIn(
-            '<script src="/scripts/main.new.js?v=20260921-legacy-map-login-key" defer=""></script>',
+            '<script src="/scripts/Check_for_updates.js?loader=main-v1"></script>',
             html,
         )
 

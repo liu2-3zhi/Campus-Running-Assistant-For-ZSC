@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const PROJECT_ROOT = resolve(import.meta.dirname, '..')
-const LEGACY_SOURCE = readFileSync(resolve(PROJECT_ROOT, 'scripts/main.new.js'), 'utf8')
+const LEGACY_SOURCE = readFileSync(resolve(PROJECT_ROOT, 'scripts/main.js'), 'utf8')
 
 function extractLegacyRuntimeBlock() {
   const start = LEGACY_SOURCE.indexOf('const LEGACY_MAP_KEY_RUNTIME_NAMESPACE')

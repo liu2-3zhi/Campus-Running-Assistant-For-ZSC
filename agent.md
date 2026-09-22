@@ -9,6 +9,7 @@
 - 中文任务使用中文提交信息，提交信息直接说明修复内容。
 - 前端可见行为变化必须更新 `version.json`，`version` 使用日期加随机字母数字后缀，例如 `20260728-P4xL8v`；不要用纯时间戳后缀或特殊字符。
 - 修改 `version.json` 时同步更新 `build_time` 为当前实际时间。
+- 旧版主脚本为 `scripts/main.js`；`Check_for_updates.js` 在 HTML 解析期间读取 `localStorage.siteVersion`，同步插入带 `?version=` 的 `defer` 标签。只有检查更新脚本负责写入该存储项；首次访问或存储不可用时用时间戳防缓存。不要在异步请求返回后才插入主脚本，以免错过 `DOMContentLoaded` 初始化。CDN 缓存键必须包含查询参数。
 - 有值得学习的地方就写入本文件，不要只把经验留在对话里。
 
 ## 安全要素
@@ -34,13 +35,13 @@
 - 不要把 `map_key_runtime.js` 或其模板放在普通 `/scripts/<filename>` 静态资源路径；解密脚本必须走 API，部署层也必须显式拒绝 `/scripts/map_key_runtime.js`，以避免 CDN 或静态缓存返回错误上下文。
 - `ENABLE_FRONTEND_JS_ANTI_DEBUG` 默认必须为 `False`；开启后，所有 JS 响应统一去注释、压缩空白、移除 source map 指示并注入轻量反调试守卫。该机制只用于提高浏览器端分析和 Hook 的成本，不能替代服务端鉴权、会话绑定、密文下发或密钥轮换。
 - `/api/frontend_config.js` 从 `Referer` 恢复会话时，只能恢复已有内存会话或确有持久化状态的会话；格式合法但未登记的 UUID 不得被创建并长期占用资源。
-- Vue 新版 UI 和根目录 `index.html` 使用的老版 UI 都必须完成运行时脚本加载和地图密钥解密。修改新版组件时要同步检查 `scripts/main.new.js` 的老版入口、初始数据、地图配置保存和登录响应链路。
+- Vue 新版 UI 和根目录 `index.html` 使用的老版 UI 都必须完成运行时脚本加载和地图密钥解密。修改新版组件时要同步检查 `scripts/main.js` 的老版入口、初始数据、地图配置保存和登录响应链路。
 - 日志、支付操作日志、前端 `appConfigLoaded` 事件和错误信息不得输出原始地图 Key、Token、密码、验证码、签名或完整配置；密码恢复等流程只能记录数量和状态，通用参数日志统一使用递归脱敏函数。
 - 支付订单查询、订单列表和后台订单详情必须通过字段白名单返回；待支付链接只在已鉴权的待支付订单查询中返回，平台原始响应、通知参数、支付参数、主动查询令牌哈希和退款原文不能返回。支付日志读取接口也要在返回前递归脱敏，兼容旧日志文件。
 
 ## 地图供应商相关入口
 
-- 非高德地图的真实前端渲染主要在 `scripts/main.new.js` 的 `initProviderMap()`、`ensureSingleMap()`、`initMap(AMap)` 相关链路，不要只看 `index.html` 的静态容器。
+- 非高德地图的真实前端渲染主要在 `scripts/main.js` 的 `initProviderMap()`、`ensureSingleMap()`、`initMap(AMap)` 相关链路，不要只看 `index.html` 的静态容器。
 - 地图供应商前端运行时的重点测试是 `tests/map_provider_frontend_runtime.test.mjs`。
 - 后端供应商路线规划合同主要看 `tests/test_map_provider_business_execution_contract.py`、`tests/test_map_provider_backend_contract.py`、`tests/test_map_provider_runtime_guards.py`。
 - 地图控件、SDK 加载、右键拖动、3D 视角这类问题，自动化测试通过后，尽量再直接加载真实地图验证；用户截图反复指出的问题不能只靠静态代码判断。
@@ -114,7 +115,7 @@
 
 - 本次验证码刷新按钮需求先落在旧版 UI：桌面/移动端登录、注册和短信验证弹窗的外层刷新按钮仅服务于本地验证码，必须在 `setCaptchaDisplayBehaviorMode()` 中统一隐藏，切回本地时恢复；后台刷新配置和历史记录不受影响。后续修改同一验证码功能时，应继续核对两套 UI 的行为一致性，并一并修复发现的 Vue 问题。回归测试：`node --test tests/legacy_captcha_refresh_visibility.test.mjs`。
 
-- 修改 `scripts/main.new.js` 后至少运行 `node --check scripts/main.new.js`。
+- 修改 `scripts/main.js` 后至少运行 `node --check scripts/main.js`。
 - 地图供应商前端改动运行 `node --test tests/map_provider_frontend_runtime.test.mjs`。
 - 后端路线规划或供应商配置改动运行：
   - `python -m pytest tests/test_map_provider_business_execution_contract.py`

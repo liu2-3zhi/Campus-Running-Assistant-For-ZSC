@@ -8,7 +8,7 @@ import main as main_module
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_PATH = PROJECT_ROOT / "index.html"
 MAIN_PATH = PROJECT_ROOT / "main.py"
-SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.new.js"
+SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
 VUE_ADMIN_CAPTCHA_PATH = PROJECT_ROOT / "frontend" / "src" / "components" / "admin" / "AdminCaptcha.vue"
 
 

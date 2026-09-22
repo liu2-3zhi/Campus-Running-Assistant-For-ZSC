@@ -272,7 +272,7 @@ L738-772 一大段选择器：当特定模态框（`#amap-key-modal`、`#user-de
 - **暴露到 `window` 的全局标记**（供跨脚本协作/幂等）：
   - `window.__amapNativeDialogGuardInstalled`（布尔，防重复安装弹窗守卫）。
   - `window.__amapNativeDialogGuardRestore`（函数，恢复原生 alert/confirm/prompt）——**去水印脚本执行完后应调用它还原**。
-- **依赖的全局变量（读取）**：`window.sessionUUID`（由主脚本 `main.new.js` 维护）。
+- **依赖的全局变量（读取）**：`window.sessionUUID`（由主脚本 `main.js` 维护）。
 - **后端接口**：`GET /api/amap/watermark_control`（返回 `{allowed}`）、`GET /api/cdn/amap-loader`。
 
 ### 3. `scripts/Remove_watermark_from_Amap_Map.js`（138 行）——高德地图去水印拦截
