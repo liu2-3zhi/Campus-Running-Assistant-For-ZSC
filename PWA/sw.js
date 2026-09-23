@@ -7,7 +7,7 @@ const STATIC_ASSETS = [
   '/icon-512x512.png',
   '/manifest.json'
 ];
-const NETWORK_FIRST_PATH_PREFIXES = ['/api/', '/auth/', '/upload', '/download', '/editor.md/'];
+const NETWORK_FIRST_PATH_PREFIXES = ['/api/', '/auth/', '/upload', '/download', '/editor.md/', '/health'];
 
 // Install: pre-cache static assets
 self.addEventListener('install', (event) => {
