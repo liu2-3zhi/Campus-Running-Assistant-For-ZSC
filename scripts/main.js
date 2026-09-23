@@ -41785,39 +41785,11 @@ async function multi_startAll() {
     return;
   }
 
-  // ========== 步骤2：获取已添加的账号列表 ==========
-  // 调用loadInitialData()获取当前所有已添加的账号数据
-  // 使用try-catch确保即使获取失败也能继续执行（容错处理）
-  let addedUsernames = [];
-  try {
-    const initialData = await loadInitialData();
-    if (
-      initialData &&
-      initialData.accounts &&
-      Array.isArray(initialData.accounts)
-    ) {
-      // 从accounts数组中提取所有账号的username字段
-      // 这些是当前已添加到多账号管理的所有账号
-      addedUsernames = initialData.accounts
-        .map((acc) => acc.username)
-        .filter(Boolean); // 过滤掉空值
-    }
-  } catch (error) {
-    // 如果获取账号列表失败，记录错误但不阻止继续执行
-    console.error("[multi_startAll] 获取账号列表失败:", error);
-  }
-
-  // ========== 步骤3：欠费检查（只检查已添加的账号）==========
-  // 【重要】只检查已添加账号的欠费情况，若获取账号列表失败则跳过检查
-  const canStart =
-    addedUsernames.length > 0
-      ? await checkOverdueBeforeStart(addedUsernames)
-      : true;
+  // 只检查当前多账号界面实际显示的账号，避免管理员把全部系统账号混入检查。
+  const canStart = await _checkOverdueBeforeStartByCurrentMode();
   if (!canStart) {
-    // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
     return;
   }
-  // ========== 欠费检查结束 ==========
 
   const use_delay = $("multi-use-delay-check").checked;
   const min_delay = parseInt($("multi-min-delay-input").value) || 0;
@@ -42097,6 +42069,24 @@ async function requestMultiAccountStatusRefresh(username) {
   }
 }
 
+function getMultiAccountProgressState(account) {
+  const rawProgressPct = Number(account?.progress_pct);
+  const progressPct = Number.isFinite(rawProgressPct)
+    ? Math.max(0, Math.min(100, rawProgressPct))
+    : 0;
+  const progressText =
+    typeof account?.progress_text === "string" &&
+    account.progress_text.trim()
+      ? account.progress_text
+      : "未开始";
+  const progressExtra =
+    typeof account?.progress_extra === "string"
+      ? account.progress_extra
+      : "";
+
+  return { progressPct, progressText, progressExtra };
+}
+
 function renderMultiAccountList(accounts) {
   cachedMultiAccounts = accounts;
   const renderToContainer = (containerId, isMobile) => {
@@ -42132,6 +42122,8 @@ function renderMultiAccountList(accounts) {
         s,
         onlyIncomplete,
       );
+      const { progressPct, progressText, progressExtra } =
+        getMultiAccountProgressState(acc);
       if (acc.status_text === "Have_Tasks") {
         void requestMultiAccountStatusRefresh(acc.username);
       } else {
@@ -42212,11 +42204,11 @@ function renderMultiAccountList(accounts) {
                     </div>
                     <div class="mt-2">
                         <div class="h-2 bg-slate-200 rounded-full overflow-hidden">
-                            <div class="progress-fill h-2 bg-sky-500" style="width:0%"></div>
+                            <div class="progress-fill h-2 bg-sky-500" style="width:${progressPct}%"></div>
                         </div>
                         <div class="flex justify-between text-xs mt-1">
-                            <span class="progress-text text-slate-600">未开始</span>
-                            <span class="progress-extra text-slate-400"></span>
+                            <span class="progress-text text-slate-600">${progressText}</span>
+                            <span class="progress-extra text-slate-400">${progressExtra}</span>
                         </div>
                     </div>
                 `;
@@ -47617,43 +47609,13 @@ async function mobileStartAllAccounts() {
       return;
     }
 
-    // ========== 步骤3：获取已添加的账号列表 ==========
-    // 调用loadInitialData()获取当前所有已添加的账号数据
-    // 使用try-catch确保即使获取失败也能继续执行（容错处理）
-    let addedUsernames = _getMultiAccountListUsernames();
-    try {
-      if (addedUsernames.length === 0) {
-        const initialData = await loadInitialData();
-        if (
-          initialData &&
-          initialData.accounts &&
-          Array.isArray(initialData.accounts)
-        ) {
-          // 从accounts数组中提取所有账号的username字段
-          // 这些是当前已添加到多账号管理的所有账号
-          addedUsernames = initialData.accounts
-            .map((acc) => acc.username)
-            .filter(Boolean); // 过滤掉空值
-        }
-      }
-    } catch (error) {
-      // 如果获取账号列表失败，记录错误但不阻止继续执行
-      console.error("[mobileStartAllAccounts] 获取账号列表失败:", error);
-    }
-
-    // ========== 步骤4：欠费检查（只检查已添加的账号）==========
-    // 【重要】只检查已添加账号的欠费情况，若获取账号列表失败则跳过检查
-    const canStart =
-      addedUsernames.length > 0
-        ? await checkOverdueBeforeStart(addedUsernames)
-        : true;
+    // 与 PC 端统一：只检查当前多账号界面实际显示的账号。
+    const canStart = await _checkOverdueBeforeStartByCurrentMode();
     if (!canStart) {
-      // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
       return;
     }
-    // ========== 欠费检查结束 ==========
 
-    // ========== 步骤5：读取启动配置 ==========
+    // ========== 步骤3：读取启动配置 ==========
     const randomDelayCheck = document.getElementById(
       "mobile-multi-random-delay-check",
     );
@@ -47667,7 +47629,7 @@ async function mobileStartAllAccounts() {
       ? onlyIncompleteCheck.checked
       : true;
 
-    // ========== 步骤6：调用后端API启动所有账号 ==========
+    // ========== 步骤4：调用后端API启动所有账号 ==========
     showModalAlert(`正在启动全部 ${count} 个账号...`, "提示");
     const result = await callPythonAPI(
       "multi_start_all_accounts",
@@ -47677,7 +47639,7 @@ async function mobileStartAllAccounts() {
       run_only_incomplete,
     );
 
-    // ========== 步骤7：处理返回结果 ==========
+    // ========== 步骤5：处理返回结果 ==========
     if (!result || !result.success) {
       showModalAlert(result?.message || "启动全部账号失败", "错误");
       return;
