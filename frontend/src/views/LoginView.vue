@@ -393,7 +393,7 @@ onMounted(async () => {
                 ></path>
               </svg>
               <h2
-                class="text-3xl lg:text-4xl font-bold text-sky-700 card-title"
+                class="text-3xl font-bold text-sky-700 lg:text-4xl card-title"
               >
                 单账号登录
               </h2>

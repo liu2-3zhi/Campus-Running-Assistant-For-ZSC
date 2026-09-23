@@ -616,9 +616,9 @@ watch(() => appStore.multiPositions, (positions) => {
 <template>
 <main
         id="multi-account-app" v-if="!appStore.isMobile"
-        class="h-screen w-screen grid grid-cols-1 lg:grid-cols-[530px_1fr] xl:grid-cols-[530px_1fr] gap-4 p-4"
+        class="md:h-screen md:overflow-hidden h-screen w-screen grid grid-cols-1 lg:grid-cols-[530px_1fr] xl:grid-cols-[530px_1fr] gap-4 p-4"
       >
-        <div class="flex flex-col gap-4 h-full min-h-0">
+        <div class="flex flex-col gap-4 h-full min-h-0 lg:w-[530px]">
           <div class="panel rounded-xl p-4 flex-shrink-0">
             <div class="flex justify-between items-center mb-3">
               <h2 class="text-lg font-bold text-slate-800 card-title">

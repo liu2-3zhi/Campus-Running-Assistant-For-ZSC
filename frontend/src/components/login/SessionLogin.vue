@@ -152,7 +152,7 @@ onMounted(() => {
                 </label>
                 <select
                   id="user-combo" v-model="selectedUser" @change="onUserSelect"
-                  class="select-field hover:border-sky-400 focus:border-sky-600 cursor-pointer transition-all duration-200"
+                  class="select-field"
                   title="选择已保存的账号或创建新账号"
                   aria-label="选择账号"
                 ><option value="">{{ app.isMobile ? "请选择用户" : "" }}</option><option v-for="user in userList" :key="user.username || user.name" :value="user.username || user.name">{{ user.display_name || user.nickname || user.username || user.name }}</option></select>
@@ -181,7 +181,7 @@ onMounted(() => {
                 <input
                   type="text"
                   id="username-entry" v-model="loginForm.username" @blur="autoFillPassword"
-                  class="input-field hover:border-sky-400 focus:border-sky-600 transition-all duration-200"
+                  class="input-field"
                   placeholder="请输入学号或工号"
                   autocomplete="username"
                 />
@@ -210,7 +210,7 @@ onMounted(() => {
                 <input
                   type="password"
                   id="password-entry" v-model="loginForm.password" @keyup.enter="handleLogin"
-                  class="input-field hover:border-sky-400 focus:border-sky-600 transition-all duration-200"
+                  class="input-field"
                   placeholder="请输入密码，一般为身份证后六位"
                   autocomplete="current-password"
                 />
@@ -223,7 +223,7 @@ onMounted(() => {
               title="登录"
               aria-label="登录"
             >
-              <span>{{ loading ? "登录中..." : app.isMobile ? "登录" : "立即登录" }}</span>
+              <span>{{ loading ? '登录中...' : '登录' }}</span>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 class="w-5 h-5"
