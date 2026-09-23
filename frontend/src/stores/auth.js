@@ -7,6 +7,11 @@ function isUsableUUID(val) {
   return lower !== '' && lower !== 'none' && lower !== 'null' && lower !== 'undefined'
 }
 
+function getUiEntryPath() {
+  const base = typeof window !== 'undefined' ? window.__RUNNING_UI_BASE__ : '/'
+  return typeof base === 'string' && base.startsWith('/') ? base : '/'
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const sessionUUID = ref(null)
   const authSessionUUID = ref(null)
@@ -158,10 +163,10 @@ export const useAuthStore = defineStore('auth', () => {
           }
         },
       }).then(() => {
-        window.location.href = '/'
+        window.location.href = getUiEntryPath()
       })
     } else {
-      window.location.href = '/'
+      window.location.href = getUiEntryPath()
     }
   }
 
@@ -191,11 +196,11 @@ export const useAuthStore = defineStore('auth', () => {
           }
         },
       }).then(() => {
-        window.location.href = '/'
+        window.location.href = getUiEntryPath()
       })
     } else {
       alert('您的账号已在其他设备登录，本设备已自动登出。')
-      window.location.href = '/'
+      window.location.href = getUiEntryPath()
     }
   }
 

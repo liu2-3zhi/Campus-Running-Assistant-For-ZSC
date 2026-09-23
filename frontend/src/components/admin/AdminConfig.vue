@@ -17,6 +17,20 @@ const isDirty = ref(false)
  */
 const sections = [
   {
+    save: 'Config', load: 'Config', label: '界面设置',
+    fields: [
+      {
+        key: 'default_ui',
+        label: '默认 UI',
+        type: 'select',
+        options: [
+          { value: 'old', label: '旧版 UI（/old/）' },
+          { value: 'new', label: '新版 UI（/frontend/）' },
+        ],
+      },
+    ],
+  },
+  {
     save: 'Guest', load: 'Guest', label: '游客设置',
     fields: [
       { key: 'allow_guest_login', label: '允许游客登录', type: 'boolean' },
@@ -263,7 +277,11 @@ onMounted(loadConfig)
             <!-- select -->
             <template v-else-if="field.type === 'select'">
               <select class="select-field sm:max-w-xs" v-model="configForm[section.save][field.key]">
-                <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
+                <option
+                  v-for="opt in field.options"
+                  :key="typeof opt === 'object' ? opt.value : opt"
+                  :value="typeof opt === 'object' ? opt.value : opt"
+                >{{ typeof opt === 'object' ? opt.label : opt }}</option>
               </select>
             </template>
 

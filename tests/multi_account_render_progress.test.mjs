@@ -51,3 +51,15 @@ test('multi-account card template renders progress values instead of hardcoded d
   assert.match(renderSource, />\$\{progressExtra\}<\/span>/)
   assert.doesNotMatch(renderSource, /<span class="progress-text text-slate-600">未开始<\/span>/)
 })
+
+test('multi-account card renders remove before refresh and wires removal', () => {
+  const renderSource = extractFunction('renderMultiAccountList')
+  const removeIndex = renderSource.indexOf('class="btn-account-remove')
+  const refreshIndex = renderSource.indexOf('class="btn-account-refresh')
+
+  assert.notEqual(removeIndex, -1)
+  assert.notEqual(refreshIndex, -1)
+  assert.ok(removeIndex < refreshIndex, 'remove button must be left of refresh')
+  assert.match(renderSource, /\.btn-account-remove/)
+  assert.match(renderSource, /multi_removeAccount\(/)
+})

@@ -6658,6 +6658,11 @@ def _get_default_config():
 
     config["Admin"] = {"super_admin": "admin"}
 
+    config["Config"] = {
+        "default_ui": "old",
+        "frontend_mode": "original",
+    }
+
     config["Guest"] = {"allow_guest_login": "true"}
 
     config["System"] = {
@@ -13200,6 +13205,24 @@ class ApiClient:
             headers["appVersion"] = self.NEW_APP_VERSION
         return headers
 
+    def _request_cancelled_by_stop(self):
+        execution_cancel_event = getattr(
+            self, "_execution_cancel_event", None
+        )
+        return bool(
+            execution_cancel_event is not None
+            and execution_cancel_event.is_set()
+        )
+
+    def _wait_for_retry_or_cancel(self, seconds):
+        execution_cancel_event = getattr(
+            self, "_execution_cancel_event", None
+        )
+        if execution_cancel_event is not None:
+            return bool(execution_cancel_event.wait(timeout=seconds))
+        time.sleep(seconds)
+        return self._request_cancelled_by_stop()
+
     def _request(
         self,
         method: str,
@@ -13219,7 +13242,7 @@ class ApiClient:
             else self.app.api_bridge.is_offline_mode
         )
 
-        cancel_requested = False
+        cancel_requested = self._request_cancelled_by_stop()
 
         if cancel_requested:
             log_func("操作已取消，跳过网络请求。")
@@ -13252,6 +13275,9 @@ class ApiClient:
         )
 
         for attempt in range(retries):
+            if self._request_cancelled_by_stop():
+                log_func("操作已取消，跳过网络请求。")
+                return None
             try:
                 headers = self._get_headers()
 
@@ -13332,7 +13358,9 @@ class ApiClient:
                 logging.info(
                     f"[网络请求] 准备重试 --> 等待1.5秒后进行第{attempt+2}次请求尝试"
                 )
-                time.sleep(1.5)
+                if self._wait_for_retry_or_cancel(1.5):
+                    log_func("操作已取消，停止重试。")
+                    return None
                 continue
 
             except requests.exceptions.HTTPError as http_err:
@@ -13356,7 +13384,9 @@ class ApiClient:
                 logging.info(
                     f"[网络请求] 准备重试 --> 等待1.5秒后进行第{attempt+2}次请求尝试"
                 )
-                time.sleep(1.5)
+                if self._wait_for_retry_or_cancel(1.5):
+                    log_func("操作已取消，停止重试。")
+                    return None
                 continue
 
             except requests.exceptions.RequestException as req_err:
@@ -13382,7 +13412,9 @@ class ApiClient:
                 logging.info(
                     f"[网络请求] 准备重试 --> 等待1.5秒后进行第{attempt+2}次请求尝试"
                 )
-                time.sleep(1.5)
+                if self._wait_for_retry_or_cancel(1.5):
+                    log_func("操作已取消，停止重试。")
+                    return None
                 continue
 
         return None
@@ -19879,6 +19911,8 @@ class Api:
         """用于刷新的单个账号工作线程
         - preserve_status=True 时：若账号正在运行，不改写 status_text，只更新 name 与 summary
         """
+        # Status refresh must not be cancelled by a previous task-stop signal.
+        acc.api_client._execution_cancel_event = None
         try:
             acc.last_refresh_time = time.time()
 
@@ -20806,19 +20840,32 @@ class Api:
                 "message": "账号列表为空，无法开始。请先添加账号。",
             }
 
-        # 步骤2：欠费检查（在启动任务前执行）
-        # 遍历所有账号，检查是否存在欠费
-        overdue_accounts_list = []
-        for username in self.accounts.keys():
-            # 从账单文件读取该账号待支付账单数量作为欠费次数
-            overdue_count = _count_pending_bills_for_school(username)
+        # 步骤2：欠费检查（仅在付费模式下执行）
+        require_payment = True
+        try:
+            config = _read_config_ini()
+            if config is not None:
+                require_payment = config.getboolean(
+                    "Payment_Settings", "require_payment", fallback=True
+                )
+        except Exception as e:
+            logging.warning(f"[欠费检查] 读取付费配置失败，按付费模式处理: {e}")
 
-            # 如果存在欠费，记录到列表中
-            if overdue_count > 0:
-                overdue_accounts_list.append({
-                    "school_username": username,
-                    "overdue_count": overdue_count
-                })
+        overdue_accounts_list = []
+        if require_payment:
+            # 遍历所有账号，检查是否存在欠费
+            for username in self.accounts.keys():
+                # 从账单文件读取该账号待支付账单数量作为欠费次数
+                overdue_count = _count_pending_bills_for_school(username)
+
+                # 如果存在欠费，记录到列表中
+                if overdue_count > 0:
+                    overdue_accounts_list.append({
+                        "school_username": username,
+                        "overdue_count": overdue_count
+                    })
+        else:
+            self.log("[欠费检查] 当前为免费模式，跳过欠费拦截。")
 
         # 如果发现任何账号有欠费，拒绝启动所有任务
         if overdue_accounts_list and not skip_overdue:
@@ -21346,6 +21393,7 @@ class Api:
     def _multi_account_worker(
         self, acc: AccountSession, delay: float, run_only_incomplete: bool
     ):
+        acc.api_client._execution_cancel_event = acc.stop_event
         try:
             if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
                 self._update_account_status_js(acc, status_text="已取消")
@@ -22146,6 +22194,7 @@ class Api:
                     "Finalize worker status update failed (non-fatal).", exc_info=True
                 )
             finally:
+                acc.api_client._execution_cancel_event = None
                 self._update_multi_global_buttons()
 
     def _run_all_multi_accounts_thread(self, *args, **kwargs):
@@ -36106,6 +36155,9 @@ def start_web_server(args_param):
             else:
                 config = default_config
             config_data = {
+                "Config": {
+                    "default_ui": _get_default_ui(config),
+                },
                 "Guest": {
                     "allow_guest_login": _get_config_value(
                         config,
@@ -36499,6 +36551,22 @@ def start_web_server(args_param):
             def ensure_section(cfg, section_name):
                 if not cfg.has_section(section_name):
                     cfg.add_section(section_name)
+
+            if "Config" in data and "default_ui" in data["Config"]:
+                default_ui = _normalize_default_ui(data["Config"].get("default_ui"))
+                if default_ui is None:
+                    return jsonify({
+                        "success": False,
+                        "message": "无效的 default_ui 值，必须是 old 或 new",
+                    }), 400
+                ensure_section(config, "Config")
+                config.set("Config", "default_ui", default_ui)
+                # Keep the legacy key in sync for older deployments and scripts.
+                config.set(
+                    "Config",
+                    "frontend_mode",
+                    "vue" if default_ui == "new" else "original",
+                )
 
             if "Guest" in data and "allow_guest_login" in data["Guest"]:
                 ensure_section(config, "Guest")
@@ -40246,15 +40314,39 @@ def start_web_server(args_param):
             logging.error(f"[用户登出] 处理登出请求时发生错误: {e}", exc_info=True)
             return jsonify({"success": False, "message": f"登出失败: {str(e)}"}), 500
 
-    def _is_vue_mode():
-        """检查当前前端模式是否为 Vue"""
+    def _normalize_default_ui(value):
+        normalized = str(value or "").strip().lower()
+        if normalized in {"new", "vue", "frontend"}:
+            return "new"
+        if normalized in {"old", "original", "legacy"}:
+            return "old"
+        return None
+
+    def _get_default_ui(config=None):
+        """读取根入口默认 UI，兼容旧的 Config.frontend_mode 配置。"""
         try:
-            cfg = _read_config_ini(CONFIG_FILE)
-            if cfg:
-                return cfg.get("Config", "frontend_mode", fallback="original").strip().lower() == "vue"
+            runtime_config = config or _read_config_ini(CONFIG_FILE)
+            if runtime_config:
+                configured_ui = _normalize_default_ui(
+                    runtime_config.get("Config", "default_ui", fallback="")
+                )
+                if configured_ui is not None:
+                    return configured_ui
+                return (
+                    _normalize_default_ui(
+                        runtime_config.get(
+                            "Config", "frontend_mode", fallback="original"
+                        )
+                    )
+                    or "old"
+                )
         except Exception:
             pass
-        return False
+        return "old"
+
+    def _is_vue_mode():
+        """检查根入口当前的默认前端是否为 Vue。"""
+        return _get_default_ui() == "new"
 
     @app.route("/api/frontend_config.js")
     def get_frontend_config_javascript():
@@ -40354,10 +40446,10 @@ def start_web_server(args_param):
 
         return _make_frontend_javascript_response(config_script, no_cache=True)
 
-    # Vue 前端自动构建：vue 模式下若 dist/ 不存在则尝试构建
+    # Vue 前端自动构建：/frontend/ 始终可用，因此缺少 dist 时尝试构建。
     _vue_dist_dir = os.path.join(os.path.dirname(__file__), "dist")
     _vue_frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
-    if _is_vue_mode() and not os.path.exists(os.path.join(_vue_dist_dir, "index.html")):
+    if not os.path.exists(os.path.join(_vue_dist_dir, "index.html")):
         if os.path.exists(os.path.join(_vue_frontend_dir, "package.json")):
             logging.info("[Vue] dist/ 不存在，尝试自动构建前端...")
             try:
@@ -40392,13 +40484,12 @@ def start_web_server(args_param):
             except Exception as e:
                 logging.warning(f"[Vue] 前端构建异常: {e}")
         else:
-            logging.warning("[Vue] frontend_mode 为 vue 但 frontend/ 目录不存在，无法提供 Vue 前端")
+            logging.warning("[Vue] frontend/ 目录不存在，无法提供 Vue 前端")
 
+    @app.route("/frontend/assets/<path:filename>")
     @app.route("/assets/<path:filename>")
     def serve_vue_assets(filename):
         """服务 Vue 构建产物的静态资源"""
-        if not _is_vue_mode():
-            return jsonify({"success": False, "message": "Not available"}), 404
         assets_dir = os.path.join(_vue_dist_dir, "assets")
         if os.path.exists(assets_dir):
             return _send_frontend_static_file(assets_dir, filename)
@@ -40408,8 +40499,44 @@ def start_web_server(args_param):
         """尝试服务 Vue 构建的 index.html"""
         vue_index = os.path.join(_vue_dist_dir, "index.html")
         if os.path.exists(vue_index):
-            return send_from_directory(_vue_dist_dir, "index.html")
+            response = send_from_directory(_vue_dist_dir, "index.html")
+            response.headers["Cache-Control"] = "no-store"
+            return response
         return None
+
+    def _serve_legacy_index():
+        """服务旧版入口页，并保留原有 Jinja 模板行为。"""
+        try:
+            with open("index.html", "r", encoding="utf-8") as file:
+                current_html_content = file.read()
+        except Exception as e:
+            logging.error(f"读取 index.html 失败: {e}", exc_info=True)
+            current_html_content = html_content
+        return render_template_string(current_html_content)
+
+    @app.route("/frontend")
+    def frontend_entry_redirect():
+        return redirect("/frontend/")
+
+    @app.route("/frontend/")
+    @app.route("/frontend/<path:path>")
+    def frontend_index(path=None):
+        vue_response = _serve_vue_index()
+        if vue_response is not None:
+            return vue_response
+        return (
+            "Vue 前端尚未构建，请在 frontend/ 目录执行 npm install && npm run build",
+            503,
+        )
+
+    @app.route("/old")
+    def old_entry_redirect():
+        return redirect("/old/")
+
+    @app.route("/old/")
+    @app.route("/old/<path:path>")
+    def old_index(path=None):
+        return _serve_legacy_index()
 
     # This inert same-origin document is used only as the Playwright execution
     # host. It is authorized by an active business session, not a login cookie.
@@ -40434,11 +40561,7 @@ def start_web_server(args_param):
     @app.route("/multi")
     def index(uuid=None):
         """首页：显示应用界面（统一入口）"""
-        vue_mode = _is_vue_mode()
-
-        # original 模式下，/app 和 /multi 是 Vue SPA 专属路由，重定向回首页
-        if not vue_mode and request.path in ("/app", "/multi"):
-            return redirect(url_for("index"))
+        default_ui = _get_default_ui()
 
         # 如果提供了uuid但格式不正确，重定向到纯首页
         if uuid:
@@ -40449,22 +40572,15 @@ def start_web_server(args_param):
             if not uuid_pattern.match(uuid):
                 logging.warning(f"无效的UUID格式: {uuid[:40]}... 重定向到首页")
                 return redirect(url_for("index"))
-
-        # Vue 模式下，优先服务 Vue 构建产物
-        if vue_mode:
-            vue_response = _serve_vue_index()
-            if vue_response is not None:
-                return vue_response
-
-        # 原版 index.html
-        try:
-            with open("index.html", "r", encoding="utf-8") as file:
-                current_html_content = file.read()
-        except Exception as e:
-            logging.error(f"读取 index.html 失败: {e}", exc_info=True)
-            current_html_content = html_content
-
-        return render_template_string(current_html_content)
+        if default_ui == "new":
+            if request.path in ("/app", "/multi"):
+                return redirect(f"/frontend{request.path}")
+            if uuid:
+                return redirect(f"/frontend/uuid={uuid}")
+            return redirect("/frontend/")
+        if request.path in ("/app", "/multi"):
+            return redirect("/")
+        return _serve_legacy_index()
 
     # @app.route("/")
     # def index():

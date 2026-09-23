@@ -1,5 +1,19 @@
 let sessionUUID = null;
 
+function buildLegacyUiPath(path = "/") {
+  const normalizedPath = String(path || "/");
+  const pathname = window.location.pathname || "/";
+  const basePath =
+    pathname === "/old" || pathname.startsWith("/old/") ? "/old" : "";
+  if (!basePath) {
+    return normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`;
+  }
+  if (normalizedPath === "/") {
+    return `${basePath}/`;
+  }
+  return `${basePath}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
+}
+
 // ============================================================
 // [安全配置] 输入验证常量
 // 这些常量与Python后端保持一致，确保前后端验证规则统一
@@ -14300,10 +14314,10 @@ function returnToAdminSession() {
   if (originSession) {
     // 清除记录并跳转回原会话
     localStorage.removeItem(ADMIN_RETURN_ORIGIN_STORAGE_KEY);
-    window.location.href = `/uuid=${originSession}`;
+    window.location.href = buildLegacyUiPath(`/uuid=${originSession}`);
   } else {
     // 异常情况，回首页
-    window.location.href = "/";
+    window.location.href = buildLegacyUiPath("/");
   }
 }
 
@@ -42196,6 +42210,9 @@ function renderMultiAccountList(accounts) {
                     </div>
 
                     <div class="flex justify-end items-center gap-2 mt-2 pt-2 border-t">
+                        <button class="btn-account-remove btn btn-danger !py-1 !px-3 !text-xs" data-username="${
+                          acc.username
+                        }">移除</button>
                         <button class="btn-account-refresh btn btn-ghost !py-1 !px-3 !text-xs" data-username="${
                           acc.username
                         }">刷新</button>
@@ -42264,6 +42281,12 @@ function renderMultiAccountList(accounts) {
               e.target.dataset.username,
             )),
       );
+
+    listDiv.querySelectorAll(".btn-account-remove").forEach((b) => {
+      b.onclick = async (e) => {
+        await multi_removeAccount(e.currentTarget.dataset.username);
+      };
+    });
 
     listDiv.querySelectorAll(".btn-account-refresh").forEach((b) => {
       b.onclick = async (e) => {
@@ -42341,6 +42364,23 @@ $("multi-account-list").addEventListener("change", (event) => {
     updateSelectAllCheckboxState();
   }
 });
+
+async function multi_removeAccount(username) {
+  if (!username) return;
+
+  const isConfirmed = await jsShowConfirm(
+    "确认移除账号",
+    `确定要移除账号 <span style='color:red;font-weight:bold;'>${escapeHtml(
+      username,
+    )}</span> 吗？<br>此操作不可撤销。`,
+  );
+  if (!isConfirmed) return;
+
+  const result = await callPythonAPI("multi_remove_account", username);
+  if (result && result.accounts) {
+    renderMultiAccountList(result.accounts);
+  }
+}
 
 async function multi_removeAll(confirm = false) {
   if (confirm && typeof confirm === "object" && confirm.type === "click") {

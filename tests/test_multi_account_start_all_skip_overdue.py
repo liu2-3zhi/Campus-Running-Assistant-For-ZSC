@@ -1,7 +1,7 @@
 import threading
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import main
 
@@ -28,8 +28,12 @@ class TestMultiAccountStartAllSkipOverdue(unittest.TestCase):
 
     def test_skip_overdue_excludes_overdue_accounts_from_batch_start(self):
         api = self._api()
+        runtime_config = MagicMock()
+        runtime_config.getboolean.return_value = True
 
         with patch.object(
+            main, "_read_config_ini", return_value=runtime_config
+        ), patch.object(
             main,
             "_count_pending_bills_for_school",
             side_effect=lambda username: 1 if username == "student-overdue" else 0,
@@ -55,8 +59,12 @@ class TestMultiAccountStartAllSkipOverdue(unittest.TestCase):
     def test_all_overdue_accounts_cannot_be_skipped_into_an_empty_start(self):
         api = self._api()
         api.accounts.pop("student-ok")
+        runtime_config = MagicMock()
+        runtime_config.getboolean.return_value = True
 
         with patch.object(
+            main, "_read_config_ini", return_value=runtime_config
+        ), patch.object(
             main,
             "_count_pending_bills_for_school",
             return_value=1,
@@ -107,6 +115,25 @@ class TestMultiAccountStartAllSkipOverdue(unittest.TestCase):
             ["student-ok", "student-overdue"],
             started_usernames,
         )
+
+    def test_free_mode_does_not_apply_overdue_school_billing_gate(self):
+        api = self._api()
+        runtime_config = MagicMock()
+        runtime_config.getboolean.return_value = False
+
+        with patch.object(
+            main, "_read_config_ini", return_value=runtime_config
+        ), patch.object(
+            main, "_count_pending_bills_for_school"
+        ) as count_pending, patch.object(
+            api, "_update_multi_global_buttons"
+        ), patch.object(
+            api, "_start_multi_account_threads", return_value=2
+        ):
+            result = api.multi_start_all_accounts(0, 0, False, True)
+
+        self.assertTrue(result["success"])
+        count_pending.assert_not_called()
 
 
 if __name__ == "__main__":

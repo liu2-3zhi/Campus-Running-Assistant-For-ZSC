@@ -1,8 +1,10 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { callRawAPI } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 
+const router = useRouter()
 const auth = useAuthStore()
 const canViewAllSessions = computed(() => !!auth.permissions?.view_all_sessions)
 const canDestroySessions = computed(() => !!auth.permissions?.manage_user_sessions)
@@ -83,7 +85,7 @@ async function selectSession(sessionId) {
   try {
     const res = await callRawAPI('/auth/switch_session', 'POST', { target_session_id: sessionId })
     if (res.success === false) throw new Error(res.message || '切换会话失败')
-    window.location.assign(`/uuid=${encodeURIComponent(sessionId)}`)
+    await router.push({ name: 'session', params: { uuid: sessionId } })
   } catch (e) {
     error.value = e.message || '切换会话失败'
   } finally {
@@ -114,7 +116,10 @@ async function createSession() {
     const sessionId = crypto.randomUUID()
     const res = await callRawAPI('/auth/user/create_session_persistence', 'POST', { session_id: sessionId })
     if (res.success === false) throw new Error(res.message || '创建会话失败')
-    window.location.assign(`/uuid=${encodeURIComponent(res.session_id || sessionId)}`)
+    await router.push({
+      name: 'session',
+      params: { uuid: res.session_id || sessionId },
+    })
   } catch (e) {
     error.value = e.message || '创建会话失败'
   } finally {

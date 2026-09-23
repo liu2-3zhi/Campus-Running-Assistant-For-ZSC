@@ -4,6 +4,11 @@ import { useNetworkStore } from '@/stores/network'
 const NETWORK_RETRY_MAX = 3
 const NETWORK_RETRY_DELAY_MS = 2000
 
+function getUiEntryPath() {
+  const base = typeof window !== 'undefined' ? window.__RUNNING_UI_BASE__ : '/'
+  return typeof base === 'string' && base.startsWith('/') ? base : '/'
+}
+
 export async function checkServerHealth() {
   try {
     const ctrl = new AbortController()
@@ -118,7 +123,7 @@ export async function callAPI(method, ...args) {
       } else if (!auth.loginInProgress) {
         if (window.Swal) {
           window.Swal.fire({ title: '需要重新登录', text: errorMsg, icon: 'warning', confirmButtonText: '返回登录' }).then(() => {
-            window.location.href = '/'
+            window.location.href = getUiEntryPath()
           })
         }
         auth.isAuthenticated = false
