@@ -1,16 +1,25 @@
+import { useAuthStore } from '@/stores/auth'
+
 const RUNTIME_NAMESPACE = '__MAP_KEY_RUNTIME__'
 
 let runtimeLoadPromise = null
 let runtimeLoadVersion = ''
 
-function getRuntimeScriptUrl(scriptUrl, runtimeVersion) {
+function getRuntimeScriptUrl(scriptUrl, runtimeVersion, sessionId) {
   const baseUrl = scriptUrl || '/api/map_key_runtime.js'
   const version = String(runtimeVersion || '').trim()
-  if (!version || /[?&]v=/.test(baseUrl)) return baseUrl
-  return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}`
+  const params = []
+  if (version && !/[?&]v=/.test(baseUrl)) {
+    params.push(`v=${encodeURIComponent(version)}`)
+  }
+  if (sessionId && !/[?&]session_id=/.test(baseUrl)) {
+    params.push(`session_id=${encodeURIComponent(sessionId)}`)
+  }
+  if (!params.length) return baseUrl
+  return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${params.join('&')}`
 }
 
-function loadRuntimeScript(scriptUrl, runtimeVersion) {
+function loadRuntimeScript(scriptUrl, runtimeVersion, sessionId) {
   const expectedVersion = String(runtimeVersion || '').trim()
   if (runtimeLoadPromise && runtimeLoadVersion === expectedVersion) {
     return runtimeLoadPromise
@@ -38,7 +47,7 @@ function loadRuntimeScript(scriptUrl, runtimeVersion) {
       }
     }
     const script = document.createElement('script')
-    script.src = getRuntimeScriptUrl(scriptUrl, expectedVersion)
+    script.src = getRuntimeScriptUrl(scriptUrl, expectedVersion, sessionId)
     script.async = true
     script.dataset.mapKeyRuntime = '1'
     script.dataset.mapKeyRuntimeVersion = expectedVersion
@@ -65,7 +74,12 @@ export async function hydrateMapProviderSecrets(initialData) {
   if (!keyBundle || typeof keyBundle !== 'object') return initialData
   if (keyBundle.available === false) return initialData
 
-  await loadRuntimeScript(keyBundle.runtime_script, keyBundle.runtime_version)
+  const auth = useAuthStore()
+  await loadRuntimeScript(
+    keyBundle.runtime_script,
+    keyBundle.runtime_version,
+    auth.getAuthenticatedSessionHeaderValue(),
+  )
   const runtime = window[RUNTIME_NAMESPACE]
   if (!runtime || typeof runtime.decryptMapProviderKeys !== 'function') {
     throw new Error('地图密钥运行时不可用')

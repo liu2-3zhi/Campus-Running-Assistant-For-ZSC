@@ -49957,6 +49957,21 @@ async function loadSystemConfig() {
     };
     let html = "";
     html +=
+      '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mb-2">界面配置</h5>';
+    html += createInput(
+      "Config",
+      "default_ui",
+      "默认 UI",
+      "select",
+      "控制访问 / 时默认显示的前端版本；固定入口 /old/ 与 /frontend/ 不受影响。",
+      {
+        selectOptions: [
+          { value: "old", label: "旧版 UI（/old/）" },
+          { value: "new", label: "新版 UI（/frontend/）" },
+        ],
+      },
+    );
+    html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mb-2">游客配置</h5>';
     html += createInput(
       "Guest",
@@ -53385,6 +53400,9 @@ async function saveSystemConfig() {
 
   try {
     const configData = {
+      Config: {
+        default_ui: $("config-Config-default_ui").value,
+      },
       Guest: {
         allow_guest_login: $("config-Guest-allow_guest_login").value === "true",
       },

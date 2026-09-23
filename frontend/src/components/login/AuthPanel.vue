@@ -576,12 +576,21 @@ async function handleGuestLogin() {
   successMsg.value = ''
   loading.value = true
   try {
-    const data = await callRawAPI('/auth/guest_login', 'POST')
+    const response = await fetch('/auth/guest_login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': anonSessionId,
+      },
+      credentials: 'include',
+      body: JSON.stringify({}),
+    })
+    const data = await response.json()
     if (data.success === false) {
       errorMsg.value = data.message || '游客登录失败'
       return
     }
-    handleLoginSuccess(data)
+    handleLoginSuccess({ ...data, session_id: data.session_id || anonSessionId })
   } catch (e) {
     errorMsg.value = e.message || '游客登录失败'
   } finally {

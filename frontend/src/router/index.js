@@ -14,14 +14,26 @@ const routes = [
     props: true,
   },
   {
-    path: '/app',
+    path: '/uuid=:uuid/app',
     name: 'main',
     component: () => import('@/views/MainView.vue'),
     meta: { requiresAuth: true },
   },
   {
-    path: '/multi',
+    path: '/uuid=:uuid/multi',
     name: 'multi',
+    component: () => import('@/views/MultiAccountView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/app',
+    name: 'main-legacy',
+    component: () => import('@/views/MainView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/multi',
+    name: 'multi-legacy',
     component: () => import('@/views/MultiAccountView.vue'),
     meta: { requiresAuth: true },
   },
@@ -34,9 +46,26 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   const auth = useAuthStore()
+  const savedSession = sessionStorage.getItem('session_uuid')
+
+  if (to.params?.uuid) {
+    auth.sessionUUID = String(to.params.uuid)
+  }
+
+  if (to.name === 'main-legacy' || to.name === 'multi-legacy') {
+    const sessionId = auth.sessionUUID || savedSession
+    if (sessionId) {
+      next({
+        name: to.name === 'main-legacy' ? 'main' : 'multi',
+        params: { uuid: sessionId },
+      })
+    } else {
+      next({ name: 'login' })
+    }
+    return
+  }
 
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    const savedSession = sessionStorage.getItem('session_uuid')
     if (savedSession) {
       auth.sessionUUID = savedSession
       auth.isAuthenticated = true

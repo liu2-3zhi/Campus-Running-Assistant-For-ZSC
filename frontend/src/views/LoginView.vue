@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { callAPI, callRawAPI } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
@@ -17,6 +17,7 @@ const props = defineProps({
 })
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const app = useAppStore()
 
@@ -33,6 +34,21 @@ const inlineSessions = ref([])
 const inlineSessionsLoading = ref(false)
 const godModeEnabled = ref(false)
 const hasGodModePermission = ref(false)
+
+function getActiveSessionId() {
+  const sessionId = auth.sessionUUID || auth.authSessionUUID || ''
+  return typeof sessionId === 'string' ? sessionId.trim() : ''
+}
+
+async function replaceSessionUrl(value) {
+  const sessionId = String(value || '').trim()
+  if (!sessionId || sessionId.toLowerCase() === 'null') return
+  auth.sessionUUID = sessionId
+  sessionStorage.setItem('session_uuid', sessionId)
+  if (route.params.uuid !== sessionId) {
+    await router.replace({ name: 'session', params: { uuid: sessionId } })
+  }
+}
 
 async function loadInlineSessions() {
   inlineSessionsLoading.value = true
@@ -59,6 +75,66 @@ function toggleGodMode() {
   loadInlineSessions()
 }
 
+function sessionDisplayName(session) {
+  return (
+    session?.username ||
+    session?.auth_username ||
+    session?.user_data?.username ||
+    session?.user_info?.username ||
+    session?.user ||
+    '未知用户'
+  )
+}
+
+function isCurrentInlineSession(session) {
+  return !!session?.is_current || session?.session_id === auth.sessionUUID
+}
+
+async function selectInlineSession(session) {
+  const sessionId = session?.session_id
+  if (!sessionId || isCurrentInlineSession(session)) return
+  try {
+    const result = await callRawAPI('/auth/switch_session', 'POST', {
+      target_session_id: sessionId,
+    })
+    if (result.success === false) throw new Error(result.message || '切换会话失败')
+    auth.sessionUUID = sessionId
+    auth.authSessionUUID = sessionId
+    auth.loginInProgress = true
+    await replaceSessionUrl(sessionId)
+    sessionData.value = await callRawAPI('/auth/check_uuid_type', 'POST', {
+      uuid: sessionId,
+    })
+    viewMode.value = 'school-login'
+    await loadInlineSessions()
+  } catch (error) {
+    errorMsg.value = error.message || '切换会话失败'
+  }
+}
+
+async function deleteInlineSession(session) {
+  const sessionId = session?.session_id
+  if (!sessionId || isCurrentInlineSession(session)) return
+  const confirmed = await Swal.fire({
+    title: '确认删除',
+    text: '确定要删除该会话吗？',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: '确定删除',
+    cancelButtonText: '取消',
+  })
+  if (!confirmed.isConfirmed) return
+  try {
+    const result = await callRawAPI('/auth/user/delete_session', 'POST', {
+      session_id: sessionId,
+    })
+    if (result.success === false) throw new Error(result.message || '删除会话失败')
+    await loadInlineSessions()
+  } catch (error) {
+    errorMsg.value = error.message || '删除会话失败'
+  }
+}
+
 // --- UUID validation ---
 async function checkUUID(uuid) {
   viewMode.value = 'loading'
@@ -67,7 +143,9 @@ async function checkUUID(uuid) {
     const data = await callRawAPI('/auth/check_uuid_type', 'POST', { uuid })
     if (isRestorableSessionUUIDResponse(data)) {
       auth.sessionUUID = uuid
+      auth.isAuthenticated = true
       auth.loginInProgress = true
+      sessionStorage.setItem('session_uuid', uuid)
       sessionData.value = data
       viewMode.value = 'school-login'
       await loadInlineSessions()
@@ -87,7 +165,8 @@ async function checkUUID(uuid) {
 }
 
 // --- System login success → show session picker ---
-function onAuthSuccess(data) {
+async function onAuthSuccess(data) {
+  if (data.session_id) await replaceSessionUrl(data.session_id)
   if (data.is_guest) {
     viewMode.value = 'school-login'
     setTimeout(loadInlineSessions, 300)
@@ -97,7 +176,7 @@ function onAuthSuccess(data) {
 }
 
 // --- Session selected from picker → navigate to school login ---
-function onSessionSelected(sessionId) {
+async function onSessionSelected(sessionId) {
   auth.sessionUUID = sessionId
   // The selected ID is now the active business session; stop using the
   // temporary system-auth context for subsequent API calls.
@@ -105,18 +184,23 @@ function onSessionSelected(sessionId) {
   auth.loginInProgress = true
   sessionData.value = {}
   viewMode.value = 'school-login'
+  await replaceSessionUrl(sessionId)
   setTimeout(loadInlineSessions, 300)
 }
 
 // --- School login success → go to main app ---
-function onSchoolLoginSuccess(data) {
+async function onSchoolLoginSuccess(data) {
   app.isLoading = false
-  router.push('/app')
+  const sessionId = getActiveSessionId()
+  if (!sessionId) return
+  await router.push({ name: 'main', params: { uuid: sessionId } })
 }
 
 // --- Multi-account entry ---
-function onEnterMulti() {
-  router.push('/multi')
+async function onEnterMulti() {
+  const sessionId = getActiveSessionId()
+  if (!sessionId) return
+  await router.push({ name: 'multi', params: { uuid: sessionId } })
 }
 
 // --- Back to system login ---
@@ -193,17 +277,19 @@ function formatSessionDate(timestamp) {
 // --- Lifecycle ---
 onMounted(async () => {
   callRawAPI('/api/frontend-config', 'GET').then(data => { frontendConfig.value = data }).catch(() => {})
-  if (auth.isAuthenticated) {
-    router.push('/app')
-    return
-  }
 
   if (props.uuid) {
     await checkUUID(props.uuid)
-  } else {
-    viewMode.value = 'auth'
+    app.isLoading = false
+    return
   }
 
+  if (auth.isAuthenticated && auth.sessionUUID) {
+    await router.replace({ name: 'main', params: { uuid: auth.sessionUUID } })
+    return
+  }
+
+  viewMode.value = 'auth'
   app.isLoading = false
 })
 </script>
@@ -471,15 +557,34 @@ onMounted(async () => {
                   <div class="flex items-center justify-between gap-2">
                     <div class="min-w-0 flex-1">
                       <div class="text-sm font-medium truncate" style="color: var(--ink)">
-                        {{ session.username || session.user || '未知用户' }}
-                        <span v-if="session.is_current" class="ml-1 text-xs text-sky-600 font-semibold">(当前)</span>
+                        {{ sessionDisplayName(session) }}
+                        <span v-if="isCurrentInlineSession(session)" class="ml-1 text-xs text-sky-600 font-semibold">(当前)</span>
                       </div>
                       <div class="text-xs mt-0.5" style="color: var(--ink-muted)">
                         {{ formatSessionDate(session.created_at || session.login_time) }}
                         <span v-if="session.ip"> | {{ session.ip }}</span>
                       </div>
                     </div>
-                    <div class="h-2 w-2 shrink-0 rounded-full" :class="session.active !== false ? 'bg-green-500' : 'bg-gray-400'"></div>
+                    <div class="flex shrink-0 items-center gap-2">
+                      <template v-if="!isCurrentInlineSession(session)">
+                        <button
+                          class="btn btn-ghost !px-2 !py-1 text-xs"
+                          @click="selectInlineSession(session)"
+                        >
+                          进入
+                        </button>
+                        <button
+                          class="btn btn-ghost !px-2 !py-1 text-xs !text-red-600"
+                          @click="deleteInlineSession(session)"
+                        >
+                          删除
+                        </button>
+                      </template>
+                      <span
+                        class="h-2 w-2 rounded-full"
+                        :class="session.active !== false ? 'bg-green-500' : 'bg-gray-400'"
+                      ></span>
+                    </div>
                   </div>
                 </div>
               </div>

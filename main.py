@@ -1239,6 +1239,10 @@ def _get_map_key_runtime_context_for_request(require_session_header=False):
     )
     if require_session_header and not session_id:
         return None
+    if not session_id:
+        session_id = normalize_session_uuid(
+            request.args.get("session_id", "")
+        )
     if not session_id and request.referrer:
         uuid_match = re.search(
             r"/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})",
@@ -35260,6 +35264,8 @@ def start_web_server(args_param):
                                     "is_current": sid == session_id,
                                     "login_success": session_login_success,
                                     "is_multi_account_mode": is_multi_mode,
+                                    "auth_username": auth_username,
+                                    "username": auth_username,
                                     "user_data": session_data.get("user_data", {}),
                                 }
                             )

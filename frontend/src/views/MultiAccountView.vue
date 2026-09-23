@@ -7,6 +7,7 @@ import { useMapStore } from '@/stores/map'
 import { useNotificationStore } from '@/stores/notification'
 import { callAPI, callRawAPI } from '@/services/api'
 import { connectWebSocket, disconnectWebSocket, isWebSocketConnected, onWebSocketStatus } from '@/services/socket'
+import { hydrateMapProviderSecrets } from '@/services/mapKeyRuntime'
 import MapContainer from '@/components/map/MapContainer.vue'
 import NotificationsPanel from '@/components/main/NotificationsPanel.vue'
 import AppModal from '@/components/common/AppModal.vue'
@@ -533,12 +534,16 @@ async function exitMultiMode() {
     await checkedAPI('exit_multi_account_mode')
   } catch (e) {
     appStore.addLog(`退出多账号失败: ${e.message}`, 'ERROR', 'Multi')
-    startAutoRefresh()
-    return
   }
   appStore.isMultiMode = false
   appStore.currentView = 'login'
-  router.push({ name: 'session', params: { uuid: authStore.sessionUUID } })
+  const sessionId =
+    authStore.sessionUUID || authStore.getAuthenticatedSessionHeaderValue()
+  if (sessionId) {
+    await router.push({ name: 'session', params: { uuid: sessionId } })
+  } else {
+    await router.push({ name: 'login' })
+  }
 }
 
 // --- Log level color ---
@@ -554,6 +559,24 @@ function logLevelColor(level) {
   return colors[(level || '').toUpperCase()] || 'var(--ink-secondary)'
 }
 
+async function loadMapProviderConfig() {
+  try {
+    const responseData = await callAPI('get_initial_data')
+    const data = await hydrateMapProviderSecrets(responseData)
+    const mapConfig = {}
+    const providers = data?.map_providers || {}
+    if (providers.amap?.js_key) mapConfig.amapKey = providers.amap.js_key
+    if (providers.amap?.security_key) mapConfig.amapSecurityKey = providers.amap.security_key
+    if (providers.tencent?.map_key) mapConfig.tencentKey = providers.tencent.map_key
+    if (providers.tianditu?.token) mapConfig.tiandituKey = providers.tianditu.token
+    if (providers.baidu?.ak) mapConfig.baiduKey = providers.baidu.ak
+    if (Object.keys(mapConfig).length > 0) mapStore.setConfig(mapConfig)
+    if (data?.map_provider) mapStore.setProvider(data.map_provider)
+  } catch (error) {
+    appStore.addLog(`加载地图配置失败: ${error.message || error}`, 'ERROR', 'Multi')
+  }
+}
+
 // --- Lifecycle ---
 onMounted(async () => {
   viewMounted = true
@@ -566,6 +589,7 @@ onMounted(async () => {
   } catch (e) {
     appStore.addLog(`进入多账号模式失败: ${e.message}`, 'ERROR', 'Multi')
   }
+  await loadMapProviderConfig()
   await loadAccounts()
 
   // Load config users list if empty

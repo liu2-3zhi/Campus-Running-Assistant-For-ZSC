@@ -187,13 +187,13 @@ async function openHelp() {
 }
 
 async function handleBack() {
-  try {
-    const { callAPI } = await import('@/services/api')
-    await callAPI('logout')
-  } catch (_) {}
+  const sessionId = auth.sessionUUID || auth.getAuthenticatedSessionHeaderValue()
   disconnectWebSocket()
-  auth.logout()
-  router.push('/')
+  if (sessionId) {
+    await router.push({ name: 'session', params: { uuid: sessionId } })
+  } else {
+    await router.push({ name: 'login' })
+  }
 }
 
 // ── Lifecycle ──
