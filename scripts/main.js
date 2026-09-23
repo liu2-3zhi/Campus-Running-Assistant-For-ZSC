@@ -41901,23 +41901,12 @@ function updateAllAccountsStatusText() {
 
     let updatedCount = 0;
     cachedMultiAccounts.forEach((account) => {
-      // 检查是否为"Have_Tasks"标记，需要根据summary计算状态
-      let newStatusText;
-      if (account.status_text === "Have_Tasks" && account.summary) {
-        // 使用summary中的unexpired_count或unexpired_incomplete_count
-        const taskCount = onlyIncomplete
-          ? account.summary.unexpired_incomplete_count || 0
-          : account.summary.unexpired_count || 0;
-        newStatusText =
-          taskCount > 0 ? `有 ${taskCount} 个任务可执行` : "无可执行任务";
-      } else {
-        // 对于非"Have_Tasks"的状态，使用原有的calculateStatusText函数
-        newStatusText = calculateStatusText(
-          account,
-          onlyIncomplete,
-          ignoreTaskTime,
-        );
-      }
+      // 按当前“仅执行未完成”和日期规则重算，不能直接使用未过期总数。
+      const newStatusText = calculateStatusText(
+        account,
+        onlyIncomplete,
+        ignoreTaskTime,
+      );
 
       account.status_text = newStatusText;
       const pcItem = document.getElementById(`multi-acc-${account.username}`);
@@ -42658,27 +42647,19 @@ function multi_updateAccountStatus(username, data) {
       if (statusEl) {
         // 检查是否为"Have_Tasks"标记，需要前端计算实际状态
         if (data.status_text === "Have_Tasks" && data.summary) {
-          // 判断是桌面端还是移动端
           const isMobile = id.startsWith("mobile-multi-acc-");
-
-          // 根据不同端读取对应的复选框状态
-          let onlyIncomplete = true;
-          if (isMobile) {
-            const mobileCheck = document.getElementById(
-              "mobile-multi-only-incomplete-check",
-            );
-            onlyIncomplete = mobileCheck ? mobileCheck.checked : true;
-          } else {
-            const pcCheck = document.getElementById(
-              "multi-run-only-incomplete-check",
-            );
-            onlyIncomplete = pcCheck ? pcCheck.checked : true;
-          }
-
-          // 根据复选框状态选择对应的计数值
-          const taskCount = onlyIncomplete
-            ? data.summary.unexpired_incomplete_count || 0
-            : data.summary.unexpired_count || 0;
+          const checkboxId = isMobile
+            ? "mobile-multi-only-incomplete-check"
+            : "multi-run-only-incomplete-check";
+          const onlyIncomplete =
+            document.getElementById(checkboxId)?.checked ?? true;
+          const unexpiredCount = Number(
+            onlyIncomplete
+              ? data.summary.unexpired_incomplete_count
+              : data.summary.unexpired_count,
+          ) || 0;
+          const notStartedCount = Number(data.summary.not_started) || 0;
+          const taskCount = Math.max(0, unexpiredCount - notStartedCount);
 
           // 计算状态文本
           const calculatedStatusText =
