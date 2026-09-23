@@ -17544,7 +17544,7 @@ async function callPythonAPI(method, ...args) {
           button.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
         };
         button.onclick = () => {
-          window.location.href = "/";
+          window.location.href = buildLegacyUiPath("/");
         };
 
         modalContent.appendChild(icon);
@@ -17692,13 +17692,13 @@ async function callPythonAPI(method, ...args) {
             updateCountdown();
             if (remainingSeconds <= 0) {
               clearInterval(countdownInterval);
-              window.location.href = "/";
+              window.location.href = buildLegacyUiPath("/");
             }
           }, 1000);
 
           button.onclick = () => {
             clearInterval(countdownInterval);
-            window.location.href = "/";
+            window.location.href = buildLegacyUiPath("/");
           };
         }
         // ==================== 修改结束 ====================
@@ -17851,14 +17851,14 @@ async function callPythonAPI(method, ...args) {
 
           if (remainingSeconds <= 0) {
             clearInterval(countdownInterval);
-            window.location.href = "/";
+            window.location.href = buildLegacyUiPath("/");
           }
         }, 1000);
 
         // 修正：移除用户活动监听，强制执行倒计时
         button.onclick = () => {
           clearInterval(countdownInterval);
-          window.location.href = "/";
+          window.location.href = buildLegacyUiPath("/");
         };
       } else {
         logMessage_Info(`[安全提示] ${errorMsg}`);
@@ -17890,7 +17890,7 @@ async function callPythonAPI(method, ...args) {
           allowEscapeKey: false,
         }).then((result) => {
           if (result.isConfirmed) {
-            window.location.href = "/";
+            window.location.href = buildLegacyUiPath("/");
           }
         });
         // }
@@ -21601,7 +21601,7 @@ async function handleGuestLogin() {
     if (result.success) {
       showAuthSuccess("以游客身份登录成功！正在跳转...");
       setTimeout(() => {
-        window.location.href = `/uuid=${newUUID}`;
+        window.location.href = buildLegacyUiPath(`/uuid=${newUUID}`);
       }, 1000);
     } else {
       // showModalAlert(result.message || "游客登录失败", "登录失败");
@@ -33932,7 +33932,7 @@ async function selectSession(sessionId, sessionUsername = "") {
       timer: 800,
       showConfirmButton: false,
     }).then(() => {
-      window.location.href = `/uuid=${sessionId}`;
+      window.location.href = buildLegacyUiPath(`/uuid=${sessionId}`);
     });
     return; // 直接返回，不执行后续的 switch_session
   }
@@ -33979,7 +33979,7 @@ async function selectSession(sessionId, sessionUsername = "") {
         timer: 1000,
         showConfirmButton: false,
       }).then(() => {
-        window.location.href = `/uuid=${sessionId}`;
+        window.location.href = buildLegacyUiPath(`/uuid=${sessionId}`);
       });
     } else {
       logMessage_Info(`[会话切换] ✗ 切换失败: ${result.message}`);
@@ -33997,7 +33997,7 @@ async function selectSession(sessionId, sessionUsername = "") {
           allowOutsideClick: false,
           allowEscapeKey: false,
         }).then((r) => {
-          if (r.isConfirmed) window.location.href = "/";
+          if (r.isConfirmed) window.location.href = buildLegacyUiPath("/");
         });
       }
     }
@@ -34285,7 +34285,7 @@ async function selectSessionFromPicker(sessionId, sessionUsername = "") {
       "[管理员查看-移动端] 保留管理员Token并直接进入目标会话...",
     );
     rememberAdminReturnOriginSession();
-    window.location.href = `/uuid=${sessionId}`;
+    window.location.href = buildLegacyUiPath(`/uuid=${sessionId}`);
     return;
   }
 
@@ -34310,7 +34310,7 @@ async function selectSessionFromPicker(sessionId, sessionUsername = "") {
       logMessage_Info(
         `令牌更新成功，正在跳转到会话 ${sessionId.substring(0, 16)}...`,
       );
-      window.location.href = `/uuid=${sessionId}`;
+      window.location.href = buildLegacyUiPath(`/uuid=${sessionId}`);
     } else {
       logMessage_Info(`[错误] 无法切换会话: ${result.message}`);
       // showModalAlert(`无法切换会话: ${result.message}`, "切换失败");
@@ -34328,7 +34328,7 @@ async function selectSessionFromPicker(sessionId, sessionUsername = "") {
           allowOutsideClick: false,
           allowEscapeKey: false,
         }).then((r) => {
-          if (r.isConfirmed) window.location.href = "/";
+          if (r.isConfirmed) window.location.href = buildLegacyUiPath("/");
         });
       }
     }
@@ -34538,7 +34538,7 @@ async function createNewSessionFromPicker() {
       } else {
         closeSessionPicker();
       }
-      window.location.replace(`/uuid=${sessionUUID}`);
+      window.location.replace(buildLegacyUiPath(`/uuid=${sessionUUID}`));
     } else {
       logMessage_Info(`创建会话失败: ${result.message}`);
       if (isMobileMode) {
@@ -34705,12 +34705,13 @@ function validateInput(input, type) {
 }
 let sessionValidityCheckInterval = null;
 function redirectToLoginAfterSessionExpiry() {
-  if (window.location.pathname === "/") {
+  const legacyHomePath = buildLegacyUiPath("/");
+  if (window.location.pathname === legacyHomePath) {
     return false;
   }
 
   logMessage_Info("[会话检查] 会话已失效，正在返回登录页面");
-  window.location.replace("/");
+  window.location.replace(legacyHomePath);
   return true;
 }
 
@@ -35435,7 +35436,7 @@ async function initializeApp() {
         logMessage_Info(
           "用户确认获取会话模式信息失败弹窗，正在跳转到登录页面...",
         );
-        window.location.href = "/";
+        window.location.href = buildLegacyUiPath("/");
       });
       return;
     }

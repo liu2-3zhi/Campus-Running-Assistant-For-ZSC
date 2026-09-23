@@ -106,6 +106,9 @@ test('system config retains the legacy header', () => {
   const config = read('frontend/src/components/admin/AdminConfig.vue')
   assert.match(config, /系统配置/)
   assert.match(config, /@click="loadConfig"/)
+  assert.match(config, /key: 'default_ui'/)
+  assert.match(config, /旧版 UI（\/old\/）/)
+  assert.match(config, /新版 UI（\/frontend\/）/)
 })
 
 test('multi account view uses the legacy 530px desktop grid', () => {

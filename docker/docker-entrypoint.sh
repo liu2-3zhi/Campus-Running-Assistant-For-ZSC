@@ -243,6 +243,39 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_read_timeout 86400;
         }
 
+        # Vue 新版入口和旧版兼容入口统一交给 Flask 按当前构建产物与默认 UI 配置处理
+        location = /frontend {
+            proxy_pass http://127.0.0.1:5000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $real_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location ^~ /frontend/ {
+            proxy_pass http://127.0.0.1:5000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $real_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location = /old {
+            proxy_pass http://127.0.0.1:5000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $real_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location ^~ /old/ {
+            proxy_pass http://127.0.0.1:5000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $real_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
         # API请求代理到Flask后端
         location ~ ^/(api|auth|logs|cdn-cache|avatar|system-announcement)/ {
             proxy_pass http://127.0.0.1:5000;
