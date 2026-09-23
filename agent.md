@@ -52,6 +52,8 @@
 - 腾讯原生视角控件位置通过 `getControl(DEFAULT_CONTROL_ID.ROTATION).setPosition(TMap.constants.CONTROL_POSITION.TOP_LEFT)` 修正；不要再默认渲染 `provider-3d-view-btn` 自绘左上角控件。
 - 应用自绘控件必须挂在外层地图容器上，不能挂在 SDK surface 里，否则会被 SDK 自己的 DOM 层级影响。
 - 腾讯自定义 SVG 标记使用 `TMap.MultiMarker` / `MarkerStyle` 时，不要给 `PointGeometry.content` 填文字；否则 SDK 会额外渲染一份原生文字，造成双重标签。需要文字时应放进自定义 SVG 或应用自己的 marker 样式里。
+- 腾讯实时位置标记不要在每次轮询时 `setMap(null)` 后重建 `MultiMarker`。多账号位置应复用同一标记对象，使用相同 `PointGeometry.id` 调用 `updateGeometries()` 原位更新；旧 SDK 不支持时再退回 `setGeometries()`。否则高频刷新会触发 SDK 移除图层异常，表现为标记反复消失/出现并刷出 `getSource` 报错。
+- 多账号标记颜色必须按账号稳定缓存，不能在每次位置刷新时递增全局颜色索引；否则即使标记不重建，颜色也会持续变化。相关回归测试见 `tests/map_provider_frontend_runtime.test.mjs`。
 - 活动任务路线渲染要传 `showEndpoints:false`，不要让 SDK 或通用渲染层额外加“起点/终点”标记；第一眼可见的标记应该是实际检查点名称。
 - 右上角缩放等级不能写死为 `17`。腾讯地图要用 `getZoom()` 读取真实缩放，并监听官方 `zoom` 事件刷新标签。
 - 腾讯缩放按钮优先走 `getZoom()` + `setZoom()`，这样按钮点击后能立即同步显示数值；不要只调用 `zoomBy()` 后等待未知的 SDK 状态。

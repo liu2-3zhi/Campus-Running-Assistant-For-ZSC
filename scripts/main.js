@@ -17999,6 +17999,7 @@ const $ = (id) => document.getElementById(id);
 
 let multiAccountMap;
 let multiAccountMarkers = {};
+let multiAccountMarkerColors = {};
 const userColors = [
   "#F44336",
   "#E91E63",
@@ -37945,7 +37946,7 @@ function addProviderMarker(containerId, coord, options = {}) {
           [styleId]: new TMap.MarkerStyle(markerStyleOptions),
         },
         geometries: [{
-          id: `marker-${Date.now()}-${bucket.length}`,
+          id: options.geometryId || `marker-${Date.now()}-${bucket.length}`,
           styleId,
           position: new TMap.LatLng(providerCoord.lat, providerCoord.lng),
           rank: options.zIndex || 100,
@@ -38027,6 +38028,36 @@ function updateProviderRunnerMarker(containerId, coord, options = {}) {
   }
   const markerKey = options.markerKey || containerId;
   const previousMarker = providerRunnerMarkers[markerKey];
+  const provider = providerMapInstanceProviders[containerId] || getActiveMapProvider();
+  if (
+    previousMarker &&
+    provider === "tencent" &&
+    window.TMap &&
+    (typeof previousMarker.updateGeometries === "function" ||
+      typeof previousMarker.setGeometries === "function")
+  ) {
+    try {
+      const providerCoord = convertGcj02ToProviderCoordinates(provider, normalized);
+      const label = normalizeProviderMarkerLabel(options);
+      const nextGeometry = {
+        id: options.geometryId || markerKey,
+        styleId: "marker",
+        position: new TMap.LatLng(providerCoord.lat, providerCoord.lng),
+        rank: options.zIndex || 200,
+        properties: {
+          title: options.title || label,
+        },
+      };
+      if (typeof previousMarker.updateGeometries === "function") {
+        previousMarker.updateGeometries([nextGeometry]);
+      } else {
+        previousMarker.setGeometries([nextGeometry]);
+      }
+      return previousMarker;
+    } catch (e) {
+      logMessage_Warning(`[地图] 更新${containerId}腾讯标记失败，将重建标记:`, e);
+    }
+  }
   if (previousMarker) {
     removeProviderOverlayFromMap(containerId, previousMarker);
   }
@@ -38040,6 +38071,7 @@ function updateProviderRunnerMarker(containerId, coord, options = {}) {
     zIndex: options.zIndex || 200,
     markerColor: options.markerColor,
     markerKind: options.markerKind,
+    geometryId: options.geometryId || markerKey,
     trackFit: false,
     trackOverlay: false,
   });
@@ -40778,6 +40810,8 @@ async function exitMultiMode() {
   destroyProviderMapInstance("multi-map-container");
   destroyProviderMapInstance("mobile-multi-map-container");
   multiAccountMarkers = {};
+  multiAccountMarkerColors = {};
+  colorIndex = 0;
   multiAccountMap = null;
 
   resetUI();
@@ -42748,7 +42782,7 @@ function multi_updateAccountStatus(username, data) {
 }
 
 function multi_updateRunnerPosition(username, lon, lat, name) {
-  const color = userColors[colorIndex++ % userColors.length];
+  const color = resolveMultiAccountRunnerColor(username);
   const markerContent = `<div style="background-color: ${color};" class="text-xs font-bold whitespace-nowrap px-2 py-1 rounded-full shadow-lg text-white">${name}</div>`;
   if (getActiveMapProvider() !== "amap") {
     updateProviderRunnerMarker("multi-map-container", { lng: lon, lat }, {
@@ -42778,6 +42812,14 @@ function multi_updateRunnerPosition(username, lon, lat, name) {
     });
     multiAccountMap.add(multiAccountMarkers[username]);
   }
+}
+
+function resolveMultiAccountRunnerColor(username) {
+  const markerKey = String(username ?? "");
+  if (!Object.prototype.hasOwnProperty.call(multiAccountMarkerColors, markerKey)) {
+    multiAccountMarkerColors[markerKey] = userColors[colorIndex++ % userColors.length];
+  }
+  return multiAccountMarkerColors[markerKey];
 }
 
 function multi_removeRunnerMarker(username) {

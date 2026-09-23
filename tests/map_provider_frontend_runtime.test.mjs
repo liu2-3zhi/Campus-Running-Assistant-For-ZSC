@@ -318,9 +318,21 @@ function createTencentSdk(sdkOptions = {}) {
     constructor(options) {
       this.options = options;
       this.map = options.map;
+      this.geometryUpdateCount = 0;
     }
     setMap(map) {
       this.map = map;
+    }
+    setGeometries(geometries) {
+      this.options.geometries = geometries;
+      this.geometryUpdateCount += 1;
+    }
+    updateGeometries(geometries) {
+      this.options.geometries = geometries;
+      this.geometryUpdateCount += 1;
+    }
+    setStyles(styles) {
+      this.options.styles = styles;
     }
   }
   class MultiPolyline extends MultiMarker {}
@@ -726,6 +738,9 @@ function createRuntime(provider, options = {}) {
     'createTencentMarkerStyleOptions',
     'createProviderLabelMarkerSvgOptions',
     'updateProviderRunnerMarker',
+    'resolveMultiAccountRunnerColor',
+    'multi_updateRunnerPosition',
+    'multi_removeRunnerMarker',
     'resolveRunnerTargetSequence',
     'addProviderMarker',
     'drawProviderRouteOnMap',
@@ -804,6 +819,15 @@ function createRuntime(provider, options = {}) {
     let AMapReady = !!AMapInstance;
     let map = AMapReady ? new AMapInstance.Map(document.getElementById('map-container'), {}) : null;
     let multiAccountMap = null;
+    let multiAccountMarkers = {};
+    let multiAccountMarkerColors = {};
+    const userColors = [
+      '#F44336', '#E91E63', '#9C27B0', '#673AB7',
+      '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4',
+      '#009688', '#4CAF50', '#8BC34A', '#CDDC39',
+      '#FFEB3B', '#FFC107', '#FF9800', '#FF5722',
+    ];
+    let colorIndex = 0;
     let mobileTrackMapInstance = null;
     let tencentMapLoadingPromise = null;
     let tiandituMapLoadingPromise = null;
@@ -855,6 +879,9 @@ function createRuntime(provider, options = {}) {
       zoomProviderMap,
       fitProviderMapToLastRoute,
       updateProviderRunnerMarker,
+      resolveMultiAccountRunnerColor,
+      multi_updateRunnerPosition,
+      multi_removeRunnerMarker,
       drawOnMap_signature,
       updateRunnerPosition,
       clearSingleExecutionVisuals,
@@ -882,6 +909,8 @@ function createRuntime(provider, options = {}) {
         providerMapOverlays,
         providerMapLastFitCoords,
         providerRunnerMarkers,
+        multiAccountMarkers,
+        multiAccountMarkerColors,
         map,
         polylines,
         markers,
@@ -1518,9 +1547,42 @@ test('provider runner marker updates current position on non-amap maps', () => {
 
     assert.ok(firstMarker, `${provider} first runner marker should be created`);
     assert.ok(secondMarker, `${provider} second runner marker should be created`);
-    assert.notEqual(firstMarker, secondMarker, `${provider} runner marker should be replaced when position changes`);
+    if (provider === 'tencent') {
+      assert.equal(firstMarker, secondMarker, 'tencent runner marker should be updated in place');
+      assert.equal(firstMarker.map, runtime.getState().providerMapInstances['map-container']);
+      assert.equal(firstMarker.geometryUpdateCount, 1);
+      assert.equal(firstMarker.options.geometries[0].position.lat, 22.53);
+      assert.equal(firstMarker.options.geometries[0].position.lng, 113.40);
+      assert.equal(firstMarker.options.geometries[0].id, 'map-container');
+    } else {
+      assert.notEqual(firstMarker, secondMarker, `${provider} runner marker should be replaced when position changes`);
+    }
     assert.equal(Object.keys(runtime.getState().providerRunnerMarkers).length, 1, provider);
   }
+});
+
+test('tencent multi-account runner markers update in place and keep stable colors', () => {
+  const runtime = createRuntime('tencent');
+  assert.equal(runtime.initProviderMap('multi-map-container', true), true);
+
+  runtime.multi_updateRunnerPosition('alice', 113.39, 22.52, 'Alice');
+  const firstMarker = runtime.getState().providerRunnerMarkers['multi-map-container:alice'];
+  const aliceColor = runtime.resolveMultiAccountRunnerColor('alice');
+  assert.ok(firstMarker);
+
+  runtime.multi_updateRunnerPosition('alice', 113.40, 22.53, 'Alice');
+  const secondMarker = runtime.getState().providerRunnerMarkers['multi-map-container:alice'];
+
+  assert.equal(secondMarker, firstMarker);
+  assert.equal(secondMarker.map, runtime.getState().providerMapInstances['multi-map-container']);
+  assert.equal(secondMarker.geometryUpdateCount, 1);
+  assert.equal(secondMarker.options.geometries[0].position.lat, 22.53);
+  assert.equal(secondMarker.options.geometries[0].position.lng, 113.40);
+  assert.equal(secondMarker.options.geometries[0].id, 'multi-map-container:alice');
+  assert.equal(runtime.resolveMultiAccountRunnerColor('alice'), aliceColor);
+
+  runtime.multi_updateRunnerPosition('bob', 113.41, 22.54, 'Bob');
+  assert.notEqual(runtime.resolveMultiAccountRunnerColor('bob'), aliceColor);
 });
 
 test('tianditu and baidu checkpoint markers expose visible point names', () => {
