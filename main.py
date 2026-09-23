@@ -5400,6 +5400,46 @@ CONFIG_JSON_ABS_PATH = os.path.join(
 )
 CONFIG_FILE = CONFIG_JSON_ABS_PATH
 CONFIG_JSON_LOCK = threading.RLock()
+SCHOOL_ACCOUNT_EXECUTION_LOCK = threading.RLock()
+SCHOOL_ACCOUNT_EXECUTION_CLAIMS: dict[str, object] = {}
+
+
+def _normalize_school_account_execution_identity(value) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _claim_school_account_execution(identities, token) -> tuple[bool, str | None]:
+    keys = {
+        key
+        for key in (
+            _normalize_school_account_execution_identity(identity)
+            for identity in identities
+        )
+        if key
+    }
+    if not keys:
+        return True, None
+    with SCHOOL_ACCOUNT_EXECUTION_LOCK:
+        for key in keys:
+            owner = SCHOOL_ACCOUNT_EXECUTION_CLAIMS.get(key)
+            if owner is not None and owner is not token:
+                return False, key
+        for key in keys:
+            SCHOOL_ACCOUNT_EXECUTION_CLAIMS[key] = token
+    return True, None
+
+
+def _extend_school_account_execution(identities, token) -> tuple[bool, str | None]:
+    return _claim_school_account_execution(identities, token)
+
+
+def _release_school_account_execution(token):
+    if token is None:
+        return
+    with SCHOOL_ACCOUNT_EXECUTION_LOCK:
+        for key, owner in list(SCHOOL_ACCOUNT_EXECUTION_CLAIMS.items()):
+            if owner is token:
+                del SCHOOL_ACCOUNT_EXECUTION_CLAIMS[key]
 PERMISSIONS_FILE = "permissions.json"
 # 自动签到配置文件
 # 用于集中管理所有启用自动签到的学校账号配置
@@ -12447,6 +12487,7 @@ class AccountSession:
 
         self.worker_thread: threading.Thread | None = None
         self.stop_event = threading.Event()
+        self.account_operation_lock = threading.Lock()
 
     def log(self, message: str):
         """为日志自动添加账号前缀"""
@@ -13791,6 +13832,8 @@ class Api:
         self.current_run_idx = -1
         self.stop_run_flag = threading.Event()
         self.stop_run_flag.set()
+        self.single_execution_lock = threading.Lock()
+        self._single_school_account_execution_token = None
         self.target_range_m = 30.0
 
         if not hasattr(self, "login_success"):
@@ -13847,6 +13890,10 @@ class Api:
         # 线程锁，用于保护 account_refresh_threads 字典的并发访问
         # 在多线程环境下，对字典的读写操作需要加锁以确保线程安全
         self.threads_lock = threading.Lock()
+
+        # 多账号执行门闩：同一账号同一时间只允许一个业务执行或刷新任务占用会话。
+        self.multi_execution_lock = threading.RLock()
+        self.multi_active_executions: set[str] = set()
 
         # 多账号监控线程的停止事件
         # 用于优雅地停止多账号监控线程
@@ -17068,29 +17115,51 @@ class Api:
                 "message": "请先登录后再启动任务"
             }
 
-        # 通过欠费检查后，继续执行原有的任务启动逻辑
-        if not self.stop_run_flag.is_set():
-            return {"success": False, "message": "已有任务在运行"}
-        if (
-            self.current_run_idx == -1
-            or not self.all_run_data[self.current_run_idx].run_coords
-        ):
-            return {"success": False, "message": "请选择任务并生成路线"}
+        # 通过欠费检查后，原子占用单账号执行槽
+        with self.single_execution_lock:
+            if not self.stop_run_flag.is_set():
+                return {"success": False, "message": "已有任务在运行"}
+            if (
+                self.current_run_idx == -1
+                or not self.all_run_data[self.current_run_idx].run_coords
+            ):
+                return {"success": False, "message": "请选择任务并生成路线"}
 
-        self.stop_run_flag.clear()
-        run_data = self.all_run_data[self.current_run_idx]
-        run_data.target_sequence = 0
-        run_data.is_in_target_zone = False
-        self._first_center_done = False
+            execution_token, conflict_identity = (
+                self._claim_single_school_account_execution()
+            )
+            if execution_token is None:
+                return {
+                    "success": False,
+                    "message": (
+                        f"学校账号 {conflict_identity or self.user_data.username} "
+                        "已在单账号或多账号模式中执行任务"
+                    ),
+                }
 
-        logging.info(f"正在启动单任务执行: 任务名称={run_data.run_name}")
-        submission_thread = threading.Thread(
-            target=self._run_submission_thread,
-            args=(run_data, self.current_run_idx, self.api_client, False),
-            daemon=True,
-        )
+            self.stop_run_flag.clear()
+            run_data = self.all_run_data[self.current_run_idx]
+            run_data.target_sequence = 0
+            run_data.is_in_target_zone = False
+            self._first_center_done = False
+
+            logging.info(f"正在启动单任务执行: 任务名称={run_data.run_name}")
+            submission_thread = threading.Thread(
+                target=self._run_with_single_school_account_execution,
+                args=(
+                    execution_token,
+                    self._run_submission_thread,
+                    (run_data, self.current_run_idx, self.api_client, False),
+                ),
+                daemon=True,
+            )
+            try:
+                submission_thread.start()
+            except Exception:
+                self._release_single_school_account_execution(execution_token)
+                self.stop_run_flag.set()
+                raise
         logging.info(f"[Thread Creation] Starting submission thread: {submission_thread.name}")
-        submission_thread.start()
         logging.info(f"[Thread Creation] Submission thread started: {submission_thread.name} (id={submission_thread.ident})")
         return {"success": True}
 
@@ -18076,16 +18145,42 @@ class Api:
             return {"success": False, "message": msg}
 
         queue = collections.deque(tasks_to_run)
-        self.stop_run_flag.clear()
-        logging.info(
-            f"Starting 'run all' process. Queue={list(queue)}, auto-generate={auto_generate}"
-        )
-        run_all_thread = threading.Thread(
-            target=self._run_all_tasks_manager, args=(
-                queue, auto_generate), daemon=True
-        )
+        with self.single_execution_lock:
+            if not self.stop_run_flag.is_set():
+                return {"success": False, "message": "已有任务在运行"}
+
+            execution_token, conflict_identity = (
+                self._claim_single_school_account_execution()
+            )
+            if execution_token is None:
+                return {
+                    "success": False,
+                    "message": (
+                        f"学校账号 {conflict_identity or self.user_data.username} "
+                        "已在单账号或多账号模式中执行任务"
+                    ),
+                }
+
+            self.stop_run_flag.clear()
+            logging.info(
+                f"Starting 'run all' process. Queue={list(queue)}, auto-generate={auto_generate}"
+            )
+            run_all_thread = threading.Thread(
+                target=self._run_with_single_school_account_execution,
+                args=(
+                    execution_token,
+                    self._run_all_tasks_manager,
+                    (queue, auto_generate),
+                ),
+                daemon=True,
+            )
+            try:
+                run_all_thread.start()
+            except Exception:
+                self._release_single_school_account_execution(execution_token)
+                self.stop_run_flag.set()
+                raise
         logging.info(f"[Thread Creation] Starting run_all thread: {run_all_thread.name}")
-        run_all_thread.start()
         logging.info(f"[Thread Creation] Run_all thread started: {run_all_thread.name} (id={run_all_thread.ident})")
         return {"success": True}
 
@@ -19684,13 +19779,12 @@ class Api:
 
         self.log("正在刷新所有账号状态...")
         for acc in self.accounts.values():
-            is_running = bool(
-                acc.worker_thread and acc.worker_thread.is_alive())
-            if not is_running:
-                self._update_account_status_js(acc, status_text="刷新中...")
+            if self._is_multi_account_execution_active(acc):
+                continue
+            self._update_account_status_js(acc, status_text="刷新中...")
             threading.Thread(
                 target=self._multi_refresh_worker,
-                args=(acc, True if is_running else False),
+                args=(acc, False),
                 daemon=True,
             ).start()
 
@@ -19702,6 +19796,8 @@ class Api:
         if username not in self.accounts:
             return {"success": False, "message": "账号不存在"}
         acc = self.accounts[username]
+        if self._is_multi_account_execution_active(acc):
+            return {"success": False, "message": "该账号正在运行，暂不刷新"}
 
         try:
             self._update_account_status_js(acc, status_text="刷新中...")
@@ -19715,6 +19811,24 @@ class Api:
             return {"success": False, "message": "启动刷新失败"}
 
     def _multi_refresh_worker(self, acc: AccountSession, preserve_status: bool = False):
+        operation_lock = getattr(acc, "account_operation_lock", None)
+        if operation_lock is None:
+            return self._multi_refresh_worker_unlocked(acc, preserve_status)
+        if not operation_lock.acquire(blocking=False):
+            logging.debug(
+                f"[{acc.username}] 账号正在执行其它操作，跳过本次状态刷新"
+            )
+            return
+        try:
+            return self._multi_refresh_worker_unlocked(acc, preserve_status)
+        finally:
+            operation_lock.release()
+
+    def _multi_refresh_worker_unlocked(
+        self,
+        acc: AccountSession,
+        preserve_status: bool = False,
+    ):
         """用于刷新的单个账号工作线程
         - preserve_status=True 时：若账号正在运行，不改写 status_text，只更新 name 与 summary
         """
@@ -19916,8 +20030,7 @@ class Api:
                         }
                     )
 
-            is_running = bool(
-                acc.worker_thread and acc.worker_thread.is_alive())
+            is_running = self._is_multi_account_execution_active(acc)
             current_pos = getattr(acc, "current_position",
                                   None) if is_running else None
 
@@ -20362,6 +20475,165 @@ class Api:
                 return {"success": False, "message": str(e)}
         return {"success": False, "message": "Unknown parameter"}
 
+    def _is_multi_account_execution_active(self, acc: AccountSession) -> bool:
+        """Return whether the account already owns an execution slot."""
+        username = getattr(acc, "username", None)
+        execution_lock = getattr(self, "multi_execution_lock", None)
+        if execution_lock is not None and username is not None:
+            with execution_lock:
+                if username in getattr(self, "multi_active_executions", set()):
+                    return True
+        worker = getattr(acc, "worker_thread", None)
+        return bool(worker and worker.is_alive())
+
+    def _claim_single_school_account_execution(self):
+        user_data = getattr(self, "user_data", None)
+        user_info = getattr(self, "user_info", {}) or {}
+        identities = [
+            getattr(user_data, "username", ""),
+            getattr(user_data, "student_id", ""),
+            user_info.get("student_id", "") if isinstance(user_info, dict) else "",
+            user_info.get("account", "") if isinstance(user_info, dict) else "",
+        ]
+        execution_token = object()
+        claimed, conflict_identity = _claim_school_account_execution(
+            identities,
+            execution_token,
+        )
+        if not claimed:
+            return None, conflict_identity
+        self._single_school_account_execution_token = execution_token
+        return execution_token, None
+
+    def _release_single_school_account_execution(self, execution_token):
+        _release_school_account_execution(execution_token)
+        if (
+            getattr(self, "_single_school_account_execution_token", None)
+            is execution_token
+        ):
+            self._single_school_account_execution_token = None
+
+    def _run_with_single_school_account_execution(
+        self,
+        execution_token,
+        target,
+        args,
+    ):
+        try:
+            return target(*args)
+        finally:
+            self._release_single_school_account_execution(execution_token)
+
+    def _finish_multi_account_worker(
+        self,
+        acc: AccountSession,
+        worker_thread: threading.Thread | None,
+    ):
+        """Release the per-account execution slot after the worker exits."""
+        username = getattr(acc, "username", None)
+        execution_lock = getattr(self, "multi_execution_lock", None)
+        if execution_lock is not None and username is not None:
+            with execution_lock:
+                getattr(self, "multi_active_executions", set()).discard(username)
+                if getattr(acc, "worker_thread", None) is worker_thread:
+                    acc.worker_thread = None
+        _release_school_account_execution(
+            getattr(acc, "_school_account_execution_token", None)
+        )
+        acc._school_account_execution_token = None
+        operation_lock = getattr(acc, "account_operation_lock", None)
+        if operation_lock is not None:
+            try:
+                operation_lock.release()
+            except RuntimeError:
+                pass
+
+    def _start_multi_account_worker(
+        self,
+        acc: AccountSession,
+        delay: float,
+        run_only_incomplete: bool,
+    ) -> bool:
+        """Start at most one execution thread for an account."""
+        username = getattr(acc, "username", None)
+        if not username:
+            return False
+        execution_lock = getattr(self, "multi_execution_lock", None)
+        if execution_lock is None:
+            execution_lock = threading.RLock()
+            self.multi_execution_lock = execution_lock
+            self.multi_active_executions = set()
+
+        with execution_lock:
+            active_executions = getattr(self, "multi_active_executions", set())
+            if username in active_executions:
+                return False
+            worker = getattr(acc, "worker_thread", None)
+            if worker and worker.is_alive():
+                return False
+
+            operation_lock = getattr(acc, "account_operation_lock", None)
+            if operation_lock is None:
+                operation_lock = threading.Lock()
+                acc.account_operation_lock = operation_lock
+            if not operation_lock.acquire(blocking=False):
+                return False
+
+            execution_token = object()
+            claimed, _conflict = _claim_school_account_execution(
+                [
+                    acc.username,
+                    getattr(acc.user_data, "username", ""),
+                    getattr(acc.user_data, "student_id", ""),
+                ],
+                execution_token,
+            )
+            if not claimed:
+                operation_lock.release()
+                return False
+
+            active_executions.add(username)
+            acc._school_account_execution_token = execution_token
+            acc.stop_event.clear()
+            multi_stop_flag = getattr(self, "multi_run_stop_flag", None)
+            if multi_stop_flag is not None and multi_stop_flag.is_set():
+                multi_stop_flag.clear()
+            thread_ref: dict[str, threading.Thread | None] = {"thread": None}
+
+            def run_worker():
+                try:
+                    self._multi_account_worker(
+                        acc,
+                        delay,
+                        run_only_incomplete,
+                    )
+                finally:
+                    self._finish_multi_account_worker(
+                        acc,
+                        thread_ref.get("thread"),
+                    )
+
+            worker = threading.Thread(
+                target=run_worker,
+                daemon=True,
+                name=f"MultiAccountWorker-{username}",
+            )
+            thread_ref["thread"] = worker
+            acc.worker_thread = worker
+            try:
+                worker.start()
+            except Exception:
+                active_executions.discard(username)
+                acc.worker_thread = None
+                _release_school_account_execution(execution_token)
+                acc._school_account_execution_token = None
+                try:
+                    operation_lock.release()
+                except RuntimeError:
+                    pass
+                raise
+            return True
+
     def multi_start_single_account(self, username, run_only_incomplete: bool = True):
         """
         启动指定账号的任务执行线程。
@@ -20401,22 +20673,19 @@ class Api:
                 ]
             }
 
-        # 步骤3：检查账号是否已在运行
         acc = self.accounts[username]
-        if acc.worker_thread and acc.worker_thread.is_alive():
+        if self._is_multi_account_execution_active(acc):
             self.log(f"账号 {username} 已在运行中。")
             return {"success": False, "message": "该账号已在运行"}
 
-        # 步骤4：启动任务线程
-        acc.stop_event.clear()
-        if self.multi_run_stop_flag.is_set():
-            self.multi_run_stop_flag.clear()
-        acc.worker_thread = threading.Thread(
-            target=self._multi_account_worker,
-            args=(acc, 0, bool(run_only_incomplete)),
-            daemon=True,
-        )
-        acc.worker_thread.start()
+        # 步骤3：原子占用该账号的执行槽，避免双击或并发 API 启动多个线程
+        if not self._start_multi_account_worker(
+            acc,
+            0,
+            bool(run_only_incomplete),
+        ):
+            self.log(f"账号 {username} 正在执行其它操作。")
+            return {"success": False, "message": "该账号正在运行或刷新，请稍后重试"}
         self.log(f"已启动账号: {username}")
         self._update_account_status_js(acc, status_text="排队等待...")
         self._update_multi_global_buttons()
@@ -20430,7 +20699,7 @@ class Api:
         if not acc:
             return {"success": False, "message": f"账号 {username} 不存在"}
 
-        if acc.worker_thread and acc.worker_thread.is_alive():
+        if self._is_multi_account_execution_active(acc):
             acc.stop_event.set()
             self.log(f"已向账号 {username} 发送停止信号。")
             self._update_account_status_js(acc, status_text="正在停止...")
@@ -20515,7 +20784,7 @@ class Api:
         running_count = sum(
             1
             for acc in self.accounts.values()
-            if acc.worker_thread and acc.worker_thread.is_alive()
+            if self._is_multi_account_execution_active(acc)
         )
         if total_accounts > 0 and running_count == total_accounts:
             return {"success": False, "message": "任务已在运行中"}
@@ -20662,7 +20931,7 @@ class Api:
         running_count = sum(
             1
             for acc in active_accounts
-            if acc.worker_thread and acc.worker_thread.is_alive()
+            if self._is_multi_account_execution_active(acc)
         )
 
         if total_active == 0:
@@ -21050,6 +21319,30 @@ class Api:
                 # 优先使用学号(student_id)，如果学号不存在则使用账号登录名(acc.username)
                 # 这确保了备份文件名的一致性和可追溯性
                 acc.user_data.username = acc.user_data.student_id or acc.username
+
+                execution_token = getattr(
+                    acc, "_school_account_execution_token", None
+                )
+                identity_claimed, conflict_identity = (
+                    _extend_school_account_execution(
+                        [
+                            acc.user_data.username,
+                            acc.user_data.student_id,
+                        ],
+                        execution_token,
+                    )
+                )
+                if not identity_claimed:
+                    acc.log(
+                        f"学校账号 {conflict_identity or acc.user_data.username} "
+                        "已在单账号或其他多账号任务中执行，本次启动已中止。"
+                    )
+                    self._update_account_status_js(
+                        acc,
+                        status_text="账号冲突: 已在其它模式运行",
+                    )
+                    acc.stop_event.set()
+                    return
 
                 acc.log("登录成功。")
 
@@ -21768,19 +22061,19 @@ class Api:
     ):
         started_threads = 0
         for i, acc in enumerate(account_list):
-            if acc.worker_thread and acc.worker_thread.is_alive():
+            if self._is_multi_account_execution_active(acc):
                 acc.log("已在运行，本次'全部开始'将跳过此账号。")
                 continue
 
             delay = delays[i] if use_delay else 0
-            acc.stop_event.clear()
-            acc.worker_thread = threading.Thread(
-                target=self._multi_account_worker,
-                args=(acc, delay, run_only_incomplete),
-                daemon=True,
-            )
-            acc.worker_thread.start()
-            started_threads += 1
+            if self._start_multi_account_worker(
+                acc,
+                delay,
+                run_only_incomplete,
+            ):
+                started_threads += 1
+            else:
+                acc.log("正在执行其它操作，本次'全部开始'将跳过此账号。")
 
         return started_threads
 
@@ -22383,70 +22676,84 @@ class Api:
                             break
                         continue
 
-                    # === 第四步：获取刷新间隔 ===
-                    # 从账号参数中获取刷新间隔（秒）
-                    refresh_interval_s = account.params.get(
-                        "auto_attendance_refresh_s", 15)
-                    # 确保刷新间隔不小于10秒（防止过于频繁的请求）
-                    refresh_interval_s = max(10, refresh_interval_s)
+                    operation_lock = getattr(
+                        account, "account_operation_lock", None
+                    )
+                    if operation_lock is None:
+                        operation_lock = threading.Lock()
+                    if not operation_lock.acquire(blocking=False):
+                        logging.debug(
+                            f"[账号刷新线程] 账号 {account_id} 正在执行其它操作，跳过本轮"
+                        )
+                        if stop_event.wait(timeout=1):
+                            break
+                        continue
 
-                    # === 第五步：执行自动签到检查 ===
-                    logging.info(f"[账号刷新线程] 账号 {account_id} 开始自动签到检查")
+                    try:
+                        # === 第四步：获取刷新间隔 ===
+                        # 从账号参数中获取刷新间隔（秒）
+                        refresh_interval_s = account.params.get(
+                            "auto_attendance_refresh_s", 15)
+                        # 确保刷新间隔不小于10秒（防止过于频繁的请求）
+                        refresh_interval_s = max(10, refresh_interval_s)
 
-                    # 调用签到检查函数
-                    # 这个函数会检查是否有需要签到的活动，并自动执行签到
-                    auto_attendance_closed = self._check_and_trigger_auto_attendance(account)
-                    if auto_attendance_closed:
-                        break
+                        # === 第五步：执行自动签到检查 ===
+                        logging.info(
+                            f"[账号刷新线程] 账号 {account_id} 开始自动签到检查"
+                        )
 
-                    # === 第六步：刷新通知 ===
-                    logging.info(f"[账号刷新线程] 账号 {account_id} 刷新通知")
+                        # 调用签到检查函数
+                        # 这个函数会检查是否有需要签到的活动，并自动执行签到
+                        auto_attendance_closed = (
+                            self._check_and_trigger_auto_attendance(account)
+                        )
+                        if auto_attendance_closed:
+                            break
 
-                    # 检查账号对象是否有 get_notifications 方法
-                    if hasattr(account, 'get_notifications'):
-                        # 调用获取通知方法（is_auto_refresh=True 表示是后台自动刷新）
-                        result = account.get_notifications(
-                            is_auto_refresh=True)
+                        # === 第六步：刷新通知 ===
+                        logging.info(f"[账号刷新线程] 账号 {account_id} 刷新通知")
 
-                        # 如果成功获取通知，尝试通过 SocketIO 推送给前端
-                        if result.get("success"):
-                            # 获取会话ID（用于 SocketIO 推送）
-                            session_id = getattr(
-                                account, "_web_session_id", None)
+                        # 检查账号对象是否有 get_notifications 方法
+                        if hasattr(account, 'get_notifications'):
+                            result = account.get_notifications(
+                                is_auto_refresh=True)
 
-                            # 检查是否有 SocketIO 实例和会话ID
-                            if session_id and "socketio" in globals():
-                                try:
-                                    # 向特定会话推送通知更新事件
-                                    globals()["socketio"].emit(
-                                        "onNotificationsUpdated",
-                                        result,
-                                        room=session_id
-                                    )
-                                    logging.debug(
-                                        f"[账号刷新线程] 已向账号 {account_id} 的会话推送通知更新"
-                                    )
-                                except Exception as e:
-                                    # 推送失败，记录错误但不影响主流程
-                                    logging.error(
-                                        f"[账号刷新线程] 账号 {account_id} SocketIO推送通知失败: {e}",
-                                        exc_info=True
-                                    )
+                            if result.get("success"):
+                                session_id = getattr(
+                                    account, "_web_session_id", None)
 
-                    # === 第七步：更新多账号统计信息 ===
-                    # 如果是多账号模式且账号是 AccountSession 类型
-                    if self.is_multi_account_mode and hasattr(account, 'summary'):
-                        try:
-                            # 获取该账号的考勤统计
-                            self._multi_fetch_attendance_stats(account)
-                            # 更新前端显示的账号状态
-                            self._update_account_status_js(
-                                account, summary=account.summary)
-                        except Exception as e:
-                            logging.error(
-                                f"[账号刷新线程] 账号 {account_id} 更新统计失败: {e}",
-                                exc_info=True
-                            )
+                                if session_id and "socketio" in globals():
+                                    try:
+                                        globals()["socketio"].emit(
+                                            "onNotificationsUpdated",
+                                            result,
+                                            room=session_id
+                                        )
+                                        logging.debug(
+                                            f"[账号刷新线程] 已向账号 {account_id} 的会话推送通知更新"
+                                        )
+                                    except Exception as e:
+                                        logging.error(
+                                            f"[账号刷新线程] 账号 {account_id} SocketIO推送通知失败: {e}",
+                                            exc_info=True
+                                        )
+
+                        # === 第七步：更新多账号统计信息 ===
+                        if (
+                            self.is_multi_account_mode
+                            and hasattr(account, 'summary')
+                        ):
+                            try:
+                                self._multi_fetch_attendance_stats(account)
+                                self._update_account_status_js(
+                                    account, summary=account.summary)
+                            except Exception as e:
+                                logging.error(
+                                    f"[账号刷新线程] 账号 {account_id} 更新统计失败: {e}",
+                                    exc_info=True
+                                )
+                    finally:
+                        operation_lock.release()
 
                     # === 第八步：等待下一次刷新 ===
                     logging.info(
@@ -24716,6 +25023,7 @@ class BackgroundTaskManager:
 
     def __init__(self):
         self.tasks = {}
+        self.execution_tokens = {}
         self.lock = threading.Lock()
         self.task_storage_dir = os.path.join(
             os.path.dirname(__file__), "background_tasks"
@@ -24870,6 +25178,59 @@ class BackgroundTaskManager:
 
         # 步骤2：启动任务（没有欠费问题）
         with self.lock:
+            existing_task = self.tasks.get(session_id)
+            if existing_task and existing_task.get("status") == "running":
+                return {
+                    "success": False,
+                    "message": "当前会话已有后台任务在运行",
+                }
+
+            execution_identities = []
+            if getattr(api_instance, "is_multi_account_mode", False):
+                for account_username, account in (
+                    getattr(api_instance, "accounts", {}) or {}
+                ).items():
+                    execution_identities.append(account_username)
+                    account_user_data = getattr(account, "user_data", None)
+                    execution_identities.extend(
+                        [
+                            getattr(account_user_data, "username", ""),
+                            getattr(account_user_data, "student_id", ""),
+                        ]
+                    )
+            else:
+                user_data = getattr(api_instance, "user_data", None)
+                user_info = getattr(api_instance, "user_info", {}) or {}
+                execution_identities.extend(
+                    [
+                        getattr(user_data, "username", ""),
+                        getattr(user_data, "student_id", ""),
+                        (
+                            user_info.get("student_id", "")
+                            if isinstance(user_info, dict)
+                            else ""
+                        ),
+                        (
+                            user_info.get("account", "")
+                            if isinstance(user_info, dict)
+                            else ""
+                        ),
+                    ]
+                )
+
+            execution_token = object()
+            claimed, conflict_identity = _claim_school_account_execution(
+                execution_identities,
+                execution_token,
+            )
+            if not claimed:
+                return {
+                    "success": False,
+                    "message": (
+                        f"学校账号 {conflict_identity} 已在单账号或多账号模式中执行任务"
+                    ),
+                }
+
             task_state = {
                 "session_id": session_id,
                 "total_tasks": len(task_indices),
@@ -24888,13 +25249,20 @@ class BackgroundTaskManager:
             }
 
             self.tasks[session_id] = task_state
+            self.execution_tokens[session_id] = execution_token
             self.save_task_state(session_id, task_state)
             thread = threading.Thread(
                 target=self._execute_tasks_background,
                 args=(session_id, api_instance, task_indices, auto_generate),
                 daemon=True,
             )
-            thread.start()
+            try:
+                thread.start()
+            except Exception:
+                self.tasks.pop(session_id, None)
+                self.execution_tokens.pop(session_id, None)
+                _release_school_account_execution(execution_token)
+                raise
 
             logging.info(
                 f"后台任务已启动，会话ID前缀: {session_id[:8]}, 总任务数: {len(task_indices)}"
@@ -25263,6 +25631,10 @@ class BackgroundTaskManager:
                     self.tasks[session_id]["status"] = "error"
                     self.tasks[session_id]["error"] = str(e)
                     self.save_task_state(session_id, self.tasks[session_id])
+        finally:
+            with self.lock:
+                execution_token = self.execution_tokens.pop(session_id, None)
+            _release_school_account_execution(execution_token)
 
     def get_task_status(self, session_id):
         """获取任务状态"""

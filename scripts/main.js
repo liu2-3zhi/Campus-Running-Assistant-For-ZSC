@@ -38058,6 +38058,34 @@ function updateProviderRunnerMarker(containerId, coord, options = {}) {
       logMessage_Warning(`[地图] 更新${containerId}腾讯标记失败，将重建标记:`, e);
     }
   }
+  if (
+    previousMarker &&
+    provider === "tianditu" &&
+    window.T &&
+    typeof previousMarker.setLngLat === "function"
+  ) {
+    try {
+      const providerCoord = convertGcj02ToProviderCoordinates(provider, normalized);
+      previousMarker.setLngLat(new T.LngLat(providerCoord.lng, providerCoord.lat));
+      return previousMarker;
+    } catch (e) {
+      logMessage_Warning(`[地图] 更新${containerId}天地图标记失败，将重建标记:`, e);
+    }
+  }
+  if (
+    previousMarker &&
+    provider === "baidu" &&
+    window.BMapGL &&
+    typeof previousMarker.setPosition === "function"
+  ) {
+    try {
+      const providerCoord = convertGcj02ToProviderCoordinates(provider, normalized);
+      previousMarker.setPosition(new BMapGL.Point(providerCoord.lng, providerCoord.lat));
+      return previousMarker;
+    } catch (e) {
+      logMessage_Warning(`[地图] 更新${containerId}百度标记失败，将重建标记:`, e);
+    }
+  }
   if (previousMarker) {
     removeProviderOverlayFromMap(containerId, previousMarker);
   }
@@ -42116,7 +42144,18 @@ function renderMultiAccountList(accounts) {
             ? "mobile-multi-only-incomplete-check"
             : "multi-run-only-incomplete-check";
           const runOnly = document.getElementById(checkboxId)?.checked ?? true;
-          callPythonAPI("multi_start_single_account", username, runOnly);
+          const result = await callPythonAPI(
+            "multi_start_single_account",
+            username,
+            runOnly,
+          );
+          if (!result || !result.success) {
+            Swal.fire({
+              title: "无法启动任务",
+              text: result?.message || "启动失败",
+              icon: "warning",
+            });
+          }
         }),
     );
 

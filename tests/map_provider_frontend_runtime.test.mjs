@@ -426,6 +426,11 @@ function createTianDiTuSdk() {
     constructor(position, options = {}) {
       this.position = position;
       this.options = options;
+      this.positionUpdateCount = 0;
+    }
+    setLngLat(position) {
+      this.position = position;
+      this.positionUpdateCount += 1;
     }
   }
   class Icon {
@@ -543,6 +548,11 @@ function createBaiduSdk() {
       this.position = position;
       this.options = options;
       this.label = null;
+      this.positionUpdateCount = 0;
+    }
+    setPosition(position) {
+      this.position = position;
+      this.positionUpdateCount += 1;
     }
     setLabel(label) {
       this.label = label;
@@ -1535,7 +1545,7 @@ test('provider maps suppress the browser context menu so right drag reaches the 
   }
 });
 
-test('provider runner marker updates current position on non-amap maps', () => {
+test('provider runner markers update current position in place on non-amap maps', () => {
   const providers = ['tencent', 'tianditu', 'baidu'];
 
   for (const provider of providers) {
@@ -1555,7 +1565,9 @@ test('provider runner marker updates current position on non-amap maps', () => {
       assert.equal(firstMarker.options.geometries[0].position.lng, 113.40);
       assert.equal(firstMarker.options.geometries[0].id, 'map-container');
     } else {
-      assert.notEqual(firstMarker, secondMarker, `${provider} runner marker should be replaced when position changes`);
+      assert.equal(firstMarker, secondMarker, `${provider} runner marker should be updated in place`);
+      assert.equal(firstMarker.positionUpdateCount, 1);
+      assert.ok(firstMarker.position, `${provider} runner marker should keep a position`);
     }
     assert.equal(Object.keys(runtime.getState().providerRunnerMarkers).length, 1, provider);
   }
