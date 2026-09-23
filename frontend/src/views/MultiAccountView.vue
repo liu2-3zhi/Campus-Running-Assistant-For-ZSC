@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useMapStore } from '@/stores/map'
 import { useNotificationStore } from '@/stores/notification'
 import { callAPI, callRawAPI } from '@/services/api'
-import { connectWebSocket, disconnectWebSocket } from '@/services/socket'
+import { connectWebSocket, disconnectWebSocket, isWebSocketConnected, onWebSocketStatus } from '@/services/socket'
 import MapContainer from '@/components/map/MapContainer.vue'
 import NotificationsPanel from '@/components/main/NotificationsPanel.vue'
 import AppModal from '@/components/common/AppModal.vue'
@@ -64,6 +64,9 @@ const logText = computed(() => logs.value.map(entry => `[${entry.time}][${entry.
 const configUsers = computed(() => appStore.users)
 
 let autoRefreshTimer = null
+let autoRefreshRequestId = 0
+let socketStatusUnsubscribe = null
+let viewMounted = false
 
 const selectedCount = computed(() => selectedIds.value.size)
 const allSelected = computed(() =>
@@ -431,22 +434,57 @@ function goToAdmin() {
   showAdmin.value = true
 }
 
-// --- Auto refresh (task 8) ---
+// --- Auto refresh fallback: WebSocket pushes take priority ---
+function scheduleAutoRefresh() {
+  if (!viewMounted || isWebSocketConnected()) return
+  autoRefreshTimer = setTimeout(pollAccountsFallback, 1000)
+}
+
+async function pollAccountsFallback() {
+  if (!viewMounted || isWebSocketConnected()) return
+  const requestId = ++autoRefreshRequestId
+  try {
+    const result = await checkedAPI('multi_get_all_accounts_status')
+    if (
+      !viewMounted ||
+      isWebSocketConnected() ||
+      requestId !== autoRefreshRequestId
+    ) {
+      return
+    }
+    if (result?.accounts) {
+      appStore.multiAccounts = result.accounts
+    }
+  } catch (_) {
+  } finally {
+    if (
+      viewMounted &&
+      !isWebSocketConnected() &&
+      requestId === autoRefreshRequestId
+    ) {
+      scheduleAutoRefresh()
+    }
+  }
+}
+
 function startAutoRefresh() {
   stopAutoRefresh()
-  autoRefreshTimer = setInterval(async () => {
-    try {
-      const result = await checkedAPI('multi_get_all_accounts_status')
-      if (result?.accounts) {
-        appStore.multiAccounts = result.accounts
-      }
-    } catch (_) {}
-  }, 1000)
+  scheduleAutoRefresh()
 }
+
 function stopAutoRefresh() {
+  autoRefreshRequestId++
   if (autoRefreshTimer) {
-    clearInterval(autoRefreshTimer)
+    clearTimeout(autoRefreshTimer)
     autoRefreshTimer = null
+  }
+}
+
+function syncAutoRefreshWithSocket(connected) {
+  if (connected || !viewMounted) {
+    stopAutoRefresh()
+  } else {
+    startAutoRefresh()
   }
 }
 
@@ -486,6 +524,7 @@ function logLevelColor(level) {
 
 // --- Lifecycle ---
 onMounted(async () => {
+  viewMounted = true
   appStore.currentView = 'multi'
   appStore.isMultiMode = true
   try {
@@ -507,12 +546,17 @@ onMounted(async () => {
     } catch (_) {}
   }
 
-  // Start auto refresh polling
-  startAutoRefresh()
+  // WebSocket is the primary channel; polling is only the disconnected fallback.
+  socketStatusUnsubscribe = onWebSocketStatus(syncAutoRefreshWithSocket)
   connectWebSocket()
 })
 
 onUnmounted(() => {
+  viewMounted = false
+  if (socketStatusUnsubscribe) {
+    socketStatusUnsubscribe()
+    socketStatusUnsubscribe = null
+  }
   stopAutoRefresh()
   disconnectWebSocket()
   appStore.isMultiMode = false

@@ -27,6 +27,8 @@ function setupComponent(path, overrides = {}, props = {}) {
     callAPI: async (method, ...args) => { calls.push([method, ...args]); return { success: true } },
     callRawAPI: async (method, ...args) => { calls.push([method, ...args]); return { success: true } },
     connectWebSocket() {}, disconnectWebSocket() {},
+    isWebSocketConnected: () => false,
+    onWebSocketStatus: listener => { listener(false); return () => {} },
     checkOverdueBeforeStart: async () => true, paramDefs, paramGroups,
     Swal: { fire: async () => ({ isConfirmed: true }) },
     ...overrides,

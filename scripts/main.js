@@ -14668,6 +14668,36 @@ const NETWORK_DIALOG_AUTO_RETRY_INTERVAL_MS = 8000;
 let networkDialogAutoRetryCount = 0;
 let networkDialogAutoRetryTimer = null;
 
+function isWebSocketConnected() {
+  return !!(socket && socket.connected);
+}
+
+function stopUserListPollingFallback() {
+  if (!refreshUserListInterval) return;
+  clearInterval(refreshUserListInterval);
+  refreshUserListInterval = null;
+}
+
+function startUserListPollingFallback() {
+  if (
+    refreshUserListInterval ||
+    isInNetworkErrorState ||
+    isWebSocketConnected()
+  ) {
+    return;
+  }
+  refreshUserListInterval = setInterval(refreshUserList, 30000);
+  logMessage_Info("refreshUserList fallback interval started.");
+}
+
+function syncUserListPollingBySocketState() {
+  if (isWebSocketConnected() || isInNetworkErrorState) {
+    stopUserListPollingFallback();
+    return;
+  }
+  startUserListPollingFallback();
+}
+
 async function checkServerHealth() {
   try {
     const ctrl = new AbortController();
@@ -14689,10 +14719,7 @@ function enterNetworkErrorState() {
   isInNetworkErrorState = true;
   logMessage_Info("[网络] 进入网络错误状态");
 
-  if (refreshUserListInterval) {
-    clearInterval(refreshUserListInterval);
-    refreshUserListInterval = null;
-  }
+  stopUserListPollingFallback();
   if (socket) {
     if (socket.io) socket.io.opts.reconnection = false;
     if (socket.connected) socket.disconnect();
@@ -14707,9 +14734,7 @@ function exitNetworkErrorState() {
   networkDialogAutoRetryCount = 0;
 
   setTimeout(() => {
-    if (!refreshUserListInterval) {
-      refreshUserListInterval = setInterval(refreshUserList, 30000);
-    }
+    syncUserListPollingBySocketState();
     if (socket && !socket.connected && sessionUUID) {
       if (socket.io) socket.io.opts.reconnection = true;
       socket.connect();
@@ -35622,9 +35647,7 @@ async function initializeApp() {
       }
       $("loading-overlay").classList.remove("hidden");
 
-      if (refreshUserListInterval) clearInterval(refreshUserListInterval);
-      refreshUserListInterval = setInterval(refreshUserList, 30000);
-      logMessage_Info("refreshUserList interval started.");
+      syncUserListPollingBySocketState();
 
       showMainApp();
       const name = currentUserData.name || "离线模式";
@@ -35874,6 +35897,8 @@ function connectWebSocket() {
   socket.on("connect", () => {
     verificationCodesSocketHealthy = true;
     stopVerificationCodesPollingFallback();
+    syncUserListPollingBySocketState();
+    syncMultiAccountAutoRefreshBySocketState();
     logMessage_Info("WebSocket 连接成功。SID:", socket.id);
     socket.emit("join", { session_id: sessionUUID });
     startWsHeartbeat();
@@ -35884,6 +35909,8 @@ function connectWebSocket() {
     verificationCodesSocketHealthy = false;
     stopWsHeartbeat();
     syncVerificationCodesPollingByModalState();
+    syncUserListPollingBySocketState();
+    syncMultiAccountAutoRefreshBySocketState();
     logMessage_Info("WebSocket 连接已断开:", reason);
     logMessage_Info("[System] WebSocket 连接已断开，尝试重连...");
   });
@@ -35891,6 +35918,8 @@ function connectWebSocket() {
   socket.on("connect_error", (error) => {
     verificationCodesSocketHealthy = false;
     syncVerificationCodesPollingByModalState();
+    syncUserListPollingBySocketState();
+    syncMultiAccountAutoRefreshBySocketState();
     if (!isInNetworkErrorState) {
       logMessage_Error("WebSocket 连接错误:", error);
       logMessage_Info("[System-Error] WebSocket 连接失败");
@@ -35909,6 +35938,7 @@ function connectWebSocket() {
   // ===============================================
   socket.on("multi_status_update", (data) => {
     if (data && data.username && data.data) {
+      markMultiAccountRealtimeUpdate();
       logMessage_Debug(`[Socket] 收到 ${data.username} 状态更新`);
       multi_updateAccountStatus(data.username, data.data);
     }
@@ -35916,6 +35946,7 @@ function connectWebSocket() {
 
   socket.on("accounts_updated", (data) => {
     if (data && data.accounts) {
+      markMultiAccountRealtimeUpdate();
       logMessage(
         `[Socket] 收到账号列表更新，共 ${data.accounts.length} 个账号`,
         "INFO",
@@ -35943,6 +35974,7 @@ function connectWebSocket() {
       typeof data.lon === "number" &&
       typeof data.lat === "number"
     ) {
+      markMultiAccountRealtimeUpdate();
       multi_updateRunnerPosition(
         data.username,
         data.lon,
@@ -39678,7 +39710,7 @@ async function refreshUserList() {
   }
 }
 
-setInterval(refreshUserList, 30000);
+startUserListPollingFallback();
 
 async function onUserChange() {
   const loginBtn = $("login-button");
@@ -42456,17 +42488,44 @@ async function multi_refreshAll() {
 }
 
 let lastAccountListSignature = "";
-let isMultiAccountAutoRefreshRunning = false; // 新增：运行状态标志
+let isMultiAccountAutoRefreshRunning = false;
+let isMultiAccountAutoRefreshDesired = false;
+let multiAccountAutoRefreshGeneration = 0;
+
+function markMultiAccountRealtimeUpdate() {
+  multiAccountAutoRefreshGeneration++;
+}
+
+function clearMultiAccountAutoRefreshTimer() {
+  isMultiAccountAutoRefreshRunning = false;
+  if (multiAccountAutoRefreshInterval) {
+    clearTimeout(multiAccountAutoRefreshInterval);
+    multiAccountAutoRefreshInterval = null;
+  }
+}
 
 function startMultiAccountAutoRefresh(interval = 500) {
-  // 先停止现有的轮询
-  stopMultiAccountAutoRefresh();
+  clearMultiAccountAutoRefreshTimer();
+  multiAccountAutoRefreshGeneration++;
+  isMultiAccountAutoRefreshDesired = true;
+
+  if (isWebSocketConnected()) {
+    console.log("[多账号自动刷新] WebSocket 已连接，跳过轮询");
+    return;
+  }
 
   isMultiAccountAutoRefreshRunning = true;
+  const refreshGeneration = multiAccountAutoRefreshGeneration;
 
   const refreshLoop = async () => {
     // 检查运行标志
-    if (!isMultiAccountAutoRefreshRunning) return;
+    if (
+      !isMultiAccountAutoRefreshDesired ||
+      !isMultiAccountAutoRefreshRunning ||
+      isWebSocketConnected()
+    ) {
+      return;
+    }
 
     // 检查全局网络错误状态
     if (typeof isInNetworkErrorState !== "undefined" && isInNetworkErrorState) {
@@ -42493,6 +42552,15 @@ function startMultiAccountAutoRefresh(interval = 500) {
 
       // 使用loadInitialData替代直接调用API，利用其限流和缓存机制
       const response = await loadInitialData();
+
+      if (
+        refreshGeneration !== multiAccountAutoRefreshGeneration ||
+        !isMultiAccountAutoRefreshDesired ||
+        !isMultiAccountAutoRefreshRunning ||
+        isWebSocketConnected()
+      ) {
+        return;
+      }
 
       // 处理成功响应，从response.accounts中获取数据
       if (response && response.success && response.accounts) {
@@ -42604,7 +42672,13 @@ function startMultiAccountAutoRefresh(interval = 500) {
       }
 
       // 请求成功，按正常间隔调度下一次
-      multiAccountAutoRefreshInterval = setTimeout(refreshLoop, interval);
+      if (
+        isMultiAccountAutoRefreshDesired &&
+        isMultiAccountAutoRefreshRunning &&
+        !isWebSocketConnected()
+      ) {
+        multiAccountAutoRefreshInterval = setTimeout(refreshLoop, interval);
+      }
     } catch (error) {
       console.error("[多账号自动刷新] 轮询请求失败:", error);
 
@@ -42622,7 +42696,13 @@ function startMultiAccountAutoRefresh(interval = 500) {
 
       // 其他错误（如网络波动、服务器500等）：退避 5 秒后重试
       // 这里避免了死循环高频请求
-      multiAccountAutoRefreshInterval = setTimeout(refreshLoop, 5000);
+      if (
+        isMultiAccountAutoRefreshDesired &&
+        isMultiAccountAutoRefreshRunning &&
+        !isWebSocketConnected()
+      ) {
+        multiAccountAutoRefreshInterval = setTimeout(refreshLoop, 5000);
+      }
     }
   };
 
@@ -42634,11 +42714,25 @@ function startMultiAccountAutoRefresh(interval = 500) {
 }
 
 function stopMultiAccountAutoRefresh() {
-  isMultiAccountAutoRefreshRunning = false; // 标记停止
-  if (multiAccountAutoRefreshInterval) {
-    clearTimeout(multiAccountAutoRefreshInterval); // 使用 clearTimeout
-    multiAccountAutoRefreshInterval = null;
+  isMultiAccountAutoRefreshDesired = false;
+  multiAccountAutoRefreshGeneration++;
+  const wasRunning = isMultiAccountAutoRefreshRunning;
+  clearMultiAccountAutoRefreshTimer();
+  if (wasRunning) {
     console.log("[多账号自动刷新] 已停止自动刷新");
+  }
+}
+
+function syncMultiAccountAutoRefreshBySocketState() {
+  if (isWebSocketConnected()) {
+    clearMultiAccountAutoRefreshTimer();
+    return;
+  }
+  if (
+    isMultiAccountAutoRefreshDesired &&
+    !isMultiAccountAutoRefreshRunning
+  ) {
+    startMultiAccountAutoRefresh(500);
   }
 }
 
@@ -62153,10 +62247,7 @@ console.log("[移动端] Phase 5 管理面板功能修复已加载");
 // --- Next Script Block ---
 
 window.addEventListener("beforeunload", () => {
-  if (multiAccountAutoRefreshInterval) {
-    clearInterval(multiAccountAutoRefreshInterval);
-    multiAccountAutoRefreshInterval = null;
-  }
+  stopMultiAccountAutoRefresh();
 });
 
 // =============================================================================

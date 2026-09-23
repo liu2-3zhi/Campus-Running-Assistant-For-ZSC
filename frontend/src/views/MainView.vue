@@ -7,7 +7,7 @@ import { useMapStore } from '@/stores/map'
 import { useNotificationStore } from '@/stores/notification'
 import { callAPI } from '@/services/api'
 import { hydrateMapProviderSecrets } from '@/services/mapKeyRuntime'
-import { connectWebSocket, disconnectWebSocket } from '@/services/socket'
+import { connectWebSocket, disconnectWebSocket, isWebSocketConnected, onWebSocketStatus } from '@/services/socket'
 import { useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
 
@@ -67,6 +67,9 @@ const showAdmin = ref(false)
 
 // ── Timers ──
 let userRefreshTimer = null
+let userRefreshRequestId = 0
+let socketStatusUnsubscribe = null
+let viewMounted = false
 let resizeHandler = null
 
 // ── Initial data load ──
@@ -118,8 +121,17 @@ async function loadInitialData() {
 }
 
 async function refreshUsers() {
+  if (!viewMounted || isWebSocketConnected()) return
+  const requestId = ++userRefreshRequestId
   try {
     const data = await callAPI('get_initial_data')
+    if (
+      !viewMounted ||
+      isWebSocketConnected() ||
+      requestId !== userRefreshRequestId
+    ) {
+      return
+    }
     if (data) {
       auth.applyAuthInfo(data)
       if (data.users) app.users = data.users
@@ -129,6 +141,28 @@ async function refreshUsers() {
     }
   } catch {
     // silent fail for background refresh
+  }
+}
+
+function stopUserRefresh() {
+  userRefreshRequestId++
+  if (userRefreshTimer) {
+    clearInterval(userRefreshTimer)
+    userRefreshTimer = null
+  }
+}
+
+function startUserRefresh() {
+  stopUserRefresh()
+  if (!viewMounted || isWebSocketConnected()) return
+  userRefreshTimer = setInterval(refreshUsers, 30000)
+}
+
+function syncUserRefreshWithSocket(connected) {
+  if (connected || !viewMounted) {
+    stopUserRefresh()
+  } else {
+    startUserRefresh()
   }
 }
 
@@ -164,12 +198,12 @@ async function handleBack() {
 
 // ── Lifecycle ──
 onMounted(() => {
+  viewMounted = true
   app.detectMobile()
   loadInitialData()
+  socketStatusUnsubscribe = onWebSocketStatus(syncUserRefreshWithSocket)
   connectWebSocket()
   notifStore.fetchNotifications()
-
-  userRefreshTimer = setInterval(refreshUsers, 30000)
 
   // Handle resize for mobile detection
   resizeHandler = () => app.detectMobile()
@@ -177,10 +211,12 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (userRefreshTimer) {
-    clearInterval(userRefreshTimer)
-    userRefreshTimer = null
+  viewMounted = false
+  if (socketStatusUnsubscribe) {
+    socketStatusUnsubscribe()
+    socketStatusUnsubscribe = null
   }
+  stopUserRefresh()
   if (resizeHandler) {
     window.removeEventListener('resize', resizeHandler)
     resizeHandler = null

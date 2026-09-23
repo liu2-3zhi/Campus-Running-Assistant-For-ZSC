@@ -4,9 +4,34 @@ import { useAppStore } from '@/stores/app'
 
 let socket = null
 let heartbeatTimer = null
+const connectionListeners = new Set()
+let socketConnected = false
 
 export function getSocket() {
   return socket
+}
+
+export function isWebSocketConnected() {
+  return socketConnected && !!socket?.connected
+}
+
+function notifyConnectionState(connected) {
+  if (socketConnected === connected) return
+  socketConnected = connected
+  connectionListeners.forEach((listener) => {
+    try {
+      listener(connected)
+    } catch (error) {
+      console.warn('[WS] 连接状态监听器执行失败:', error)
+    }
+  })
+}
+
+export function onWebSocketStatus(listener) {
+  if (typeof listener !== 'function') return () => {}
+  connectionListeners.add(listener)
+  listener(isWebSocketConnected())
+  return () => connectionListeners.delete(listener)
 }
 
 function startHeartbeat() {
@@ -44,6 +69,7 @@ export function connectWebSocket() {
   socket.connect()
 
   socket.on('connect', () => {
+    notifyConnectionState(true)
     console.info('[WS] 连接成功, SID:', socket.id)
     socket.emit('join', { session_id: auth.sessionUUID })
     startHeartbeat()
@@ -61,11 +87,13 @@ export function connectWebSocket() {
   })
 
   socket.on('disconnect', (reason) => {
+    notifyConnectionState(false)
     console.info('[WS] 断开连接:', reason)
     stopHeartbeat()
   })
 
   socket.on('connect_error', (err) => {
+    notifyConnectionState(false)
     console.warn('[WS] 连接错误:', err.message)
   })
 
@@ -149,6 +177,7 @@ export function disconnectWebSocket() {
     if (socket.connected) socket.disconnect()
     socket = null
   }
+  notifyConnectionState(false)
 }
 
 export function disableReconnection() {
