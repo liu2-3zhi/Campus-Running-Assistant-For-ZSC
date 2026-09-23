@@ -114,6 +114,20 @@ test('backend business failures do not produce success logs or clear manual inpu
   assert.equal(ctx.app.logs.some(log => log.msg.startsWith('已添加账号')), false)
 })
 
+test('Vue account cards translate the backend Have_Tasks sentinel', () => {
+  const ctx = setupComponent('views/MultiAccountView.vue')
+  const account = {
+    username: 'student-a',
+    status_text: 'Have_Tasks',
+    summary: {
+      not_started: 1,
+      unexpired_count: 5,
+      unexpired_incomplete_count: 4,
+    },
+  }
+  assert.equal(ctx.state.getAccountStatusText(account), '有 3 个任务可执行')
+})
+
 test('offline task import reads JSON and preserves returned tasks before navigating', async () => {
   const ctx = setupComponent('views/LoginView.vue', {
     callAPI: async (...args) => {

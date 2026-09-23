@@ -186,6 +186,28 @@ class TestMultiAccountWorkerGuard(unittest.TestCase):
             background_block,
         )
 
+    def test_refresh_worker_pushes_user_facing_executable_task_status(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "main.py"
+        ).read_text(encoding="utf-8")
+        refresh_block = source.split(
+            "def _multi_refresh_worker_unlocked(",
+            1,
+        )[1].split(
+            "def multi_remove_selected_accounts(",
+            1,
+        )[0]
+
+        self.assertIn(
+            'final_status = f"有 {exe_cnt} 个任务可执行"',
+            refresh_block,
+        )
+        self.assertIn(
+            "status_text=final_status, summary=acc.summary",
+            refresh_block,
+        )
+        self.assertNotIn("Have_Tasks", refresh_block)
+
 
 if __name__ == "__main__":
     unittest.main()

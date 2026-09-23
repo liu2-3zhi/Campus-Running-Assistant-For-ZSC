@@ -975,6 +975,27 @@ body.desktop-forced-mode #multi-account-app #multi-account-list {
   overflow-y: auto;
 }
 
+#multi-account-list .status-text {
+  max-width: 58%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.35;
+  text-align: right;
+}
+
+#mobile-multi-account-list .status-text {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.35;
+  text-align: left;
+}
+
 body.desktop-forced-mode #multi-account-app #multi-account-count {
   white-space: nowrap;
 }

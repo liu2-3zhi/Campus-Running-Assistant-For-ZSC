@@ -91,6 +91,27 @@ function getStatusBadge(account) {
   return map[state] || { text: state, cls: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' }
 }
 
+function getAccountStatusText(account) {
+  const username = getAccountName(account)
+  const liveStatus = statuses.value[username] || {}
+  const statusText = liveStatus.status_text || account.status_text
+  if (statusText !== 'Have_Tasks') {
+    return statusText || getStatusBadge(account).text
+  }
+
+  const summary = liveStatus.summary || account.summary
+  if (!summary) return '有任务可执行'
+
+  const unexpiredCount = Number(
+    delaySettings.runOnlyIncomplete
+      ? summary.unexpired_incomplete_count
+      : summary.unexpired_count
+  ) || 0
+  const notStartedCount = Number(summary.not_started) || 0
+  const taskCount = Math.max(0, unexpiredCount - notStartedCount)
+  return taskCount > 0 ? `有 ${taskCount} 个任务可执行` : '无可执行任务'
+}
+
 function getAccountName(account) {
   return account.username || account.name || account.id || ''
 }
@@ -772,7 +793,7 @@ watch(() => appStore.multiPositions, (positions) => {
               }"
             >
               <!-- Top row: checkbox, name, tag, status -->
-              <div class="flex items-start gap-3">
+              <div class="flex min-w-0 items-start gap-3">
                 <!-- Checkbox -->
                 <input
                   type="checkbox"
@@ -806,10 +827,10 @@ watch(() => appStore.multiPositions, (positions) => {
 
                 <!-- Status badge -->
                 <span
-                  class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+                  class="status-text max-w-[58%] shrink rounded-full px-2 py-0.5 text-right text-xs font-medium leading-snug break-words"
                   :class="getStatusBadge(account).cls"
                 >
-                  {{ account.status_text || getStatusBadge(account).text }}
+                  {{ getAccountStatusText(account) }}
                 </span>
               </div>
 
@@ -1145,44 +1166,46 @@ watch(() => appStore.multiPositions, (positions) => {
               }"
             >
               <!-- Top row: checkbox, name, tag, status -->
-              <div class="flex items-start gap-3">
-                <!-- Checkbox -->
-                <input
-                  type="checkbox"
-                  :checked="isSelected(account)"
-                  class="mt-1 h-4 w-4 shrink-0 rounded"
-                  @change="toggleSelect(account)"
-                />
+              <div class="flex min-w-0 flex-col gap-2">
+                <div class="flex min-w-0 items-start gap-3">
+                  <!-- Checkbox -->
+                  <input
+                    type="checkbox"
+                    :checked="isSelected(account)"
+                    class="mt-1 h-4 w-4 shrink-0 rounded"
+                    @change="toggleSelect(account)"
+                  />
 
-                <!-- Name + tag -->
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-2">
-                    <span class="truncate text-sm font-bold" style="color: var(--ink)">
-                      {{ account.name || getAccountName(account) }}
-                    </span>
+                  <!-- Name + tag -->
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2">
+                      <span class="truncate text-sm font-bold" style="color: var(--ink)">
+                        {{ account.name || getAccountName(account) }}
+                      </span>
+                      <span
+                        v-if="account.name && account.username && account.name !== account.username"
+                        class="text-xs"
+                        style="color: var(--ink-muted)"
+                      >
+                        ({{ account.username }})
+                      </span>
+                    </div>
                     <span
-                      v-if="account.name && account.username && account.name !== account.username"
-                      class="text-xs"
-                      style="color: var(--ink-muted)"
+                      v-if="account.tag"
+                      class="mt-0.5 inline-block rounded px-1.5 py-0.5 text-xs font-medium"
+                      style="background: rgba(168,85,247,0.1); color: rgb(168,85,247)"
                     >
-                      ({{ account.username }})
+                      {{ account.tag }}
                     </span>
                   </div>
-                  <span
-                    v-if="account.tag"
-                    class="mt-0.5 inline-block rounded px-1.5 py-0.5 text-xs font-medium"
-                    style="background: rgba(168,85,247,0.1); color: rgb(168,85,247)"
-                  >
-                    {{ account.tag }}
-                  </span>
                 </div>
 
                 <!-- Status badge -->
                 <span
-                  class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+                  class="status-text w-full rounded-full px-2 py-0.5 text-left text-xs font-medium leading-snug break-words"
                   :class="getStatusBadge(account).cls"
                 >
-                  {{ account.status_text || getStatusBadge(account).text }}
+                  {{ getAccountStatusText(account) }}
                 </span>
               </div>
 

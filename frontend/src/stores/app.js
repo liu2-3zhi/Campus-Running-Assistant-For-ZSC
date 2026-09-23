@@ -67,6 +67,12 @@ export const useAppStore = defineStore('app', () => {
   function handleMultiStatusUpdate(data) {
     if (data?.username && data?.data) {
       multiStatus.value = { ...multiStatus.value, [data.username]: data.data }
+      multiAccounts.value = multiAccounts.value.map((account) => {
+        const username = account.username || account.name || account.id
+        return username === data.username
+          ? { ...account, ...data.data }
+          : account
+      })
     }
   }
 

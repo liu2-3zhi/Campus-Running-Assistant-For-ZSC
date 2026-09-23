@@ -41945,6 +41945,27 @@ function calculateStatusText(
     return `有 ${executableCount} 个任务可执行`;
   }
 }
+
+function formatMultiAccountStatusText(
+  statusText,
+  summary,
+  onlyIncomplete = true,
+) {
+  if (statusText !== "Have_Tasks") return statusText || "";
+  if (!summary) return "有任务可执行";
+
+  const unexpiredCount = Number(
+    onlyIncomplete
+      ? summary.unexpired_incomplete_count
+      : summary.unexpired_count,
+  ) || 0;
+  const notStartedCount = Number(summary.not_started) || 0;
+  const taskCount = Math.max(0, unexpiredCount - notStartedCount);
+  return taskCount > 0
+    ? `有 ${taskCount} 个任务可执行`
+    : "无可执行任务";
+}
+
 function updateAllAccountsStatusText() {
   try {
     if (
@@ -42049,6 +42070,33 @@ function updateAllAccountsStatusText() {
     console.error("[更新账号状态] 更新状态文本时发生错误:", error);
   }
 }
+
+const pendingMultiAccountStatusRefreshes = new Set();
+const lastMultiAccountStatusRefreshRequest = new Map();
+const MULTI_ACCOUNT_STATUS_REFRESH_COOLDOWN_MS = 10000;
+
+async function requestMultiAccountStatusRefresh(username) {
+  if (!username) return;
+  const now = Date.now();
+  const lastRequest = lastMultiAccountStatusRefreshRequest.get(username) || 0;
+  if (
+    pendingMultiAccountStatusRefreshes.has(username) ||
+    now - lastRequest < MULTI_ACCOUNT_STATUS_REFRESH_COOLDOWN_MS
+  ) {
+    return;
+  }
+
+  pendingMultiAccountStatusRefreshes.add(username);
+  lastMultiAccountStatusRefreshRequest.set(username, now);
+  try {
+    await callPythonAPI("multi_refresh_single_status", username);
+  } catch (error) {
+    logMessage_Debug(`自动刷新 Have_Tasks 账号 ${username} 失败:`, error);
+  } finally {
+    pendingMultiAccountStatusRefreshes.delete(username);
+  }
+}
+
 function renderMultiAccountList(accounts) {
   cachedMultiAccounts = accounts;
   const renderToContainer = (containerId, isMobile) => {
@@ -42073,18 +42121,34 @@ function renderMultiAccountList(accounts) {
 
     accounts.forEach((acc) => {
       const s = acc.summary;
+      const onlyIncomplete =
+        document.getElementById(
+          isMobile
+            ? "mobile-multi-only-incomplete-check"
+            : "multi-run-only-incomplete-check",
+        )?.checked ?? true;
+      const displayStatusText = formatMultiAccountStatusText(
+        acc.status_text,
+        s,
+        onlyIncomplete,
+      );
+      if (acc.status_text === "Have_Tasks") {
+        void requestMultiAccountStatusRefresh(acc.username);
+      } else {
+        lastMultiAccountStatusRefreshRequest.delete(acc.username);
+      }
       const item = document.createElement("div");
       const prefix = isMobile ? "mobile-multi-acc-" : "multi-acc-";
       item.id = `${prefix}${acc.username}`;
       item.dataset.username = acc.username;
       item.className =
-        "p-3 rounded-xl border border-slate-200 bg-white/80 mb-2 text-sm relative";
+        "p-3 rounded-xl border border-slate-200 bg-white/80 mb-2 text-sm relative min-w-0 overflow-hidden";
       item.innerHTML = `
-                    <div class="flex justify-between items-start">
-                        <div class="font-bold text-slate-800 flex items-start gap-2 truncate min-w-0">
+                    <div class="${isMobile ? "flex flex-col gap-2 min-w-0" : "flex items-start justify-between gap-3 min-w-0"}">
+                        <div class="font-bold text-slate-800 flex items-start gap-2 min-w-0 ${isMobile ? "" : "flex-1"}">
                             <input type="checkbox" class="account-checkbox w-4 h-4 accent-sky-600 rounded flex-shrink-0 mt-1" style="position: static !important; transform: none !important;">
-                            <div class="truncate">
-                                <span class="account-name truncate">${
+                            <div class="min-w-0 flex-1">
+                                <span class="account-name block truncate">${
                                   acc.name
                                 }</span>
                                 <span class="text-xs text-slate-500 font-normal block">(${
@@ -42098,7 +42162,7 @@ function renderMultiAccountList(accounts) {
                             </div>
                         </div>
                         <span class="status-text font-semibold text-sky-600 text-xs px-2 py-0.5 rounded-full bg-sky-100 flex-shrink-0 whitespace-nowrap">${
-                          acc.status_text
+                          displayStatusText
                         }</span>
                     </div>
 
@@ -42810,6 +42874,11 @@ function multi_updateAccountStatus(username, data) {
     if (!item) return;
 
     if (data.status_text) {
+      if (data.status_text === "Have_Tasks") {
+        void requestMultiAccountStatusRefresh(username);
+      } else {
+        lastMultiAccountStatusRefreshRequest.delete(username);
+      }
       const statusEl = item.querySelector(".status-text");
       if (statusEl) {
         // 检查是否为"Have_Tasks"标记，需要前端计算实际状态
@@ -42820,21 +42889,16 @@ function multi_updateAccountStatus(username, data) {
             : "multi-run-only-incomplete-check";
           const onlyIncomplete =
             document.getElementById(checkboxId)?.checked ?? true;
-          const unexpiredCount = Number(
-            onlyIncomplete
-              ? data.summary.unexpired_incomplete_count
-              : data.summary.unexpired_count,
-          ) || 0;
-          const notStartedCount = Number(data.summary.not_started) || 0;
-          const taskCount = Math.max(0, unexpiredCount - notStartedCount);
-
-          // 计算状态文本
-          const calculatedStatusText =
-            taskCount > 0 ? `有 ${taskCount} 个任务可执行` : "无可执行任务";
-
-          statusEl.textContent = calculatedStatusText;
+          statusEl.textContent = formatMultiAccountStatusText(
+            data.status_text,
+            data.summary,
+            onlyIncomplete,
+          );
         } else {
-          statusEl.textContent = data.status_text;
+          statusEl.textContent = formatMultiAccountStatusText(
+            data.status_text,
+            data.summary,
+          );
         }
       }
     }
