@@ -441,8 +441,13 @@ export async function isPaymentRequiredForOverdueCheck() {
  * @param {null|string|string[]} schoolUsernameOrList
  * @returns {Promise<boolean>} true=允许继续；false=有欠费已弹窗，阻止开始
  */
-export async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
+export async function checkOverdueBeforeStart(schoolUsernameOrList = null, options = {}) {
   const Swal = getSwal()
+  const requestedAccountCount = Array.isArray(schoolUsernameOrList)
+    ? schoolUsernameOrList.length
+    : typeof schoolUsernameOrList === 'string' && schoolUsernameOrList
+      ? 1
+      : 0
   try {
     const body = {}
     if (typeof schoolUsernameOrList === 'string') {
@@ -456,7 +461,20 @@ export async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
       return true // 容错不阻塞
     }
     if (result.has_overdue) {
-      await showOverduePaymentModal(result.overdue_accounts)
+      const overdueAccounts = result.overdue_accounts || []
+      const allowSkip =
+        options.allowSkip === true &&
+        requestedAccountCount > 0 &&
+        overdueAccounts.length < requestedAccountCount
+      const action = await showOverduePaymentModal(overdueAccounts, {
+        allowSkip,
+      })
+      if (action === 'skip') {
+        if (typeof options.onSkip === 'function') {
+          options.onSkip(overdueAccounts)
+        }
+        return true
+      }
       return false
     }
     return true
@@ -507,18 +525,22 @@ function isMultiAccountMode() {
 /**
  * 按当前模式发起欠费检查（§4.5）——供 ControlTabs startRun/startAll 前置调用
  */
-export async function checkOverdueBeforeStartByCurrentMode() {
+export async function checkOverdueBeforeStartByCurrentMode(options = {}) {
   if (!(await isPaymentRequiredForOverdueCheck())) return true
   if (isMultiAccountMode()) {
     const usernames = collectMultiAccountUsernames()
-    return usernames.length > 0 ? await checkOverdueBeforeStart(usernames) : true
+    return usernames.length > 0
+      ? await checkOverdueBeforeStart(usernames, options)
+      : true
   }
   let sid = ''
   try {
     const auth = useAuthStore()
     sid = String(auth.studentId || '').trim()
   } catch (_) { /* ignore */ }
-  return sid ? await checkOverdueBeforeStart(sid) : await checkOverdueBeforeStart()
+  return sid
+    ? await checkOverdueBeforeStart(sid, options)
+    : await checkOverdueBeforeStart(null, options)
 }
 
 /* ============================================================================
@@ -537,9 +559,10 @@ export async function fetchBillingList(schoolUsername = '') {
 /**
  * 欠费账号待支付账单选择弹窗（§4.6）——勾选后进入账单合并支付流程
  */
-export async function showOverduePaymentModal(overdueAccounts) {
+export async function showOverduePaymentModal(overdueAccounts, options = {}) {
   const Swal = getSwal()
-  if (!Swal) return
+  const allowSkip = options.allowSkip === true
+  if (!Swal) return 'cancel'
 
   Swal.fire({ title: '正在获取欠费账单', allowOutsideClick: false, didOpen: () => Swal.showLoading() })
 
@@ -564,13 +587,16 @@ export async function showOverduePaymentModal(overdueAccounts) {
   Swal.close()
 
   if (!pendingBills.length) {
-    await Swal.fire({
+    const emptyResult = await Swal.fire({
       title: '暂无待支付账单',
       text: '未找到对应的待支付账单记录，请联系管理员确认。',
       icon: 'info',
       confirmButtonText: '确定',
+      showDenyButton: allowSkip,
+      denyButtonText: '跳过欠费账号并开始',
+      denyButtonColor: '#f59e0b',
     })
-    return
+    return emptyResult.isDenied ? 'skip' : 'cancel'
   }
 
   const totalAmount = pendingBills
@@ -696,9 +722,13 @@ export async function showOverduePaymentModal(overdueAccounts) {
     cancelButtonText: '取消',
     confirmButtonColor: '#3b82f6',
     cancelButtonColor: '#94a3b8',
+    showDenyButton: allowSkip,
+    denyButtonText: '跳过欠费账号并开始',
+    denyButtonColor: '#f59e0b',
     width: modalWidth,
   })
-  if (!result.isConfirmed) return
+  if (result.isDenied) return 'skip'
+  if (!result.isConfirmed) return 'cancel'
 
   const selectedBills = []
   document.querySelectorAll('[data-overdue-bill-select]').forEach((cb) => {
@@ -708,12 +738,13 @@ export async function showOverduePaymentModal(overdueAccounts) {
   })
   if (!selectedBills.length) {
     await Swal.fire({ title: '提示', text: '请至少选择一条账单', icon: 'info', confirmButtonText: '确定' })
-    return
+    return 'cancel'
   }
 
   const payType = await chooseBillingPayType({ title: '选择支付方式', totalAmount })
-  if (!payType) return
+  if (!payType) return 'cancel'
   await runBillingPaymentFlow(selectedBills, payType)
+  return 'paid'
 }
 
 /* ============================================================================

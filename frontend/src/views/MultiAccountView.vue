@@ -158,12 +158,23 @@ async function loadAccounts() {
 async function startAll() {
   if (!accounts.value.length) return
   try {
-    if (!(await checkOverdueBeforeStart(accounts.value.map(getAccountName)))) return
+    let skipOverdue = false
+    const canStart = await checkOverdueBeforeStart(
+      accounts.value.map(getAccountName),
+      {
+        allowSkip: true,
+        onSkip: () => {
+          skipOverdue = true
+        },
+      },
+    )
+    if (!canStart) return
     await checkedAPI('multi_start_all_accounts', {
       min_delay: delaySettings.minDelay,
       max_delay: delaySettings.maxDelay,
       use_delay: delaySettings.useDelay,
       run_only_incomplete: delaySettings.runOnlyIncomplete,
+      skip_overdue: skipOverdue,
     })
     appStore.addLog('已发送全部启动指令', 'INFO', 'Multi')
   } catch (e) {

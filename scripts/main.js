@@ -14661,7 +14661,7 @@ function refreshMobileSessionPicker() {
 let refreshUserListInterval = null;
 let isInNetworkErrorState = false;
 let networkRetryInProgress = false;
-const NETWORK_RETRY_MAX = 3;
+const NETWORK_RETRY_MAX = 10;
 const NETWORK_RETRY_DELAY_MS = 2000;
 const NETWORK_DIALOG_AUTO_RETRY_MAX = 5;
 const NETWORK_DIALOG_AUTO_RETRY_INTERVAL_MS = 8000;
@@ -41786,7 +41786,13 @@ async function multi_startAll() {
   }
 
   // 只检查当前多账号界面实际显示的账号，避免管理员把全部系统账号混入检查。
-  const canStart = await _checkOverdueBeforeStartByCurrentMode();
+  let skipOverdue = false;
+  const canStart = await _checkOverdueBeforeStartByCurrentMode({
+    allowSkip: true,
+    onSkip: () => {
+      skipOverdue = true;
+    },
+  });
   if (!canStart) {
     return;
   }
@@ -41802,6 +41808,7 @@ async function multi_startAll() {
     max_delay,
     use_delay,
     run_only_incomplete,
+    skipOverdue,
   );
 
   // 检查是否是欠费错误
@@ -42939,6 +42946,7 @@ function multi_updateAccountStatus(username, data) {
   const NON_RUNNING_STATUSES = new Set([
     "任务已完成",
     "全部完成",
+    "全部失败",
     "无任务可执行",
     "无可执行任务",
     "已停止",
@@ -42946,7 +42954,10 @@ function multi_updateAccountStatus(username, data) {
     "待命",
   ]);
 
-  if (NON_RUNNING_STATUSES.has(currentStatus)) {
+  if (
+    NON_RUNNING_STATUSES.has(currentStatus) ||
+    currentStatus.startsWith("部分成功")
+  ) {
     if (typeof multi_removeRunnerMarker === "function")
       multi_removeRunnerMarker(username);
     return;
@@ -47610,7 +47621,13 @@ async function mobileStartAllAccounts() {
     }
 
     // 与 PC 端统一：只检查当前多账号界面实际显示的账号。
-    const canStart = await _checkOverdueBeforeStartByCurrentMode();
+    let skipOverdue = false;
+    const canStart = await _checkOverdueBeforeStartByCurrentMode({
+      allowSkip: true,
+      onSkip: () => {
+        skipOverdue = true;
+      },
+    });
     if (!canStart) {
       return;
     }
@@ -47637,6 +47654,7 @@ async function mobileStartAllAccounts() {
       max_delay,
       use_delay,
       run_only_incomplete,
+      skipOverdue,
     );
 
     // ========== 步骤5：处理返回结果 ==========
@@ -64913,7 +64931,7 @@ document.addEventListener("DOMContentLoaded", function () {
  * const selectedUsernames = ['20210001', '20210002', '20210003'];
  * const canStart3 = await checkOverdueBeforeStart(selectedUsernames);
  */
-async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
+async function checkOverdueBeforeStart(schoolUsernameOrList = null, options = {}) {
   const requestedAccountCount = Array.isArray(schoolUsernameOrList)
     ? schoolUsernameOrList.length
     : typeof schoolUsernameOrList === "string" && schoolUsernameOrList
@@ -64972,8 +64990,21 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null) {
     // ========== 步骤5：处理欠费情况 ==========
     // 如果存在欠费账号
     if (result.has_overdue) {
+      const overdueAccounts = result.overdue_accounts || [];
+      const allowSkip =
+        options.allowSkip === true &&
+        requestedAccountCount > 0 &&
+        overdueAccounts.length < requestedAccountCount;
       // 显示欠费弹窗，等待用户处理
-      await showOverduePaymentModal(result.overdue_accounts);
+      const action = await showOverduePaymentModal(overdueAccounts, {
+        allowSkip,
+      });
+      if (action === "skip") {
+        if (typeof options.onSkip === "function") {
+          options.onSkip(overdueAccounts);
+        }
+        return true;
+      }
       // 返回 false 阻止任务启动
       return false;
     }
@@ -65062,7 +65093,7 @@ function _getMultiAccountListUsernames() {
   return Array.from(usernames);
 }
 
-async function _checkOverdueBeforeStartByCurrentMode() {
+async function _checkOverdueBeforeStartByCurrentMode(options = {}) {
   if (!(await _isPaymentRequiredForOverdueCheck())) {
     console.log("未开启欠费检查，允许继续。");
     return true;
@@ -65072,7 +65103,7 @@ async function _checkOverdueBeforeStartByCurrentMode() {
     const usernames = _getMultiAccountListUsernames();
     console.log("多账号模式，获取到的账号列表:", usernames);
     return usernames.length > 0
-      ? await checkOverdueBeforeStart(usernames)
+      ? await checkOverdueBeforeStart(usernames, options)
       : true;
   }
   console.log("单账号模式，检查当前账号的欠费状态。");
@@ -65081,8 +65112,8 @@ async function _checkOverdueBeforeStartByCurrentMode() {
   ).trim();
   console.log("单账号模式，当前账号:", currentSchoolUsername);
   return currentSchoolUsername
-    ? await checkOverdueBeforeStart(currentSchoolUsername)
-    : await checkOverdueBeforeStart();
+    ? await checkOverdueBeforeStart(currentSchoolUsername, options)
+    : await checkOverdueBeforeStart(null, options);
 }
 
 /**
@@ -65093,7 +65124,8 @@ async function _checkOverdueBeforeStartByCurrentMode() {
  * 用户可以勾选要缴费的账号，查看预估金额
  * @param {Array} overdueAccounts - 欠费账号列表，格式：[{username, name, overdue_count, school_username}, ...]
  */
-async function showOverduePaymentModal(overdueAccounts) {
+async function showOverduePaymentModal(overdueAccounts, options = {}) {
+  const allowSkip = options.allowSkip === true;
   // 显示加载提示
   Swal.fire({
     title: "正在获取欠费账单",
@@ -65129,13 +65161,16 @@ async function showOverduePaymentModal(overdueAccounts) {
   Swal.close();
 
   if (!pendingBills.length) {
-    await Swal.fire({
+    const emptyResult = await Swal.fire({
       title: "暂无待支付账单",
       text: "未找到对应的待支付账单记录，请联系管理员确认。",
       icon: "info",
       confirmButtonText: "确定",
+      showDenyButton: allowSkip,
+      denyButtonText: "跳过欠费账号并开始",
+      denyButtonColor: "#f59e0b",
     });
-    return;
+    return emptyResult.isDenied ? "skip" : "cancel";
   }
 
   const totalAmount = pendingBills
@@ -65302,10 +65337,14 @@ async function showOverduePaymentModal(overdueAccounts) {
     cancelButtonText: "取消",
     confirmButtonColor: "#3b82f6",
     cancelButtonColor: "#94a3b8",
+    showDenyButton: allowSkip,
+    denyButtonText: "跳过欠费账号并开始",
+    denyButtonColor: "#f59e0b",
     width: modalWidth,
   });
 
-  if (!result.isConfirmed) return;
+  if (result.isDenied) return "skip";
+  if (!result.isConfirmed) return "cancel";
 
   // 收集选中的账单
   const selectedBills = [];
@@ -65325,15 +65364,16 @@ async function showOverduePaymentModal(overdueAccounts) {
       icon: "info",
       confirmButtonText: "确定",
     });
-    return;
+    return "cancel";
   }
 
   const selectedPayType = await _chooseBillingPayType({
     title: "选择支付方式",
     totalAmount,
   });
-  if (!selectedPayType) return;
+  if (!selectedPayType) return "cancel";
   await _runBillingPaymentFlow(selectedBills, selectedPayType);
+  return "paid";
 }
 
 /**

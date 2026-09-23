@@ -2704,6 +2704,19 @@ def _complete_route_path_with_waypoint_endpoints(path, waypoints):
     return completed_path
 
 
+def _build_multi_account_completion_status(total_tasks, successful_tasks):
+    total_tasks = max(0, int(total_tasks or 0))
+    successful_tasks = max(0, min(total_tasks, int(successful_tasks or 0)))
+    if total_tasks == 0:
+        return "无任务可执行"
+    if successful_tasks == total_tasks:
+        return "全部完成"
+    if successful_tasks == 0:
+        return "全部失败"
+    failed_tasks = total_tasks - successful_tasks
+    return f"部分成功，{failed_tasks}个任务失败"
+
+
 
 def _plan_route_path_with_provider_runtime(
     session_id,
@@ -13222,7 +13235,7 @@ class ApiClient:
             )
             return None
 
-        retries = 3
+        retries = 10
         connect_timeout = 5
         read_timeout = 10
 
@@ -20760,7 +20773,12 @@ class Api:
             return {"success": False, "message": "该账号未在运行"}
 
     def multi_start_all_accounts(
-        self, min_delay, max_delay, use_delay, run_only_incomplete
+        self,
+        min_delay,
+        max_delay,
+        use_delay,
+        run_only_incomplete,
+        skip_overdue=False,
     ):
         """
         一键启动所有账号的任务
@@ -20772,8 +20790,9 @@ class Api:
         参数：
             min_delay: 最小延迟时间（秒）
             max_delay: 最大延迟时间（秒）
-            use_delay: 是否使用延迟
-            run_only_incomplete: 是否只运行未完成的任务
+             use_delay: 是否使用延迟
+             run_only_incomplete: 是否只运行未完成的任务
+             skip_overdue: 是否跳过欠费账号并启动其余账号
 
         返回：
             包含 success 和 message 的字典
@@ -20802,7 +20821,7 @@ class Api:
                 })
 
         # 如果发现任何账号有欠费，拒绝启动所有任务
-        if overdue_accounts_list:
+        if overdue_accounts_list and not skip_overdue:
             self.log(
                 f"[欠费检查] 发现 {len(overdue_accounts_list)} 个账号存在欠费，拒绝启动任务"
             )
@@ -20812,6 +20831,29 @@ class Api:
                 "error_code": "OVERDUE_PAYMENT",
                 "overdue_accounts": overdue_accounts_list
             }
+
+        skipped_overdue_usernames = {
+            item["school_username"]
+            for item in overdue_accounts_list
+            if item.get("school_username")
+        }
+        account_list = [
+            acc
+            for acc in self.accounts.values()
+            if acc.username not in skipped_overdue_usernames
+        ]
+        if not account_list:
+            return {
+                "success": False,
+                "message": "全部账号均存在欠费",
+                "error_code": "OVERDUE_PAYMENT",
+                "overdue_accounts": overdue_accounts_list,
+            }
+        if skipped_overdue_usernames:
+            self.log(
+                f"[欠费检查] 已跳过 {len(skipped_overdue_usernames)} 个欠费账号，"
+                "继续启动其余账号。"
+            )
 
         # 步骤3：检查是否所有账号都已在运行
         total_accounts = len(self.accounts)
@@ -20829,7 +20871,6 @@ class Api:
         if self.multi_run_stop_flag.is_set():
             self.multi_run_stop_flag.clear()
 
-        account_list = list(self.accounts.values())
         num_accounts = len(account_list)
         delays = [0] * num_accounts
 
@@ -20860,7 +20901,13 @@ class Api:
             return {"success": False, "message": "当前没有可启动的账号任务。"}
 
         self._update_multi_global_buttons()
-        return {"success": True}
+        return {
+            "success": True,
+            "started_accounts": started_threads,
+            "skipped_overdue_accounts": overdue_accounts_list
+            if skip_overdue
+            else [],
+        }
 
     def multi_stop_all_accounts(self):
         """停止所有账号的运行"""
@@ -21533,7 +21580,7 @@ class Api:
             else:
                 acc.has_pending_tasks = True
 
-            tasks_executed_count = 0
+            task_outcomes = {}
 
             if delay > 0:
                 end_time = time.time() + delay
@@ -21550,9 +21597,12 @@ class Api:
 
             for i, run_data in enumerate(tasks_to_run):
                 if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
+                    task_outcomes[id(run_data)] = "aborted"
                     self._update_account_status_js(acc, status_text="已中止")
                     self._update_multi_global_buttons()
                     break
+
+                task_outcomes[id(run_data)] = "failed"
 
                 task_name_short = (
                     run_data.run_name[:10] + "..."
@@ -21571,6 +21621,7 @@ class Api:
                 acc.log(f"开始执行任务: {run_data.run_name}")
 
                 if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
+                    task_outcomes[id(run_data)] = "aborted"
                     self._update_account_status_js(acc, status_text="已中止")
                     break
 
@@ -21759,8 +21810,6 @@ class Api:
 
                 acc.log(f"已生成模拟轨迹: {len(new_run_coords)} 个GPS点")
 
-                tasks_executed_count += 1
-
                 run_data.trid = f"{acc.user_data.student_id}{int(time.time() * 1000)}"
                 start_time_ms = str(int(time.time() * 1000))
                 submission_successful = True
@@ -21797,6 +21846,7 @@ class Api:
                     )
                     if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
                         submission_successful = False
+                        task_outcomes[id(run_data)] = "aborted"
                         break
 
                     chunk = run_data.run_coords[chunk_idx: chunk_idx + 5]
@@ -21804,6 +21854,7 @@ class Api:
                     for lon, lat, dur_ms in chunk:
                         if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
                             submission_successful = False
+                            task_outcomes[id(run_data)] = "aborted"
                             break
 
                         session_id = getattr(self, "_web_session_id", None)
@@ -21904,6 +21955,7 @@ class Api:
 
                         if acc.stop_event.wait(timeout=_mr_actual_sleep_s):
                             submission_successful = False
+                            task_outcomes[id(run_data)] = "aborted"
                             break
 
                         _mr_exec_point_idx += 1
@@ -21949,6 +22001,7 @@ class Api:
                     time.sleep(3)
                     self._finalize_run(run_data, -1, acc.api_client)
                     run_data.status = 1
+                    task_outcomes[id(run_data)] = "success"
                     self._multi_fetch_and_summarize_tasks(acc)
                     self._update_account_status_js(acc, summary=acc.summary)
                     acc.log(f"任务 {run_data.run_name} 执行流程完成。")
@@ -22015,8 +22068,13 @@ class Api:
                         progress_extra="",
                     )
                 else:
-                    acc.log(f"任务 {run_data.run_name} 执行被中止。")
-                    self._update_account_status_js(acc, status_text="已中止")
+                    if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
+                        task_outcomes[id(run_data)] = "aborted"
+                        acc.log(f"任务 {run_data.run_name} 执行被中止。")
+                        self._update_account_status_js(acc, status_text="已中止")
+                    else:
+                        acc.log(f"任务 {run_data.run_name} 执行失败。")
+                        self._update_account_status_js(acc, status_text="任务失败")
 
                 if i < len(tasks_to_run) - 1:
                     wait_time = random.uniform(
@@ -22038,17 +22096,20 @@ class Api:
                         break
 
             if not acc.stop_event.is_set():
-                if tasks_executed_count == 0:
-                    self._update_account_status_js(
-                        acc,
-                        status_text="无任务可执行",
-                        progress_pct=100,
-                        progress_text="无任务可执行",
-                        progress_extra="",
-                    )
-
-                else:
-                    self._update_account_status_js(acc, status_text="全部完成")
+                successful_tasks = sum(
+                    1 for outcome in task_outcomes.values() if outcome == "success"
+                )
+                final_status = _build_multi_account_completion_status(
+                    len(task_outcomes),
+                    successful_tasks,
+                )
+                self._update_account_status_js(
+                    acc,
+                    status_text=final_status,
+                    progress_pct=100,
+                    progress_text=final_status,
+                    progress_extra="",
+                )
 
         except Exception:
             logging.error(

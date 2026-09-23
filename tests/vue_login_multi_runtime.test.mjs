@@ -102,6 +102,35 @@ test('multi-account controls use the backend methods and arguments', async () =>
   assert.equal(ctx.calls.find(call => call[0] === 'set_multi_run_only_incomplete')[1].flag, true)
 })
 
+test('Vue start-all forwards skip-overdue decisions to the backend', async () => {
+  const ctx = setupComponent('views/MultiAccountView.vue', {
+    checkOverdueBeforeStart: async (_accounts, options) => {
+      options.onSkip([{ username: 'student-overdue' }])
+      return true
+    },
+  })
+  ctx.app.multiAccounts = [
+    { username: 'student-a' },
+    { username: 'student-overdue' },
+  ]
+
+  await ctx.state.startAll()
+
+  const startAll = ctx.calls.find(call => call[0] === 'multi_start_all_accounts')
+  assert.equal(startAll[1].skip_overdue, true)
+})
+
+test('Vue overdue modal offers skip when a partial set can start', () => {
+  const source = readFileSync(
+    new URL('../frontend/src/composables/usePayment.js', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(source, /showDenyButton:\s*allowSkip/)
+  assert.match(source, /跳过欠费账号并开始/)
+  assert.match(source, /if \(result\.isDenied\) return 'skip'/)
+})
+
 test('backend business failures do not produce success logs or clear manual input', async () => {
   const ctx = setupComponent('views/MultiAccountView.vue', {
     callAPI: async () => ({ success: false, message: '账号不可用' }),
