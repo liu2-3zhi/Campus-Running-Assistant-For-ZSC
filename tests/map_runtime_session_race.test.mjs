@@ -15,13 +15,19 @@ function extractLegacyRuntimeBlock() {
   return LEGACY_SOURCE.slice(start, end)
 }
 
-function createLegacyRuntimeHarness({ fetchImpl, timeoutImpl } = {}) {
+function createLegacyRuntimeHarness({
+  fetchImpl,
+  timeoutImpl,
+  activeSessionId = '',
+  storedSessionId = '',
+  urlSessionId = '',
+} = {}) {
   const appendedScripts = []
   const windowObject = {
     location: { pathname: '/' },
     sessionStorage: {
       getItem() {
-        return ''
+        return storedSessionId
       },
     },
   }
@@ -72,6 +78,18 @@ function createLegacyRuntimeHarness({ fetchImpl, timeoutImpl } = {}) {
     }),
     clearTimeout() {},
     console,
+    sessionUUID: activeSessionId,
+    isUsableClientSessionUUID(value) {
+      return /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(
+        String(value || '').trim(),
+      )
+    },
+    getUUIDFromURL() {
+      return urlSessionId
+    },
+    addAdminViewOriginSessionHeader(headers) {
+      return headers
+    },
   })
   windowObject.window = windowObject
   windowObject.document = document
@@ -80,6 +98,7 @@ function createLegacyRuntimeHarness({ fetchImpl, timeoutImpl } = {}) {
 ${extractLegacyRuntimeBlock()}
 globalThis.__legacyRuntimeExports = {
   getLegacyMapKeyRuntimeUrl,
+  getLegacyMapKeyRuntimeSessionId,
   loadLegacyMapKeyRuntime,
   hydrateMapProviderSecretsForLegacy,
 };
@@ -92,6 +111,18 @@ globalThis.__legacyRuntimeExports = {
     api: context.__legacyRuntimeExports,
   }
 }
+
+test('legacy runtime loader prefers the target URL session over stale admin state', () => {
+  const adminSessionId = '11111111-1111-4111-8111-111111111111'
+  const targetSessionId = '22222222-2222-4222-8222-222222222222'
+  const { api } = createLegacyRuntimeHarness({
+    activeSessionId: adminSessionId,
+    storedSessionId: adminSessionId,
+    urlSessionId: targetSessionId,
+  })
+
+  assert.equal(api.getLegacyMapKeyRuntimeSessionId(), targetSessionId)
+})
 
 test('legacy runtime loader fetches script with explicit session header before hydrating map keys', async () => {
   const sessionId = '41473ebe-61ff-4f71-aa13-2620c13057a4'

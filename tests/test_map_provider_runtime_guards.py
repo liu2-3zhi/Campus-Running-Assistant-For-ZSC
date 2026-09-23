@@ -47,7 +47,10 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             source,
         )
         self.assertIn(
-            "response = await hydrateMapProviderSecretsForLegacy(response, initialDataSessionUUID);",
+            "response = await hydrateInitialDataMapProviderSecrets(\n"
+            "      response,\n"
+            "      initialDataSessionUUID,\n"
+            "    );",
             source,
         )
         self.assertIn('sessionStorage.setItem("session_uuid", normalized)', source)

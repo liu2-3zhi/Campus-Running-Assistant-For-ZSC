@@ -4,8 +4,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 function extractFunctionSource(source, functionName) {
+  const asyncSignature = `async function ${functionName}`;
   const signature = `function ${functionName}`;
-  const start = source.indexOf(signature);
+  const asyncStart = source.indexOf(asyncSignature);
+  const start = asyncStart !== -1 ? asyncStart : source.indexOf(signature);
   assert.notEqual(start, -1, `${functionName} should exist in scripts/main.js`);
 
   const bodyStart = source.indexOf('{', start);
@@ -168,6 +170,37 @@ test('stale logged-out-elsewhere API responses are suppressed after a fresh logi
     ),
     true,
   );
+});
+
+test('map runtime hydration failure does not invalidate authenticated initial data', async () => {
+  const hydrateInitialDataMapProviderSecrets = loadFunction(
+    'hydrateInitialDataMapProviderSecrets',
+  );
+  const response = {
+    success: true,
+    is_authenticated: true,
+    auth_username: 'admin',
+  };
+  const warnings = [];
+
+  globalThis.hydrateMapProviderSecretsForLegacy = async () => {
+    throw new Error('地图密钥运行时脚本加载失败: HTTP 404');
+  };
+  globalThis.logMessage_Warning = (...args) => warnings.push(args);
+
+  try {
+    const result = await hydrateInitialDataMapProviderSecrets(
+      response,
+      '22222222-2222-4222-8222-222222222222',
+    );
+
+    assert.equal(result, response);
+    assert.equal(result.is_authenticated, true);
+    assert.equal(warnings.length, 1);
+  } finally {
+    delete globalThis.hydrateMapProviderSecretsForLegacy;
+    delete globalThis.logMessage_Warning;
+  }
 });
 
 test('session expired notices are suppressed on the login screen and for empty sessions', () => {

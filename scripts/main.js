@@ -12055,6 +12055,13 @@ function getLegacyMapKeyRuntimeSessionId(explicitSessionId) {
   ) {
     return explicit;
   }
+  const urlSession = getUUIDFromURL();
+  if (
+    typeof isUsableClientSessionUUID === "function" &&
+    isUsableClientSessionUUID(urlSession)
+  ) {
+    return urlSession;
+  }
   if (
     typeof isUsableClientSessionUUID === "function" &&
     isUsableClientSessionUUID(sessionUUID)
@@ -12074,13 +12081,7 @@ function getLegacyMapKeyRuntimeSessionId(explicitSessionId) {
   } catch (_error) {
     // Restricted storage is non-fatal; URL fallback remains available.
   }
-  const urlSession = getUUIDFromURL();
-  return (
-    typeof isUsableClientSessionUUID === "function" &&
-    isUsableClientSessionUUID(urlSession)
-  )
-    ? urlSession
-    : "";
+  return "";
 }
 
 function createLegacyMapKeyRuntimeLoadError(message, details = {}) {
@@ -62410,6 +62411,18 @@ function getInitialDataFailureNotice(response) {
   };
 }
 
+async function hydrateInitialDataMapProviderSecrets(response, sessionId) {
+  try {
+    return await hydrateMapProviderSecretsForLegacy(response, sessionId);
+  } catch (error) {
+    logMessage_Warning(
+      "[初始化] 地图密钥运行时加载失败，保留已认证的初始数据:",
+      error,
+    );
+    return response;
+  }
+}
+
 /**
  * 加载应用初始数据的统一函数（带限流机制）
  *
@@ -62488,7 +62501,10 @@ async function loadInitialData(options = {}) {
     // callPythonAPI是应用中已存在的函数，负责与Python后端通信
     // "get_initial_data"是API端点的标识符，后端会据此返回相应数据
     let response = await callPythonAPI("get_initial_data", params);
-    response = await hydrateMapProviderSecretsForLegacy(response, initialDataSessionUUID);
+    response = await hydrateInitialDataMapProviderSecrets(
+      response,
+      initialDataSessionUUID,
+    );
 
     // 此时response已包含后端返回的完整数据对象
     // 如果API调用失败，callPythonAPI可能会抛出异常，会被catch块捕获
