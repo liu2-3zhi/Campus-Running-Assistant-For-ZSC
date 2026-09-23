@@ -1,5 +1,6 @@
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -52,6 +53,41 @@ class TestAuthSystemSchoolAccounts(unittest.TestCase):
 
 
 class TestMapServerRuntime(unittest.TestCase):
+    def test_backend_map_runtime_page_does_not_load_frontend_auth_bootstrap(self):
+        source = Path(main.__file__).read_text(encoding="utf-8")
+        html = main._render_map_runtime_page()
+        route_source = source[
+            source.index("@app.route(MAP_RUNTIME_PATH, methods=[\"GET\"])") :
+            source.index('@app.route("/")', source.index("@app.route(MAP_RUNTIME_PATH"))
+        ]
+
+        self.assertIn('@app.route(MAP_RUNTIME_PATH, methods=["GET"])', source)
+        self.assertIn(
+            "_is_map_runtime_request_authorized(",
+            route_source,
+        )
+        self.assertIn("会话无效或未登录", route_source)
+        self.assertIn("Map Runtime", html)
+        self.assertNotIn("/scripts/main.js", html)
+        self.assertNotIn("/uuid=", html)
+
+    def test_backend_map_runtime_permission_requires_active_business_session(self):
+        active_session = "11111111-1111-4111-8111-111111111111"
+        missing_session = "22222222-2222-4222-8222-222222222222"
+
+        with patch.object(
+            main, "web_sessions", {active_session: object()}, create=True
+        ), patch.object(
+            main, "web_sessions_lock", threading.Lock(), create=True
+        ):
+            self.assertTrue(
+                main._is_map_runtime_request_authorized(active_session)
+            )
+            self.assertFalse(
+                main._is_map_runtime_request_authorized(missing_session)
+            )
+            self.assertFalse(main._is_map_runtime_request_authorized(""))
+
     def test_provider_runtime_stops_when_backend_origin_navigation_fails(self):
         class FailingPage:
             def goto(self, *_args, **_kwargs):

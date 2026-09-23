@@ -1632,6 +1632,37 @@ def _install_map_runtime_guard(page, provider="amap", guard_label="MapRuntime"):
         _install_amap_dialog_guard(page, guard_label=guard_label)
 
 
+MAP_RUNTIME_PATH = "/map-runtime"
+MAP_RUNTIME_PAGE_HTML = """<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Map Runtime</title>
+</head>
+<body></body>
+</html>
+"""
+
+
+def _render_map_runtime_page():
+    return MAP_RUNTIME_PAGE_HTML
+
+
+def _is_map_runtime_request_authorized(session_id):
+    normalized_session_id = normalize_session_uuid(session_id)
+    if not normalized_session_id:
+        return False
+
+    sessions = globals().get("web_sessions")
+    sessions_lock = globals().get("web_sessions_lock")
+    if not isinstance(sessions, dict) or sessions_lock is None:
+        return False
+
+    with sessions_lock:
+        return normalized_session_id in sessions
+
+
 def _build_map_backend_session_url(app_base_url, session_id):
     normalized_base = str(app_base_url or "").strip()
     if not normalized_base:
@@ -1639,9 +1670,12 @@ def _build_map_backend_session_url(app_base_url, session_id):
     parsed = urllib.parse.urlparse(normalized_base)
     if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
         return None
+    query = urllib.parse.urlencode(
+        {"session_id": str(session_id or "")}
+    )
     return urllib.parse.urljoin(
         normalized_base.rstrip("/") + "/",
-        f"uuid={urllib.parse.quote(str(session_id or ''), safe='')}",
+        f"{MAP_RUNTIME_PATH.lstrip('/')}?{query}",
     )
 
 
@@ -30687,6 +30721,7 @@ def start_web_server(args_param):
             or request.path.endswith(".jpg")
             or request.path.endswith(".ico")
             or request.path == "/"
+            or request.path == MAP_RUNTIME_PATH
             or request.path.startswith("/api/captcha")
         ):
             return None
@@ -40314,6 +40349,23 @@ def start_web_server(args_param):
         if os.path.exists(vue_index):
             return send_from_directory(_vue_dist_dir, "index.html")
         return None
+
+    # This inert same-origin document is used only as the Playwright execution
+    # host. It is authorized by an active business session, not a login cookie.
+    @app.route(MAP_RUNTIME_PATH, methods=["GET"])
+    def map_runtime():
+        session_id = request.args.get("session_id", "")
+        if not _is_map_runtime_request_authorized(session_id):
+            return jsonify({"success": False, "message": "会话无效或未登录"}), 401
+
+        response = make_response(_render_map_runtime_page())
+        response.headers["Cache-Control"] = (
+            "no-store, no-cache, must-revalidate, max-age=0"
+        )
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
+        return response
 
     @app.route("/")
     @app.route("/uuid=<uuid>")

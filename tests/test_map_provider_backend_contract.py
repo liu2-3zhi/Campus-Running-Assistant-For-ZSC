@@ -1220,7 +1220,7 @@ globalThis.fetch = async (url, options) => {
             cleanup_worker_source,
         )
 
-    def test_provider_runtime_navigates_to_session_page_before_backend_js_execution(self):
+    def test_provider_runtime_navigates_to_auth_free_map_page_before_backend_js_execution(self):
         runtime_config = self._runtime_config_with_map("amap", {
             "amap": {"js_key": "amap-key"},
         })
@@ -1232,7 +1232,7 @@ globalThis.fetch = async (url, options) => {
 
         def amap_helper(session_id, helper_page, waypoints, provider_plan, python_params):
             page.goto.assert_called_once_with(
-                "http://127.0.0.1:5000/uuid=session-1",
+                "http://127.0.0.1:5000/map-runtime?session_id=session-1",
                 wait_until="domcontentloaded",
                 timeout=15000,
             )
