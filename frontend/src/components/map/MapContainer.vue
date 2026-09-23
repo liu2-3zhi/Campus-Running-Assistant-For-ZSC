@@ -24,6 +24,9 @@ let map = null
 let markers = []
 let polylines = []
 let licenseObserver = null
+const DEFAULT_CENTER = [113.390342, 22.527403]
+const DEFAULT_ZOOM = 17
+const BAIDU_DEFAULT_ZOOM = 18
 
 // --- 交互式绘制状态 ---
 let clickHandler = null       // 当前绑定的地图点击回调
@@ -116,8 +119,8 @@ async function initAmap() {
     }
 
     map = new AMap.Map(props.containerId, {
-      zoom: 17,
-      center: [116.397428, 39.90923],
+      zoom: DEFAULT_ZOOM,
+      center: DEFAULT_CENTER,
       resizeEnable: true,
     })
 
@@ -165,8 +168,8 @@ async function initTencent() {
     }
 
     map = new TMap.Map(container, {
-      center: new TMap.LatLng(39.90923, 116.397428),
-      zoom: 17,
+      center: new TMap.LatLng(DEFAULT_CENTER[1], DEFAULT_CENTER[0]),
+      zoom: DEFAULT_ZOOM,
     })
 
     map.on('zoom', () => {
@@ -209,7 +212,10 @@ async function initTianditu() {
     }
 
     map = new T.Map(props.containerId)
-    map.centerAndZoom(new T.LngLat(116.397428, 39.90923), 17)
+    map.centerAndZoom(
+      new T.LngLat(DEFAULT_CENTER[0], DEFAULT_CENTER[1]),
+      DEFAULT_ZOOM,
+    )
 
     map.addEventListener('zoomend', () => {
       zoomLevel.value = map.getZoom()
@@ -262,7 +268,10 @@ async function initBaidu() {
     }
 
     map = new BMap.Map(props.containerId)
-    map.centerAndZoom(new BMap.Point(116.397428, 39.90923), 18)
+    map.centerAndZoom(
+      new BMap.Point(DEFAULT_CENTER[0], DEFAULT_CENTER[1]),
+      BAIDU_DEFAULT_ZOOM,
+    )
     map.enableScrollWheelZoom(true)
 
     map.addEventListener('zoomend', () => {
@@ -712,25 +721,31 @@ function handleResetView() {
   }
   const provider = mapStore.activeProvider
   if (provider === 'amap') {
-    map.setZoomAndCenter(17, [116.397428, 39.90923])
+    map.setZoomAndCenter(DEFAULT_ZOOM, DEFAULT_CENTER)
   } else if (provider === 'tencent') {
     const TMap = window.TMap
     if (TMap) {
-      map.setCenter(new TMap.LatLng(39.90923, 116.397428))
-      map.setZoom(17)
+      map.setCenter(new TMap.LatLng(DEFAULT_CENTER[1], DEFAULT_CENTER[0]))
+      map.setZoom(DEFAULT_ZOOM)
     }
   } else if (provider === 'tianditu') {
     const T = window.T
     if (T) {
-      map.centerAndZoom(new T.LngLat(116.397428, 39.90923), 17)
+      map.centerAndZoom(
+        new T.LngLat(DEFAULT_CENTER[0], DEFAULT_CENTER[1]),
+        DEFAULT_ZOOM,
+      )
     }
   } else if (provider === 'baidu') {
     const BMap = window.BMapGL
     if (BMap) {
-      map.centerAndZoom(new BMap.Point(116.397428, 39.90923), 18)
+      map.centerAndZoom(
+        new BMap.Point(DEFAULT_CENTER[0], DEFAULT_CENTER[1]),
+        BAIDU_DEFAULT_ZOOM,
+      )
     }
   }
-  zoomLevel.value = 17
+  zoomLevel.value = provider === 'baidu' ? BAIDU_DEFAULT_ZOOM : DEFAULT_ZOOM
 }
 
 // --- Watch provider changes ---

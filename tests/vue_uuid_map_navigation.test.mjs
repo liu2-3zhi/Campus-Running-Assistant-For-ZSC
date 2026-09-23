@@ -37,6 +37,14 @@ test('multi account hydrates map provider secrets before rendering its map', () 
   assert.match(multiView, /mapStore\.setProvider\(/)
 })
 
+test('Vue maps use the legacy default center instead of Beijing', () => {
+  const mapContainer = read('frontend/src/components/map/MapContainer.vue')
+
+  assert.match(mapContainer, /const DEFAULT_CENTER = \[113\.390342, 22\.527403\]/)
+  assert.doesNotMatch(mapContainer, /116\.397428/)
+  assert.doesNotMatch(mapContainer, /39\.90923/)
+})
+
 test('map runtime script carries the session UUID and backend accepts it', () => {
   const runtime = read('frontend/src/services/mapKeyRuntime.js')
   const backend = read('main.py')
