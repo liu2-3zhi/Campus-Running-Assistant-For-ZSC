@@ -21597,10 +21597,11 @@ if (typeof window !== "undefined") {
       registerTab.addEventListener("click", () => switchAuthTab("register"));
 
     const loginBtn = $("auth-login-btn");
-    if (loginBtn) loginBtn.addEventListener("click", handleAuthLogin);
+    if (loginBtn) loginBtn.addEventListener("click", () => handleAuthLogin());
 
     const registerBtn = $("auth-register-btn");
-    if (registerBtn) registerBtn.addEventListener("click", handleAuthRegister);
+    if (registerBtn)
+      registerBtn.addEventListener("click", () => handleAuthRegister());
 
     const guestBtn = $("auth-guest-btn");
     if (guestBtn) guestBtn.addEventListener("click", handleGuestLogin);
@@ -22195,7 +22196,7 @@ if (typeof window !== "undefined") {
     const refreshSessionsBtnModal = $("admin-refresh-sessions_modal");
 
     if (refreshUsersBtnModal)
-      refreshUsersBtnModal.addEventListener("click", loadAdminUsers);
+      refreshUsersBtnModal.addEventListener("click", () => loadAdminUsers());
     if (refreshGroupsBtnModal)
       refreshGroupsBtnModal.addEventListener("click", loadAdminGroups);
     if (refreshLogsBtnModal) {
@@ -40336,8 +40337,8 @@ $("multi-load-all-from-config-btn").addEventListener(
 $("multi-add-from-config-btn").addEventListener("click", multi_addFromConfig);
 $("multi-import-excel-btn").addEventListener("click", multi_importFromExcel);
 $("multi-export-excel-btn").addEventListener("click", multi_exportToExcel);
-$("multi-remove-all-btn").addEventListener("click", multi_removeAll);
-$("multi-remove-selected-btn").addEventListener("click", multi_removeSelected);
+$("multi-remove-all-btn").addEventListener("click", () => multi_removeAll());
+$("multi-remove-selected-btn").addEventListener("click", () => multi_removeSelected());
 $("multi-refresh-all-btn").addEventListener("click", multi_refreshAll);
 $("multi-select-all-check").addEventListener("change", multi_toggleSelectAll);
 $("multi-start-selected-btn").addEventListener("click", multi_startSelected);
@@ -46442,8 +46443,8 @@ async function markAllAsRead() {
     btn.textContent = "一键已读";
   }
 }
-$("multi-remove-all-btn").addEventListener("click", multi_removeAll);
-$("multi-remove-selected-btn").addEventListener("click", multi_removeSelected);
+$("multi-remove-all-btn").addEventListener("click", () => multi_removeAll());
+$("multi-remove-selected-btn").addEventListener("click", () => multi_removeSelected());
 $("multi-refresh-all-btn").addEventListener("click", multi_refreshAll);
 $("multi-select-all-check").addEventListener("change", multi_toggleSelectAll);
 $("multi-start-selected-btn").addEventListener("click", multi_startSelected);
@@ -50668,7 +50669,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   const refreshCaptchaHistoryBtn = $("refresh-captcha-history-btn");
   if (refreshCaptchaHistoryBtn) {
-    refreshCaptchaHistoryBtn.addEventListener("click", loadCaptchaHistory);
+    refreshCaptchaHistoryBtn.addEventListener("click", () => loadCaptchaHistory());
     console.log("[验证码历史] 已注册刷新按钮事件");
   }
 });
