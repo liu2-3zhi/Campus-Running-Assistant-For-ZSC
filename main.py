@@ -9274,15 +9274,7 @@ def is_persistent_business_session(api_instance):
 
 def is_multi_account_logged_in(account_session):
     """Return whether one account in a multi-account session is logged in."""
-    if bool(getattr(account_session, "login_success", False)):
-        return True
-
-    user_data = getattr(account_session, "user_data", None)
-    return bool(
-        user_data
-        and getattr(user_data, "id", "")
-        and getattr(account_session, "is_first_login_verified", False)
-    )
+    return bool(getattr(account_session, "is_first_login_verified", False))
 
 
 def get_business_session_login_success(api_instance):
@@ -24823,8 +24815,17 @@ def restore_session_to_api_instance(api_instance, state):
                                         "att_expired": 0,
                                     },
                                 )
-                                if account_state.get("school_account_logged_in", False):
-                                    acc.login_success = True
+                                school_account_logged_in = bool(
+                                    account_state.get(
+                                        "school_account_logged_in", False
+                                    )
+                                )
+                                acc.is_first_login_verified = bool(
+                                    account_state.get(
+                                        "is_first_login_verified", False
+                                    )
+                                ) or school_account_logged_in
+                                acc.login_success = school_account_logged_in
                                 api_instance.accounts[username] = acc
                                 logging.info(
                                     f"会话恢复：成功重建账号 {username} (密码从 .ini 加载)"

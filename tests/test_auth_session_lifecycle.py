@@ -268,15 +268,20 @@ class TestAuthSessionLifecycle(unittest.TestCase):
             user_data=SimpleNamespace(id="student-1"),
             is_first_login_verified=True,
         )
+        accounts = {"alice-school": multi_account}
         target_api = SimpleNamespace(
             is_multi_account_mode=True,
-            accounts={"alice-school": multi_account},
+            accounts=accounts,
         )
 
         self.assertTrue(
             main_module.get_business_session_login_success(target_api)
         )
-        self.assertTrue(
+        del accounts["alice-school"]
+        self.assertFalse(
+            main_module.get_business_session_login_success(target_api)
+        )
+        self.assertFalse(
             main_module.get_business_session_login_success(
                 SimpleNamespace(
                     is_multi_account_mode=True,
