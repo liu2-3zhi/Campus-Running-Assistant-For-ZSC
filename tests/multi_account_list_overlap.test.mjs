@@ -8,7 +8,8 @@ const vue = readFileSync(new URL('../frontend/src/views/MultiAccountView.vue', i
 
 test('legacy account rows wrap long statuses on desktop and mobile', () => {
   assert.match(legacy, /isMobile \? "flex flex-col gap-2 min-w-0"/)
-  assert.match(legacy, /status-text font-semibold text-sky-600/)
+  assert.match(legacy, /getMultiAccountStatusClass\(\s*displayStatusText,?\s*\)/)
+  assert.match(legacy, /text-sky-600 bg-sky-100/)
   assert.match(styles, /#multi-account-list \.status-text \{[\s\S]*max-width: 58%[\s\S]*white-space: normal/)
   assert.match(styles, /#mobile-multi-account-list \.status-text \{[\s\S]*width: 100%[\s\S]*white-space: normal/)
 })

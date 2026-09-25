@@ -41960,6 +41960,29 @@ function formatMultiAccountStatusText(
     : "无可执行任务";
 }
 
+function getMultiAccountStatusClass(statusText) {
+  const baseClass =
+    "status-text font-semibold text-xs px-2 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap";
+  const normalizedStatus = String(statusText || "").trim();
+
+  if (normalizedStatus === "全部完成") {
+    return `${baseClass} text-emerald-700 bg-emerald-100`;
+  }
+  if (normalizedStatus === "全部失败") {
+    return `${baseClass} text-red-700 bg-red-100`;
+  }
+  if (normalizedStatus.startsWith("部分成功")) {
+    return `${baseClass} text-amber-700 bg-amber-100`;
+  }
+  if (
+    normalizedStatus.includes("无任务") ||
+    normalizedStatus.includes("无可执行")
+  ) {
+    return `${baseClass} text-slate-500 bg-slate-100`;
+  }
+  return `${baseClass} text-sky-600 bg-sky-100`;
+}
+
 function updateAllAccountsStatusText() {
   try {
     if (
@@ -42023,16 +42046,7 @@ function updateAllAccountsStatusText() {
         const statusEl = pcItem.querySelector(".status-text");
         if (statusEl) {
           statusEl.textContent = newStatusText;
-          if (
-            newStatusText.includes("无任务") ||
-            newStatusText.includes("无可执行")
-          ) {
-            statusEl.className =
-              "status-text font-semibold text-slate-500 text-xs px-2 py-0.5 rounded-full bg-slate-100 flex-shrink-0 whitespace-nowrap";
-          } else if (newStatusText.includes("有")) {
-            statusEl.className =
-              "status-text font-semibold text-sky-600 text-xs px-2 py-0.5 rounded-full bg-sky-100 flex-shrink-0 whitespace-nowrap";
-          }
+          statusEl.className = getMultiAccountStatusClass(newStatusText);
           updatedCount++;
         }
       }
@@ -42043,16 +42057,7 @@ function updateAllAccountsStatusText() {
         const statusEl = mobileItem.querySelector(".status-text");
         if (statusEl) {
           statusEl.textContent = newStatusText;
-          if (
-            newStatusText.includes("无任务") ||
-            newStatusText.includes("无可执行")
-          ) {
-            statusEl.className =
-              "status-text font-semibold text-slate-500 text-xs px-2 py-0.5 rounded-full bg-slate-100 flex-shrink-0 whitespace-nowrap";
-          } else if (newStatusText.includes("有")) {
-            statusEl.className =
-              "status-text font-semibold text-sky-600 text-xs px-2 py-0.5 rounded-full bg-sky-100 flex-shrink-0 whitespace-nowrap";
-          }
+          statusEl.className = getMultiAccountStatusClass(newStatusText);
           updatedCount++;
         }
       }
@@ -42175,7 +42180,9 @@ function renderMultiAccountList(accounts) {
                                 }
                             </div>
                         </div>
-                        <span class="status-text font-semibold text-sky-600 text-xs px-2 py-0.5 rounded-full bg-sky-100 flex-shrink-0 whitespace-nowrap">${
+                        <span class="${getMultiAccountStatusClass(
+                          displayStatusText,
+                        )}">${
                           displayStatusText
                         }</span>
                     </div>
@@ -42940,6 +42947,7 @@ function multi_updateAccountStatus(username, data) {
             data.summary,
           );
         }
+        statusEl.className = getMultiAccountStatusClass(statusEl.textContent);
       }
     }
     if (data.name) {
