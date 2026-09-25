@@ -26,6 +26,8 @@ test('returning from single and multi account keeps the business session', () =>
   )
   assert.match(multiView, /authStore\.getAuthenticatedSessionHeaderValue\(\)/)
   assert.match(multiView, /name: 'session', params: \{ uuid: sessionId \}/)
+  assert.match(mainView, /window\.location\.assign\(target\)/)
+  assert.match(multiView, /window\.location\.assign\(target\)/)
 })
 
 test('multi account hydrates map provider secrets before rendering its map', () => {

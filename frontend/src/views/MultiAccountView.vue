@@ -539,11 +539,12 @@ async function exitMultiMode() {
   appStore.currentView = 'login'
   const sessionId =
     authStore.sessionUUID || authStore.getAuthenticatedSessionHeaderValue()
-  if (sessionId) {
-    await router.push({ name: 'session', params: { uuid: sessionId } })
-  } else {
-    await router.push({ name: 'login' })
-  }
+  const target = router.resolve(
+    sessionId
+      ? { name: 'session', params: { uuid: sessionId } }
+      : { name: 'login' },
+  ).href
+  window.location.assign(target)
 }
 
 // --- Log level color ---

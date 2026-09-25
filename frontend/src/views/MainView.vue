@@ -189,11 +189,12 @@ async function openHelp() {
 async function handleBack() {
   const sessionId = auth.sessionUUID || auth.getAuthenticatedSessionHeaderValue()
   disconnectWebSocket()
-  if (sessionId) {
-    await router.push({ name: 'session', params: { uuid: sessionId } })
-  } else {
-    await router.push({ name: 'login' })
-  }
+  const target = router.resolve(
+    sessionId
+      ? { name: 'session', params: { uuid: sessionId } }
+      : { name: 'login' },
+  ).href
+  window.location.assign(target)
 }
 
 // ── Lifecycle ──
