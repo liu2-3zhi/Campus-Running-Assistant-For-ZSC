@@ -118,6 +118,7 @@
 - 前端相关链路重点看 `getApiRequestSessionHeaderValue()`、`callPythonAPI()`、`handleAuthLogin()`、`loadInitialData()` 和 `showAuthLogin()`。
 - 切回登录页或认证登录页时应清理旧的 `logout-elsewhere-overlay`；当登录页已可见、登录中、或当前没有可用 session 时，应抑制过期会话和多设备登录旧响应，避免未登录状态继续显示倒计时提示。
 - 管理员从老版 UI 查看不属于自己的会话时，只能进入“查看态”：前端记录来源会话并随 API 请求发送 `X-Admin-Origin-Session-ID`，后端用来源会话验证管理员身份和权限，但业务 API 仍操作目标会话；切到管理员自己的会话才允许走普通 `/auth/switch_session`。
+- 会话列表中的多账号登录状态不能直接读取 `Api.login_success` 或要求 `AccountSession.login_success` 已赋值；应使用统一状态解析，并将会话内任意 `user_data.id` 且 `is_first_login_verified=True` 的账号视为已登录，同时兼容恢复会话明确设置的 `login_success=True`。相关回归测试见 `tests/test_auth_session_lifecycle.py`。
 - 老版 UI 用模板字符串生成内联 `onclick` 时，不能把 `JSON.stringify()` 的双引号参数直接塞进双引号属性；应对参数字符串做属性转义，并用单引号包裹 `onclick` 属性，否则浏览器会把事件属性截断，表现为按钮没有事件触发器。
 
 ## 验证清单

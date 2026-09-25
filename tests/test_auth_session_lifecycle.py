@@ -263,6 +263,63 @@ class TestAuthSessionLifecycle(unittest.TestCase):
             "view_all_sessions",
         )
 
+    def test_admin_session_status_uses_multi_account_login_state(self):
+        multi_account = SimpleNamespace(
+            user_data=SimpleNamespace(id="student-1"),
+            is_first_login_verified=True,
+        )
+        target_api = SimpleNamespace(
+            is_multi_account_mode=True,
+            accounts={"alice-school": multi_account},
+        )
+
+        self.assertTrue(
+            main_module.get_business_session_login_success(target_api)
+        )
+        self.assertTrue(
+            main_module.get_business_session_login_success(
+                SimpleNamespace(
+                    is_multi_account_mode=True,
+                    accounts={
+                        "restored-account": SimpleNamespace(
+                            login_success=True,
+                            user_data=SimpleNamespace(id=""),
+                            is_first_login_verified=False,
+                        )
+                    },
+                )
+            )
+        )
+        self.assertFalse(
+            main_module.get_business_session_login_success(
+                SimpleNamespace(
+                    is_multi_account_mode=True,
+                    accounts={
+                        "inactive-account": SimpleNamespace(
+                            user_data=SimpleNamespace(id="student-2"),
+                            is_first_login_verified=False,
+                        )
+                    },
+                )
+            )
+        )
+        self.assertFalse(
+            main_module.get_business_session_login_success(
+                SimpleNamespace(
+                    is_multi_account_mode=True,
+                    accounts={},
+                )
+            )
+        )
+        self.assertTrue(
+            main_module.get_business_session_login_success(
+                SimpleNamespace(
+                    is_multi_account_mode=False,
+                    login_success=True,
+                )
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

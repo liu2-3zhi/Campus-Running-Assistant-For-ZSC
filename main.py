@@ -9272,6 +9272,28 @@ def is_persistent_business_session(api_instance):
     return getattr(api_instance, "_is_persistent_session", True) is not False
 
 
+def is_multi_account_logged_in(account_session):
+    """Return whether one account in a multi-account session is logged in."""
+    if bool(getattr(account_session, "login_success", False)):
+        return True
+
+    user_data = getattr(account_session, "user_data", None)
+    return bool(
+        user_data
+        and getattr(user_data, "id", "")
+        and getattr(account_session, "is_first_login_verified", False)
+    )
+
+
+def get_business_session_login_success(api_instance):
+    """Resolve the session-list login badge for single and multi-account modes."""
+    if not getattr(api_instance, "is_multi_account_mode", False):
+        return bool(getattr(api_instance, "login_success", False))
+
+    accounts = getattr(api_instance, "accounts", {}) or {}
+    return any(is_multi_account_logged_in(account) for account in accounts.values())
+
+
 def promote_auth_session_to_persistent(source_session_id, target_session_id):
     """Promote a temporary auth context in place and move it to a new session ID."""
     source_session_id = normalize_session_uuid(source_session_id)
@@ -19576,7 +19598,7 @@ class Api:
         mode_info = {
             "success": True,
             "is_multi_account_mode": getattr(self, "is_multi_account_mode", False),
-            "school_account_logged_in": getattr(self, "login_success", False),
+            "school_account_logged_in": get_business_session_login_success(self),
             "is_offline_mode": getattr(self, "is_offline_mode", False),
         }
 
@@ -24308,12 +24330,11 @@ def save_session_state(session_id, api_instance, force_save=False):
                 if time.time() - last_save_time < 2.0:
                     return
             api_instance._last_session_save_time = time.time()
+            session_login_success = get_business_session_login_success(api_instance)
             state = {
                 "session_id": session_id,
-                "school_account_logged_in": getattr(
-                    api_instance, "login_success", False
-                ),
-                "login_success": getattr(api_instance, "login_success", False),
+                "school_account_logged_in": session_login_success,
+                "login_success": session_login_success,
                 "user_info": getattr(api_instance, "user_info", None),
                 "created_at": getattr(api_instance, "_session_created_at", time.time()),
                 "last_accessed": time.time(),
@@ -24424,12 +24445,8 @@ def save_session_state(session_id, api_instance, force_save=False):
                             "is_first_login_verified": getattr(
                                 account_session, "is_first_login_verified", False
                             ),
-                            "school_account_logged_in": bool(
-                                getattr(account_session, "user_data", None)
-                                and getattr(account_session.user_data, "id", "")
-                            )
-                            and getattr(
-                                account_session, "is_first_login_verified", False
+                            "school_account_logged_in": is_multi_account_logged_in(
+                                account_session
                             ),
                             "summary": getattr(account_session, "summary", {}),
                         }
@@ -24461,12 +24478,8 @@ def save_session_state(session_id, api_instance, force_save=False):
                             "status_text": getattr(
                                 account_session, "status_text", "待命"
                             ),
-                            "school_account_logged_in": bool(
-                                getattr(account_session, "user_data", None)
-                                and getattr(account_session.user_data, "id", "")
-                            )
-                            and getattr(
-                                account_session, "is_first_login_verified", False
+                            "school_account_logged_in": is_multi_account_logged_in(
+                                account_session
                             ),
                             "summary": getattr(account_session, "summary", {}),
                         }
@@ -24490,7 +24503,7 @@ def save_session_state(session_id, api_instance, force_save=False):
                     "logged_in_accounts": sum(
                         1
                         for acc in accounts.values()
-                        if getattr(acc, "login_success", False)
+                        if is_multi_account_logged_in(acc)
                     ),
                     "total_tasks": sum(
                         len(getattr(acc, "all_run_data", []))
@@ -35731,13 +35744,7 @@ def start_web_server(args_param):
                 if not is_persistent_business_session(api):
                     continue
                 is_multi = getattr(api, "is_multi_account_mode", False)
-                login_success = getattr(api, "login_success", False)
-                if is_multi:
-                    accounts = getattr(api, "accounts", {})
-                    login_success = any(
-                        getattr(acc, "login_success", False)
-                        for acc in accounts.values()
-                    )
+                login_success = get_business_session_login_success(api)
                 session_info = {
                     "session_id": sid,
                     "session_hash": hashlib.sha256(sid.encode()).hexdigest()[:16],
