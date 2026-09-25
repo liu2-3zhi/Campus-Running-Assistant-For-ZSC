@@ -41,21 +41,28 @@ test('expanded multi-account filters classify status gender and executability', 
     [
       {
         username: 'a',
+        name: 'Alice',
+        tag: '一班',
         gender: '男',
         status_text: '全部完成',
-        summary: { executable: 0 },
+        summary: { executable: 0, att_pending: 0, att_completed: 3, att_expired: 0 },
       },
       {
         username: 'b',
+        name: 'Bob',
+        tag: '二班',
         gender: '女',
         status_text: '运行 1/2: 测试 · 30%',
-        summary: { executable: 1 },
+        summary: { executable: 1, att_pending: 2, att_completed: 0, att_expired: 1 },
       },
     ],
     {
       status: '运行中',
       gender: '女',
       executable: '有可执行任务',
+      keyword: 'bob',
+      tag: '二班',
+      attendance: '有待签任务',
     },
   )
 
@@ -79,6 +86,9 @@ test('expanded view button is next to import and opens a Swal card dialog', () =
   assert.match(source, /data-expanded-filter="status"/)
   assert.match(source, /data-expanded-filter="gender"/)
   assert.match(source, /data-expanded-filter="executable"/)
+  assert.match(source, /data-expanded-filter="keyword"/)
+  assert.match(source, /data-expanded-filter="attendance"/)
+  assert.match(source, /data-expanded-filter="tag"/)
 })
 
 test('expanded account cards include attendance summary counts', () => {
@@ -92,6 +102,20 @@ test('expanded account cards include attendance summary counts', () => {
   assert.match(cardSource, /summary\.att_completed/)
   assert.match(cardSource, /过期/)
   assert.match(cardSource, /summary\.att_expired/)
+})
+
+test('expanded account cards expose the main account actions', () => {
+  const start = source.indexOf('function buildExpandedMultiAccountCard(')
+  const end = source.indexOf('async function openMultiAccountExpandedView(', start)
+  const cardSource = source.slice(start, end)
+
+  for (const action of ['remove', 'refresh', 'start', 'stop']) {
+    assert.match(cardSource, new RegExp(`data-expanded-action="${action}"`))
+  }
+  assert.match(
+    source,
+    /cardsEl\?\.addEventListener\("click", async \(event\) => \{/,
+  )
 })
 
 test('live account updates refresh an open expanded view and cached snapshot', async () => {

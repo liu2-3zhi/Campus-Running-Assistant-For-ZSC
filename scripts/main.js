@@ -42165,6 +42165,9 @@ function filterMultiAccountExpandedAccounts(accounts, filters = {}) {
   const statusFilter = String(filters.status || "全部");
   const genderFilter = String(filters.gender || "全部");
   const executableFilter = String(filters.executable || "全部");
+  const attendanceFilter = String(filters.attendance || "全部");
+  const tagFilter = String(filters.tag || "全部");
+  const keywordFilter = String(filters.keyword || "").trim().toLowerCase();
 
   return (Array.isArray(accounts) ? accounts : []).filter((account) => {
     const displayStatus = formatMultiAccountStatusText(
@@ -42177,6 +42180,23 @@ function filterMultiAccountExpandedAccounts(accounts, filters = {}) {
       account.gender ?? account.user_data?.gender,
     );
     const executableCount = Number(account.summary?.executable) || 0;
+    const attPending = Number(account.summary?.att_pending) || 0;
+    const attCompleted = Number(account.summary?.att_completed) || 0;
+    const attExpired = Number(account.summary?.att_expired) || 0;
+    const tag = String(account.tag || "").trim();
+
+    if (keywordFilter) {
+      const searchableText = [
+        account.username,
+        account.name,
+        tag,
+      ]
+        .map((value) => String(value || "").toLowerCase())
+        .join(" ");
+      if (!searchableText.includes(keywordFilter)) {
+        return false;
+      }
+    }
 
     if (statusFilter !== "全部" && statusCategory !== statusFilter) {
       return false;
@@ -42194,6 +42214,21 @@ function filterMultiAccountExpandedAccounts(accounts, filters = {}) {
       executableFilter === "无可执行任务" &&
       executableCount > 0
     ) {
+      return false;
+    }
+    if (tagFilter !== "全部" && tag !== tagFilter) {
+      return false;
+    }
+    if (attendanceFilter === "有待签任务" && attPending <= 0) {
+      return false;
+    }
+    if (attendanceFilter === "无待签任务" && attPending > 0) {
+      return false;
+    }
+    if (attendanceFilter === "有已签任务" && attCompleted <= 0) {
+      return false;
+    }
+    if (attendanceFilter === "有签到过期" && attExpired <= 0) {
       return false;
     }
     return true;
@@ -42217,7 +42252,7 @@ function buildExpandedMultiAccountCard(account) {
   const safeTag = account.tag ? escapeHtml(account.tag) : "";
 
   return `
-    <div class="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm">
+    <div class="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-white to-slate-50 p-4 text-left shadow-sm transition-shadow hover:shadow-md">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="truncate text-sm font-bold text-slate-800">${safeName}</div>
@@ -42249,6 +42284,12 @@ function buildExpandedMultiAccountCard(account) {
           <span class="text-slate-400">${escapeHtml(progressExtra)}</span>
         </div>
       </div>
+      <div class="mt-3 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-3">
+        <button type="button" data-expanded-action="remove" data-username="${safeUsername}" class="btn btn-danger !py-1 !px-3 !text-xs">移除</button>
+        <button type="button" data-expanded-action="refresh" data-username="${safeUsername}" class="btn btn-ghost !py-1 !px-3 !text-xs">刷新</button>
+        <button type="button" data-expanded-action="start" data-username="${safeUsername}" class="btn btn-success !py-1 !px-3 !text-xs">开始</button>
+        <button type="button" data-expanded-action="stop" data-username="${safeUsername}" class="btn btn-warning !py-1 !px-3 !text-xs">停止</button>
+      </div>
     </div>
   `;
 }
@@ -42264,8 +42305,26 @@ async function openMultiAccountExpandedView() {
     cachedMultiAccounts = accounts;
   }
 
+  const availableTags = Array.from(
+    new Set(
+      accounts
+        .map((account) => String(account.tag || "").trim())
+        .filter(Boolean),
+    ),
+  ).sort((left, right) => left.localeCompare(right, "zh-CN"));
+  const tagOptionsHtml = availableTags
+    .map(
+      (tag) =>
+        `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`,
+    )
+    .join("");
+
   const filterHtml = `
-    <div class="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left sm:grid-cols-3">
+    <div class="mb-4 grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-sky-50/50 p-4 text-left sm:grid-cols-2 lg:grid-cols-3">
+      <label class="text-xs font-semibold text-slate-600">
+        关键词
+        <input data-expanded-filter="keyword" type="search" placeholder="账号 / 姓名 / 标签" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100">
+      </label>
       <label class="text-xs font-semibold text-slate-600">
         任务状态
         <select data-expanded-filter="status" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
@@ -42296,6 +42355,23 @@ async function openMultiAccountExpandedView() {
           <option value="无可执行任务">无可执行任务</option>
         </select>
       </label>
+      <label class="text-xs font-semibold text-slate-600">
+        签到状态
+        <select data-expanded-filter="attendance" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+          <option value="全部">全部签到状态</option>
+          <option value="有待签任务">有待签任务</option>
+          <option value="无待签任务">无待签任务</option>
+          <option value="有已签任务">有已签任务</option>
+          <option value="有签到过期">有签到过期</option>
+        </select>
+      </label>
+      <label class="text-xs font-semibold text-slate-600">
+        标签
+        <select data-expanded-filter="tag" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+          <option value="全部">全部标签</option>
+          ${tagOptionsHtml}
+        </select>
+      </label>
     </div>
     <div class="mb-3 flex items-center justify-between text-xs text-slate-500">
       <span id="expanded-multi-account-count"></span>
@@ -42324,6 +42400,15 @@ async function openMultiAccountExpandedView() {
       const executableSelect = root.querySelector(
         '[data-expanded-filter="executable"]',
       );
+      const attendanceSelect = root.querySelector(
+        '[data-expanded-filter="attendance"]',
+      );
+      const tagSelect = root.querySelector(
+        '[data-expanded-filter="tag"]',
+      );
+      const keywordInput = root.querySelector(
+        '[data-expanded-filter="keyword"]',
+      );
       const countEl = root.querySelector("#expanded-multi-account-count");
       const cardsEl = root.querySelector("#expanded-multi-account-cards");
 
@@ -42335,6 +42420,9 @@ async function openMultiAccountExpandedView() {
           status: statusSelect?.value,
           gender: genderSelect?.value,
           executable: executableSelect?.value,
+          attendance: attendanceSelect?.value,
+          tag: tagSelect?.value,
+          keyword: keywordInput?.value,
         });
         countEl.textContent = `显示 ${filteredAccounts.length} / ${currentAccounts.length} 个账号`;
         cardsEl.innerHTML = filteredAccounts.length
@@ -42342,15 +42430,68 @@ async function openMultiAccountExpandedView() {
           : '<div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">没有符合筛选条件的账号</div>';
       };
 
-      [statusSelect, genderSelect, executableSelect].forEach((select) => {
+      [
+        statusSelect,
+        genderSelect,
+        executableSelect,
+        attendanceSelect,
+        tagSelect,
+      ].forEach((select) => {
         select?.addEventListener("change", renderFilteredCards);
       });
+      keywordInput?.addEventListener("input", renderFilteredCards);
+
+      cardsEl?.addEventListener("click", async (event) => {
+        const actionButton = event.target.closest("[data-expanded-action]");
+        if (!actionButton) return;
+        const username = actionButton.dataset.username;
+        const action = actionButton.dataset.expandedAction;
+        if (!username || !action) return;
+
+        actionButton.disabled = true;
+        try {
+          if (action === "remove") {
+            await multi_removeAccount(username);
+          } else if (action === "refresh") {
+            await callPythonAPI("multi_refresh_single_status", username);
+          } else if (action === "start") {
+            const canStart = await checkOverdueBeforeStart(username);
+            if (canStart) {
+              const runOnly =
+                document.getElementById(
+                  "multi-run-only-incomplete-check",
+                )?.checked ?? true;
+              const result = await callPythonAPI(
+                "multi_start_single_account",
+                username,
+                runOnly,
+              );
+              if (!result?.success) {
+                showModalAlert(result?.message || "启动失败", "错误");
+              }
+            }
+          } else if (action === "stop") {
+            await callPythonAPI("multi_stop_single_account", username);
+          }
+        } catch (error) {
+          logMessage_Error(`展开列表操作失败: ${error}`);
+        } finally {
+          if (document.body.contains(actionButton)) {
+            actionButton.disabled = false;
+          }
+          renderFilteredCards();
+        }
+      });
+
       root
         .querySelector("#expanded-multi-account-reset")
         ?.addEventListener("click", () => {
           if (statusSelect) statusSelect.value = "全部";
           if (genderSelect) genderSelect.value = "全部";
           if (executableSelect) executableSelect.value = "全部";
+          if (attendanceSelect) attendanceSelect.value = "全部";
+          if (tagSelect) tagSelect.value = "全部";
+          if (keywordInput) keywordInput.value = "";
           renderFilteredCards();
         });
       activeExpandedMultiAccountRefresh = renderFilteredCards;
@@ -42409,7 +42550,7 @@ function renderMultiAccountList(accounts) {
       item.id = `${prefix}${acc.username}`;
       item.dataset.username = acc.username;
       item.className =
-        "p-3 rounded-xl border border-slate-200 bg-white/80 mb-2 text-sm relative min-w-0 overflow-hidden";
+        "p-3 rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50/80 mb-2 text-sm relative min-w-0 overflow-hidden shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md";
       item.innerHTML = `
                     <div class="${isMobile ? "flex flex-col gap-2 min-w-0" : "flex items-start justify-between gap-3 min-w-0"}">
                         <div class="font-bold text-slate-800 flex items-start gap-2 min-w-0 ${isMobile ? "" : "flex-1"}">
@@ -42435,7 +42576,7 @@ function renderMultiAccountList(accounts) {
                         }</span>
                     </div>
 
-                    <div class="grid grid-cols-5 gap-2 text-center text-xs mt-2 pt-2 border-t text-slate-600">
+                    <div class="grid grid-cols-5 gap-2 rounded-xl bg-slate-50/80 p-2 text-center text-xs mt-2 text-slate-600">
                         <div>总数: <span class="summary-total font-bold">${
                           s.total
                         }</span></div>
@@ -42453,7 +42594,7 @@ function renderMultiAccountList(accounts) {
                         }</span></div>
                     </div>
 
-                    <div class="grid grid-cols-3 gap-2 text-center text-xs mt-2 pt-2 border-t border-slate-100 text-slate-600">
+                    <div class="grid grid-cols-3 gap-2 rounded-xl bg-sky-50/50 p-2 text-center text-xs mt-2 text-slate-600">
                         <div title="待签到任务">待签: <span class="summary-att-pending font-bold text-sky-600">${
                           s.att_pending || 0
                         }</span></div>

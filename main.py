@@ -12478,6 +12478,25 @@ class UserData:
         self.avatar_url: str = ""
 
 
+def _normalize_gender_value(value) -> str:
+    """将学校接口返回的性别值统一为前端使用的“男/女”文本。"""
+    if value is None or isinstance(value, bool):
+        return ""
+
+    text = str(value).strip()
+    if not text:
+        return ""
+
+    normalized = text.casefold()
+    if normalized in {"0", "unknown", "未知", "保密"}:
+        return ""
+    if normalized in {"1", "m", "male", "man", "男", "男生", "男性"}:
+        return "男"
+    if normalized in {"2", "f", "female", "woman", "女", "女生", "女性"}:
+        return "女"
+    return text
+
+
 class RunData:
     """存储单个跑步任务相关数据的类"""
 
@@ -16303,6 +16322,216 @@ class Api:
         logging.info(f"已成功生成新的User-Agent字符串: {self.device_ua}")
         return self.device_ua
 
+    @staticmethod
+    def _apply_login_profile_to_user_data(user_data, data):
+        """将学校登录响应中的用户资料同步到 UserData。"""
+        data = data if isinstance(data, dict) else {}
+        user_info = data.get("userInfo", {})
+        dept_info = data.get("deptInfo", {})
+        user_info = user_info if isinstance(user_info, dict) else {}
+        dept_info = dept_info if isinstance(dept_info, dict) else {}
+
+        def first_non_empty(*values):
+            for value in values:
+                if value is None:
+                    continue
+                if isinstance(value, str) and not value.strip():
+                    continue
+                return value
+            return ""
+
+        profile_fields = {
+            "name": first_non_empty(
+                user_info.get("name"),
+                dept_info.get("name"),
+                getattr(user_data, "name", ""),
+            ),
+            "phone": first_non_empty(
+                user_info.get("phone"),
+                dept_info.get("phone"),
+                getattr(user_data, "phone", ""),
+            ),
+            "student_id": first_non_empty(
+                user_info.get("account"),
+                dept_info.get("studentNum"),
+                dept_info.get("account"),
+                getattr(user_data, "student_id", ""),
+            ),
+            "id": first_non_empty(
+                user_info.get("id"),
+                dept_info.get("id"),
+                getattr(user_data, "id", ""),
+            ),
+            "registration_time": first_non_empty(
+                user_info.get("createtime"),
+                dept_info.get("createtime"),
+                getattr(user_data, "registration_time", ""),
+            ),
+            "first_login_time": first_non_empty(
+                user_info.get("firstlogin"),
+                dept_info.get("firstlogin"),
+                getattr(user_data, "first_login_time", ""),
+            ),
+            "id_card": first_non_empty(
+                user_info.get("iDcard"),
+                dept_info.get("iDcard"),
+                getattr(user_data, "id_card", ""),
+            ),
+            "current_login_time": first_non_empty(
+                user_info.get("logintime"),
+                dept_info.get("logintime"),
+                getattr(user_data, "current_login_time", ""),
+            ),
+            "last_login_time": first_non_empty(
+                dept_info.get("logintime"),
+                user_info.get("logintime"),
+                getattr(user_data, "last_login_time", ""),
+            ),
+            "school_name": first_non_empty(
+                dept_info.get("schoolName"),
+                getattr(user_data, "school_name", ""),
+            ),
+            "attribute_type": first_non_empty(
+                dept_info.get("typeValue"),
+                getattr(user_data, "attribute_type", ""),
+            ),
+            "avatar_url": first_non_empty(
+                user_info.get("avatar"),
+                dept_info.get("avatar"),
+                getattr(user_data, "avatar_url", ""),
+            ),
+        }
+
+        student_id = str(profile_fields["student_id"] or "").strip()
+        profile_fields["username"] = (
+            student_id
+            or str(getattr(user_data, "username", "") or "").strip()
+        )
+
+        gender = ""
+        for candidate in (
+            dept_info.get("sexValue"),
+            user_info.get("sex"),
+            dept_info.get("sex"),
+            getattr(user_data, "gender", ""),
+        ):
+            gender = _normalize_gender_value(candidate)
+            if gender:
+                break
+        if gender:
+            profile_fields["gender"] = gender
+
+        for field_name, value in profile_fields.items():
+            if value is None:
+                continue
+            if isinstance(value, str) and not value.strip():
+                continue
+            setattr(user_data, field_name, value)
+
+        return user_data
+
+    def _persist_school_account_backup(
+        self,
+        username,
+        user_info,
+        dept_info,
+        source="单账号登录",
+    ):
+        """将学校用户资料写入 school_accounts/{学号}_backup.json。"""
+        username = str(username or "").strip()
+        if not username:
+            logging.warning("[%s] 备份 user_info 失败：无法确定用户名(学号)", source)
+            return None
+
+        try:
+            os.makedirs(self.user_dir, exist_ok=True)
+            try:
+                stats = self._load_school_account_stats_from_ini(username)
+            except Exception as exc:
+                logging.warning(
+                    "[%s] 读取账号 %s 的 INI 统计失败，备份统计将使用 0: %s",
+                    source,
+                    username,
+                    exc,
+                )
+                stats = {}
+
+            backup_data = {
+                "userInfo": user_info if isinstance(user_info, dict) else {},
+                "deptInfo": dept_info if isinstance(dept_info, dict) else {},
+                "backup_timestamp": time.time(),
+                "overdue_count": stats.get("overdue_count", 0),
+                "completed_count": stats.get("completed_count", 0),
+            }
+            backup_filepath = os.path.join(
+                self.user_dir, f"{username}_backup.json"
+            )
+            with open(backup_filepath, "w", encoding="utf-8") as file_obj:
+                json.dump(backup_data, file_obj, indent=2, ensure_ascii=False)
+
+            logging.info(
+                "[%s] 已成功备份 user_info 到: %s "
+                "(包含统计数据: overdue=%s, completed=%s)",
+                source,
+                backup_filepath,
+                stats.get("overdue_count", 0),
+                stats.get("completed_count", 0),
+            )
+            return backup_filepath
+        except Exception as exc:
+            logging.error(
+                "[%s] 备份 user_info 失败，账号: %s, 错误: %s",
+                source,
+                username,
+                exc,
+                exc_info=True,
+            )
+            return None
+
+    def _load_school_account_backup(self, username):
+        """读取扁平和旧版嵌套目录中的账号资料备份。"""
+        username = str(username or "").strip()
+        if not username:
+            return {}
+
+        candidates = (
+            os.path.join(self.user_dir, f"{username}_backup.json"),
+            os.path.join(
+                self.user_dir, username, f"{username}_backup.json"
+            ),
+        )
+        for backup_filepath in candidates:
+            if not os.path.exists(backup_filepath):
+                continue
+            try:
+                with open(backup_filepath, "r", encoding="utf-8") as file_obj:
+                    backup_data = json.load(file_obj)
+                if isinstance(backup_data, dict):
+                    return backup_data
+            except Exception as exc:
+                logging.warning(
+                    "读取账号资料备份失败 %s: %s",
+                    backup_filepath,
+                    exc,
+                )
+        return {}
+
+    def _get_school_account_gender_from_backup(self, username):
+        backup_data = self._load_school_account_backup(username)
+        user_info = backup_data.get("userInfo", {})
+        dept_info = backup_data.get("deptInfo", {})
+        user_info = user_info if isinstance(user_info, dict) else {}
+        dept_info = dept_info if isinstance(dept_info, dict) else {}
+        for candidate in (
+            dept_info.get("sexValue"),
+            user_info.get("sex"),
+            dept_info.get("sex"),
+        ):
+            gender = _normalize_gender_value(candidate)
+            if gender:
+                return gender
+        return ""
+
     def login(self, username, password):
         logging.info(f"API调用: login - 用户登录请求，用户名: '{username}'")
         if not username or not password:
@@ -16328,59 +16557,15 @@ class Api:
 
         self.log("登录成功，正在解析用户信息...")
         data = resp.get("data", {})
-        user_info = data.get("userInfo", {})
-        dept_info = data.get("deptInfo", {})
         ud = self.user_data
-
-        ud.name = user_info.get("name", "")
-        ud.phone = user_info.get("phone", "")
-        ud.student_id = user_info.get("account", "")
-        ud.id = user_info.get("id", "")
-        ud.username = ud.student_id or input_username
-
-        ud.registration_time = user_info.get("createtime", "")
-        ud.first_login_time = user_info.get("firstlogin", "")
-        ud.id_card = user_info.get("iDcard", "")
-        ud.current_login_time = user_info.get("logintime", "")
-        ud.last_login_time = dept_info.get("logintime", "")
-        ud.gender = dept_info.get("sexValue", "")
-        ud.school_name = dept_info.get("schoolName", "")
-        ud.attribute_type = dept_info.get("typeValue", "")
-
-        try:
-            if ud.username and os.path.exists(self.user_dir):
-                backup_filename = f"{ud.username}_backup.json"
-                backup_filepath = os.path.join(self.user_dir, backup_filename)
-
-                # 从 INI 文件加载统计数据（overdue_count 和 completed_count）
-                # 这些数据与账号密码分离存储，需要单独读取
-                stats = self._load_school_account_stats_from_ini(ud.username)
-
-                # 创建备份数据字典
-                # 包含用户信息、部门信息、备份时间戳以及统计数据
-                backup_data = {
-                    "userInfo": user_info,        # 用户基本信息（姓名、学号等）
-                    "deptInfo": dept_info,        # 部门/学校信息
-                    "backup_timestamp": time.time(),  # 备份创建时间
-                    "overdue_count": stats.get("overdue_count", 0),      # 欠费次数
-                    # 已完成任务数
-                    "completed_count": stats.get("completed_count", 0)
-                }
-
-                # 将备份数据写入 JSON 文件
-                with open(backup_filepath, "w", encoding="utf-8") as f:
-                    json.dump(backup_data, f, indent=2, ensure_ascii=False)
-
-                logging.info(
-                    f"已成功备份 user_info 到: {backup_filepath} "
-                    f"(包含统计数据: overdue={stats.get('overdue_count', 0)}, "
-                    f"completed={stats.get('completed_count', 0)})"
-                )
-            elif not ud.username:
-                logging.warning("备份 user_info 失败：无法确定用户名(学号)")
-
-        except Exception as e:
-            logging.error(f"备份 user_info 失败: {e}", exc_info=True)
+        ud.username = input_username
+        self._apply_login_profile_to_user_data(ud, data)
+        self._persist_school_account_backup(
+            ud.username,
+            data.get("userInfo", {}),
+            data.get("deptInfo", {}),
+            source="单账号登录",
+        )
         self._save_config(ud.username, password, self.device_ua)
 
         # 将密码和UA备份到旧版 INI 文件（兼容旧版本）
@@ -19992,10 +20177,16 @@ class Api:
                     return
 
                 data = login_resp.get("data", {})
-                user_info = data.get("userInfo", {})
-                acc.user_data.name = user_info.get("name", "")
-                acc.user_data.id = user_info.get("id", "")
-                acc.user_data.student_id = user_info.get("account", "")
+                acc.user_data.username = (
+                    getattr(acc.user_data, "username", "") or acc.username
+                )
+                self._apply_login_profile_to_user_data(acc.user_data, data)
+                self._persist_school_account_backup(
+                    acc.user_data.username,
+                    data.get("userInfo", {}),
+                    data.get("deptInfo", {}),
+                    source="多账号刷新登录",
+                )
 
                 if not acc.is_first_login_verified:
                     acc.is_first_login_verified = True
@@ -20147,12 +20338,25 @@ class Api:
             is_running = self._is_multi_account_execution_active(acc)
             current_pos = getattr(acc, "current_position",
                                   None) if is_running else None
+            user_data = getattr(acc, "user_data", None)
+            gender = getattr(user_data, "gender", "") or ""
+            if not gender:
+                backup_username = (
+                    getattr(user_data, "username", "")
+                    or getattr(user_data, "student_id", "")
+                    or acc.username
+                )
+                gender = self._get_school_account_gender_from_backup(
+                    backup_username
+                )
+                if gender and user_data is not None:
+                    user_data.gender = gender
 
             status_list.append(
                 {
                     "username": acc.username,
                     "name": acc.user_data.name or "---",
-                    "gender": getattr(acc.user_data, "gender", ""),
+                    "gender": gender,
                     "status_text": acc.status_text,
                     "summary": acc.summary,
                     "tag": acc.tag,
@@ -21473,15 +21677,11 @@ class Api:
                     return
 
                 data = login_resp.get("data", {})
-                user_info = data.get("userInfo", {})
-                acc.user_data.name = user_info.get("name", "")
-                acc.user_data.id = user_info.get("id", "")
-                acc.user_data.student_id = user_info.get("account", "")
-
-                # 设置 username 字段，用于后续备份文件命名
-                # 优先使用学号(student_id)，如果学号不存在则使用账号登录名(acc.username)
-                # 这确保了备份文件名的一致性和可追溯性
-                acc.user_data.username = acc.user_data.student_id or acc.username
+                # 设置登录名兜底，随后由学校响应覆盖为学号等完整资料。
+                acc.user_data.username = (
+                    getattr(acc.user_data, "username", "") or acc.username
+                )
+                self._apply_login_profile_to_user_data(acc.user_data, data)
 
                 execution_token = getattr(
                     acc, "_school_account_execution_token", None
@@ -21509,88 +21709,12 @@ class Api:
 
                 acc.log("登录成功。")
 
-                # ========== 开始：备份用户信息到本地文件 ==========
-                # 此备份功能与 login() 函数（第6376-6395行）保持一致
-                # 目的：在多账号模式下，也能为每个账号创建用户信息的本地备份
-                # 备份内容包括：userInfo（用户基本信息）、deptInfo（部门/学校信息）、备份时间戳
-                try:
-                    # 从登录响应中提取部门信息（deptInfo）
-                    # deptInfo 包含学校名称、性别、属性类型等扩展信息
-                    dept_info = data.get("deptInfo", {})
-
-                    # 检查前置条件：
-                    # 1. acc.user_data.username 必须存在（用于生成备份文件名）
-                    # 2. self.user_dir 目录必须存在（备份文件的存储目录）
-                    # 只有同时满足这两个条件，才执行备份操作
-                    if acc.user_data.username and os.path.exists(self.user_dir):
-                        # 构造备份文件名：格式为 "{学号}_backup.json"
-                        # 例如：20210001_backup.json
-                        # 这种命名方式便于识别和管理不同用户的备份文件
-                        backup_filename = f"{acc.user_data.username}_backup.json"
-
-                        # 拼接完整的备份文件路径
-                        # user_dir 通常是 "school_accounts" 目录
-                        backup_filepath = os.path.join(
-                            self.user_dir, backup_filename)
-
-                        # 构建要备份的数据结构（Python 字典）
-                        # 从 INI 文件加载统计数据（overdue_count 和 completed_count）
-                        # 这些数据与账号密码分离存储，需要单独读取
-                        stats = self._load_school_account_stats_from_ini(
-                            acc.user_data.username)
-
-                        # 创建备份数据字典
-                        # 包含三个关键字段：
-                        # 1. userInfo: 用户基本信息（姓名、手机号、学号、ID等）
-                        # 2. deptInfo: 部门/学校信息（学校名称、性别、属性类型等）
-                        # 3. backup_timestamp: 备份创建的时间戳（Unix时间戳，便于后续判断备份的新旧）
-                        # 4. overdue_count: 欠费次数（从 INI 文件读取）
-                        # 5. completed_count: 已完成任务数（从 INI 文件读取）
-                        backup_data = {
-                            "userInfo": user_info,
-                            "deptInfo": dept_info,
-                            "backup_timestamp": time.time(),
-                            # 欠费次数
-                            "overdue_count": stats.get("overdue_count", 0),
-                            # 已完成任务数
-                            "completed_count": stats.get("completed_count", 0)
-                        }
-
-                        # 将备份数据写入到 JSON 文件
-                        # 参数说明：
-                        # - "w": 以写入模式打开文件（如果文件存在则覆盖）
-                        # - encoding="utf-8": 使用 UTF-8 编码，确保中文正常保存
-                        # - indent=2: JSON 格式化时使用2个空格缩进，提高可读性
-                        # - ensure_ascii=False: 允许保存非 ASCII 字符（如中文），不转义为 \uXXXX
-                        with open(backup_filepath, "w", encoding="utf-8") as f:
-                            json.dump(backup_data, f, indent=2,
-                                      ensure_ascii=False)
-
-                        # 记录备份成功的日志信息，包含统计数据
-                        # 使用 logging.info 而非 acc.log，因为这是系统级操作
-                        logging.info(
-                            f"[多账号模式] 已成功备份 user_info 到: {backup_filepath} "
-                            f"(包含统计数据: overdue={stats.get('overdue_count', 0)}, "
-                            f"completed={stats.get('completed_count', 0)})"
-                        )
-
-                    # 如果 username 不存在，记录警告日志
-                    # 这种情况理论上不应该发生，因为上面已经设置了 username
-                    # 但作为防御性编程，仍然进行检查
-                    elif not acc.user_data.username:
-                        logging.warning(
-                            f"[多账号模式] 备份 user_info 失败：无法确定用户名(学号)，账号: {acc.username}"
-                        )
-
-                # 捕获并记录任何可能发生的异常
-                # 备份失败不应该影响主流程（登录、任务分析等），因此只记录错误不中断程序
-                # exc_info=True 会将完整的异常堆栈信息记录到日志中，便于调试
-                except Exception as e:
-                    logging.error(
-                        f"[多账号模式] 备份 user_info 失败，账号: {acc.username}, 错误: {e}",
-                        exc_info=True,
-                    )
-                # ========== 结束：备份用户信息到本地文件 ==========
+                self._persist_school_account_backup(
+                    acc.user_data.username,
+                    data.get("userInfo", {}),
+                    data.get("deptInfo", {}),
+                    source="多账号执行登录",
+                )
 
                 self._update_account_status_js(
                     acc, status_text="分析任务", name=acc.user_data.name
