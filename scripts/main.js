@@ -18238,6 +18238,7 @@ let currentThemeConfig = {};
 let availableThemeStyles = [];
 
 let cachedMultiAccounts = [];
+let activeExpandedMultiAccountRefresh = null;
 
 let runAccumulatedMs = 0;
 let draftTotalDist = 0;
@@ -40444,6 +40445,7 @@ $("multi-load-all-from-config-btn").addEventListener(
 );
 $("multi-add-from-config-btn").addEventListener("click", multi_addFromConfig);
 $("multi-import-excel-btn").addEventListener("click", multi_importFromExcel);
+$("multi-expand-btn").addEventListener("click", openMultiAccountExpandedView);
 $("multi-export-excel-btn").addEventListener("click", multi_exportToExcel);
 $("multi-remove-all-btn").addEventListener("click", () => multi_removeAll());
 $("multi-remove-selected-btn").addEventListener("click", () => multi_removeSelected());
@@ -42114,6 +42116,252 @@ function getMultiAccountProgressState(account) {
   return { progressPct, progressText, progressExtra };
 }
 
+function getMultiAccountStatusCategory(statusText) {
+  const normalizedStatus = String(statusText || "").trim();
+  if (
+    normalizedStatus === "全部完成" ||
+    normalizedStatus === "任务已完成" ||
+    normalizedStatus.includes("执行流程完成")
+  ) {
+    return "已完成";
+  }
+  if (normalizedStatus === "全部失败") {
+    return "全部失败";
+  }
+  if (normalizedStatus.startsWith("部分成功")) {
+    return "部分成功";
+  }
+  if (
+    normalizedStatus.includes("无任务") ||
+    normalizedStatus.includes("无可执行")
+  ) {
+    return "无任务可执行";
+  }
+  if (
+    ["运行", "登录", "分析", "等待", "延迟", "排队", "正在"].some((keyword) =>
+      normalizedStatus.includes(keyword),
+    )
+  ) {
+    return "运行中";
+  }
+  if (normalizedStatus.includes("待命")) {
+    return "待命";
+  }
+  return "其他";
+}
+
+function normalizeMultiAccountGender(gender) {
+  const normalizedGender = String(gender ?? "").trim().toLowerCase();
+  if (["男", "male", "m", "1"].includes(normalizedGender)) {
+    return "男";
+  }
+  if (["女", "female", "f", "2"].includes(normalizedGender)) {
+    return "女";
+  }
+  return "未知";
+}
+
+function filterMultiAccountExpandedAccounts(accounts, filters = {}) {
+  const statusFilter = String(filters.status || "全部");
+  const genderFilter = String(filters.gender || "全部");
+  const executableFilter = String(filters.executable || "全部");
+
+  return (Array.isArray(accounts) ? accounts : []).filter((account) => {
+    const displayStatus = formatMultiAccountStatusText(
+      account.status_text,
+      account.summary,
+      true,
+    );
+    const statusCategory = getMultiAccountStatusCategory(displayStatus);
+    const gender = normalizeMultiAccountGender(
+      account.gender ?? account.user_data?.gender,
+    );
+    const executableCount = Number(account.summary?.executable) || 0;
+
+    if (statusFilter !== "全部" && statusCategory !== statusFilter) {
+      return false;
+    }
+    if (genderFilter !== "全部" && gender !== genderFilter) {
+      return false;
+    }
+    if (
+      executableFilter === "有可执行任务" &&
+      executableCount <= 0
+    ) {
+      return false;
+    }
+    if (
+      executableFilter === "无可执行任务" &&
+      executableCount > 0
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function buildExpandedMultiAccountCard(account) {
+  const summary = account.summary || {};
+  const displayStatus = formatMultiAccountStatusText(
+    account.status_text,
+    summary,
+    true,
+  );
+  const gender = normalizeMultiAccountGender(
+    account.gender ?? account.user_data?.gender,
+  );
+  const { progressPct, progressText, progressExtra } =
+    getMultiAccountProgressState(account);
+  const safeName = escapeHtml(account.name || account.username || "---");
+  const safeUsername = escapeHtml(account.username || "");
+  const safeTag = account.tag ? escapeHtml(account.tag) : "";
+
+  return `
+    <div class="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="truncate text-sm font-bold text-slate-800">${safeName}</div>
+          <div class="text-xs text-slate-500">${safeUsername} · ${gender}</div>
+          ${safeTag ? `<div class="mt-1 text-xs font-medium text-purple-600">🏷️ ${safeTag}</div>` : ""}
+        </div>
+        <span class="${getMultiAccountStatusClass(displayStatus)}">${escapeHtml(
+          displayStatus,
+        )}</span>
+      </div>
+      <div class="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center text-xs text-slate-600 sm:grid-cols-5">
+        <div>总数 <strong class="text-slate-800">${summary.total || 0}</strong></div>
+        <div>完成 <strong class="text-emerald-600">${summary.completed || 0}</strong></div>
+        <div>未开始 <strong class="text-slate-700">${summary.not_started || 0}</strong></div>
+        <div>可跑 <strong class="text-amber-600">${summary.executable || 0}</strong></div>
+        <div>过期 <strong class="text-red-600">${summary.expired || 0}</strong></div>
+      </div>
+      <div class="mt-2 grid grid-cols-3 gap-2 rounded-xl border border-slate-100 bg-white p-3 text-center text-xs text-slate-600">
+        <div>待签 <strong class="text-sky-600">${summary.att_pending || 0}</strong></div>
+        <div>已签 <strong class="text-emerald-600">${summary.att_completed || 0}</strong></div>
+        <div>过期 <strong class="text-red-600">${summary.att_expired || 0}</strong></div>
+      </div>
+      <div class="mt-3">
+        <div class="h-2 overflow-hidden rounded-full bg-slate-200">
+          <div class="h-2 rounded-full bg-sky-500" style="width:${progressPct}%"></div>
+        </div>
+        <div class="mt-1 flex justify-between gap-3 text-xs">
+          <span class="text-slate-600">${escapeHtml(progressText)}</span>
+          <span class="text-slate-400">${escapeHtml(progressExtra)}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function openMultiAccountExpandedView() {
+  let accounts = Array.isArray(cachedMultiAccounts)
+    ? cachedMultiAccounts.slice()
+    : [];
+
+  if (!accounts.length) {
+    const response = await callPythonAPI("multi_get_all_accounts_status");
+    accounts = Array.isArray(response?.accounts) ? response.accounts : [];
+    cachedMultiAccounts = accounts;
+  }
+
+  const filterHtml = `
+    <div class="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left sm:grid-cols-3">
+      <label class="text-xs font-semibold text-slate-600">
+        任务状态
+        <select data-expanded-filter="status" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+          <option value="全部">全部任务状态</option>
+          <option value="运行中">运行中</option>
+          <option value="已完成">已完成</option>
+          <option value="全部失败">全部失败</option>
+          <option value="部分成功">部分成功</option>
+          <option value="无任务可执行">无任务可执行</option>
+          <option value="待命">待命</option>
+          <option value="其他">其他</option>
+        </select>
+      </label>
+      <label class="text-xs font-semibold text-slate-600">
+        性别
+        <select data-expanded-filter="gender" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+          <option value="全部">全部性别</option>
+          <option value="男">男</option>
+          <option value="女">女</option>
+          <option value="未知">未知</option>
+        </select>
+      </label>
+      <label class="text-xs font-semibold text-slate-600">
+        可执行任务
+        <select data-expanded-filter="executable" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+          <option value="全部">全部</option>
+          <option value="有可执行任务">有可执行任务</option>
+          <option value="无可执行任务">无可执行任务</option>
+        </select>
+      </label>
+    </div>
+    <div class="mb-3 flex items-center justify-between text-xs text-slate-500">
+      <span id="expanded-multi-account-count"></span>
+      <button type="button" id="expanded-multi-account-reset" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-100">重置筛选</button>
+    </div>
+    <div id="expanded-multi-account-cards" class="max-h-[62vh] space-y-3 overflow-y-auto pr-1"></div>
+  `;
+
+  await Swal.fire({
+    title: "多账号列表",
+    html: filterHtml,
+    width: "min(1100px, 96vw)",
+    showCloseButton: true,
+    showCancelButton: true,
+    showConfirmButton: false,
+    cancelButtonText: "关闭",
+    didOpen: () => {
+      const root = document.querySelector(".swal2-html-container");
+      if (!root) return;
+      const statusSelect = root.querySelector(
+        '[data-expanded-filter="status"]',
+      );
+      const genderSelect = root.querySelector(
+        '[data-expanded-filter="gender"]',
+      );
+      const executableSelect = root.querySelector(
+        '[data-expanded-filter="executable"]',
+      );
+      const countEl = root.querySelector("#expanded-multi-account-count");
+      const cardsEl = root.querySelector("#expanded-multi-account-cards");
+
+      const renderFilteredCards = () => {
+        const currentAccounts = Array.isArray(cachedMultiAccounts)
+          ? cachedMultiAccounts
+          : accounts;
+        const filteredAccounts = filterMultiAccountExpandedAccounts(currentAccounts, {
+          status: statusSelect?.value,
+          gender: genderSelect?.value,
+          executable: executableSelect?.value,
+        });
+        countEl.textContent = `显示 ${filteredAccounts.length} / ${currentAccounts.length} 个账号`;
+        cardsEl.innerHTML = filteredAccounts.length
+          ? filteredAccounts.map(buildExpandedMultiAccountCard).join("")
+          : '<div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">没有符合筛选条件的账号</div>';
+      };
+
+      [statusSelect, genderSelect, executableSelect].forEach((select) => {
+        select?.addEventListener("change", renderFilteredCards);
+      });
+      root
+        .querySelector("#expanded-multi-account-reset")
+        ?.addEventListener("click", () => {
+          if (statusSelect) statusSelect.value = "全部";
+          if (genderSelect) genderSelect.value = "全部";
+          if (executableSelect) executableSelect.value = "全部";
+          renderFilteredCards();
+        });
+      activeExpandedMultiAccountRefresh = renderFilteredCards;
+      renderFilteredCards();
+    },
+    willClose: () => {
+      activeExpandedMultiAccountRefresh = null;
+    },
+  });
+}
+
 function renderMultiAccountList(accounts) {
   cachedMultiAccounts = accounts;
   const renderToContainer = (containerId, isMobile) => {
@@ -42336,6 +42584,8 @@ function renderMultiAccountList(accounts) {
     updateSelectAllCheckboxState();
   if (typeof updateMobileSelectAllCheckboxState === "function")
     updateMobileSelectAllCheckboxState();
+  if (typeof activeExpandedMultiAccountRefresh === "function")
+    activeExpandedMultiAccountRefresh();
 }
 
 function multi_toggleSelectAll(event) {
@@ -42987,6 +43237,21 @@ function multi_updateAccountStatus(username, data) {
       if (extra) extra.textContent = data.progress_extra;
     }
   });
+
+  const cachedAccount =
+    typeof cachedMultiAccounts !== "undefined" &&
+    Array.isArray(cachedMultiAccounts)
+      ? cachedMultiAccounts.find((account) => account.username === username)
+      : null;
+  if (cachedAccount) {
+    Object.assign(cachedAccount, data);
+  }
+  if (
+    typeof activeExpandedMultiAccountRefresh !== "undefined" &&
+    typeof activeExpandedMultiAccountRefresh === "function"
+  ) {
+    activeExpandedMultiAccountRefresh();
+  }
 
   const currentStatus =
     typeof data.status_text === "string" && data.status_text.trim()

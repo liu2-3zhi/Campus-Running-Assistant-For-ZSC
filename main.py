@@ -20152,6 +20152,7 @@ class Api:
                 {
                     "username": acc.username,
                     "name": acc.user_data.name or "---",
+                    "gender": getattr(acc.user_data, "gender", ""),
                     "status_text": acc.status_text,
                     "summary": acc.summary,
                     "tag": acc.tag,
