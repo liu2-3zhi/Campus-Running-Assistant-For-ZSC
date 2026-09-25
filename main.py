@@ -17771,39 +17771,18 @@ class Api:
 
                 is_final_chunk = i + 5 >= len(run_data.run_coords)
 
-                max_attempts = 3
-                attempt = 1
-                chunk_submitted = False
-                while attempt <= max_attempts:
-                    if self._submit_chunk(
-                        run_data,
-                        chunk,
-                        start_time_ms,
-                        is_final_chunk,
-                        i,
-                        client,
-                        user_data,
-                    ):
-                        chunk_submitted = True
-                        break
-
+                if not self._submit_chunk_with_retries(
+                    run_data,
+                    chunk,
+                    start_time_ms,
+                    is_final_chunk,
+                    i,
+                    client,
+                    user_data,
+                    stop_event=stop_flag,
+                    log_func=log_func,
+                ):
                     submission_successful = False
-                    if self.is_offline_mode:
-                        logging.error(
-                            f"[离线测试模式] 模拟提交失败，尝试 {attempt}/{max_attempts}"
-                        )
-                    else:
-                        logging.warning(f"数据提交失败，重试 {attempt}/{max_attempts}")
-                        if stop_flag.wait(timeout=1.0):
-                            submission_successful = False
-                            log_func("检测到停止信号，已取消重试")
-                            break
-                    attempt += 1
-
-                if not chunk_submitted:
-                    logging.error(
-                        f"数据提交在 {max_attempts} 次尝试后仍然失败，任务中止"
-                    )
                     break
 
             if not stop_flag.is_set() and submission_successful:
@@ -17862,6 +17841,56 @@ class Api:
                 finished_event.set()
             logging.info(
                 f"Submission thread finished for task: {run_data.run_name}")
+
+    def _submit_chunk_with_retries(
+        self,
+        run_data: RunData,
+        chunk,
+        start_time,
+        is_finish,
+        chunk_start_index,
+        client: ApiClient,
+        user: UserData,
+        *,
+        stop_event: threading.Event,
+        log_func,
+        stop_predicate=None,
+    ) -> bool:
+        """使用统一重试语义提交单个轨迹数据块。"""
+        max_attempts = 10
+        for attempt in range(1, max_attempts + 1):
+            if self._submit_chunk(
+                run_data,
+                chunk,
+                start_time,
+                is_finish,
+                chunk_start_index,
+                client,
+                user,
+            ):
+                return True
+
+            if stop_predicate and stop_predicate():
+                return False
+
+            if self.is_offline_mode:
+                logging.error(
+                    f"[离线测试模式] 模拟提交失败，尝试 {attempt}/{max_attempts}"
+                )
+                continue
+
+            logging.warning(f"数据提交失败，重试 {attempt}/{max_attempts}")
+            if stop_event.wait(timeout=1.0):
+                log_func("检测到停止信号，已取消重试")
+                return False
+            if stop_predicate and stop_predicate():
+                log_func("检测到停止信号，已取消重试")
+                return False
+
+        logging.error(
+            f"数据提交在 {max_attempts} 次尝试后仍然失败，任务中止"
+        )
+        return False
 
     def _get_path_for_distance(self, path, cumulative_distances, target_dist):
         """如果路径总长不足，则在末段提前折返凑足目标距离"""
@@ -22029,7 +22058,7 @@ class Api:
                         break
 
                     is_final_chunk = chunk_idx + 5 >= len(run_data.run_coords)
-                    if not self._submit_chunk(
+                    if not self._submit_chunk_with_retries(
                         run_data,
                         chunk,
                         start_time_ms,
@@ -22037,6 +22066,9 @@ class Api:
                         chunk_idx,
                         acc.api_client,
                         acc.user_data,
+                        stop_event=acc.stop_event,
+                        log_func=acc.log,
+                        stop_predicate=self.multi_run_stop_flag.is_set,
                     ):
                         submission_successful = False
                         break
