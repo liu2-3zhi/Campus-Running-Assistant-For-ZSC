@@ -5453,6 +5453,7 @@ CONFIG_FILE = CONFIG_JSON_ABS_PATH
 CONFIG_JSON_LOCK = threading.RLock()
 SCHOOL_ACCOUNT_EXECUTION_LOCK = threading.RLock()
 SCHOOL_ACCOUNT_EXECUTION_CLAIMS: dict[str, object] = {}
+SYSTEM_ACCOUNT_BILLING_LOCK = threading.RLock()
 
 
 def _normalize_school_account_execution_identity(value) -> str:
@@ -15097,6 +15098,16 @@ class Api:
             }
 
     def _deduct_available_runs_or_increment_overdue(self, auth_username, school_username):
+        """Serialize settlement so concurrent accounts share one run balance."""
+        with SYSTEM_ACCOUNT_BILLING_LOCK:
+            return self._deduct_available_runs_or_increment_overdue_unlocked(
+                auth_username,
+                school_username,
+            )
+
+    def _deduct_available_runs_or_increment_overdue_unlocked(
+        self, auth_username, school_username
+    ):
         """
         任务完成后处理可用次数扣减或欠费次数增加的逻辑。
         """
@@ -16863,6 +16874,48 @@ class Api:
             pass
         return None
 
+    def _get_task_time_state(self, run_data, ignore_time=None, now=None):
+        """Return expired/not_started/active using the same rules for all modes."""
+        if ignore_time is None:
+            ignore_time = self.params.get("ignore_task_time", True)
+        if now is None:
+            now = datetime.datetime.now()
+
+        end_dt = self._try_parse_dt(getattr(run_data, "end_time", ""))
+        if end_dt:
+            is_expired = (
+                end_dt.date() < now.date() if ignore_time else end_dt < now
+            )
+            if is_expired:
+                return "expired"
+
+        start_dt = self._try_parse_dt(getattr(run_data, "start_time", ""))
+        if start_dt:
+            is_not_started = (
+                now.date() < start_dt.date() if ignore_time else now < start_dt
+            )
+            if is_not_started:
+                return "not_started"
+
+        return "active"
+
+    def _payment_required_for_overdue_gate(self):
+        """Return whether overdue bills should block task execution."""
+        try:
+            config = _read_config_ini()
+            if config is None:
+                return True
+            return config.getboolean(
+                "Payment_Settings",
+                "require_payment",
+                fallback=True,
+            )
+        except Exception as e:
+            logging.warning(
+                f"[欠费检查] 读取付费配置失败，按付费模式处理: {e}"
+            )
+            return True
+
     def _get_task_info_text(self, run: RunData) -> str:
         """根据任务状态生成一个简短的信息文本（增强：多格式时间解析、稳健回退）"""
         if run.status == 1:
@@ -17363,7 +17416,16 @@ class Api:
         # ============================================================
         # 检查当前是否已登录学校账号
         # 这一步骤确保只有无欠费的账号才能启动任务，防止欠费用户通过单账号模式绕过限制
-        if self.user_data and self.user_data.username:
+        if not self.user_data or not self.user_data.username:
+            # 如果没有登录或无用户信息，也应该拒绝启动任务
+            # 这是另一层安全保障，防止未认证用户启动任务
+            logging.warning("[欠费检查] 未登录或无用户信息，拒绝启动任务")
+            return {
+                "success": False,
+                "message": "请先登录后再启动任务"
+            }
+
+        if self._payment_required_for_overdue_gate():
             # 获取当前登录的学校账号用户名
             school_username = self.user_data.username
 
@@ -17388,14 +17450,6 @@ class Api:
                         }
                     ]
                 }
-        else:
-            # 如果没有登录或无用户信息，也应该拒绝启动任务
-            # 这是另一层安全保障，防止未认证用户启动任务
-            logging.warning("[欠费检查] 未登录或无用户信息，拒绝启动任务")
-            return {
-                "success": False,
-                "message": "请先登录后再启动任务"
-            }
 
         # 通过欠费检查后，原子占用单账号执行槽
         with self.single_execution_lock:
@@ -17676,7 +17730,9 @@ class Api:
             return None
         return task.get("response")
 
-    def _finalize_run(self, run_data: RunData, task_index: int, client: ApiClient):
+    def _finalize_run(
+        self, run_data: RunData, task_index: int, client: ApiClient
+    ) -> bool:
         """在所有数据提交后，查询服务器确认任务是否已标记为完成"""
         log_func = (
             client.app.log if hasattr(
@@ -17700,8 +17756,16 @@ class Api:
                         # 从 api_instance 获取认证用户名和学校账号用户名
                         auth_username = getattr(
                             self, "auth_username", None)
+                        bound_user_data = getattr(
+                            getattr(client, "app", None),
+                            "user_data",
+                            None,
+                        )
                         school_username = getattr(
-                            self.user_data, "username", None)
+                            bound_user_data,
+                            "username",
+                            "",
+                        ) or getattr(self.user_data, "username", None)
 
                         # 只有当两者都存在且认证用户不是游客时，才执行扣减逻辑
                         if auth_username and auth_username != "guest" and school_username:
@@ -17765,10 +17829,11 @@ class Api:
                                 f"SocketIO发送'task_completed'事件失败 from Thread[{current_thread.name}]: {e}")
                             logging.error(f"Error type: {type(e).__name__}")
                             logging.error(f"Full traceback: {traceback.format_exc()}")
-                    return
+                    return True
             time.sleep(1)
         log_func("暂未确认完成，请稍后刷新。")
         logging.warning(f"任务完成状态确认失败: 任务名称={run_data.run_name}")
+        return False
 
     def _run_submission_thread(
         self,
@@ -18375,7 +18440,16 @@ class Api:
         # ============================================================
         # 检查当前是否已登录学校账号
         # 这一步骤确保只有无欠费的账号才能批量启动所有任务，防止欠费用户通过单账号模式绕过限制
-        if self.user_data and self.user_data.username:
+        if not self.user_data or not self.user_data.username:
+            # 如果没有登录或无用户信息，也应该拒绝启动任务
+            # 这是另一层安全保障，防止未认证用户启动任务
+            logging.warning("[欠费检查] 未登录或无用户信息，拒绝启动所有任务")
+            return {
+                "success": False,
+                "message": "请先登录后再启动任务"
+            }
+
+        if self._payment_required_for_overdue_gate():
             # 获取当前登录的学校账号用户名
             school_username = self.user_data.username
 
@@ -18400,50 +18474,19 @@ class Api:
                         }
                     ]
                 }
-        else:
-            # 如果没有登录或无用户信息，也应该拒绝启动任务
-            # 这是另一层安全保障，防止未认证用户启动任务
-            logging.warning("[欠费检查] 未登录或无用户信息，拒绝启动所有任务")
-            return {
-                "success": False,
-                "message": "请先登录后再启动任务"
-            }
 
         # 通过欠费检查后，继续执行原有的任务启动逻辑
         if not self.stop_run_flag.is_set():
             return {"success": False, "message": "已有任务在运行"}
 
         tasks_to_run = []
+        now = datetime.datetime.now()
+        ignore_time = self.params.get("ignore_task_time", True)
         for i, d in enumerate(self.all_run_data):
             if d.status == 1 and not ignore_completed:
                 continue
 
-            is_expired = False
-            is_not_started = False
-            now = datetime.datetime.now()
-            ignore_time = self.params.get("ignore_task_time", True)
-
-            try:
-                if d.end_time:
-                    end_dt = self._try_parse_dt(d.end_time)
-                    if ignore_time:
-                        is_expired = end_dt.date() < now.date()
-                    else:
-                        is_expired = end_dt < now
-            except (ValueError, TypeError):
-                is_expired = False
-
-            try:
-                if d.start_time:
-                    start_dt = self._try_parse_dt(d.start_time)
-                    if ignore_time:
-                        is_not_started = now.date() < start_dt.date()
-                    else:
-                        is_not_started = now < start_dt
-            except (ValueError, TypeError):
-                is_not_started = False
-
-            if is_expired or is_not_started:
+            if self._get_task_time_state(d, ignore_time, now) != "active":
                 continue
 
             if auto_generate or d.run_coords:
@@ -20987,24 +21030,25 @@ class Api:
         if username not in self.accounts:
             return {"success": False, "message": "账号不存在"}
 
-        # 步骤2：欠费检查（在启动任务前执行）
-        # 从账单文件读取该账号待支付账单数量作为欠费次数
-        overdue_count = _count_pending_bills_for_school(username)
+        # 步骤2：欠费检查（仅在付费模式下执行）
+        if self._payment_required_for_overdue_gate():
+            # 从账单文件读取该账号待支付账单数量作为欠费次数
+            overdue_count = _count_pending_bills_for_school(username)
 
-        # 如果存在欠费，拒绝启动任务
-        if overdue_count > 0:
-            self.log(f"[欠费检查] 账号 {username} 存在欠费 ({overdue_count} 次)，拒绝启动任务")
-            return {
-                "success": False,
-                "message": "有账号存在欠费，请先缴费",
-                "error_code": "OVERDUE_PAYMENT",
-                "overdue_accounts": [
-                    {
-                        "school_username": username,
-                        "overdue_count": overdue_count
-                    }
-                ]
-            }
+            # 如果存在欠费，拒绝启动任务
+            if overdue_count > 0:
+                self.log(f"[欠费检查] 账号 {username} 存在欠费 ({overdue_count} 次)，拒绝启动任务")
+                return {
+                    "success": False,
+                    "message": "有账号存在欠费，请先缴费",
+                    "error_code": "OVERDUE_PAYMENT",
+                    "overdue_accounts": [
+                        {
+                            "school_username": username,
+                            "overdue_count": overdue_count
+                        }
+                    ]
+                }
 
         acc = self.accounts[username]
         if self._is_multi_account_execution_active(acc):
@@ -21093,18 +21137,8 @@ class Api:
             }
 
         # 步骤2：欠费检查（仅在付费模式下执行）
-        require_payment = True
-        try:
-            config = _read_config_ini()
-            if config is not None:
-                require_payment = config.getboolean(
-                    "Payment_Settings", "require_payment", fallback=True
-                )
-        except Exception as e:
-            logging.warning(f"[欠费检查] 读取付费配置失败，按付费模式处理: {e}")
-
         overdue_accounts_list = []
-        if require_payment:
+        if self._payment_required_for_overdue_gate():
             # 遍历所有账号，检查是否存在欠费
             for username in self.accounts.keys():
                 # 从账单文件读取该账号待支付账单数量作为欠费次数
@@ -21500,34 +21534,13 @@ class Api:
                 if self.multi_run_only_incomplete:
                     continue
 
-            start_dt, end_dt = None, None
-            try:
-                if r.start_time:
-                    start_dt = datetime.datetime.strptime(
-                        r.start_time, "%Y-%m-%d %H:%M:%S"
-                    )
-            except (ValueError, TypeError):
-                start_dt = None
-            try:
-                if r.end_time:
-                    end_dt = datetime.datetime.strptime(
-                        r.end_time, "%Y-%m-%d %H:%M:%S")
-            except (ValueError, TypeError):
-                end_dt = None
-
-            if end_dt:
-                is_expired = end_dt.date() < now.date() if ignore_time else end_dt < now
-                if is_expired:
-                    expired += 1
-                    continue
-
-            if start_dt:
-                is_not_started = (
-                    now.date() < start_dt.date() if ignore_time else now < start_dt
-                )
-                if is_not_started:
-                    not_started += 1
-                    continue
+            time_state = self._get_task_time_state(r, ignore_time, now)
+            if time_state == "expired":
+                expired += 1
+                continue
+            if time_state == "not_started":
+                not_started += 1
+                continue
 
             executable += 1
 
@@ -21750,38 +21763,8 @@ class Api:
                 f"分析任务参数: ignore_task_time={ignore_time}, run_only_incomplete={run_only_incomplete}"
             )
             for r in acc.all_run_data:
-                start_dt = None
-                end_dt = None
-                try:
-                    if r.start_time:
-                        start_dt = datetime.datetime.strptime(
-                            r.start_time, "%Y-%m-%d %H:%M:%S"
-                        )
-                except (ValueError, TypeError):
-                    start_dt = None
-                try:
-                    if r.end_time:
-                        end_dt = datetime.datetime.strptime(
-                            r.end_time, "%Y-%m-%d %H:%M:%S"
-                        )
-                except (ValueError, TypeError):
-                    end_dt = None
-
-                if end_dt:
-                    is_expired = (
-                        end_dt.date() < now.date() if ignore_time else end_dt < now
-                    )
-                    if is_expired:
-                        continue
-
-                if start_dt:
-                    is_not_started = (
-                        now.date() < start_dt.date() if ignore_time else now < start_dt
-                    )
-                    if is_not_started:
-                        continue
-
-                tasks_to_run_candidates.append(r)
+                if self._get_task_time_state(r, ignore_time, now) == "active":
+                    tasks_to_run_candidates.append(r)
 
             tasks_to_run = (
                 [t for t in tasks_to_run_candidates if t.status == 0]
@@ -22034,6 +22017,7 @@ class Api:
                 start_time_ms = str(int(time.time() * 1000))
                 submission_successful = True
                 total_points = max(1, len(run_data.run_coords))
+                run_data.distance_covered_m = 0.0
                 run_data.current_point_index = 0
                 run_data.suppress_last_target_until_finish = True
 
@@ -22042,6 +22026,8 @@ class Api:
                     continue
 
                 _mr_exec_start_real = time.time()
+                _mr_last_point_gps = run_data.run_coords[0]
+                _mr_last_auto_save_time = time.time()
                 _mr_exec_point_idx = 0
                 _mr_target_time_s = float(getattr(run_data, "total_run_time_s", 0.0) or 0.0)
                 if _mr_target_time_s <= 1.0:
@@ -22178,6 +22164,13 @@ class Api:
                             task_outcomes[id(run_data)] = "aborted"
                             break
 
+                        run_data.distance_covered_m += self._calculate_distance_m(
+                            _mr_last_point_gps[0],
+                            _mr_last_point_gps[1],
+                            lon,
+                            lat,
+                        )
+                        _mr_last_point_gps = (lon, lat, dur_ms)
                         _mr_exec_point_idx += 1
                         run_data.current_point_index = _mr_exec_point_idx
 
@@ -22192,6 +22185,26 @@ class Api:
                             )
                         except Exception:
                             pass
+
+                        if session_id and (
+                            time.time() - _mr_last_auto_save_time >= 30
+                        ):
+                            try:
+                                if (
+                                    "web_sessions_lock" in globals()
+                                    and "web_sessions" in globals()
+                                ):
+                                    with web_sessions_lock:
+                                        if session_id in web_sessions:
+                                            save_session_state(
+                                                session_id,
+                                                web_sessions[session_id],
+                                            )
+                                            _mr_last_auto_save_time = time.time()
+                            except Exception as e:
+                                logging.error(
+                                    f"[{acc.username}] 任务执行中自动保存会话失败: {e}"
+                                )
 
                     if not submission_successful:
                         break
@@ -22222,74 +22235,37 @@ class Api:
                             pass
                     acc.log(f"任务 {run_data.run_name} 数据提交完毕，等待服务器确认...")
                     time.sleep(3)
-                    self._finalize_run(run_data, -1, acc.api_client)
-                    run_data.status = 1
-                    task_outcomes[id(run_data)] = "success"
-                    self._multi_fetch_and_summarize_tasks(acc)
-                    self._update_account_status_js(acc, summary=acc.summary)
-                    acc.log(f"任务 {run_data.run_name} 执行流程完成。")
-
-                    # ========== 任务完成后处理可用次数扣减或欠费次数增加 ==========
-                    # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
-                    # auth_username: 认证用户名（system_accounts 中的用户）
-                    # school_username: 学校账号用户名（当前正在执行任务的账号）
-                    try:
-                        # 从 Api 实例（api_bridge）获取认证用户名
-                        auth_username = getattr(self, "auth_username", None)
-                        school_username = acc.username  # AccountSession 的 username 是学校账号
-
-                        # 只有当认证用户名存在且不是游客时，才执行扣减逻辑
-                        if auth_username and auth_username != "guest":
-                            logging.debug(
-                                f"[多账号任务] 任务完成，开始处理次数扣减：认证用户={auth_username}, "
-                                f"学校账号={school_username}, 任务={run_data.run_name}"
-                            )
-
-                            # 调用辅助函数处理可用次数扣减或欠费次数增加
-                            self._deduct_available_runs_or_increment_overdue(
-                                auth_username, school_username
-                            )
-
-                            # ========== 增加已完成任务计数器 ==========
-                            # 在任务成功提交并完成后，增加该学校账号的已完成任务计数
-                            # 这个计数器用于统计每个学校账号总共完成了多少个任务
-                            # 无论用户的可用次数是否充足，只要任务成功完成就增加计数
-                            try:
-                                logging.debug(
-                                    f"[多账号任务] 开始增加任务计数：认证用户={auth_username}, "
-                                    f"学校账号={school_username}, 任务={run_data.run_name}"
-                                )
-
-                                # 调用辅助函数增加已完成任务计数
-                                self._increment_completed_count(
-                                    auth_username, school_username)
-
-                            except Exception as e_count:
-                                # 捕获计数更新异常，记录日志但不影响主流程
-                                logging.error(
-                                    f"[多账号任务] 更新任务计数时发生异常: {e_count}",
-                                    exc_info=True
-                                )
-                            # ========== 结束：任务计数处理 ==========
-                        else:
-                            logging.debug(
-                                f"[多账号任务] 跳过次数扣减：认证用户={auth_username}（游客或未设置）"
-                            )
-                    except Exception as e:
-                        # 捕获异常，避免影响主流程
-                        logging.error(
-                            f"[多账号任务] 处理次数扣减时发生异常: {e}",
-                            exc_info=True
+                    if self._finalize_run(run_data, -1, acc.api_client):
+                        task_outcomes[id(run_data)] = "success"
+                        self._multi_fetch_and_summarize_tasks(acc)
+                        self._update_account_status_js(acc, summary=acc.summary)
+                        acc.log(f"任务 {run_data.run_name} 执行流程完成。")
+                        self._update_account_status_js(
+                            acc,
+                            status_text="任务已完成",
+                            progress_pct=100,
+                            progress_text=f"运行 {i+1}/{len(tasks_to_run)}: {task_name_short} · 100%",
+                            progress_extra="",
                         )
-                    # ========== 结束：次数扣减处理 ==========
-
-                    self._update_account_status_js(
-                        acc,
-                        status_text="任务已完成",
-                        progress_pct=100,
-                        progress_text=f"运行 {i+1}/{len(tasks_to_run)}: {task_name_short} · 100%",
-                        progress_extra="",
-                    )
+                    else:
+                        task_outcomes[id(run_data)] = "failed"
+                        acc.log(f"任务 {run_data.run_name} 未被服务器确认完成。")
+                        self._update_account_status_js(
+                            acc,
+                            status_text="任务未确认完成",
+                        )
+                    session_id = getattr(self, "_web_session_id", None)
+                    if session_id:
+                        try:
+                            save_session_state(
+                                session_id,
+                                self,
+                                force_save=True,
+                            )
+                        except Exception as e:
+                            logging.error(
+                                f"[{acc.username}] 任务结束后保存会话失败: {e}"
+                            )
                 else:
                     if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
                         task_outcomes[id(run_data)] = "aborted"
@@ -24441,6 +24417,18 @@ def save_session_state(session_id, api_instance, force_save=False):
                                 account_session
                             ),
                             "summary": getattr(account_session, "summary", {}),
+                            "progress_pct": getattr(
+                                account_session, "progress_pct", 0
+                            ),
+                            "progress_text": getattr(
+                                account_session, "progress_text", ""
+                            ),
+                            "progress_extra": getattr(
+                                account_session, "progress_extra", ""
+                            ),
+                            "current_position": getattr(
+                                account_session, "current_position", None
+                            ),
                         }
                         if hasattr(account_session, "params"):
                             account_state["params"] = account_session.params
@@ -24474,6 +24462,18 @@ def save_session_state(session_id, api_instance, force_save=False):
                                 account_session
                             ),
                             "summary": getattr(account_session, "summary", {}),
+                            "progress_pct": getattr(
+                                account_session, "progress_pct", 0
+                            ),
+                            "progress_text": getattr(
+                                account_session, "progress_text", ""
+                            ),
+                            "progress_extra": getattr(
+                                account_session, "progress_extra", ""
+                            ),
+                            "current_position": getattr(
+                                account_session, "current_position", None
+                            ),
                         }
                         if hasattr(account_session, "params"):
                             account_state["params"] = account_session.params
@@ -24814,6 +24814,18 @@ def restore_session_to_api_instance(api_instance, state):
                                         "att_completed": 0,
                                         "att_expired": 0,
                                     },
+                                )
+                                acc.progress_pct = account_state.get(
+                                    "progress_pct", 0
+                                )
+                                acc.progress_text = account_state.get(
+                                    "progress_text", ""
+                                )
+                                acc.progress_extra = account_state.get(
+                                    "progress_extra", ""
+                                )
+                                acc.current_position = account_state.get(
+                                    "current_position"
                                 )
                                 school_account_logged_in = bool(
                                     account_state.get(
