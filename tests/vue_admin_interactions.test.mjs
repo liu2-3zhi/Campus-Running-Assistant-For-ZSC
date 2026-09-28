@@ -15,6 +15,8 @@ function setup(name, overrides = {}) {
     defineProps: () => ({ visible: false }), defineEmits: () => () => {},
     useAuthStore: () => ({ isAdmin: false, isGuest: false, permissions: {}, loadPermissions: async () => {} }),
     useAppStore: () => ({ isMobile: false }),
+    useRouter: () => ({ push() {}, replace() {}, assign() {} }),
+    useRoute: () => ({ params: {}, query: {} }),
     callRawAPI: async () => ({ success: true, users: [], groups: {} }),
     confirm: () => true, prompt: () => null,
     ...overrides,
@@ -158,7 +160,7 @@ test('switching sessions navigates only after a successful server response', asy
   const requests = []
   let accepted = false
   const run = setup('AdminSessions', {
-    window: { location: { assign: url => navigated.push(url) } },
+    useRouter: () => ({ push: route => navigated.push(route), replace() {} }),
     callRawAPI: async (url, method, body) => {
       requests.push({ url, method, body })
       return { success: accepted, message: '切换被拒绝' }
@@ -168,7 +170,10 @@ test('switching sessions navigates only after a successful server response', asy
   assert.equal(navigated.length, 0)
   accepted = true
   await run("selectSession('target-session')")
-  assert.equal(navigated[0], '/uuid=target-session')
+  assert.deepEqual(JSON.parse(JSON.stringify(navigated[0])), {
+    name: 'session',
+    params: { uuid: 'target-session' },
+  })
   assert.equal(requests[0].url, '/auth/switch_session')
   assert.equal(requests[0].body.target_session_id, 'target-session')
 })
@@ -189,7 +194,7 @@ test('session creation uses persistence endpoint and returned session identity',
   const requests = []
   const run = setup('AdminSessions', {
     crypto: { randomUUID: () => 'requested-session' },
-    window: { location: { assign: url => navigated.push(url) } },
+    useRouter: () => ({ push: route => navigated.push(route), replace() {} }),
     callRawAPI: async (url, method, body) => {
       requests.push({ url, method, body })
       return { success: true, session_id: 'created-session' }
@@ -198,7 +203,10 @@ test('session creation uses persistence endpoint and returned session identity',
   await run('createSession()')
   assert.equal(requests[0].url, '/auth/user/create_session_persistence')
   assert.equal(requests[0].body.session_id, 'requested-session')
-  assert.equal(navigated[0], '/uuid=created-session')
+  assert.deepEqual(JSON.parse(JSON.stringify(navigated[0])), {
+    name: 'session',
+    params: { uuid: 'created-session' },
+  })
 })
 
 test('school account tools normalize legacy and current credential records', async () => {

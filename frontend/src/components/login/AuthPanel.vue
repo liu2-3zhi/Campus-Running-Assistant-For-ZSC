@@ -699,6 +699,7 @@ async function handle2FAVerify() {
       credentials: 'include',
       body: JSON.stringify({
         auth_username: twoFAUsername.value || pending2FAData.value?.auth_username || '',
+        challenge: pending2FAData.value?.two_fa_challenge || '',
         code: twoFACode.value,
       }),
     })

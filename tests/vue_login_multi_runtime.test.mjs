@@ -22,6 +22,7 @@ function setupComponent(path, overrides = {}, props = {}) {
     ...vue,
     onMounted: callback => mounted.push(callback), onUnmounted() {}, watch() {},
     useRouter: () => ({ push() {}, replace() {} }),
+    useRoute: () => ({ params: {}, query: {} }),
     useAuthStore: () => auth, useAppStore: () => app,
     useMapStore: () => ({}), useNotificationStore: () => ({}),
     callAPI: async (method, ...args) => { calls.push([method, ...args]); return { success: true } },

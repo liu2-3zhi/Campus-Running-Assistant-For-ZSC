@@ -79,15 +79,20 @@ test('Vue invalid or expired UUID returns to the root route', () => {
 
 test('original expired-session helper replaces uuid routes with root', () => {
   const source = readProjectFile('scripts/main.js')
+  const pathHelperStart = source.indexOf('function buildLegacyUiPath(')
   const helperStart = source.indexOf(
     'function redirectToLoginAfterSessionExpiry()',
   )
 
+  assert.notEqual(pathHelperStart, -1)
   assert.notEqual(helperStart, -1)
 
+  const pathHelperEnd = source.indexOf('\n}', pathHelperStart)
   const helperEnd = source.indexOf('\n}', helperStart)
+  assert.notEqual(pathHelperEnd, -1)
   assert.notEqual(helperEnd, -1)
 
+  const pathHelperSource = source.slice(pathHelperStart, pathHelperEnd + 2)
   const helperSource = source.slice(helperStart, helperEnd + 2)
   const replaceCalls = []
 
@@ -103,7 +108,7 @@ test('original expired-session helper replaces uuid routes with root', () => {
   globalThis.logMessage_Info = () => {}
 
   const redirectToLoginAfterSessionExpiry = new Function(
-    `${helperSource}; return redirectToLoginAfterSessionExpiry;`,
+    `${pathHelperSource}; ${helperSource}; return redirectToLoginAfterSessionExpiry;`,
   )()
   redirectToLoginAfterSessionExpiry()
   redirectToLoginAfterSessionExpiry()

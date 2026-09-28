@@ -210,7 +210,6 @@ class TestAutoAttendanceAutoDisable(unittest.TestCase):
         api.params = api.global_params.copy()
 
         config = main_module._get_default_config()
-        config.add_section("Config")
         config.set("Config", "auto_attendance_stop_after_success", "false")
         config.set("Config", "auto_attendance_success_limit", "4")
 

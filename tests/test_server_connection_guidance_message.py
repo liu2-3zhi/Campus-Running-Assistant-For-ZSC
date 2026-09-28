@@ -8,7 +8,7 @@ MAIN_JS = PROJECT_ROOT / "scripts" / "main.js"
 
 
 class TestServerConnectionGuidanceMessage(unittest.TestCase):
-    def test_guidance_message_uses_one_compact_card(self):
+    def test_guidance_message_uses_structured_inline_cards(self):
         source = MAIN_JS.read_text(encoding="utf-8")
         match = re.search(
             r"function\s+getServerConnectionGuidanceMessage\(\)\s*\{(?P<body>[\s\S]*?)\n\}",
@@ -17,10 +17,10 @@ class TestServerConnectionGuidanceMessage(unittest.TestCase):
         self.assertIsNotNone(match, "getServerConnectionGuidanceMessage must exist")
         body = match.group("body")
 
-        self.assertIn("rounded-xl border border-slate-200 bg-slate-50", body)
-        self.assertIn('<ul class="mt-2 space-y-1', body)
+        self.assertIn("border-radius:10px", body)
+        self.assertIn('<ul style="', body)
         self.assertEqual(body.count("<li>"), 3)
-        self.assertEqual(body.count("bg-"), 1)
+        self.assertGreaterEqual(body.count("background:"), 4)
         self.assertNotIn("space-y-4", body)
 
 

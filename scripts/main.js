@@ -17969,36 +17969,6 @@ async function callPythonAPI_raw(path, method = "POST", data = null) {
   }
 }
 
-async function executeServerJS(script, ...args) {
-  const headers = {
-    "Content-Type": "application/json",
-  };
-
-  if (sessionUUID) {
-    headers["X-Session-ID"] = sessionUUID;
-  }
-
-  const response = await fetch("/execute_js", {
-    method: "POST",
-    headers: headers,
-    body: JSON.stringify({
-      script: script,
-      args: args,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`服务器端JS执行失败: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  if (!data.success) {
-    throw new Error(data.message || "JS执行失败");
-  }
-
-  return data.result;
-}
-
 let singleProcessedPoints = 0;
 let singleTotalPoints = 0;
 
@@ -20737,6 +20707,7 @@ async function handleAuthLogin(isMobile_use = false) {
     if (result.success) {
       if (result.requires_2fa) {
         window.temp2FAUsername = result.auth_username || login_id;
+        window.temp2FAChallenge = result.two_fa_challenge || "";
 
         setButtonLoading("auth-login-btn", false);
 
@@ -21204,6 +21175,7 @@ async function handle2FAVerify() {
       credentials: "include",
       body: JSON.stringify({
         auth_username: window.temp2FAUsername,
+        challenge: window.temp2FAChallenge,
         code: code,
       }),
     });
@@ -21212,6 +21184,7 @@ async function handle2FAVerify() {
 
     if (result.success) {
       delete window.temp2FAUsername;
+      delete window.temp2FAChallenge;
 
       if (result.session_id) {
         const activeSessionId = setActiveLegacySession(result.session_id, {
@@ -21659,6 +21632,7 @@ if (typeof window !== "undefined") {
         if (loginForm) loginForm.classList.remove("hidden");
         if (tfaForm) tfaForm.classList.add("hidden");
         delete window.temp2FAUsername;
+        delete window.temp2FAChallenge;
         const tfaCodeInput = $("auth-2fa-code");
         if (tfaCodeInput) tfaCodeInput.value = "";
       });

@@ -7,23 +7,6 @@ mkdir -p /var/log/nginx/
 touch /var/log/nginx/access_json.log
 touch /app/nginx.conf
 
-# ==========================================
-# 读取自定义IP头环境变量（任务2）
-# ==========================================
-# 读取自定义IP头环境变量，默认为X-RealIP-Form
-# 这个头将被nginx设置为$remote_addr，传递给后端Flask应用
-REAL_IP_HEADER=${REAL_IP_HEADER:-X-RealIP-Form}
-
-# 验证REAL_IP_HEADER只包含合法的HTTP头名称字符(字母、数字、连字符)
-# 这样可以防止nginx配置注入攻击
-if ! echo "$REAL_IP_HEADER" | grep -qE '^[A-Za-z0-9-]+$'; then
-    echo "错误: REAL_IP_HEADER包含非法字符，只允许字母、数字和连字符"
-    echo "将使用默认值: X-RealIP-Form"
-    REAL_IP_HEADER="X-RealIP-Form"
-fi
-
-echo "使用自定义IP头: $REAL_IP_HEADER"
-
 # 打印启动信息
 echo "================================================="
 echo "  跑步助手 Docker 容器启动 (Nginx前端模式)"
@@ -134,19 +117,13 @@ SUPERVISOR_EOF
 
 # ==========================================
 # 1. 生成 Nginx Map 配置
-#    智能选择X-Forwarded-For的值：优先使用自定义头，否则使用标准头
+#    不从任意客户端自定义头中采信 IP；只把实际 TCP 对端追加到标准代理链。
+#    Flask 端会结合 trusted_ips.txt 和内置内网信任规则，从右向左解析可信代理链。
 # ==========================================
 cat > /etc/nginx/nginx_map.conf <<NGINX_MAP_EOF
-# Map配置：智能选择真实IP来源
-# 如果存在自定义头（如CDN传来的X-RealIP-Form），优先使用它
-# 否则使用标准的proxy_add_x_forwarded_for
-map \$http_${REAL_IP_HEADER//-/_} \$real_forwarded_for {
-    # 如果自定义头有值，使用自定义头的值
-    # nginx会自动将header名称中的连字符转换为下划线，并添加http_前缀
-    # 例如：X-RealIP-Form -> \$http_x_realip_form
-    default \$http_${REAL_IP_HEADER//-/_};
-    # 如果自定义头为空，使用标准的X-Forwarded-For逻辑
-    "" \$proxy_add_x_forwarded_for;
+# 标准代理链会保留上游可验证链路，并由 Flask 从右向左跳过受信代理地址。
+map \$remote_addr \$real_forwarded_for {
+    default \$proxy_add_x_forwarded_for;
 }
 NGINX_MAP_EOF
 
@@ -235,8 +212,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_set_header Connection "upgrade";
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            # 任务2修改：使用map变量智能选择X-Forwarded-For的值
-            # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
+            # 标准代理链由 Flask 按 trusted_ips.txt 和内置内网信任规则解析
             proxy_set_header X-Forwarded-For $real_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_buffering off;
@@ -282,8 +258,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_http_version 1.1;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            # 任务2修改：使用map变量智能选择X-Forwarded-For的值
-            # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
+            # 标准代理链由 Flask 按 trusted_ips.txt 和内置内网信任规则解析
             proxy_set_header X-Forwarded-For $real_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_buffering off;
@@ -326,8 +301,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_http_version 1.1;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            # 任务2修改：使用map变量智能选择X-Forwarded-For的值
-            # 如果CDN传来自定义头（如X-RealIP-Form），使用它；否则使用标准逻辑
+            # 标准代理链由 Flask 按 trusted_ips.txt 和内置内网信任规则解析
             proxy_set_header X-Forwarded-For $real_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
         }

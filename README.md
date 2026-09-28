@@ -103,6 +103,7 @@ services:
       - ./system_accounts:/app/system_accounts
       - ./payment_orders:/app/payment_orders
       - ./payment_methods.json:/app/payment_methods.json
+      - ./trusted_ips.txt:/app/trusted_ips.txt
       - ./configs:/app/configs
       - ./uploads:/app/uploads
       - ./Remove_Acoount:/app/Remove_Acoount
@@ -144,6 +145,7 @@ services:
 - `permissions.json`
 - `reminders.json`
 - `payment_methods.json`
+- `trusted_ips.txt`
 - `amap_watermark_control.json`
 
 如果你想一次性准备好，可以直接执行：
@@ -151,7 +153,7 @@ services:
 ```bash
 mkdir -p ssl cache logs background_tasks school_accounts sessions tokens system_accounts payment_orders configs uploads Remove_Acoount User_Billing random_background_image
 
-touch messages.json permissions.json reminders.json payment_methods.json amap_watermark_control.json
+touch messages.json permissions.json reminders.json payment_methods.json amap_watermark_control.json trusted_ips.txt
 ```
 
 准备完成后再执行：
@@ -170,6 +172,8 @@ docker compose up -d
 ## 配置说明
 
 当前运行时主配置文件为 `configs/config.json`，首次启动时会自动创建。
+
+`trusted_ips.txt` 用于填写外部可信代理、CDN 或网关地址，每行一个，支持单 IP、CIDR、起止区间和 `*` 通配格式。内网、回环和链路本地地址已由程序内置信任，不需要写入该文件。使用 `*` 时会信任所有代理来源，并在控制台输出红色安全警告；如果文件为空、不存在或读取失败，为保证服务可用，程序会自动降级为信任全部代理来源并输出红色警告。
 
 ## 兼容性说明
 

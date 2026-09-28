@@ -113,6 +113,14 @@
 
 ## 登录和会话提示规则
 
+- 2FA 登录不能只凭“用户名 + 验证码”完成。密码或短信验证通过后，后端必须签发短期、单次使用的 `two_fa_challenge`；前端在新版和旧版 UI 中都必须回传该 challenge。`pyotp` 缺失或用户未启用 2FA 时不得 fail-open。
+- 认证用户名必须经过服务端 `USERNAME_PATTERN` 校验；用户级 `school_accounts` 文件名不得直接拼接原始认证用户名，必须使用安全存储键或哈希，避免目录穿越。
+- `/api/<method>` 必须使用显式 API 白名单，禁止反射调用任意 `Api` 公开方法；涉及目标用户身份的接口必须从当前会话推导身份，不能信任请求中的 `auth_username`。
+- 不提供面向浏览器的 `/execute_js` 路由。服务端 Playwright 脚本只能由后端内部地图规划链路调用，并由会话、操作类型和参数共同约束。
+- 支付同步跳转参数 `jump` 只能接受同源 URL 或站内相对路径，并在内联脚本中使用安全 JSON 编码。
+- 代理 IP 解析必须从右向左遍历 `X-Forwarded-For`，跳过内网/回环地址和 `trusted_ips.txt` 中的外部可信代理。`trusted_ips.txt` 只记录外部代理，支持单 IP、CIDR、起止区间和 `*`；内网地址内置信任。使用 `*`、文件为空、文件不存在或加载失败并自动全信任时，必须在控制台输出红色警告。
+- 用户级会话必须有 `auth_token` 校验。持久化会话恢复、登录装饰器、管理员装饰器都不能只信任 `X-Session-ID`。
+
 - 遇到 `POST /api/get_initial_data 401`、`会话已失效`、刷新后登录页仍弹旧提示、或需要连续登录多次才正常的问题时，先从日志和通用 `/api/<path:method>` 包装层追踪，不要只看 UI 表象。
 - `get_initial_data` 属于认证可选初始化链路，后端要允许不可恢复 session 降级到只读初始化上下文；这个临时上下文不能污染后续 session 活动。
 - 前端相关链路重点看 `getApiRequestSessionHeaderValue()`、`callPythonAPI()`、`handleAuthLogin()`、`loadInitialData()` 和 `showAuthLogin()`。

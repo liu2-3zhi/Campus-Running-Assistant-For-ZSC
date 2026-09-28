@@ -55,7 +55,10 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         )
         self.assertIn('sessionStorage.setItem("session_uuid", normalized)', source)
         self.assertIn("setActiveLegacySession(result.session_id || newUUID)", source)
-        self.assertIn("window.location.replace(`/uuid=${sessionUUID}`)", source)
+        self.assertIn(
+            "window.location.replace(buildLegacyUiPath(`/uuid=${sessionUUID}`))",
+            source,
+        )
         self.assertNotIn('console.log("[配置] 成功从API加载配置:", config);', source)
         self.assertIn('console.log("[验证码设置] 测试生成成功");', source)
         self.assertNotIn(

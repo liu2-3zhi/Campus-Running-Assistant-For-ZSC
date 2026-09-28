@@ -94,26 +94,25 @@ test('network connectivity guidance text is complete', () => {
   const message = getServerConnectionGuidanceMessage();
 
   assert.equal(typeof message, 'string');
-  assert.ok(message.includes('请确认您的设备已正常连接到互联网'));
-  assert.ok(message.includes('当前网络环境可能存在运营商干扰或流量审查'));
-  assert.ok(message.includes('更换网络后再次访问'));
-  assert.ok(message.includes('启用加密 DNS 后重试'));
-  assert.ok(message.includes('使用国际联网工具访问'));
+  assert.ok(message.includes('请确认设备已正常联网。'));
+  assert.ok(message.includes('运营商网络干扰'));
+  assert.ok(message.includes('切换网络'));
+  assert.ok(message.includes('启用加密 DNS'));
+  assert.ok(message.includes('使用国际联网工具'));
   assert.ok(message.includes('广告拦截工具'));
-  assert.ok(message.includes('服务器正在遭受攻击'));
-  assert.ok(message.includes('刷新设备的 DNS 缓存'));
-  assert.ok(message.includes('手机：开启后关闭飞行模式，并重启浏览器'));
-  assert.ok(message.includes('电脑：请参考“刷新 DNS 方法”'));
+  assert.ok(message.includes('开关飞行模式并重启浏览器'));
+  assert.ok(message.includes('刷新 DNS 缓存后重新访问'));
+  assert.ok(message.includes('若问题持续存在，请联系支持人员。'));
 });
 
 test('network connectivity guidance text uses structured popup html', () => {
   const source = readFileSync(resolve('scripts/main.js'), 'utf8');
   const guidanceSource = extractFunctionSource(source, 'getServerConnectionGuidanceMessage');
 
-  assert.ok(guidanceSource.includes('<div class="text-left '));
-  assert.ok(guidanceSource.includes('<ul'));
+  assert.ok(guidanceSource.includes('<div style="'));
+  assert.ok(guidanceSource.includes('<ul style="'));
   assert.ok(guidanceSource.includes('<li>'));
-  assert.ok(guidanceSource.includes('当前网络环境可能存在运营商干扰或流量审查'));
+  assert.ok(guidanceSource.includes('运营商网络干扰'));
   assert.ok(guidanceSource.includes('广告拦截工具'));
-  assert.ok(guidanceSource.includes('刷新设备的 DNS 缓存'));
+  assert.ok(guidanceSource.includes('刷新 DNS 缓存后重新访问'));
 });

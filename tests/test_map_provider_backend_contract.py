@@ -1071,9 +1071,16 @@ globalThis.fetch = async (url, options) => {
         ]
 
         self.assertIn("state = load_session_state(uuid)", legacy_config_source)
-        self.assertIn("if state:", legacy_config_source)
+        self.assertIn(
+            'if state and state.get("login_success"):',
+            legacy_config_source,
+        )
         self.assertIn("拒绝恢复未登记会话", legacy_config_source)
-        self.assertIn("web_sessions[uuid] = api_instance", legacy_config_source)
+        self.assertIn("不创建活动会话", legacy_config_source)
+        self.assertNotIn(
+            "web_sessions[uuid] = api_instance",
+            legacy_config_source,
+        )
 
     def test_map_runtime_static_route_blocks_runtime_script_case_insensitively(self):
         source = MAIN_PATH.read_text(encoding="utf-8")

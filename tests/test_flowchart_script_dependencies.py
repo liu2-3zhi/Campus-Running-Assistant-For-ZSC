@@ -33,16 +33,25 @@ class TestFlowchartScriptDependencies(unittest.TestCase):
 
     def test_index_route_reads_index_html_per_request_instead_of_startup_snapshot(self):
         source = MAIN_PY_PATH.read_text(encoding="utf-8")
-        index_route_source = _extract_section(
+        legacy_index_source = _extract_section(
             source,
-            "    @app.route(\"/\")",
-            "    # @app.route(\"/\")",
+            "    def _serve_legacy_index():",
+            "    @app.route(\"/frontend\")",
         )
 
-        self.assertIn('with open("index.html", "r", encoding="utf-8") as file:', index_route_source)
-        self.assertIn("current_html_content = file.read()", index_route_source)
-        self.assertIn("return render_template_string(current_html_content)", index_route_source)
-        self.assertNotIn("render_template_string(html_content)", index_route_source)
+        self.assertIn(
+            'with open("index.html", "r", encoding="utf-8") as file:',
+            legacy_index_source,
+        )
+        self.assertIn("current_html_content = file.read()", legacy_index_source)
+        self.assertIn(
+            "return render_template_string(current_html_content)",
+            legacy_index_source,
+        )
+        self.assertNotIn(
+            "render_template_string(html_content)",
+            legacy_index_source,
+        )
 
     def test_editor_md_route_disables_browser_cache(self):
         source = MAIN_PY_PATH.read_text(encoding="utf-8")
@@ -52,10 +61,10 @@ class TestFlowchartScriptDependencies(unittest.TestCase):
             '    # ========== IE 浏览器拦截页面路由 ==========',
         )
 
-        self.assertIn('response = send_from_directory(ed_dir, filename)', editor_route_source)
-        self.assertIn('response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"', editor_route_source)
-        self.assertIn('response.headers["Pragma"] = "no-cache"', editor_route_source)
-        self.assertIn('response.headers["Expires"] = "0"', editor_route_source)
+        self.assertIn(
+            "return _send_frontend_static_file(ed_dir, filename, no_cache=True)",
+            editor_route_source,
+        )
 
     def test_service_worker_uses_network_first_for_navigation_requests(self):
         source = SERVICE_WORKER_PATH.read_text(encoding="utf-8")

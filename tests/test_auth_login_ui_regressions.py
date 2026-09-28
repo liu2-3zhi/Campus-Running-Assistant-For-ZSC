@@ -23,7 +23,7 @@ def _run_node_script(script: str):
     try:
         with tempfile.NamedTemporaryFile(
             "w",
-            suffix=".mjs",
+            suffix=".cjs",
             dir=PROJECT_ROOT,
             encoding="utf-8",
             delete=False,
@@ -196,13 +196,7 @@ eval(handleAuthLoginSource);
 }});
 """
 
-        result = subprocess.run(
-            ["node", "-e", node_script],
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            text=False,
-            check=False,
-        )
+        result = _run_node_script(node_script)
 
         stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
         stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
@@ -243,13 +237,7 @@ const resolved = ensureAuthLoginSessionUUID();
 process.stdout.write(JSON.stringify({{ resolved, sessionUUID, generated }}));
 """
 
-        result = subprocess.run(
-            ["node", "-e", node_script],
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            text=False,
-            check=False,
-        )
+        result = _run_node_script(node_script)
 
         stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
         stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
@@ -369,13 +357,7 @@ eval(handleAuthLoginSource);
 }});
 """
 
-        result = subprocess.run(
-            ["node", "-e", node_script],
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            text=False,
-            check=False,
-        )
+        result = _run_node_script(node_script)
 
         stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
         stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
@@ -448,13 +430,7 @@ eval(callPythonAPISource);
 }});
 """
 
-        result = subprocess.run(
-            ["node", "-e", node_script],
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            text=False,
-            check=False,
-        )
+        result = _run_node_script(node_script)
 
         stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
         stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
@@ -577,10 +553,16 @@ const {{ callPythonAPI }} = Function(
             "async function selectSession(sessionId",
             "\n\nasync function createNewSessionFromPicker",
         )
+        legacy_path_source = _extract_js_section(
+            source,
+            "function buildLegacyUiPath(path = \"/\")",
+            "\n\n// ============================================================",
+        )
 
         node_script = f"""
 const resolverSource = {json.dumps(resolver_source)};
 const selectSessionSource = {json.dumps(select_session_source)};
+const legacyPathSource = {json.dumps(legacy_path_source)};
 const originSession = '11111111-1111-4111-8111-111111111111';
 const targetSession = '22222222-2222-4222-8222-222222222222';
 const storage = new Map();
@@ -619,7 +601,7 @@ globalThis.fetch = async (url, options) => {{
 }};
 
 const {{ selectSession }} = Function(
-  resolverSource + "\\n" + selectSessionSource + "\\nreturn {{ selectSession }};",
+  legacyPathSource + "\\n" + resolverSource + "\\n" + selectSessionSource + "\\nreturn {{ selectSession }};",
 )();
 
 (async () => {{
@@ -897,13 +879,7 @@ eval(cropRegistrationSource);
 }});
 """
 
-        result = subprocess.run(
-            ["node", "-e", node_script],
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            text=False,
-            check=False,
-        )
+        result = _run_node_script(node_script)
 
         stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
         stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""

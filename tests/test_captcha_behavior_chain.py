@@ -133,7 +133,11 @@ class TestCaptchaBehaviorGenerationChain(unittest.TestCase):
         )
 
         for section in (login_source, register_source):
-            self.assertIn("const isBehaviorCaptchaMode = await isBehaviorCaptchaProvider();", section)
+            self.assertRegex(
+                section,
+                r"const isBehaviorCaptchaMode\s*=\s*[\s\S]{0,120}"
+                r"await isBehaviorCaptchaProvider\(\)",
+            )
             self.assertIn("if (!isBehaviorCaptchaMode && !captcha) {", section)
             self.assertIn("BEHAVIOR_CAPTCHA_VERIFIED_CODE", section)
             self.assertIn("请先完成人机验证", section)

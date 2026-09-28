@@ -31,6 +31,7 @@ services:
       - ./system_accounts:/app/system_accounts
       - ./payment_orders:/app/payment_orders
       - ./payment_methods.json:/app/payment_methods.json
+      - ./trusted_ips.txt:/app/trusted_ips.txt
       - ./configs:/app/configs
       - ./uploads:/app/uploads
       - ./Remove_Acoount:/app/Remove_Acoount

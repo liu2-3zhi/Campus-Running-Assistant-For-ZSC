@@ -3793,6 +3793,461 @@ _buffer_log("INFO", "[导入检查] ✓ 所有内置模块导入成功\n")
 _import_failures.clear()
 payment_verify_probes_lock = threading.Lock()
 
+# 安全辅助函数：依赖导入完成后才能创建真正的线程锁和 IP 网络对象。
+two_fa_challenges = {}
+two_fa_challenges_lock = threading.Lock()
+TWO_FA_CHALLENGE_TTL_SECONDS = 5 * 60
+TWO_FA_CHALLENGE_MAX_ATTEMPTS = 5
+
+TRUSTED_IPS_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "trusted_ips.txt"
+)
+_BUILTIN_TRUSTED_PROXY_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+)
+_trusted_ip_networks_cache = None
+_trusted_ip_networks_cache_mtime = None
+_trusted_ip_networks_lock = threading.Lock()
+
+# USERNAME_PATTERN 在动态导入 re 之前会保持 None，这里在标准库导入完成后重建。
+USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_\-\.@]+$")
+
+API_METHOD_ALLOWLIST = {
+    "auto_generate_path_with_api",
+    "auto_generate_path_with_provider",
+    "clear_current_task_draft",
+    "enter_multi_account_mode",
+    "enter_single_account_mode",
+    "exit_multi_account_mode",
+    "export_task_data",
+    "generate_new_ua",
+    "get_cached_notifications",
+    "get_historical_track",
+    "get_initial_data",
+    "get_notifications",
+    "get_params",
+    "get_public_theme_styles",
+    "get_run_status",
+    "get_session_mode_info",
+    "get_task_details",
+    "get_task_history",
+    "get_theme_config",
+    "get_theme_styles",
+    "get_user_sessions",
+    "import_task_data",
+    "js_log",
+    "load_tasks",
+    "login",
+    "logout",
+    "mark_notification_read",
+    "mark_theme_background_consumed",
+    "multi_add_account",
+    "multi_download_import_template",
+    "multi_export_accounts_summary",
+    "multi_get_account_params",
+    "multi_get_all_accounts_status",
+    "multi_get_all_config_users",
+    "multi_import_accounts",
+    "multi_load_accounts_from_config",
+    "multi_path_generation_callback",
+    "multi_refresh_all_statuses",
+    "multi_refresh_single_status",
+    "multi_remove_account",
+    "multi_remove_all_accounts",
+    "multi_remove_selected_accounts",
+    "multi_start_all_accounts",
+    "multi_start_single_account",
+    "multi_stop_all_accounts",
+    "multi_stop_single_account",
+    "multi_update_account_param",
+    "on_user_selected",
+    "process_path",
+    "save_amap_key",
+    "save_map_provider_key",
+    "set_draft_path",
+    "set_multi_run_only_incomplete",
+    "start_all_runs",
+    "start_single_run",
+    "stop_run",
+    "trigger_attendance",
+    "update_param",
+}
+
+
+def _cleanup_expired_two_fa_challenges(now_ts=None):
+    current_ts = float(now_ts if now_ts is not None else time.time())
+    with two_fa_challenges_lock:
+        expired_tokens = [
+            token
+            for token, challenge in two_fa_challenges.items()
+            if float((challenge or {}).get("expires_at", 0) or 0) <= current_ts
+        ]
+        for token in expired_tokens:
+            two_fa_challenges.pop(token, None)
+
+
+def _create_two_fa_challenge(
+    username,
+    ttl_seconds=TWO_FA_CHALLENGE_TTL_SECONDS,
+    max_attempts=TWO_FA_CHALLENGE_MAX_ATTEMPTS,
+):
+    _cleanup_expired_two_fa_challenges()
+    username = str(username or "").strip()
+    if not username:
+        raise ValueError("username is required")
+    token = secrets.token_urlsafe(32)
+    now_ts = time.time()
+    with two_fa_challenges_lock:
+        two_fa_challenges[token] = {
+            "username": username,
+            "created_at": now_ts,
+            "expires_at": now_ts + max(float(ttl_seconds or 0), 0),
+            "attempts": 0,
+            "max_attempts": max(int(max_attempts or 1), 1),
+        }
+    return token
+
+
+def _consume_two_fa_challenge(token, username, verification_code, verifier):
+    _cleanup_expired_two_fa_challenges()
+    with two_fa_challenges_lock:
+        challenge = two_fa_challenges.get(str(token or ""))
+        if not isinstance(challenge, dict):
+            return False, "2FA challenge 无效或已过期"
+        if str(challenge.get("username") or "") != str(username or "").strip():
+            return False, "2FA challenge 与用户不匹配"
+        attempts = int(challenge.get("attempts", 0) or 0)
+        if attempts >= int(challenge.get("max_attempts", 1) or 1):
+            two_fa_challenges.pop(str(token), None)
+            return False, "2FA 验证尝试次数过多"
+
+        challenge["attempts"] = attempts + 1
+        try:
+            is_valid = bool(verifier(username, verification_code))
+        except Exception:
+            is_valid = False
+
+        if is_valid:
+            two_fa_challenges.pop(str(token), None)
+            return True, ""
+
+        if challenge["attempts"] >= challenge["max_attempts"]:
+            two_fa_challenges.pop(str(token), None)
+            return False, "2FA 验证尝试次数过多"
+        return False, "2FA验证码错误"
+
+
+def _is_safe_auth_username(value):
+    normalized = str(value or "").strip()
+    if not normalized or len(normalized) > MAX_USERNAME_LENGTH:
+        return False
+    return bool(USERNAME_PATTERN and USERNAME_PATTERN.fullmatch(normalized))
+
+
+def _auth_username_storage_key(username):
+    normalized = str(username or "").strip()
+    if _is_safe_auth_username(normalized):
+        return normalized
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return f"invalid_{digest}"
+
+
+def _encode_inline_script_json(value):
+    return (
+        json.dumps(value, ensure_ascii=False)
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+
+
+def _is_api_method_allowed(method):
+    return str(method or "") in API_METHOD_ALLOWLIST
+
+
+def _verify_session_cookie_token(session_id, username, token):
+    normalized_username = str(username or "").strip()
+    if normalized_username == "guest":
+        return True
+    normalized_session_id = normalize_session_uuid(session_id)
+    normalized_token = str(token or "").strip()
+    if not normalized_username or not normalized_session_id or not normalized_token:
+        return False
+    token_manager_instance = globals().get("token_manager")
+    if not token_manager_instance:
+        return False
+    try:
+        verified = token_manager_instance.verify_token(
+            normalized_username, normalized_session_id, normalized_token
+        )
+    except Exception:
+        return False
+    if isinstance(verified, tuple):
+        return bool(verified[0])
+    return bool(verified)
+
+
+def _normalize_payment_jump_url(value, request_host_url):
+    normalized = str(value or "").strip()
+    if not normalized or any(ord(char) < 32 for char in normalized):
+        return "/"
+    if "\\" in normalized:
+        return "/"
+
+    parsed = urllib.parse.urlparse(normalized)
+    if parsed.scheme or parsed.netloc:
+        base = urllib.parse.urlparse(str(request_host_url or ""))
+        if parsed.scheme not in {"http", "https"} or parsed.netloc != base.netloc:
+            return "/"
+        relative = parsed.path or "/"
+        if parsed.query:
+            relative = f"{relative}?{parsed.query}"
+        return relative
+
+    if not normalized.startswith("/") or normalized.startswith("//"):
+        return "/"
+    return normalized
+
+
+class _TrustedIpMatcher:
+    def __init__(
+        self,
+        networks=(),
+        ranges=(),
+        wildcard_patterns=(),
+        match_all=False,
+        entries=(),
+    ):
+        self.networks = tuple(networks)
+        self.ranges = tuple(ranges)
+        self.wildcard_patterns = tuple(wildcard_patterns)
+        self.match_all = bool(match_all)
+        self.entries = tuple(entries)
+
+    def matches(self, ip_obj):
+        if isinstance(ip_obj, str):
+            ip_obj = ipaddress.ip_address(ip_obj)
+        if self.match_all:
+            return True
+
+        for network in self.networks:
+            if ip_obj.version == network.version and ip_obj in network:
+                return True
+
+        ip_value = int(ip_obj)
+        for version, start, end in self.ranges:
+            if ip_obj.version == version and start <= ip_value <= end:
+                return True
+
+        if ip_obj.version == 4:
+            packed = ip_obj.packed
+            for pattern in self.wildcard_patterns:
+                if all(
+                    expected is None or packed[index] == expected
+                    for index, expected in enumerate(pattern)
+                ):
+                    return True
+        return False
+
+
+def _parse_trusted_ip_entry(value):
+    normalized = str(value or "").strip()
+    if not normalized:
+        raise ValueError("empty trusted IP entry")
+    if normalized == "*":
+        return "all", None
+
+    if "-" in normalized:
+        start_text, end_text = (
+            part.strip() for part in normalized.split("-", 1)
+        )
+        start_ip = ipaddress.ip_address(start_text)
+        end_ip = ipaddress.ip_address(end_text)
+        if start_ip.version != end_ip.version:
+            raise ValueError("IP range endpoints must use the same address family")
+        if int(start_ip) > int(end_ip):
+            raise ValueError("IP range start must not exceed range end")
+        return "range", (start_ip.version, int(start_ip), int(end_ip))
+
+    if "*" in normalized:
+        parts = normalized.split(".")
+        if len(parts) > 4:
+            raise ValueError("IPv4 wildcard contains too many octets")
+        while len(parts) < 4:
+            parts.append("*")
+        pattern = []
+        for part in parts:
+            if part == "*":
+                pattern.append(None)
+                continue
+            if not re.fullmatch(r"\d{1,3}", part):
+                raise ValueError("invalid IPv4 wildcard octet")
+            octet = int(part)
+            if octet < 0 or octet > 255:
+                raise ValueError("IPv4 wildcard octet out of range")
+            pattern.append(octet)
+        if all(item is None for item in pattern):
+            return "all", None
+        return "wildcard", tuple(pattern)
+
+    return "network", ipaddress.ip_network(normalized, strict=False)
+
+
+def _print_red_console_warning(message):
+    try:
+        print(f"\033[31m{message}\033[0m", flush=True)
+    except Exception:
+        pass
+
+
+def _load_trusted_ip_networks(file_path=None):
+    trusted_file = file_path or TRUSTED_IPS_FILE
+    networks = []
+    ranges = []
+    wildcard_patterns = []
+    match_all = False
+    entries = []
+    wildcard_entries = []
+    load_failure = None
+    saw_physical_content = False
+
+    try:
+        with open(trusted_file, "r", encoding="utf-8") as file:
+            for raw_line in file:
+                if raw_line.strip():
+                    saw_physical_content = True
+                line = raw_line.split("#", 1)[0].strip()
+                if not line:
+                    continue
+                try:
+                    entry_type, entry_value = _parse_trusted_ip_entry(line)
+                except ValueError:
+                    logging.warning("[可信IP] 忽略无效条目: %s", line)
+                    continue
+
+                entries.append(line)
+                if entry_type == "all":
+                    match_all = True
+                    wildcard_entries.append(line)
+                elif entry_type == "wildcard":
+                    wildcard_patterns.append(entry_value)
+                    wildcard_entries.append(line)
+                elif entry_type == "range":
+                    ranges.append(entry_value)
+                else:
+                    networks.append(entry_value)
+    except FileNotFoundError as exc:
+        load_failure = exc
+    except Exception as exc:
+        load_failure = exc
+    else:
+        if not saw_physical_content:
+            load_failure = ValueError("文件内容为空")
+
+    if load_failure is not None:
+        warning = (
+            "[可信IP警告] trusted_ips.txt 加载失败，"
+            "已降级为信任全部代理来源: "
+            f"{load_failure}"
+        )
+        _print_red_console_warning(warning)
+        logging.warning(warning)
+        return _TrustedIpMatcher(match_all=True)
+
+    if wildcard_entries:
+        warning = (
+            "[可信IP警告] trusted_ips.txt 使用了通配符条目: "
+            + ", ".join(wildcard_entries)
+            + "；匹配范围内的所有地址都会被信任，请确认安全边界。"
+        )
+        _print_red_console_warning(warning)
+        logging.warning(warning)
+
+    return _TrustedIpMatcher(
+        networks=networks,
+        ranges=ranges,
+        wildcard_patterns=wildcard_patterns,
+        match_all=match_all,
+        entries=entries,
+    )
+
+
+def _get_trusted_ip_networks():
+    global _trusted_ip_networks_cache, _trusted_ip_networks_cache_mtime
+    try:
+        file_mtime = os.path.getmtime(TRUSTED_IPS_FILE)
+    except OSError:
+        file_mtime = None
+    with _trusted_ip_networks_lock:
+        if (
+            _trusted_ip_networks_cache is None
+            or file_mtime != _trusted_ip_networks_cache_mtime
+        ):
+            _trusted_ip_networks_cache = _load_trusted_ip_networks()
+            _trusted_ip_networks_cache_mtime = file_mtime
+        return _trusted_ip_networks_cache
+
+
+def _is_builtin_trusted_proxy_ip(ip_obj):
+    return any(
+        ip_obj in network for network in _BUILTIN_TRUSTED_PROXY_NETWORKS
+    )
+
+
+def _select_forwarded_client_ip(
+    forwarded_for,
+    peer_ip,
+    trusted_networks=None,
+):
+    peer_text = str(peer_ip or "").strip()
+    try:
+        peer_obj = ipaddress.ip_address(peer_text)
+    except ValueError:
+        return peer_text
+
+    if trusted_networks is None:
+        trusted_matcher = _get_trusted_ip_networks()
+    elif isinstance(trusted_networks, _TrustedIpMatcher):
+        trusted_matcher = trusted_networks
+    else:
+        trusted_matcher = _TrustedIpMatcher(
+            networks=tuple(trusted_networks)
+        )
+
+    def _is_trusted(ip_obj):
+        return _is_builtin_trusted_proxy_ip(
+            ip_obj
+        ) or trusted_matcher.matches(ip_obj)
+
+    if not _is_trusted(peer_obj):
+        return str(peer_obj)
+
+    candidates = []
+    for token in str(forwarded_for or "").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            candidates.append(ipaddress.ip_address(token))
+        except ValueError:
+            continue
+
+    for candidate in reversed(candidates):
+        if not _is_trusted(candidate):
+            return str(candidate)
+    if candidates:
+        return str(candidates[0])
+    return str(peer_obj)
+
 if sys and sys.platform.startswith("win"):
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -10723,7 +11178,8 @@ class AuthSystem:
     def _get_user_accounts_file(self, auth_username):
         """获取用户的 school_accounts 文件路径"""
         user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
-        return os.path.join(user_accounts_dir, f"{auth_username}.json")
+        storage_key = _auth_username_storage_key(auth_username)
+        return os.path.join(user_accounts_dir, f"{storage_key}.json")
 
     def _load_user_school_accounts(self, auth_username):
         """加载认证用户绑定的学校账号。"""
@@ -11046,7 +11502,7 @@ class AuthSystem:
                     user_data = json.load(f)
 
                 if not user_data.get("2fa_enabled", False):
-                    return True
+                    return False
 
                 secret = user_data.get("2fa_secret")
                 if not secret:
@@ -11057,7 +11513,7 @@ class AuthSystem:
             return False
         except ImportError:
             logging.warning("2FA验证失败：pyotp库未安装")
-            return True
+            return False
 
     def register_user(
         self,
@@ -11071,6 +11527,8 @@ class AuthSystem:
         """
         注册新用户（已升级支持扩展字段）
         """
+        if not _is_safe_auth_username(auth_username):
+            return {"success": False, "message": "用户名格式不正确"}
         logging.info(f"register_user: 开始注册新用户: {auth_username}, 权限组: {group}")
         print(f"[用户注册] 开始注册新用户: {auth_username}, 权限组: {group}")
         with self.lock:
@@ -12118,15 +12576,13 @@ class AuthSystem:
                 return [], ""
 
             current_count = len(old_sessions)
-            # 当已达到或超过最大会话数时，也应该清理最旧会话以为新会话腾出位置
-            # if current_count >= max_sessions:
             if current_count >= max_sessions:
-                # sessions_to_remove = old_sessions[: current_count - max_sessions + 1]
-                sessions_to_remove = old_sessions[: current_count - max_sessions]
-                # remaining_sessions = old_sessions[current_count - max_sessions + 1:]
-                remaining_sessions = old_sessions[current_count - max_sessions:]
-                user_data["session_ids"] = remaining_sessions + \
-                    [new_session_id]
+                keep_count = max(int(max_sessions) - 1, 0)
+                sessions_to_remove = (
+                    old_sessions[:-keep_count] if keep_count else list(old_sessions)
+                )
+                remaining_sessions = old_sessions[-keep_count:] if keep_count else []
+                user_data["session_ids"] = remaining_sessions + [new_session_id]
 
                 with open(user_file, "w", encoding="utf-8") as f:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
@@ -14374,7 +14830,8 @@ class Api:
         获取指定认证用户的 school_accounts 存储文件路径。
         """
         user_accounts_dir = os.path.join(SCHOOL_ACCOUNTS_DIR, "user_accounts")
-        return os.path.join(user_accounts_dir, f"{auth_username}.json")
+        storage_key = _auth_username_storage_key(auth_username)
+        return os.path.join(user_accounts_dir, f"{storage_key}.json")
 
     def _load_school_account_stats_from_ini(self, school_username):
         """
@@ -29197,6 +29654,10 @@ def start_web_server(args_param):
     session_activity = {}
     session_activity_lock = threading.Lock()
     _initialize_map_key_runtime()
+    try:
+        _get_trusted_ip_networks()
+    except Exception as trusted_ip_error:
+        logging.warning("[可信IP] 启动加载失败: %s", trusted_ip_error)
     
     # 用户封禁状态缓存（避免频繁文件读取导致的 greenlet 线程问题）
     global user_ban_cache
@@ -30783,6 +31244,25 @@ def start_web_server(args_param):
                             api_instance, "auth_username", None)
             if not is_authenticated or not api_instance or not auth_username:
                 return jsonify({"success": False, "message": "未登录或会话无效"}), 401
+            if auth_username != "guest" and not _is_safe_auth_username(
+                auth_username
+            ):
+                return jsonify({"success": False, "message": "用户名格式无效"}), 401
+            if not _verify_session_cookie_token(
+                session_id,
+                auth_username,
+                token,
+            ):
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": "认证令牌无效，请重新登录",
+                            "need_login": True,
+                        }
+                    ),
+                    401,
+                )
             if getattr(api_instance, "is_guest", False):
                 return jsonify({"success": False, "message": "游客无权访问此功能"}), 403
 
@@ -30820,7 +31300,9 @@ def start_web_server(args_param):
 
         @functools.wraps(f)
         def decorated_function(*args, **kwargs):
-            session_id = request.headers.get("X-Session-ID", "")
+            session_id = normalize_session_uuid(
+                request.headers.get("X-Session-ID", "")
+            )
             api_instance = None
             is_authenticated = False
             auth_username = None
@@ -30845,6 +31327,24 @@ def start_web_server(args_param):
                     f"Admin Required Failed: No valid session or not authenticated. Session ID: {session_id[:8]}..."
                 )
                 return jsonify({"success": False, "message": "未登录或会话无效"}), 401
+            if not _is_safe_auth_username(auth_username):
+                return jsonify({"success": False, "message": "用户名格式无效"}), 401
+            token = request.cookies.get("auth_token")
+            if not _verify_session_cookie_token(
+                session_id,
+                auth_username,
+                token,
+            ):
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": "认证令牌无效，请重新登录",
+                            "need_login": True,
+                        }
+                    ),
+                    401,
+                )
 
             # 2. 验证管理员权限 (检查权限组)
             ADMIN_GROUPS = ["admin", "super_admin"]
@@ -30870,7 +31370,11 @@ def start_web_server(args_param):
         全局IP封禁检查拦截器
         """
         # 使用统一函数获取客户端真实IP
-        client_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+        peer_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+        client_ip = _select_forwarded_client_ip(
+            request.headers.get("X-Forwarded-For", ""),
+            peer_ip,
+        )
         if (
             request.path.startswith("/static/")
             or request.path.startswith("/css/")
@@ -31275,6 +31779,16 @@ def start_web_server(args_param):
                 return jsonify({"success": False, "message": captcha_error_msg})
             if not auth_username or not auth_password:
                 return jsonify({"success": False, "message": "用户名和密码不能为空"})
+            if not _is_safe_auth_username(auth_username):
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "message": "用户名包含非法字符，只允许字母、数字、下划线、连字符、点和@符号",
+                        }
+                    ),
+                    400,
+                )
 
             # 检查弱密码
             # 调用 is_weak_password 函数检测密码强度
@@ -31541,6 +32055,9 @@ def start_web_server(args_param):
                                 "message": "需要2FA验证码",
                                 "requires_2fa": True,
                                 "auth_username": target_username,
+                                "two_fa_challenge": _create_two_fa_challenge(
+                                    target_username
+                                ),
                             }
                         )
                     if not auth_system.verify_2fa(target_username, two_fa_code):
@@ -31592,6 +32109,9 @@ def start_web_server(args_param):
         if not auth_result:
             return jsonify({"success": False, "message": "认证时发生未知错误"})
         if auth_result.get("requires_2fa"):
+            auth_result["two_fa_challenge"] = _create_two_fa_challenge(
+                auth_result.get("auth_username")
+            )
             return jsonify(auth_result)
         if not auth_result.get("success"):
             return jsonify(auth_result)
@@ -32536,15 +33056,27 @@ def start_web_server(args_param):
         data = request.get_json() or {}
         auth_username = data.get("auth_username", "").strip()
         verification_code = data.get("code", "").strip()
+        challenge_token = str(
+            data.get("challenge") or data.get("two_fa_challenge") or ""
+        ).strip()
 
         if not auth_username:
             return jsonify({"success": False, "message": "缺少用户名"}), 400
 
         if not verification_code:
             return jsonify({"success": False, "message": "缺少验证码"}), 400
-        if not auth_system.verify_2fa(auth_username, verification_code):
+        if not challenge_token:
+            return jsonify({"success": False, "message": "缺少2FA challenge"}), 400
+
+        challenge_valid, challenge_error = _consume_two_fa_challenge(
+            challenge_token,
+            auth_username,
+            verification_code,
+            auth_system.verify_2fa,
+        )
+        if not challenge_valid:
             logging.warning(f"2FA登录验证失败: {auth_username}")
-            return jsonify({"success": False, "message": "验证码错误"})
+            return jsonify({"success": False, "message": challenge_error}), 401
         requested_session_id = normalize_session_uuid(
             request.headers.get("X-Session-ID", "")
         )
@@ -32668,6 +33200,16 @@ def start_web_server(args_param):
 
         if not new_username or not password:
             return jsonify({"success": False, "message": "用户名和密码不能为空"})
+        if not _is_safe_auth_username(new_username):
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "用户名包含非法字符，只允许字母、数字、下划线、连字符、点和@符号",
+                    }
+                ),
+                400,
+            )
 
         # 如果填写了手机号，验证格式
         if phone:
@@ -34847,6 +35389,12 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "未授权访问"}), 401
         api_instance = web_sessions[session_id]
         current_username = getattr(api_instance, "auth_username", "")
+        if not _verify_session_cookie_token(
+            session_id,
+            current_username,
+            request.cookies.get("auth_token"),
+        ):
+            return jsonify({"success": False, "message": "认证令牌无效"}), 401
         is_admin = (
             auth_system.check_permission(current_username, "manage_users")
             if current_username
@@ -39027,7 +39575,10 @@ def start_web_server(args_param):
             # ========== 检查是否有jump参数（支付完成后跳转）==========
             # jump参数：支付完成后的跳转地址
             # 如果存在jump参数，说明这是用户支付完成后的同步返回，需要跳转到指定页面
-            jump_url = params.get("jump", "").strip()
+            jump_url = _normalize_payment_jump_url(
+                params.get("jump", ""),
+                request.host_url,
+            )
             if jump_url:
                 # 存在jump参数，返回跳转页面
                 # 使用JavaScript自动跳转，提供更好的用户体验
@@ -39082,7 +39633,7 @@ def start_web_server(args_param):
                     </div>
                     <script>
                         // 立即跳转到指定页面
-                        window.location.href = "{jump_url}";
+                        window.location.href = {_encode_inline_script_json(jump_url)};
                     </script>
                 </body>
                 </html>
@@ -40533,7 +41084,7 @@ def start_web_server(args_param):
 
     @app.route("/api/frontend_config.js")
     def get_frontend_config_javascript():
-        """将前端配置以JavaScript形式返回，并尝试根据Referer恢复会话"""
+        """将前端配置以JavaScript形式返回；可读取 Referer 对应会话的展示配置。"""
         resolved_session_id = normalize_session_uuid(
             request.headers.get("X-Session-ID", "")
         )
@@ -40555,55 +41106,41 @@ def start_web_server(args_param):
                 if uuid_match:
                     uuid = uuid_match.group(1)
                     resolved_session_id = uuid
-                    # 执行原 session_view 的会话恢复逻辑
+                    # 只从持久化文件读取展示配置；不能仅凭 Referer 中的 UUID
+                    # 创建活动会话，否则会绕过后续 auth_token 校验。
                     with web_sessions_lock:
                         if uuid not in web_sessions:
                             state = load_session_state(uuid)
-                            api_instance = None
-                            if state:
-                                api_instance = Api(args)
-                                api_instance._session_created_at = time.time()
-                                api_instance._web_session_id = uuid
-
-                            if state:
-                                if state.get("login_success"):
-                                    api_instance.login_success = True
-                                    api_instance.user_info = state.get("user_info")
-                                    api_instance._session_created_at = state.get(
-                                        "created_at", time.time()
+                            if state and state.get("login_success"):
+                                state_is_guest = bool(
+                                    state.get("is_guest", False)
+                                    or state.get("auth_username") == "guest"
+                                )
+                                if not state_is_guest:
+                                    resolved_username = (
+                                        state.get("auth_username")
+                                        or (state.get("user_info") or {}).get(
+                                            "username"
+                                        )
                                     )
-                                    restore_session_to_api_instance(
-                                        api_instance, state
-                                    )
-
-                                    logging.info(
-                                        "[ConfigLoader] 从文件恢复已登录会话 "
-                                        f"{uuid[:16]}... "
-                                        f"(用户: {state.get('user_info', {}).get('username', 'Unknown')})"
-                                    )
-                                else:
-                                    logging.info(
-                                        f"[ConfigLoader] 恢复未登录会话 {uuid[:16]}..."
-                                    )
-
-                                web_sessions[uuid] = api_instance
+                                logging.info(
+                                    "[ConfigLoader] 已读取持久化会话配置 "
+                                    f"{uuid[:16]}...（不创建活动会话）"
+                                )
                             else:
                                 logging.info(
                                     f"[ConfigLoader] 拒绝恢复未登记会话 {uuid[:16]}..."
                                 )
                         else:
-                            # 内存中已存在，确保 ID 属性设置正确
                             api_instance = web_sessions[uuid]
                             if not hasattr(api_instance, "_web_session_id"):
                                 api_instance._web_session_id = uuid
+                            if not getattr(api_instance, "is_guest", True):
+                                resolved_username = getattr(
+                                    api_instance, "auth_username", None
+                                )
                             logging.debug(
                                 f"[ConfigLoader] 确认现有会话活跃: {uuid[:32]}..."
-                            )
-                        if api_instance is not None and not getattr(
-                            api_instance, "is_guest", True
-                        ):
-                            resolved_username = getattr(
-                                api_instance, "auth_username", None
                             )
         except Exception as e:
             logging.error(f"[ConfigLoader] 尝试恢复会话时出错: {e}")
@@ -41305,27 +41842,6 @@ def start_web_server(args_param):
     #         logging.error(f"加载 HTML 片段时发生错误: {e}", exc_info=True)
     #         return jsonify({"error": "Internal server error"}), 500
 
-    @app.route("/execute_js", methods=["POST"])
-    def execute_js():
-        """在服务器端Chrome中执行JavaScript代码"""
-        session_id = request.headers.get("X-Session-ID", "")
-
-        if not session_id:
-            return jsonify({"success": False, "message": "缺少会话ID"}), 401
-        data = request.get_json() or {}
-        script = data.get("script", "")
-        args_list = data.get("args", [])
-
-        if not script:
-            return jsonify({"success": False, "message": "缺少script参数"}), 400
-
-        try:
-            result = chrome_pool.execute_js(session_id, script, *args_list)
-            return jsonify({"success": True, "result": result})
-        except Exception as e:
-            logging.error(f"执行JS失败: {e}")
-            return jsonify({"success": False, "message": "JS执行失败"}), 500
-
     @app.route("/api/background_task/start", methods=["POST"])
     def start_background_task():
         """启动后台任务执行"""
@@ -41568,6 +42084,7 @@ def start_web_server(args_param):
 
     @app.route("/api/<path:method>", methods=["GET", "POST"])
     def api_call(method):
+        """API调用端点：将前端调用转发到Python后端。"""
         # 检查黑名单前缀：如果请求的方法以任何黑名单前缀开头，则直接拒绝
         try:
             for prefix in API_BLACKLIST_PREFIXES:
@@ -41577,12 +42094,18 @@ def start_web_server(args_param):
         except Exception:
             # 如果在检查过程中出现异常，不阻止后续逻辑（以防止意外影响正常 API）
             logging.exception("检查 API 黑名单时出错")
-        """API调用端点：将前端调用转发到Python后端"""
+        if not _is_api_method_allowed(method):
+            logging.warning("阻止未授权 API 方法: %s", method)
+            return (
+                jsonify({"success": False, "message": "该 API 方法未被允许"}),
+                403,
+            )
         session_id = normalize_session_uuid(request.headers.get("X-Session-ID", ""))
         admin_origin_session_id = normalize_session_uuid(
             request.headers.get(ADMIN_ORIGIN_SESSION_HEADER, "")
         )
         admin_origin_context = None
+        request_token = request.cookies.get("auth_token")
 
         def _make_auth_optional_api_instance(context_reason):
             api = Api(args)
@@ -41614,7 +42137,18 @@ def start_web_server(args_param):
                         username = getattr(api_instance, "auth_username", None)
 
                         if username:
-                            token = request.cookies.get("auth_token")
+                            if not _is_safe_auth_username(username):
+                                return (
+                                    jsonify(
+                                        {
+                                            "success": False,
+                                            "message": "用户名格式无效",
+                                            "need_login": True,
+                                        }
+                                    ),
+                                    401,
+                                )
+                            token = request_token
 
                             if not token:
                                 return (
@@ -41719,6 +42253,70 @@ def start_web_server(args_param):
             if session_id and session_id not in web_sessions:
                 state = load_session_state(session_id)
                 if state and state.get("login_success"):
+                    state_username = str(
+                        state.get("auth_username") or ""
+                    ).strip()
+                    state_is_guest = bool(
+                        state.get("is_guest", False)
+                        or state_username == "guest"
+                    )
+                    if not state_is_guest:
+                        if not _is_safe_auth_username(state_username):
+                            return (
+                                jsonify(
+                                    {
+                                        "success": False,
+                                        "message": "用户名格式无效",
+                                        "need_login": True,
+                                    }
+                                ),
+                                401,
+                            )
+                        restored_token_valid = _verify_session_cookie_token(
+                            session_id,
+                            state_username,
+                            request_token,
+                        )
+                        if not restored_token_valid:
+                            admin_origin_context = (
+                                resolve_admin_origin_session_context(
+                                    session_id,
+                                    admin_origin_session_id,
+                                    request_token,
+                                    lock_held=True,
+                                )
+                            )
+                        if not restored_token_valid and not admin_origin_context:
+                            try:
+                                super_admin = auth_system.config.get(
+                                    "Admin",
+                                    "super_admin",
+                                    fallback="admin",
+                                )
+                                if state_username != super_admin:
+                                    super_admin_valid, _reason = (
+                                        token_manager.verify_token(
+                                            super_admin,
+                                            session_id,
+                                            request_token,
+                                        )
+                                    )
+                                    restored_token_valid = bool(
+                                        super_admin_valid
+                                    )
+                            except Exception:
+                                restored_token_valid = False
+                        if not restored_token_valid and not admin_origin_context:
+                            return (
+                                jsonify(
+                                    {
+                                        "success": False,
+                                        "message": "认证令牌无效，请重新登录",
+                                        "need_login": True,
+                                    }
+                                ),
+                                401,
+                            )
                     api_instance = Api(args)
                     api_instance._session_created_at = state.get(
                         "created_at", time.time()
@@ -41788,6 +42386,9 @@ def start_web_server(args_param):
                 "multi_start_all_accounts": "execute_multi_account",
                 "multi_stop_single_account": "execute_multi_account",
                 "multi_stop_all_accounts": "execute_multi_account",
+                "multi_path_generation_callback": "execute_multi_account",
+                "set_multi_run_only_incomplete": "execute_multi_account",
+                "enter_single_account_mode": "execute_multi_account",
                 # ===== 任务管理相关权限 =====
                 "load_tasks": "view_tasks",
                 "get_task_details": "view_tasks",
@@ -55144,29 +55745,14 @@ def start_web_server(args_param):
         注意：HTTPS重定向已交由nginx处理（见docker-entrypoint.sh），
         此处只做IP解析。
         """
-        # 从X-Forwarded-For获取真实客户端IP
-        forwarded_for = request.headers.get("X-Forwarded-For", "")
-
-        if forwarded_for:
-            # 1. 获取第一个部分 (通常是真实客户端IP)
-            first_part = forwarded_for.split(",")[0].strip()
-
-            # 2. 清洗数据：移除首尾的 斜杠(/)、反斜杠(\)、双引号(")、单引号(') 和 空格
-            dirty_chars = r"\/\"' "
-            cleaned_ip_str = first_part.strip(dirty_chars)
-
-            try:
-                # 3. 使用 ipaddress 进行解析和验证 (支持 IPv4 和 IPv6)
-                ip_obj = ipaddress.ip_address(cleaned_ip_str)
-                real_ip = str(ip_obj)
-                request.environ["REMOTE_ADDR"] = real_ip
-                logging.info(f"真实客户端IP已设置为: {real_ip}")
-
-            except ValueError:
-                logging.warning(
-                    f"无法从Header解析出有效IP (格式错误): {first_part} -> 清洗后: {cleaned_ip_str}")
-            except Exception as e:
-                logging.error(f"IP解析发生未知错误: {e}")
+        peer_ip = request.environ.get("REMOTE_ADDR") or request.remote_addr
+        real_ip = _select_forwarded_client_ip(
+            request.headers.get("X-Forwarded-For", ""),
+            peer_ip,
+        )
+        if real_ip:
+            request.environ["REMOTE_ADDR"] = real_ip
+            logging.debug("真实客户端IP已设置为: %s", real_ip)
 
     @app.after_request
     def add_security_headers(response):
