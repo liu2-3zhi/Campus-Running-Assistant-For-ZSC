@@ -36,7 +36,7 @@ function createElement(id) {
   }
 }
 
-function createRuntime({ failSdk = false } = {}) {
+function createRuntime({ failSdk = false, timers = null } = {}) {
   const elements = new Map()
   for (const [, displayId, refreshId] of forms) {
     elements.set(displayId, createElement(displayId))
@@ -44,7 +44,10 @@ function createRuntime({ failSdk = false } = {}) {
   }
   const requests = []
   const context = vm.createContext({
-    document: { getElementById: (id) => elements.get(id) ?? null },
+    document: {
+      getElementById: (id) => elements.get(id) ?? null,
+      querySelectorAll: () => [],
+    },
     window: {
       initTAC: async () => {
         if (failSdk) throw new Error('SDK unavailable')
@@ -68,6 +71,10 @@ function createRuntime({ failSdk = false } = {}) {
     runtimeCaptchaProviderConfigPromise: null,
     behaviorCaptchaLoaderPromise: null,
     behaviorCaptchaInstances: {},
+    BEHAVIOR_CAPTCHA_MAX_AUTO_RETRIES: 2,
+    BEHAVIOR_CAPTCHA_RETRY_DELAY_MS: 600,
+    behaviorCaptchaRetryQueue: new Map(),
+    behaviorCaptchaRetryTimer: null,
     captchaIds_login: '',
     captchaIds_register: '',
     captchaIds_mobile_login: '',
@@ -77,6 +84,11 @@ function createRuntime({ failSdk = false } = {}) {
     captchaModalRequestedWidth: null,
     containerWidth: 200,
     sessionUUID: 'test-session',
+    setTimeout: (fn) => {
+      if (!timers) return 1
+      timers.push(fn)
+      return timers.length
+    },
   })
   vm.runInContext(source.slice(start, end), context)
   return { context, elements, requests }
@@ -113,7 +125,7 @@ for (const [formType, displayId, refreshId] of forms) {
     const { context, elements } = createRuntime({ failSdk: true })
     await load(context, formType, 'behavior')
     assert.equal(elements.get(refreshId).style.display, 'none')
-    assert.match(elements.get(displayId).innerHTML, /text-red-500/)
+    assert.match(elements.get(displayId).innerHTML, /人机验证加载失败/)
   })
 }
 
@@ -137,4 +149,17 @@ test('changing captcha mode leaves admin configuration and history refresh butto
   for (const id of adminIds) elements.set(id, createElement(id))
   for (const [, displayId] of forms) context.setCaptchaDisplayBehaviorMode(elements.get(displayId), true)
   for (const id of adminIds) assert.equal(elements.get(id).style.display, '')
+})
+
+test('captcha SDK retries are coalesced into one runtime reset', () => {
+  const timers = []
+  const { context } = createRuntime({ timers })
+  let retries = 0
+
+  context.queueBehaviorCaptchaRetry('login', () => retries++, 600)
+  context.queueBehaviorCaptchaRetry('register', () => retries++, 600)
+
+  assert.equal(timers.length, 1)
+  timers[0]()
+  assert.equal(retries, 2)
 })

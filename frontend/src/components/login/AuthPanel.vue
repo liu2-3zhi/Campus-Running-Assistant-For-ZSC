@@ -61,6 +61,15 @@ const captchaProvider = ref('image')
 const behaviorCaptchaType = ref('SLIDER')
 let tacLoaderPromise = null
 const tacInstances = {}
+const MAX_TAC_AUTO_RETRIES = 2
+const TAC_RETRY_DELAY_MS = 600
+const tacRetryQueue = new Map()
+let tacRetryTimer = null
+let tacRetryDelayMs = TAC_RETRY_DELAY_MS
+const tacLoadState = reactive({
+  login: { retrying: false, failed: false, message: '' },
+  register: { retrying: false, failed: false, message: '' },
+})
 
 async function fetchCaptchaProvider() {
   try {
@@ -86,6 +95,9 @@ function ensureTacLoader() {
     s.onload = () => (window.initTAC ? resolve() : reject(new Error('TAC loader 未暴露 initTAC')))
     s.onerror = () => reject(new Error('加载验证码 SDK 失败'))
     document.head.appendChild(s)
+  }).catch((error) => {
+    tacLoaderPromise = null
+    throw error
   })
   return tacLoaderPromise
 }
@@ -106,15 +118,73 @@ function destroyTac(target) {
   tacInstances[target] = null
 }
 
+function resetTacRuntime() {
+  document
+    .querySelectorAll('script[data-tac-loader], link[data-tac-loader]')
+    .forEach((element) => element.remove())
+  tacLoaderPromise = null
+  try {
+    delete window.initTAC
+    delete window.initCaptchaLocal
+    delete window.CaptchaLocal
+  } catch (_) {
+    window.initTAC = undefined
+    window.initCaptchaLocal = undefined
+    window.CaptchaLocal = undefined
+  }
+}
+
+function queueTacRetry(key, retryFn, delayMs) {
+  tacRetryQueue.set(key, retryFn)
+  tacRetryDelayMs = Math.min(tacRetryDelayMs, delayMs)
+  if (tacRetryTimer) return
+  tacRetryTimer = setTimeout(() => {
+    const retries = Array.from(tacRetryQueue.values())
+    tacRetryQueue.clear()
+    tacRetryTimer = null
+    tacRetryDelayMs = TAC_RETRY_DELAY_MS
+    resetTacRuntime()
+    retries.forEach((retry) => retry())
+  }, tacRetryDelayMs)
+}
+
 function resetBehaviorCaptcha(target) {
   const form = target === 'login' ? loginForm : registerForm
   form.captchaId = ''
   form.captchaCode = ''
 }
 
-// 在指定容器渲染验证码服务器入口；校验通过后把验证过的 id 写入表单 captchaId
-async function mountTacWidget(target) {
+function retryTacWidget(target) {
+  resetTacRuntime()
+  return mountTacWidget(target)
+}
+
+function tacStatusText(target) {
+  const state = tacLoadState[target]
   const form = target === 'login' ? loginForm : registerForm
+  if (state.failed) return state.message || '人机验证加载失败'
+  if (state.retrying) return state.message || '正在加载人机验证...'
+  return form.captchaId ? '验证通过' : '请完成上方行为验证'
+}
+
+function tacStatusColor(target) {
+  const state = tacLoadState[target]
+  if (state.failed) return '#dc2626'
+  if (state.retrying) return '#d97706'
+  return (target === 'login' ? loginForm.captchaId : registerForm.captchaId)
+    ? '#16a34a'
+    : 'var(--ink-muted)'
+}
+
+// 在指定容器渲染验证码服务器入口；校验通过后把验证过的 id 写入表单 captchaId
+async function mountTacWidget(target, attempt = 0) {
+  const form = target === 'login' ? loginForm : registerForm
+  const loadState = tacLoadState[target]
+  if (loadState) {
+    loadState.retrying = true
+    loadState.failed = false
+    loadState.message = '正在加载人机验证...'
+  }
   const hasVerifiedBehaviorCaptcha = !!form.captchaId
   if (!hasVerifiedBehaviorCaptcha) {
     form.captchaId = ''
@@ -155,8 +225,31 @@ async function mountTacWidget(target) {
     }, createTacTriggerStyle())
     tacInstances[target] = tac
     tac.init()
+    if (loadState) {
+      loadState.retrying = false
+      loadState.failed = false
+      loadState.message = ''
+    }
     if (hasVerifiedBehaviorCaptcha && tac && tac.showTriggerSuccess) tac.showTriggerSuccess()
   } catch (e) {
+    const nextAttempt = attempt + 1
+    if (loadState && attempt < MAX_TAC_AUTO_RETRIES) {
+      loadState.retrying = true
+      loadState.failed = false
+      loadState.message = `加载失败，正在自动重试（${nextAttempt}/${MAX_TAC_AUTO_RETRIES}）...`
+      queueTacRetry(
+        target,
+        () => mountTacWidget(target, nextAttempt),
+        TAC_RETRY_DELAY_MS * nextAttempt,
+      )
+      console.warn('验证码服务器加载失败，准备自动重试:', e)
+      return
+    }
+    if (loadState) {
+      loadState.retrying = false
+      loadState.failed = true
+      loadState.message = '人机验证加载失败'
+    }
     console.warn('验证码服务器加载失败:', e)
   }
 }
@@ -389,39 +482,64 @@ function showSmsTacModal(phone, type) {
       cancelButton: 'btn btn-secondary',
     },
     didOpen: async () => {
-      try {
-        await ensureTacLoader()
-        const preserveSuccessOnClose = () => !!validatedId
-        const tac = await window.initTAC('/api/captcha/behavior/tac/', {
-          requestCaptchaDataUrl: '/api/captcha/behavior/gen?type=' + encodeURIComponent(behaviorCaptchaType.value),
-          validCaptchaUrl: '/api/captcha/behavior/check',
-          bindEl: '#swal-tac',
-          btnCloseFun: (event, t) => {
-            if (t && t.isClickTriggerMode?.() && t.renderTrigger) {
-              t.renderTrigger(preserveSuccessOnClose())
-            } else if (t && t.destroyWindow) {
-              t.destroyWindow()
-            }
-          },
-          validSuccess: (res, c, t) => {
-            validatedId = res && res.data ? res.data.id : ''
-            const st = document.getElementById('swal-tac-status')
-            if (st) { st.textContent = '✓ 验证通过，请点击确认发送'; st.style.color = '#16a34a' }
-            if (t && t.showTriggerSuccess) t.showTriggerSuccess()
-          },
-          validFail: (r, c, t) => {
-            if (validatedId) {
+      const mountSmsTac = async (attempt = 0) => {
+        try {
+          await ensureTacLoader()
+          const preserveSuccessOnClose = () => !!validatedId
+          const tac = await window.initTAC('/api/captcha/behavior/tac/', {
+            requestCaptchaDataUrl: '/api/captcha/behavior/gen?type=' + encodeURIComponent(behaviorCaptchaType.value),
+            validCaptchaUrl: '/api/captcha/behavior/check',
+            bindEl: '#swal-tac',
+            btnCloseFun: (event, t) => {
+              if (t && t.isClickTriggerMode?.() && t.renderTrigger) {
+                t.renderTrigger(preserveSuccessOnClose())
+              } else if (t && t.destroyWindow) {
+                t.destroyWindow()
+              }
+            },
+            validSuccess: (res, c, t) => {
+              validatedId = res && res.data ? res.data.id : ''
+              const st = document.getElementById('swal-tac-status')
+              if (st) { st.textContent = '✓ 验证通过，请点击确认发送'; st.style.color = '#16a34a' }
               if (t && t.showTriggerSuccess) t.showTriggerSuccess()
-            } else if (t && t.reloadCaptcha) {
-              t.reloadCaptcha()
+            },
+            validFail: (r, c, t) => {
+              if (validatedId) {
+                if (t && t.showTriggerSuccess) t.showTriggerSuccess()
+              } else if (t && t.reloadCaptcha) {
+                t.reloadCaptcha()
+              }
+            },
+          }, createTacTriggerStyle())
+          tac.init()
+        } catch (e) {
+          const st = document.getElementById('swal-tac-status')
+          const nextAttempt = attempt + 1
+          if (attempt < MAX_TAC_AUTO_RETRIES) {
+            if (st) {
+              st.textContent = `验证码加载失败，正在自动重试（${nextAttempt}/${MAX_TAC_AUTO_RETRIES}）...`
+              st.style.color = '#d97706'
             }
-          },
-        }, createTacTriggerStyle())
-        tac.init()
-      } catch (e) {
-        const st = document.getElementById('swal-tac-status')
-        if (st) { st.textContent = '验证码加载失败，请稍后重试'; st.style.color = '#dc2626' }
+            queueTacRetry(
+              'sms-modal',
+              () => mountSmsTac(nextAttempt),
+              TAC_RETRY_DELAY_MS * nextAttempt,
+            )
+            return
+          }
+          if (st) {
+            st.innerHTML = '验证码加载失败 <button type="button" id="swal-tac-retry" class="ml-1 underline">重新加载</button>'
+            st.style.color = '#dc2626'
+            document.getElementById('swal-tac-retry')?.addEventListener('click', () => {
+              st.textContent = '正在重新加载验证码...'
+              st.style.color = '#d97706'
+              resetTacRuntime()
+              mountSmsTac(0)
+            })
+          }
+        }
       }
+      await mountSmsTac()
     },
     preConfirm: () => {
       if (!validatedId) {
@@ -974,8 +1092,16 @@ onUnmounted(() => {
               <!-- 验证码服务器 -->
               <div v-else>
                 <div id="tac-login" class="min-h-[60px] w-full"></div>
-                <p class="mt-1 text-xs" :style="{ color: loginForm.captchaId ? '#16a34a' : 'var(--ink-muted)' }">
-                  {{ loginForm.captchaId ? '验证通过' : '请完成上方行为验证' }}
+                <p class="mt-1 text-xs" :style="{ color: tacStatusColor('login') }">
+                  {{ tacStatusText('login') }}
+                  <button
+                    v-if="tacLoadState.login.failed"
+                    type="button"
+                    class="ml-1 underline"
+                    @click="retryTacWidget('login')"
+                  >
+                    重新加载
+                  </button>
                 </p>
               </div>
             </div>
@@ -1229,8 +1355,16 @@ onUnmounted(() => {
               <!-- 验证码服务器 -->
               <div v-else>
                 <div id="tac-register" class="min-h-[60px] w-full"></div>
-                <p class="mt-1 text-xs" :style="{ color: registerForm.captchaId ? '#16a34a' : 'var(--ink-muted)' }">
-                  {{ registerForm.captchaId ? '验证通过' : '请完成上方行为验证' }}
+                <p class="mt-1 text-xs" :style="{ color: tacStatusColor('register') }">
+                  {{ tacStatusText('register') }}
+                  <button
+                    v-if="tacLoadState.register.failed"
+                    type="button"
+                    class="ml-1 underline"
+                    @click="retryTacWidget('register')"
+                  >
+                    重新加载
+                  </button>
                 </p>
               </div>
             </div>

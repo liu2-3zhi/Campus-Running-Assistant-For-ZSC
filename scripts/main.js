@@ -201,6 +201,10 @@ let runtimeCaptchaProviderConfig = null;
 let runtimeCaptchaProviderConfigPromise = null;
 let behaviorCaptchaLoaderPromise = null;
 const behaviorCaptchaInstances = {};
+const BEHAVIOR_CAPTCHA_MAX_AUTO_RETRIES = 2;
+const BEHAVIOR_CAPTCHA_RETRY_DELAY_MS = 600;
+const behaviorCaptchaRetryQueue = new Map();
+let behaviorCaptchaRetryTimer = null;
 
 const configLoadState = {
   sms: false,
@@ -19736,7 +19740,45 @@ function destroyBehaviorCaptchaInstance(instanceKey) {
   behaviorCaptchaInstances[instanceKey] = null;
 }
 
-async function loadBehaviorCaptcha(formType) {
+function resetBehaviorCaptchaSdkRuntime() {
+  document
+    .querySelectorAll('script[data-tac-loader], link[data-tac-loader]')
+    .forEach((element) => element.remove());
+  behaviorCaptchaLoaderPromise = null;
+  try {
+    delete window.initTAC;
+    delete window.initCaptchaLocal;
+    delete window.CaptchaLocal;
+  } catch (_) {
+    window.initTAC = undefined;
+    window.initCaptchaLocal = undefined;
+    window.CaptchaLocal = undefined;
+  }
+}
+
+function queueBehaviorCaptchaRetry(key, retryFn, delayMs) {
+  behaviorCaptchaRetryQueue.set(key, retryFn);
+  if (behaviorCaptchaRetryTimer) return;
+  behaviorCaptchaRetryTimer = setTimeout(() => {
+    const retries = Array.from(behaviorCaptchaRetryQueue.values());
+    behaviorCaptchaRetryQueue.clear();
+    behaviorCaptchaRetryTimer = null;
+    resetBehaviorCaptchaSdkRuntime();
+    retries.forEach((retry) => retry());
+  }, delayMs);
+}
+
+function retryBehaviorCaptchaLoad(formType, attempt) {
+  resetBehaviorCaptchaSdkRuntime();
+  return loadBehaviorCaptcha(formType, attempt);
+}
+
+function retryBehaviorCaptchaModalLoad(attempt) {
+  resetBehaviorCaptchaSdkRuntime();
+  return loadBehaviorCaptchaModal(attempt);
+}
+
+async function loadBehaviorCaptcha(formType, attempt = 0) {
   const displayId = getCaptchaDisplayIdForForm(formType);
   const displayElement = displayId ? document.getElementById(displayId) : null;
   if (!displayElement) {
@@ -19820,8 +19862,19 @@ async function loadBehaviorCaptcha(formType) {
       tac.showTriggerSuccess();
     }
   } catch (error) {
+    const nextAttempt = attempt + 1;
+    if (attempt < BEHAVIOR_CAPTCHA_MAX_AUTO_RETRIES) {
+      displayElement.innerHTML = `<span class="text-amber-600 text-xs">人机验证加载失败，正在自动重试（${nextAttempt}/${BEHAVIOR_CAPTCHA_MAX_AUTO_RETRIES}）...</span>`;
+      console.warn("[验证码-behavior] 加载异常，准备自动重试:", error);
+      queueBehaviorCaptchaRetry(
+        formType,
+        () => loadBehaviorCaptcha(formType, nextAttempt),
+        BEHAVIOR_CAPTCHA_RETRY_DELAY_MS * nextAttempt,
+      );
+      return;
+    }
     displayElement.innerHTML =
-      '<span class="text-red-500 text-xs">人机验证加载失败</span>';
+      `<span class="text-red-500 text-xs">人机验证加载失败 <button type="button" class="ml-1 underline" onclick="retryBehaviorCaptchaLoad('${formType}', 0)">重新加载</button></span>`;
     console.error("[验证码-behavior] 加载异常:", error);
   }
 }
@@ -19847,7 +19900,7 @@ function setCaptchaModalInputBehaviorMode(enabled) {
   if (inputGroup) inputGroup.classList.remove("hidden");
 }
 
-async function loadBehaviorCaptchaModal() {
+async function loadBehaviorCaptchaModal(attempt = 0) {
   const displayElement = document.getElementById("captcha-modal-display");
   const modalInput = document.getElementById("captcha-modal-input");
   if (!displayElement) {
@@ -19930,8 +19983,19 @@ async function loadBehaviorCaptchaModal() {
       tac.showTriggerSuccess();
     }
   } catch (error) {
+    const nextAttempt = attempt + 1;
+    if (attempt < BEHAVIOR_CAPTCHA_MAX_AUTO_RETRIES) {
+      displayElement.innerHTML = `<span class="text-amber-600 text-xs">人机验证加载失败，正在自动重试（${nextAttempt}/${BEHAVIOR_CAPTCHA_MAX_AUTO_RETRIES}）...</span>`;
+      console.warn("[验证码模态窗-behavior] 加载异常，准备自动重试:", error);
+      queueBehaviorCaptchaRetry(
+        "modal",
+        () => loadBehaviorCaptchaModal(nextAttempt),
+        BEHAVIOR_CAPTCHA_RETRY_DELAY_MS * nextAttempt,
+      );
+      return;
+    }
     displayElement.innerHTML =
-      '<span class="text-red-500 text-xs">人机验证加载失败</span>';
+      `<span class="text-red-500 text-xs">人机验证加载失败 <button type="button" class="ml-1 underline" onclick="retryBehaviorCaptchaModalLoad(0)">重新加载</button></span>`;
     console.error("[验证码模态窗-behavior] 加载异常:", error);
   }
 }
@@ -20934,6 +20998,9 @@ async function handleAuthLogin(isMobile_use = false) {
         });
       }
 
+      if (isBehaviorCaptchaMode) {
+        resetLoginCaptcha();
+      }
       if (isMobile_use === false) {
         refreshCaptcha("login");
       } else {
@@ -20956,6 +21023,9 @@ async function handleAuthLogin(isMobile_use = false) {
       text: "网络错误，请检查连接后重试",
     });
 
+    if (isBehaviorCaptchaMode) {
+      resetLoginCaptcha();
+    }
     if (isMobile_use === false) {
       refreshCaptcha("login");
     } else {

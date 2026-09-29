@@ -85,7 +85,7 @@ class TestCaptchaBehaviorGenerationChain(unittest.TestCase):
         self.assertIn("async function fetchRuntimeCaptchaProviderConfig()", source)
         self.assertIn('"/api/captcha/provider"', source)
         self.assertIn('"/api/captcha/behavior/loader.js"', source)
-        self.assertIn("async function loadBehaviorCaptcha(formType)", source)
+        self.assertIn("async function loadBehaviorCaptcha(formType, attempt = 0)", source)
         self.assertIn("window.initTAC", source)
         self.assertIn('"/api/captcha/behavior/tac/"', source)
         self.assertIn('"/api/captcha/behavior/gen?type="', source)
@@ -97,12 +97,12 @@ class TestCaptchaBehaviorGenerationChain(unittest.TestCase):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
         behavior_source = _extract_section(
             source,
-            "async function loadBehaviorCaptcha(formType) {",
+            "async function loadBehaviorCaptcha(formType, attempt = 0) {",
             "\nfunction refreshCaptcha(formType) {",
         )
         modal_source = _extract_section(
             source,
-            "async function loadBehaviorCaptchaModal() {",
+            "async function loadBehaviorCaptchaModal(attempt = 0) {",
             "\nasync function loadCaptchaModal(requestedWidth) {",
         )
 
@@ -146,12 +146,12 @@ class TestCaptchaBehaviorGenerationChain(unittest.TestCase):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
         behavior_source = _extract_section(
             source,
-            "async function loadBehaviorCaptcha(formType) {",
+            "async function loadBehaviorCaptcha(formType, attempt = 0) {",
             "\nfunction setCaptchaModalInputBehaviorMode(enabled) {",
         )
         modal_source = _extract_section(
             source,
-            "async function loadBehaviorCaptchaModal() {",
+            "async function loadBehaviorCaptchaModal(attempt = 0) {",
             "\nasync function loadCaptchaModal(requestedWidth) {",
         )
 
@@ -171,6 +171,93 @@ class TestCaptchaBehaviorGenerationChain(unittest.TestCase):
         self.assertIn('modalInput.value = "behavior-verified";', modal_source)
         self.assertIn("if (captchaIds_modal) {", modal_source)
         self.assertIn("if (hasVerifiedBehaviorCaptcha && tac", modal_source)
+
+    def test_legacy_behavior_captcha_auto_retries_sdk_load_failure(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        behavior_source = _extract_section(
+            source,
+            "async function loadBehaviorCaptcha(formType, attempt = 0) {",
+            "\nfunction setCaptchaModalInputBehaviorMode(enabled) {",
+        )
+        modal_source = _extract_section(
+            source,
+            "async function loadBehaviorCaptchaModal(attempt = 0) {",
+            "\nasync function loadCaptcha(formType) {",
+        )
+
+        for section in (behavior_source, modal_source):
+            self.assertIn("BEHAVIOR_CAPTCHA_MAX_AUTO_RETRIES", section)
+            self.assertIn("BEHAVIOR_CAPTCHA_RETRY_DELAY_MS", section)
+            self.assertIn("resetBehaviorCaptchaSdkRuntime();", source)
+            self.assertIn("queueBehaviorCaptchaRetry(", section)
+            self.assertIn("behaviorCaptchaRetryTimer", source)
+
+    def test_legacy_login_failure_invalidates_consumed_behavior_captcha(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        login_source = _extract_section(
+            source,
+            "async function handleAuthLogin(isMobile_use = false) {",
+            "\n/**\n * 处理手机号未注册时跳转到注册页面",
+        )
+        failure_source = _extract_section(
+            login_source,
+            "    } else {\n      setButtonLoading(\"auth-login-btn\", false);",
+            "\n  } catch (e) {",
+        )
+        catch_source = _extract_section(
+            login_source,
+            "\n  } catch (e) {\n    logMessage_Error(\"登录请求失败:\", e);",
+            "\n  } finally {",
+        )
+
+        for section in (failure_source, catch_source):
+            reset_index = section.index("resetLoginCaptcha();")
+            refresh_index = section.index("refreshCaptcha(")
+            self.assertLess(reset_index, refresh_index)
+
+    def test_vue_behavior_captcha_auto_retries_sdk_load_failure(self):
+        source = (PROJECT_ROOT / "frontend" / "src" / "components" / "login" / "AuthPanel.vue").read_text(
+            encoding="utf-8"
+        )
+        mount_source = _extract_section(
+            source,
+            "async function mountTacWidget(target, attempt = 0) {",
+            "\n// SMS cooldown",
+        )
+
+        self.assertIn("MAX_TAC_AUTO_RETRIES", source)
+        self.assertIn("TAC_RETRY_DELAY_MS", source)
+        self.assertIn("resetTacRuntime()", source)
+        self.assertIn("queueTacRetry(", mount_source)
+        self.assertIn("tacRetryTimer", source)
+        self.assertIn("function retryTacWidget(target)", source)
+        self.assertIn('@click="retryTacWidget(\'login\')"', source)
+
+    def test_captcha_load_final_failure_has_manual_retry_button(self):
+        legacy_source = SCRIPT_PATH.read_text(encoding="utf-8")
+        legacy_behavior = _extract_section(
+            legacy_source,
+            "async function loadBehaviorCaptcha(formType, attempt = 0) {",
+            "\nfunction setCaptchaModalInputBehaviorMode(enabled) {",
+        )
+        legacy_modal = _extract_section(
+            legacy_source,
+            "async function loadBehaviorCaptchaModal(attempt = 0) {",
+            "\nasync function loadCaptcha(formType) {",
+        )
+
+        for section in (legacy_behavior, legacy_modal):
+            self.assertIn("重新加载", section)
+            self.assertIn("retryBehaviorCaptcha", section)
+
+        vue_source = (
+            PROJECT_ROOT / "frontend" / "src" / "components" / "login" / "AuthPanel.vue"
+        ).read_text(encoding="utf-8")
+        self.assertIn("function retryTacWidget(target)", vue_source)
+        self.assertIn('@click="retryTacWidget(\'login\')"', vue_source)
+        self.assertIn('@click="retryTacWidget(\'register\')"', vue_source)
+        self.assertIn('id="swal-tac-retry"', vue_source)
+        self.assertIn("addEventListener('click'", vue_source)
 
     def test_vue_auth_behavior_mode_prompts_for_human_verification_not_image_text(self):
         source = (PROJECT_ROOT / "frontend" / "src" / "components" / "login" / "AuthPanel.vue").read_text(
