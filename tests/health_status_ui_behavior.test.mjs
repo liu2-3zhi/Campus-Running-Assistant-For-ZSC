@@ -74,8 +74,10 @@ function extractFunctionSource(source, functionName) {
 }
 
 function loadFunctions(functionNames) {
-  const filePath = resolve('scripts/main.js');
-  const source = readFileSync(filePath, 'utf8');
+  const source = [
+    readFileSync(resolve('scripts/main.js'), 'utf8'),
+    readFileSync(resolve('scripts/legacy-admin-sessions.js'), 'utf8'),
+  ].join('\n');
   const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
   return Function(`${functionSources.join('\n\n')} return { ${functionNames.join(', ')} };`)();
 }
@@ -105,7 +107,10 @@ test('health status presentation supports ok degraded error and unknown', () => 
 });
 
 test('health detail rendering uses dedicated HTML sections and keeps JSON raw block', () => {
-  const source = readFileSync(resolve('scripts/main.js'), 'utf8');
+  const source = [
+    readFileSync(resolve('scripts/main.js'), 'utf8'),
+    readFileSync(resolve('scripts/legacy-admin-sessions.js'), 'utf8'),
+  ].join('\n');
   const loadHealthStatusSource = extractFunctionSource(source, 'loadHealthStatus');
   const loadMobileHealthStatusSource = extractFunctionSource(source, 'loadMobileMultiHealthStatus');
 
@@ -158,7 +163,10 @@ test('health panel preserves scroll positions while refreshing', () => {
 });
 
 test('desktop and both legacy mobile health loaders use diagnostics and no-store refreshes', () => {
-  const source = readFileSync(resolve('scripts/main.js'), 'utf8');
+  const source = [
+    readFileSync(resolve('scripts/main.js'), 'utf8'),
+    readFileSync(resolve('scripts/legacy-admin-sessions.js'), 'utf8'),
+  ].join('\n');
   const desktopSource = extractFunctionSource(source, 'loadHealthStatus');
   const multiMobileSource = extractFunctionSource(source, 'loadMobileMultiHealthStatus');
   const mobileTabSource = extractFunctionSource(source, 'switchMobileAdminTab');
