@@ -4,7 +4,31 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MAIN_JS_PATH = PROJECT_ROOT / "scripts" / "main.js"
+SCRIPT_SOURCE_PATHS = [
+    PROJECT_ROOT / "scripts" / "legacy-payment.js",
+    PROJECT_ROOT / "scripts" / "legacy-mobile-core.js",
+    PROJECT_ROOT / "scripts" / "legacy-reminders.js",
+    PROJECT_ROOT / "scripts" / "legacy-admin-config.js",
+    PROJECT_ROOT / "scripts" / "legacy-admin-sessions.js",
+    PROJECT_ROOT / "scripts" / "legacy-admin-users.js",
+    PROJECT_ROOT / "scripts" / "legacy-mobile-admin.js",
+    PROJECT_ROOT / "scripts" / "legacy-payment-user.js",
+    PROJECT_ROOT / "scripts" / "legacy-mobile-multi.js",
+    PROJECT_ROOT / "scripts" / "legacy-watermark.js",
+    PROJECT_ROOT / "scripts" / "legacy-map-render.js",
+    PROJECT_ROOT / "scripts" / "main.js",
+]
+
+
+class _CombinedFrontendSource:
+    def read_text(self, encoding="utf-8"):
+        return "\n\n".join(
+            path.read_text(encoding=encoding)
+            for path in SCRIPT_SOURCE_PATHS
+        )
+
+
+MAIN_JS_PATH = _CombinedFrontendSource()
 
 
 class TestMarkdownRenderingInput(unittest.TestCase):

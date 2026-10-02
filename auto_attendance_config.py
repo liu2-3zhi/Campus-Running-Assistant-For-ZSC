@@ -166,7 +166,7 @@ def _record_auto_attendance_success(school_username, params):
                 f"[自动签到配置] 账号 {school_username} 已完成 {successful_count} 次签到，自动关闭自动签到"
             )
             session_uuid = account_info.get("session_uuid")
-            sio = _main().globals().get("socketio")
+            sio = getattr(_main(), "socketio", None)
             if session_uuid and sio:
                 try:
                     sio.emit(

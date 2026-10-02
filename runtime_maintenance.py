@@ -165,6 +165,7 @@ def _strip_daily_restart_helper_args(argv):
 
 
 def _run_daily_restart_helper(args):
+    main_module = _main()
     restart_log_path = getattr(args, "daily_restart_log_path", None)
     parent_pid = getattr(args, "daily_restart_parent_pid", None)
     python_executable = getattr(args, "daily_restart_python_executable", None)
@@ -173,19 +174,19 @@ def _run_daily_restart_helper(args):
     forwarded_args_json = getattr(args, "daily_restart_forward_args_json", "[]")
 
     if not python_executable or not main_script_path or not parent_pid:
-        _append_daily_full_restart_log(
+        main_module._append_daily_full_restart_log(
             "[每日完全重启 helper] 缺少必要启动参数，放弃接棒重启",
             log_path=restart_log_path,
         )
         return False
 
-    _append_daily_full_restart_log(
+    main_module._append_daily_full_restart_log(
         f"[每日完全重启 helper] 已启动，等待旧进程退出 pid={parent_pid}",
         log_path=restart_log_path,
     )
 
-    if not _main()._wait_for_process_exit(parent_pid):
-        _append_daily_full_restart_log(
+    if not main_module._wait_for_process_exit(parent_pid):
+        main_module._append_daily_full_restart_log(
             f"[每日完全重启 helper] 等待旧进程退出超时 pid={parent_pid}",
             log_path=restart_log_path,
         )
@@ -198,48 +199,49 @@ def _run_daily_restart_helper(args):
     except (TypeError, ValueError, json.JSONDecodeError):
         forwarded_args = []
 
-    forwarded_args = _strip_daily_restart_helper_args(forwarded_args)
+    forwarded_args = main_module._strip_daily_restart_helper_args(forwarded_args)
     command = [python_executable, main_script_path, *forwarded_args]
-    _append_daily_full_restart_log(
+    main_module._append_daily_full_restart_log(
         f"[每日完全重启 helper] 旧进程已退出，准备拉起新进程，cwd={restart_cwd} args={forwarded_args}",
         log_path=restart_log_path,
     )
 
     try:
-        new_process = subprocess.Popen(command, cwd=restart_cwd)
+        new_process = main_module.subprocess.Popen(command, cwd=restart_cwd)
     except Exception as exc:
-        _append_daily_full_restart_log(
+        main_module._append_daily_full_restart_log(
             f"[每日完全重启 helper] 拉起新进程失败: {exc}",
             log_path=restart_log_path,
         )
         return False
 
-    _append_daily_full_restart_log(
+    main_module._append_daily_full_restart_log(
         f"[每日完全重启 helper] 已拉起新进程 pid={getattr(new_process, 'pid', 'unknown')}",
         log_path=restart_log_path,
     )
-    _main()._flush_all_log_handlers()
+    main_module._flush_all_log_handlers()
     return True
 
 
 def _trigger_daily_full_restart(now_dt=None, exit_func=None):
+    main_module = _main()
     current_dt = now_dt or datetime.datetime.now()
     current_date = current_dt.date()
-    marker_path = _get_daily_full_restart_marker_path()
-    restart_log_path = _get_daily_full_restart_log_path()
+    marker_path = main_module._get_daily_full_restart_marker_path()
+    restart_log_path = main_module._get_daily_full_restart_log_path()
 
-    if _has_daily_full_restart_marker_for_date(current_date, marker_path):
-        _append_daily_full_restart_log(
+    if main_module._has_daily_full_restart_marker_for_date(current_date, marker_path):
+        main_module._append_daily_full_restart_log(
             f"[每日完全重启] {current_date.isoformat()} 已执行过，跳过重复触发",
             current_dt,
             log_path=restart_log_path,
         )
         return False
 
-    command = _build_daily_restart_helper_command(
+    command = main_module._build_daily_restart_helper_command(
         old_pid=os.getpid(),
         python_executable=sys.executable,
-        main_script_path=os.path.abspath(_main().__file__),
+        main_script_path=os.path.abspath(main_module.__file__),
         cwd=os.getcwd(),
         restart_log_path=restart_log_path,
         restart_marker_path=marker_path,
@@ -247,22 +249,22 @@ def _trigger_daily_full_restart(now_dt=None, exit_func=None):
     )
 
     try:
-        helper_process = subprocess.Popen(command, cwd=os.getcwd())
+        helper_process = main_module.subprocess.Popen(command, cwd=os.getcwd())
     except Exception as exc:
-        _append_daily_full_restart_log(
+        main_module._append_daily_full_restart_log(
             f"[每日完全重启] helper 启动失败，取消本次重启: {exc}",
             current_dt,
             log_path=restart_log_path,
         )
         return False
 
-    _write_daily_full_restart_marker(marker_path, current_dt)
-    _append_daily_full_restart_log(
+    main_module._write_daily_full_restart_marker(marker_path, current_dt)
+    main_module._append_daily_full_restart_log(
         f"[每日完全重启] helper 已启动 pid={getattr(helper_process, 'pid', 'unknown')}，主进程准备退出",
         current_dt,
         log_path=restart_log_path,
     )
-    _main()._flush_all_log_handlers()
+    main_module._flush_all_log_handlers()
     (exit_func or os._exit)(0)
     return True
 
