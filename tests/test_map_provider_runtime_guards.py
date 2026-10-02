@@ -14,6 +14,7 @@ SCRIPT_SOURCE_PATHS = [
     PROJECT_ROOT / "scripts" / "legacy-payment-user.js",
     PROJECT_ROOT / "scripts" / "legacy-mobile-multi.js",
     PROJECT_ROOT / "scripts" / "legacy-watermark.js",
+    PROJECT_ROOT / "scripts" / "legacy-map-render.js",
     PROJECT_ROOT / "scripts" / "main.js",
 ]
 
@@ -28,6 +29,7 @@ class _CombinedFrontendSource:
 
 SCRIPT_PATH = _CombinedFrontendSource()
 LOAD_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "load_amap_watermark.js"
+MAP_RENDER_PATH = PROJECT_ROOT / "scripts" / "legacy-map-render.js"
 MAIN_PATH = PROJECT_ROOT / "main.py"
 INDEX_PATH = PROJECT_ROOT / "index.html"
 FRONTEND_MAP_KEY_RUNTIME_PATH = PROJECT_ROOT / "frontend" / "src" / "services" / "mapKeyRuntime.js"
@@ -219,7 +221,11 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn('initProviderMap("multi-map-container", true)', init_app_block)
 
     def test_non_amap_frontend_maps_load_real_provider_sdks(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = (
+            SCRIPT_PATH.read_text(encoding="utf-8")
+            + "\n\n"
+            + MAP_RENDER_PATH.read_text(encoding="utf-8")
+        )
         runtime_source = source[
             source.index("async function ensureActiveMapProviderRuntimeIfNeeded("):
             source.index("function convertMapCoordinatesToGcj02(", source.index("async function ensureActiveMapProviderRuntimeIfNeeded("))
@@ -259,7 +265,11 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("百度地图脚本加载完成但运行时不可用", runtime_source)
 
     def test_provider_map_reinit_uses_isolated_sdk_surface(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = (
+            SCRIPT_PATH.read_text(encoding="utf-8")
+            + "\n\n"
+            + MAP_RENDER_PATH.read_text(encoding="utf-8")
+        )
         provider_map_source = source[
             source.index("function initProviderMap("):
             source.index("function renderMapProviderFrontendPlaceholder(", source.index("function initProviderMap("))
@@ -280,7 +290,11 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("new BMapGL.Map(surface.id,", provider_map_source)
 
     def test_provider_map_instances_are_recreated_when_provider_changes(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = (
+            SCRIPT_PATH.read_text(encoding="utf-8")
+            + "\n\n"
+            + MAP_RENDER_PATH.read_text(encoding="utf-8")
+        )
         provider_map_source = source[
             source.index("function initProviderMap("):
             source.index("const MAP_COORD_PI", source.index("function initProviderMap("))
@@ -584,7 +598,11 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn('fitProviderMapToLastRoute("multi-map-container")', mobile_control_source)
 
     def test_provider_frontend_maps_hide_native_controls_and_enable_3d_interactions(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = (
+            SCRIPT_PATH.read_text(encoding="utf-8")
+            + "\n\n"
+            + MAP_RENDER_PATH.read_text(encoding="utf-8")
+        )
         init_provider_source = source[
             source.index("function initProviderMap("):
             source.index("const MAP_COORD_PI", source.index("function initProviderMap("))
@@ -617,7 +635,11 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertNotIn('if (getActiveMapProvider() === "amap") {\n          ensureSingleMap();\n        }', key_source)
 
     def test_tianditu_frontend_map_uses_tokenized_tile_layers(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = (
+            SCRIPT_PATH.read_text(encoding="utf-8")
+            + "\n\n"
+            + MAP_RENDER_PATH.read_text(encoding="utf-8")
+        )
         init_provider_source = source[
             source.index("function initProviderMap("):
             source.index("const MAP_COORD_PI", source.index("function initProviderMap("))

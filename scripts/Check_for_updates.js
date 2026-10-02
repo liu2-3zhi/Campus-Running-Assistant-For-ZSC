@@ -37,6 +37,7 @@
       "/scripts/legacy-payment-user.js",
       "/scripts/legacy-mobile-multi.js",
       "/scripts/legacy-watermark.js",
+      "/scripts/legacy-map-render.js",
       "/scripts/main.js",
     ];
     // Insert during HTML parsing to preserve defer and DOMContentLoaded order.
