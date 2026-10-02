@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import ast
+import glob
 import math
 import tempfile
 
@@ -7135,7 +7136,13 @@ def _get_default_config():
         "frontend_mode": "original",
     }
 
-    config["Guest"] = {"allow_guest_login": "true"}
+    config["Guest"] = {
+        "allow_guest_login": "true",
+        "max_active_guest_sessions": "100",
+        "guest_session_inactivity_timeout": "300",
+        "guest_token_ttl_seconds": "3600",
+        "guest_token_grace_seconds": "60",
+    }
 
     config["System"] = {
         "session_expiry_days": "7",
@@ -12726,6 +12733,175 @@ class AuthSystem:
 # ==============================================================================
 # Token管理系统
 # ==============================================================================
+
+
+GUEST_SESSION_CREATION_LOCK = threading.RLock()
+
+
+def _get_guest_config(config):
+    defaults = _get_default_config()
+
+    def read_value(key, fallback):
+        if config and config.has_option("Guest", key):
+            return config.get("Guest", key, fallback=str(fallback))
+        return fallback
+
+    return {
+        "allow_guest_login": str(
+            read_value(
+                "allow_guest_login",
+                defaults.get("Guest", "allow_guest_login", fallback=True),
+            )
+        ).lower()
+        in ("true", "1", "yes", "on"),
+        "max_active_guest_sessions": int(
+            read_value(
+                "max_active_guest_sessions",
+                defaults.get(
+                    "Guest", "max_active_guest_sessions", fallback=100
+                ),
+            )
+        ),
+        "guest_session_inactivity_timeout": int(
+            read_value(
+                "guest_session_inactivity_timeout",
+                defaults.get(
+                    "Guest", "guest_session_inactivity_timeout", fallback=300
+                ),
+            )
+        ),
+        "guest_token_ttl_seconds": int(
+            read_value(
+                "guest_token_ttl_seconds",
+                defaults.get(
+                    "Guest", "guest_token_ttl_seconds", fallback=3600
+                ),
+            )
+        ),
+        "guest_token_grace_seconds": int(
+            read_value(
+                "guest_token_grace_seconds",
+                defaults.get(
+                    "Guest", "guest_token_grace_seconds", fallback=60
+                ),
+            )
+        ),
+    }
+
+
+def _count_active_guest_sessions(timeout_seconds):
+    now = time.time()
+    count = 0
+    session_dir = globals().get("SESSION_STORAGE_DIR", "sessions")
+    if not os.path.isdir(session_dir):
+        return 0
+    for path in glob.glob(os.path.join(session_dir, "*.json")):
+        if os.path.basename(path).startswith("_"):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as fp:
+                state = json.load(fp)
+            if not state.get("is_guest"):
+                continue
+            if now - float(state.get("last_accessed", 0)) > timeout_seconds:
+                continue
+            count += 1
+        except (OSError, ValueError, TypeError):
+            continue
+    return count
+
+
+def _create_guest_session_atomic(
+    session_id,
+    preview_bundle_id,
+    max_active_guest_sessions,
+):
+    with GUEST_SESSION_CREATION_LOCK:
+        config = _read_config_ini(CONFIG_FILE) or _get_default_config()
+        guest_config = _get_guest_config(config)
+        if not guest_config["allow_guest_login"]:
+            return {"success": False, "code": "guest_login_disabled"}
+        active_count = _count_active_guest_sessions(
+            guest_config["guest_session_inactivity_timeout"]
+        )
+        limit = int(max_active_guest_sessions)
+        if active_count >= limit:
+            return {
+                "success": False,
+                "code": "guest_limit_reached",
+                "active_guest_sessions": active_count,
+                "max_active_guest_sessions": limit,
+            }
+        return {
+            "success": True,
+            "session_id": session_id,
+            "preview_bundle_id": str(preview_bundle_id or ""),
+        }
+
+
+def _load_guest_session_record(session_id):
+    path = get_session_file_path(session_id)
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as fp:
+        state = json.load(fp)
+    if not state.get("is_guest") or state.get("auth_username") != "guest":
+        return None
+    return state
+
+
+def _touch_guest_session(session_id):
+    state = _load_guest_session_record(session_id)
+    if not state:
+        return False
+    config = _read_config_ini(CONFIG_FILE) or _get_default_config()
+    guest_config = _get_guest_config(config)
+    session_expires_at = (
+        time.time() + guest_config["guest_session_inactivity_timeout"]
+    )
+    with web_sessions_lock:
+        api_instance = web_sessions.get(session_id)
+        if api_instance:
+            save_session_state(session_id, api_instance, force_save=True)
+    if token_manager and getattr(token_manager, "guest_store", None):
+        token_manager.guest_store.refresh(session_id, session_expires_at)
+    return True
+
+
+def _resolve_request_identity():
+    auth_token = request.cookies.get("auth_token", "")
+    session_id = normalize_session_uuid(request.cookies.get("session_id", ""))
+    if not auth_token:
+        return {"authenticated": False, "principal_type": "anonymous"}
+    guest_store = getattr(token_manager, "guest_store", None)
+    guest_session_id = guest_store.find_session_id(auth_token) if guest_store else ""
+    if guest_session_id:
+        session_record = _load_guest_session_record(guest_session_id)
+        if not session_record:
+            guest_store.invalidate(guest_session_id)
+            return {"authenticated": False, "principal_type": "anonymous"}
+        _touch_guest_session(guest_session_id)
+        return {
+            "authenticated": True,
+            "principal_type": "guest",
+            "username": "guest",
+            "session_id": guest_session_id,
+            "is_current": guest_session_id == session_id,
+        }
+    tokens_dir = globals().get("TOKENS_STORAGE_DIR", "tokens")
+    for username_path in glob.glob(os.path.join(tokens_dir, "*.json")):
+        username = os.path.splitext(os.path.basename(username_path))[0]
+        valid, _reason = token_manager.verify_token(
+            username, session_id, auth_token
+        )
+        if valid:
+            return {
+                "authenticated": True,
+                "principal_type": "user",
+                "username": username,
+                "session_id": session_id,
+            }
+    return {"authenticated": False, "principal_type": "anonymous"}
 
 
 class TokenManager:
