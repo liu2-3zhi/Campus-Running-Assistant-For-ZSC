@@ -177,9 +177,13 @@ class TestMultiAccountExecutionParity(unittest.TestCase):
         self.assertIn("save_session_state(", worker_block)
 
     def test_multi_session_state_round_trip_preserves_progress_and_position(self):
-        source = (
-            Path(__file__).resolve().parents[1] / "main.py"
-        ).read_text(encoding="utf-8")
+        project_root = Path(__file__).resolve().parents[1]
+        source = "\n\n".join(
+            (
+                (project_root / "session_state.py").read_text(encoding="utf-8"),
+                (project_root / "main.py").read_text(encoding="utf-8"),
+            )
+        )
         save_block = source.split(
             "def save_session_state(",
             1,
