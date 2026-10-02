@@ -77,6 +77,7 @@ function loadFunctions(functionNames) {
   const source = [
     readFileSync(resolve('scripts/main.js'), 'utf8'),
     readFileSync(resolve('scripts/legacy-admin-sessions.js'), 'utf8'),
+    readFileSync(resolve('scripts/legacy-mobile-admin.js'), 'utf8'),
   ].join('\n');
   const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
   return Function(`${functionSources.join('\n\n')} return { ${functionNames.join(', ')} };`)();
@@ -110,6 +111,7 @@ test('health detail rendering uses dedicated HTML sections and keeps JSON raw bl
   const source = [
     readFileSync(resolve('scripts/main.js'), 'utf8'),
     readFileSync(resolve('scripts/legacy-admin-sessions.js'), 'utf8'),
+    readFileSync(resolve('scripts/legacy-mobile-admin.js'), 'utf8'),
   ].join('\n');
   const loadHealthStatusSource = extractFunctionSource(source, 'loadHealthStatus');
   const loadMobileHealthStatusSource = extractFunctionSource(source, 'loadMobileMultiHealthStatus');
@@ -166,6 +168,7 @@ test('desktop and both legacy mobile health loaders use diagnostics and no-store
   const source = [
     readFileSync(resolve('scripts/main.js'), 'utf8'),
     readFileSync(resolve('scripts/legacy-admin-sessions.js'), 'utf8'),
+    readFileSync(resolve('scripts/legacy-mobile-admin.js'), 'utf8'),
   ].join('\n');
   const desktopSource = extractFunctionSource(source, 'loadHealthStatus');
   const multiMobileSource = extractFunctionSource(source, 'loadMobileMultiHealthStatus');
