@@ -20,6 +20,9 @@ class TestReminderMarkdownRendering(unittest.TestCase):
         source += "\n" + (
             SCRIPT_PATH.parent / "legacy-payment.js"
         ).read_text(encoding="utf-8")
+        source += "\n" + (
+            SCRIPT_PATH.parent / "legacy-reminders.js"
+        ).read_text(encoding="utf-8")
         escape_html_source = _extract_js_section(
             source,
             "function escapeHtml(str) {",
