@@ -8,6 +8,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML_PATH = PROJECT_ROOT / "index.html"
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
+MOBILE_MULTI_PATH = PROJECT_ROOT / "scripts" / "legacy-mobile-multi.js"
 
 
 def _extract_js_section(source: str, start_marker: str, end_marker: str) -> str:
@@ -18,7 +19,9 @@ def _extract_js_section(source: str, start_marker: str, end_marker: str) -> str:
 
 class TestSmsUiSignatureRegressions(unittest.TestCase):
     def test_normalize_sms_signature_wraps_full_width_brackets(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + MOBILE_MULTI_PATH.read_text(
+            encoding="utf-8"
+        )
         self.assertIn("function normalizeSmsSignature(signature)", source)
         normalize_source = _extract_js_section(
             source,
@@ -152,7 +155,9 @@ process.stdout.write(JSON.stringify(payload));
         self.assertEqual(payload, ["跑步助手", "跑步助手", "跑步助手"])
 
     def test_sms_signature_inputs_bind_shared_sanitization_logic(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + MOBILE_MULTI_PATH.read_text(
+            encoding="utf-8"
+        )
         load_sms_config_source = _extract_js_section(
             source,
             "async function loadSMSConfig() {",
@@ -203,7 +208,9 @@ process.stdout.write(JSON.stringify(payload));
         )
 
     def test_mobile_sms_signature_uses_fixed_brackets_in_markup_and_load_save(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + MOBILE_MULTI_PATH.read_text(
+            encoding="utf-8"
+        )
         mobile_load_sms_config_source = _extract_js_section(
             source,
             "async function mobileLoadSMSConfig() {",

@@ -6,11 +6,14 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
+MOBILE_MULTI_PATH = PROJECT_ROOT / "scripts" / "legacy-mobile-multi.js"
 
 
 class TestMobileAdminScrollRegressions(unittest.TestCase):
     def test_scroll_guard_helpers_exist_for_mobile_admin_unified_panel(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + MOBILE_MULTI_PATH.read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("const mobileAdminUnifiedScrollState =", source)
         self.assertIn("function captureMobileAdminUnifiedScrollState(", source)
@@ -19,14 +22,18 @@ class TestMobileAdminScrollRegressions(unittest.TestCase):
         self.assertIn("function syncMobileAdminUnifiedPanelScroll(", source)
 
     def test_copy_admin_content_to_multi_panel_uses_scroll_guard(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + MOBILE_MULTI_PATH.read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("withMobileAdminUnifiedScrollGuard(tabType,", source)
         self.assertIn("mobileContainer.innerHTML = pcContainer.innerHTML;", source)
         self.assertIn("restoreMode: \"replace\"", source)
 
     def test_mobile_admin_unified_tab_switches_preserve_scroll_context(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + MOBILE_MULTI_PATH.read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn('loadAdminUsers().then(() => copyAdminContentToMultiPanel("users"))', source)
         self.assertIn('loadMobileMultiAdminBillingList()', source)

@@ -21,13 +21,17 @@ class TestMobileAdminUsersUi(unittest.TestCase):
         self.assertIn('/auth/admin/list_users?keyword=', js)
 
     def test_mobile_multi_admin_users_sync_phone_location_badge(self):
-        js = SCRIPT_PATH.read_text(encoding="utf-8")
+        js = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + (
+            PROJECT_ROOT / "scripts" / "legacy-mobile-multi.js"
+        ).read_text(encoding="utf-8")
 
         self.assertIn('mobileContainer.querySelectorAll(".phone-location-badge[data-phone]")', js)
         self.assertIn('const info = await fetchPhoneInfo(span.dataset.phone);', js)
 
     def test_opening_users_panel_clears_previous_search_keyword(self):
-        js = SCRIPT_PATH.read_text(encoding="utf-8")
+        js = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + (
+            PROJECT_ROOT / "scripts" / "legacy-admin-users.js"
+        ).read_text(encoding="utf-8")
 
         helper = js[js.index("function resetAdminUsersSearchFilters"):]
         self.assertIn('const usersSearchInput = $("admin-users-search-input_modal");', helper)
@@ -42,7 +46,9 @@ class TestMobileAdminUsersUi(unittest.TestCase):
         self.assertIn('resetAdminUsersSearchFilters();', mobile_open)
 
     def test_outstanding_details_render_linked_users_section(self):
-        js = SCRIPT_PATH.read_text(encoding="utf-8")
+        js = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + (
+            PROJECT_ROOT / "scripts" / "legacy-payment-user.js"
+        ).read_text(encoding="utf-8")
 
         self.assertIn('/api/admin/school-account-linked-users', js)
         self.assertIn('关联账号', js)

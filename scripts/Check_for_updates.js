@@ -35,6 +35,7 @@
       "/scripts/legacy-admin-users.js",
       "/scripts/legacy-mobile-admin.js",
       "/scripts/legacy-payment-user.js",
+      "/scripts/legacy-mobile-multi.js",
       "/scripts/legacy-watermark.js",
       "/scripts/main.js",
     ];
