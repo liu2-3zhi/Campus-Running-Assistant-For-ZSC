@@ -32,6 +32,7 @@
       "/scripts/legacy-reminders.js",
       "/scripts/legacy-admin-config.js",
       "/scripts/legacy-admin-sessions.js",
+      "/scripts/legacy-admin-users.js",
       "/scripts/legacy-watermark.js",
       "/scripts/main.js",
     ];

@@ -10,7 +10,9 @@ SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
 class TestMobileAdminUsersUi(unittest.TestCase):
     def test_admin_users_panels_have_keyword_search_inputs(self):
         html = INDEX_PATH.read_text(encoding="utf-8")
-        js = SCRIPT_PATH.read_text(encoding="utf-8")
+        js = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + (
+            PROJECT_ROOT / "scripts" / "legacy-admin-users.js"
+        ).read_text(encoding="utf-8")
 
         self.assertIn('id="admin-users-search-input_modal"', html)
         self.assertIn('id="admin-users-search-btn_modal"', html)
