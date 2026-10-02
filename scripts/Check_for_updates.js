@@ -27,6 +27,7 @@
 
     const version = currentVersion || Date.now().toString();
     const scripts = [
+      "/scripts/legacy-payment.js",
       "/scripts/legacy-watermark.js",
       "/scripts/main.js",
     ];

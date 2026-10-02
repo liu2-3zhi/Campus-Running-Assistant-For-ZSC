@@ -4,6 +4,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
+PAYMENT_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "legacy-payment.js"
 INDEX_PATH = PROJECT_ROOT / "index.html"
 MAIN_PATH = PROJECT_ROOT / "main.py"
 
@@ -32,7 +33,9 @@ class TestMobileAdminPaymentLogsUi(unittest.TestCase):
             source,
         )
     def test_admin_billing_logs_panel_has_search_and_pagination_hooks(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + PAYMENT_SCRIPT_PATH.read_text(
+            encoding="utf-8"
+        )
         index_source = INDEX_PATH.read_text(encoding="utf-8")
 
         self.assertIn('id="admin-billing-logs-panel_modal"', index_source)

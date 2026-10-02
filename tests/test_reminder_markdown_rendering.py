@@ -17,6 +17,9 @@ def _extract_js_section(source: str, start_marker: str, end_marker: str) -> str:
 class TestReminderMarkdownRendering(unittest.TestCase):
     def test_render_markdown_to_html_stringifies_non_string_before_editormd(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source += "\n" + (
+            SCRIPT_PATH.parent / "legacy-payment.js"
+        ).read_text(encoding="utf-8")
         escape_html_source = _extract_js_section(
             source,
             "function escapeHtml(str) {",

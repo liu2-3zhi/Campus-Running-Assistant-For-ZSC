@@ -713,6 +713,9 @@ process.stdout.write(JSON.stringify({{
     def test_dynamic_inline_handlers_use_js_literals_for_string_arguments(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
         source += "\n" + (
+            SCRIPT_PATH.parent / "legacy-payment.js"
+        ).read_text(encoding="utf-8")
+        source += "\n" + (
             SCRIPT_PATH.parent / "legacy-watermark.js"
         ).read_text(encoding="utf-8")
 
@@ -736,6 +739,9 @@ process.stdout.write(JSON.stringify({{
 
     def test_dynamic_inline_handlers_escape_json_arguments_for_html_attributes(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source += "\n" + (
+            SCRIPT_PATH.parent / "legacy-payment.js"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("function escapeInlineJsonArg(value)", source)
         self.assertIn(
@@ -749,6 +755,9 @@ process.stdout.write(JSON.stringify({{
 
     def test_inline_argument_helper_survives_html_attribute_parsing(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source += "\n" + (
+            SCRIPT_PATH.parent / "legacy-payment.js"
+        ).read_text(encoding="utf-8")
         helper_source = _extract_js_section(
             source,
             "function escapeInlineJsArg(value)",
