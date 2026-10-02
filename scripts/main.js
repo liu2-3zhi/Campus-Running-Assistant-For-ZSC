@@ -22164,13 +22164,36 @@ if (typeof window !== "undefined") {
           return;
         }
 
+        const isGuestSession =
+          typeof currentUserIsGuest !== "undefined" && currentUserIsGuest;
         const confirmed = await jsShowConfirm(
-          "退出应用",
-          "您确定要退出跑步助手应用吗？",
+          isGuestSession ? "退出访客会话" : "退出应用",
+          isGuestSession
+            ? "退出后将销毁当前访客会话及其背景绑定，未保存的数据无法恢复。是否继续？"
+            : "您确定要退出跑步助手应用吗？",
         );
         if (!confirmed) return;
 
         try {
+          if (isGuestSession) {
+            await fetch("/auth/logout", {
+              method: "POST",
+              credentials: "include",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Session-ID": sessionUUID || "",
+              },
+            });
+            await Swal.fire({
+              icon: "success",
+              title: "访客会话已退出",
+              text: "当前访客会话及背景绑定已销毁。",
+              timer: 1500,
+              showConfirmButton: false,
+            });
+            window.location.href = buildLegacyUiPath("/");
+            return;
+          }
           await callPythonAPI_raw("/api/shutdown", "POST");
           // 修正：使用 showModalAlert 替代未定义的 jsShowAlert，并将第二个参数改为中文标题
           // showModalAlert("应用即将关闭...", "成功");

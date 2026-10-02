@@ -25,6 +25,17 @@ const showOrders = ref(false)
 const showBilling = ref(false)
 
 async function handleLogout() {
+  if (auth.isGuest && window.Swal) {
+    const confirmed = await window.Swal.fire({
+      icon: 'warning',
+      title: '退出访客会话',
+      text: '退出后将销毁当前访客会话及其背景绑定，未保存的数据无法恢复。是否继续？',
+      showCancelButton: true,
+      confirmButtonText: '退出访客会话',
+      cancelButtonText: '取消',
+    })
+    if (!confirmed.isConfirmed) return
+  }
   try {
     await callAPI('logout')
   } catch (_) {

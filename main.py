@@ -32937,18 +32937,27 @@ def start_web_server(args_param):
             return jsonify({"success": False, "message": "缺少会话ID"}), 400
 
         username = None
+        guest_session = False
         with web_sessions_lock:
             if session_id in web_sessions:
                 api_instance = web_sessions[session_id]
                 if hasattr(api_instance, "auth_username"):
                     username = api_instance.auth_username
                     is_guest = getattr(api_instance, "is_guest", True)
+                    guest_session = is_guest
                     if not is_guest and username:
                         token_manager.invalidate_token(username, session_id)
                         logging.info(
                             f"用户 {username} 登出，session: {session_id[:16]}..."
                         )
-        cleanup_session(session_id, "user_logout")
+        if guest_session:
+            if getattr(token_manager, "guest_store", None):
+                token_manager.guest_store.invalidate(session_id)
+            background_state_store.remove_guest_binding(session_id)
+        cleanup_session(
+            session_id,
+            "guest_session_destroyed" if guest_session else "user_logout",
+        )
         response = jsonify({"success": True, "message": "登出成功"})
         response.set_cookie("auth_token", "", max_age=0)
         response.set_cookie("session_id", "", max_age=0)

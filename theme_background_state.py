@@ -165,6 +165,12 @@ class BackgroundStateStore:
             return None
         return {**binding, **self._expand_bundle(state, bundle_id, bundle)}
 
+    def remove_guest_binding(self, session_id: str) -> None:
+        with self.lock:
+            state = self.load()
+            state.get("guest_bindings", {}).pop(str(session_id), None)
+            self.save(state)
+
     def set_auth_claim(
         self,
         auth_session_id: str,

@@ -53,6 +53,20 @@ class TestIdentityBackgroundState(unittest.TestCase):
             self.assertTrue(result["valid"])
             self.assertEqual(result["reason"], "refreshed_for_active_session")
 
+    def test_guest_exit_removes_only_current_guest_binding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = BackgroundStateStore(directory)
+            bundle = store.create_bundle(
+                "/theme-assets/random_background_image/pc_a.jpg",
+                "/theme-assets/random_background_image/mb_a.jpg",
+                "guest",
+            )
+            store.bind_guest_session("guest-1", bundle["bundle_id"], "guest")
+            store.bind_guest_session("guest-2", bundle["bundle_id"], "guest")
+            store.remove_guest_binding("guest-1")
+            self.assertIsNone(store.get_guest_session_bundle("guest-1"))
+            self.assertIsNotNone(store.get_guest_session_bundle("guest-2"))
+
 
 if __name__ == "__main__":
     unittest.main()
