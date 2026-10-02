@@ -22169,7 +22169,7 @@ if (typeof window !== "undefined") {
         const confirmed = await jsShowConfirm(
           isGuestSession ? "退出访客会话" : "退出应用",
           isGuestSession
-            ? "退出后将销毁当前访客会话及其背景绑定，未保存的数据无法恢复。是否继续？"
+            ? "退出后将销毁当前访客会话，未保存的数据无法恢复。是否继续？"
             : "您确定要退出跑步助手应用吗？",
         );
         if (!confirmed) return;
