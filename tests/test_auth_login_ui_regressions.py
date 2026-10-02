@@ -20,8 +20,9 @@ SCRIPT_SOURCE_PATHS = [
     PROJECT_ROOT / "scripts" / "legacy-payment-user.js",
     PROJECT_ROOT / "scripts" / "legacy-mobile-multi.js",
     PROJECT_ROOT / "scripts" / "legacy-watermark.js",
-    PROJECT_ROOT / "scripts" / "legacy-map-render.js",
     PROJECT_ROOT / "scripts" / "legacy-app-runtime.js",
+    PROJECT_ROOT / "scripts" / "legacy-map-runtime.js",
+    PROJECT_ROOT / "scripts" / "legacy-map-render.js",
     PROJECT_ROOT / "scripts" / "main.js",
 ]
 

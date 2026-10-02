@@ -652,6 +652,8 @@ function createAmapSdk() {
 
 function createRuntime(provider, options = {}) {
   const source = [
+    readFileSync(resolve('scripts/legacy-app-runtime.js'), 'utf8'),
+    readFileSync(resolve('scripts/legacy-map-runtime.js'), 'utf8'),
     readFileSync(resolve('scripts/legacy-map-render.js'), 'utf8'),
     readFileSync(resolve('scripts/main.js'), 'utf8'),
   ].join('\n\n');
