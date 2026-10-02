@@ -42,6 +42,15 @@ def _read_legacy_frontend_source():
     )
 
 
+def _read_backend_source():
+    return "\n\n".join(
+        (
+            (PROJECT_ROOT / "map_key_runtime.py").read_text(encoding="utf-8"),
+            MAIN_PATH.read_text(encoding="utf-8"),
+        )
+    )
+
+
 class TestMapProviderBackendContract(unittest.TestCase):
     def _decode_obfuscated_runtime_script(self, script):
         match = re.search(
@@ -495,7 +504,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
                 runtime_map.clear()
 
     def test_map_key_runtime_is_served_from_api_with_no_store_headers(self):
-        source = MAIN_PATH.read_text(encoding="utf-8")
+        source = _read_backend_source()
 
         self.assertIn('@app.route("/api/map_key_runtime.js")', source)
         self.assertIn('@app.route("/api/map_provider_keys/decrypt"', source)
@@ -924,14 +933,14 @@ globalThis.fetch = async (url, options) => {
         )
 
     def test_map_runtime_request_rejects_unvalidated_session_header(self):
-        source = MAIN_PATH.read_text(encoding="utf-8")
+        source = _read_backend_source()
         runtime_request_source = source[
             source.index("def _get_map_key_runtime_context_for_request("):
             source.index("def _initialize_map_key_runtime(")
         ]
 
         self.assertIn(
-            'session_id = normalize_session_uuid(',
+            'session_id = main_module.normalize_session_uuid(',
             runtime_request_source,
         )
 

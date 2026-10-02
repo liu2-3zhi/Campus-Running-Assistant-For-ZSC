@@ -169,7 +169,7 @@
 ## 大文件拆分约定
 
 - `main.py` 必须只保留应用入口、全局装配、路由注册和仍有跨模块状态的兼容函数。
-- 已拆分模块包括 `guest_token_store.py`、`theme_background_state.py`、`theme_background_legacy.py`、`payment_crypto.py`、`config_adapter.py`、`auto_attendance_config.py`、`runtime_maintenance.py`、`trusted_ip.py`、`ip_verifier.py`、`frontend_js_hardening.py`。
+- 已拆分模块包括 `guest_token_store.py`、`theme_background_state.py`、`theme_background_legacy.py`、`payment_crypto.py`、`config_adapter.py`、`auto_attendance_config.py`、`runtime_maintenance.py`、`trusted_ip.py`、`ip_verifier.py`、`frontend_js_hardening.py`、`map_key_runtime.py`。
 - `scripts/main.js` 必须保留顶层状态、核心 API 和初始化顺序；功能区块拆到 `scripts/legacy-*.js`。
 - 经典脚本必须在 `scripts/Check_for_updates.js` 中按依赖顺序插入，且所有文件都带同一 `version` 查询参数。
 - 后续继续拆分时，移动函数后必须同步检查按源码读取 `scripts/main.js` 的测试，测试应组合入口和对应 legacy 模块，而不是放宽断言。
