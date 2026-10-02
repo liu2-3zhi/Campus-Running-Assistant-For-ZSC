@@ -166,6 +166,14 @@
 - 访客点击“退出应用”只能销毁当前访客 Session、Token 和 `guest_bindings`，不能执行注册用户的全局会话清理。
 - 注册用户退出应用、普通登出与会话切换路径必须保持原有语义，不能因为访客逻辑改变注册用户会话生命周期。
 
+## 大文件拆分约定
+
+- `main.py` 必须只保留应用入口、全局装配、路由注册和仍有跨模块状态的兼容函数。
+- 已拆分模块包括 `guest_token_store.py`、`theme_background_state.py`、`theme_background_legacy.py`、`payment_crypto.py`、`config_adapter.py`、`auto_attendance_config.py`、`runtime_maintenance.py`、`trusted_ip.py`。
+- `scripts/main.js` 必须保留顶层状态、核心 API 和初始化顺序；功能区块拆到 `scripts/legacy-*.js`。
+- 经典脚本必须在 `scripts/Check_for_updates.js` 中按依赖顺序插入，且所有文件都带同一 `version` 查询参数。
+- 后续继续拆分时，移动函数后必须同步检查按源码读取 `scripts/main.js` 的测试，测试应组合入口和对应 legacy 模块，而不是放宽断言。
+
 ## 后续更新方式
 
 当以后又踩到坑时，在对应章节追加：
