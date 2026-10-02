@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 
 const legacy = [
   readFileSync(new URL('../scripts/legacy-app-runtime.js', import.meta.url), 'utf8'),
+  readFileSync(new URL('../scripts/legacy-multi-accounts.js', import.meta.url), 'utf8'),
   readFileSync(new URL('../scripts/main.js', import.meta.url), 'utf8'),
 ].join('\n\n')
 const socketService = readFileSync(new URL('../frontend/src/services/socket.js', import.meta.url), 'utf8')

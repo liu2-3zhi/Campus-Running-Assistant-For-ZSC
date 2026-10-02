@@ -40,6 +40,7 @@
       "/scripts/legacy-app-runtime.js",
       "/scripts/legacy-map-runtime.js",
       "/scripts/legacy-map-render.js",
+      "/scripts/legacy-multi-accounts.js",
       "/scripts/main.js",
     ];
     // Insert during HTML parsing to preserve defer and DOMContentLoaded order.

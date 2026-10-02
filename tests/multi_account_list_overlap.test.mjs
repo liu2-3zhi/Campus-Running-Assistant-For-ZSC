@@ -2,7 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const legacy = readFileSync(new URL('../scripts/main.js', import.meta.url), 'utf8')
+const legacy = [
+  readFileSync(new URL('../scripts/legacy-multi-accounts.js', import.meta.url), 'utf8'),
+  readFileSync(new URL('../scripts/main.js', import.meta.url), 'utf8'),
+].join('\n\n')
 const styles = readFileSync(new URL('../styles/style.css', import.meta.url), 'utf8')
 const vue = readFileSync(new URL('../frontend/src/views/MultiAccountView.vue', import.meta.url), 'utf8')
 

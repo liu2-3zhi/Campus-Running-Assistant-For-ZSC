@@ -655,6 +655,7 @@ function createRuntime(provider, options = {}) {
     readFileSync(resolve('scripts/legacy-app-runtime.js'), 'utf8'),
     readFileSync(resolve('scripts/legacy-map-runtime.js'), 'utf8'),
     readFileSync(resolve('scripts/legacy-map-render.js'), 'utf8'),
+    readFileSync(resolve('scripts/legacy-multi-accounts.js'), 'utf8'),
     readFileSync(resolve('scripts/main.js'), 'utf8'),
   ].join('\n\n');
   const functionNames = [
