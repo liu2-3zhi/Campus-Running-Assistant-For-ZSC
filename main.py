@@ -5969,6 +5969,250 @@ RANDOM_BACKGROUND_INDEX_FILE = os.path.join(RANDOM_BACKGROUND_IMAGE_DIR, "index.
 background_state_store = BackgroundStateStore(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), RANDOM_BACKGROUND_IMAGE_DIR)
 )
+
+
+def _identity_key_for_username(username):
+    return f"user:{str(username or '').strip()}"
+
+
+def _bundle_to_public_payload(bundle):
+    return {
+        "bundle_id": bundle.get("bundle_id", ""),
+        "revision": bundle.get("revision", 0),
+        "pc": {
+            "image_url": bundle.get("pc_image_url", ""),
+            "revision": bundle.get("revision", 0),
+        },
+        "mobile": {
+            "image_url": bundle.get("mobile_image_url", ""),
+            "revision": bundle.get("revision", 0),
+        },
+    }
+
+
+def _pick_available_background_image(target):
+    normalized_target = "mobile" if target == "mobile" else "pc"
+    if "auth_system" not in globals() or auth_system is None:
+        return ""
+    images = auth_system._peek_default_theme_background_images([normalized_target])
+    return str(images.get(normalized_target) or "")
+
+
+def _create_preview_bundle_payload():
+    bundle = background_state_store.create_bundle(
+        pc_url=_pick_available_background_image("pc"),
+        mobile_url=_pick_available_background_image("mobile"),
+        source="anonymous_preview",
+        consume=False,
+    )
+    return {
+        **_bundle_to_public_payload(bundle),
+        "state": bundle.get("state", "preview"),
+        "source": "anonymous_preview",
+    }
+
+
+def _consume_bundle_assignments(bundle):
+    cache_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        RANDOM_BACKGROUND_IMAGE_DIR,
+    )
+    for image_url in (
+        bundle.get("pc_image_url", ""),
+        bundle.get("mobile_image_url", ""),
+    ):
+        if image_url:
+            try:
+                _mark_random_background_file_expired(cache_dir, image_url, expired=True)
+            except Exception:
+                logging.debug("标记背景图为已消耗失败: %s", image_url, exc_info=True)
+
+
+def _bind_login_bundle_for_user(
+    username,
+    preview_bundle_id,
+    source,
+    replace_existing,
+):
+    bundle = (
+        background_state_store.get_bundle(preview_bundle_id)
+        if preview_bundle_id
+        else None
+    )
+    if not bundle:
+        bundle = background_state_store.create_bundle(
+            pc_url=_pick_available_background_image("pc"),
+            mobile_url=_pick_available_background_image("mobile"),
+            source=source,
+            consume=True,
+        )
+    identity_key = _identity_key_for_username(username)
+    existing = background_state_store.get_identity_bundle(identity_key)
+    if existing and existing.get("bundle_id") == bundle.get("bundle_id"):
+        return existing
+    if existing and not replace_existing:
+        return existing
+    background_state_store.bind_identity(
+        identity_key,
+        bundle["bundle_id"],
+        source,
+    )
+    _consume_bundle_assignments(bundle)
+    auth_system._refresh_default_theme_background_cache_async(["pc", "mb"])
+    return background_state_store.get_identity_bundle(identity_key)
+
+
+def _bind_guest_bundle_for_session(
+    session_id,
+    preview_bundle_id,
+    source,
+    replace_existing,
+):
+    bundle = (
+        background_state_store.get_bundle(preview_bundle_id)
+        if preview_bundle_id
+        else None
+    )
+    if not bundle:
+        bundle = background_state_store.create_bundle(
+            pc_url=_pick_available_background_image("pc"),
+            mobile_url=_pick_available_background_image("mobile"),
+            source=source,
+            consume=True,
+        )
+    existing = background_state_store.get_guest_session_bundle(session_id)
+    if existing and existing.get("bundle_id") == bundle.get("bundle_id"):
+        return existing
+    if existing and not replace_existing:
+        return existing
+    background_state_store.bind_guest_session(
+        session_id,
+        bundle["bundle_id"],
+        source,
+    )
+    _consume_bundle_assignments(bundle)
+    auth_system._refresh_default_theme_background_cache_async(["pc", "mb"])
+    return background_state_store.get_guest_session_bundle(session_id)
+
+
+def _resolve_user_theme_background(username):
+    identity_key = _identity_key_for_username(username)
+    bundle = background_state_store.get_identity_bundle(identity_key)
+    if not bundle:
+        bundle = _bind_login_bundle_for_user(
+            username=username,
+            preview_bundle_id="",
+            source="uuid_fallback",
+            replace_existing=False,
+        )
+    return _bundle_to_public_payload(bundle)
+
+
+def _resolve_uuid_theme_background(session_id, username, is_guest):
+    if is_guest:
+        bundle = background_state_store.get_guest_session_bundle(session_id)
+        if not bundle:
+            bundle = _bind_guest_bundle_for_session(
+                session_id=session_id,
+                preview_bundle_id="",
+                source="guest_uuid_fallback",
+                replace_existing=False,
+            )
+        return _bundle_to_public_payload(bundle)
+    return _resolve_user_theme_background(username)
+
+
+def _resolve_identity_background_for_request_identity(identity):
+    if not identity or not identity.get("authenticated"):
+        return None
+    if identity.get("principal_type") == "guest":
+        session_id = str(identity.get("session_id") or "")
+        return (
+            background_state_store.get_guest_session_bundle(session_id)
+            if session_id
+            else None
+        )
+    username = str(identity.get("username") or "")
+    return (
+        background_state_store.get_identity_bundle(
+            _identity_key_for_username(username)
+        )
+        if username
+        else None
+    )
+
+
+def _list_selectable_sessions_for_identity(identity):
+    if not identity or not identity.get("authenticated"):
+        return []
+    if identity.get("principal_type") == "guest":
+        session_id = str(identity.get("session_id") or "")
+        if not session_id:
+            return []
+        return [{
+            "session_id": session_id,
+            "is_current": True,
+            "is_guest": True,
+            "login_success": True,
+            "has_background_binding": bool(
+                background_state_store.get_guest_session_bundle(session_id)
+            ),
+        }]
+    username = str(identity.get("username") or "")
+    if not username:
+        return []
+    identity_bundle = background_state_store.get_identity_bundle(
+        _identity_key_for_username(username)
+    )
+    current_id = str(identity.get("session_id") or "")
+    sessions = []
+    for session_id in auth_system.get_user_sessions(username):
+        state = load_session_state(session_id)
+        if not state or state.get("auth_username") != username:
+            continue
+        sessions.append({
+            "session_id": session_id,
+            "is_current": session_id == current_id,
+            "is_guest": False,
+            "login_success": bool(state.get("login_success", False)),
+            "last_activity": state.get("last_accessed", 0),
+            "created_at": state.get("created_at", 0),
+            "has_background_binding": bool(identity_bundle),
+        })
+    sessions.sort(
+        key=lambda item: (
+            0 if item["is_current"] else 1,
+            -float(item.get("last_activity", 0) or 0),
+        )
+    )
+    return sessions
+
+
+def _build_site_bootstrap_response():
+    identity = _resolve_request_identity()
+    sessions = _list_selectable_sessions_for_identity(identity)
+    bundle = _resolve_identity_background_for_request_identity(identity)
+    theme_background = (
+        {
+            **_bundle_to_public_payload(bundle),
+            "source": "identity_binding" if identity.get("principal_type") == "user" else "guest_binding",
+        }
+        if bundle
+        else _create_preview_bundle_payload()
+    )
+    return {
+        "success": True,
+        "identity": {
+            **identity,
+            "quick_login_available": bool(sessions),
+            "session_count": len(sessions),
+        },
+        "quick_login": {
+            "available": bool(sessions),
+            "sessions": sessions,
+        },
+        "theme_background": theme_background,
+    }
 THEME_METADATA_FIELDS = {"id", "label", "description", "placeholder"}
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
@@ -7552,6 +7796,22 @@ def _write_config_with_comments(config_obj, filepath):
         f.write("# false：禁止游客登录，所有用户必须注册\n")
         f.write(
             f"allow_guest_login = {config_obj.get('Guest', 'allow_guest_login', fallback='true')}\n\n"
+        )
+        f.write("# 最大活跃访客会话数（0 表示禁止创建）\n")
+        f.write(
+            f"max_active_guest_sessions = {config_obj.get('Guest', 'max_active_guest_sessions', fallback='100')}\n"
+        )
+        f.write("# 访客会话闲置超时，单位秒\n")
+        f.write(
+            f"guest_session_inactivity_timeout = {config_obj.get('Guest', 'guest_session_inactivity_timeout', fallback='300')}\n"
+        )
+        f.write("# 访客 Token 最小有效期，单位秒\n")
+        f.write(
+            f"guest_token_ttl_seconds = {config_obj.get('Guest', 'guest_token_ttl_seconds', fallback='3600')}\n"
+        )
+        f.write("# Token 至少比访客会话多保持的时间，单位秒\n")
+        f.write(
+            f"guest_token_grace_seconds = {config_obj.get('Guest', 'guest_token_grace_seconds', fallback='60')}\n\n"
         )
 
         f.write("[System]\n")
@@ -12787,6 +13047,32 @@ def _get_guest_config(config):
             )
         ),
     }
+
+
+def _apply_guest_config_updates(config, guest_data):
+    if not isinstance(guest_data, dict):
+        return
+    if not config.has_section("Guest"):
+        config.add_section("Guest")
+    if "allow_guest_login" in guest_data:
+        config.set(
+            "Guest",
+            "allow_guest_login",
+            str(bool(guest_data["allow_guest_login"])).lower(),
+        )
+    validators = {
+        "max_active_guest_sessions": 0,
+        "guest_session_inactivity_timeout": 60,
+        "guest_token_ttl_seconds": 60,
+        "guest_token_grace_seconds": 0,
+    }
+    for key, minimum in validators.items():
+        if key not in guest_data:
+            continue
+        value = int(guest_data[key])
+        if value < minimum:
+            raise ValueError(f"{key} must be >= {minimum}")
+        config.set("Guest", key, str(value))
 
 
 def _count_active_guest_sessions(timeout_seconds):
@@ -32505,18 +32791,27 @@ def start_web_server(args_param):
 
     @app.route("/auth/guest_login", methods=["POST"])
     def auth_guest_login():
-        """
-        游客登录API - 无需密码的快速访问入口。
-        """
-        session_id = request.headers.get("X-Session-ID", "")
-
+        session_id = normalize_session_uuid(request.headers.get("X-Session-ID", ""))
         if not session_id:
-            return jsonify({"success": False, "message": "缺少会话ID"})
-        update_session_activity(session_id)
-        if not auth_system.config.getboolean(
-            "Guest", "allow_guest_login", fallback=True
-        ):
-            return jsonify({"success": False, "message": "系统不允许游客登录"})
+            return jsonify({"success": False, "message": "缺少会话ID"}), 400
+        config = _read_config_ini(CONFIG_FILE) or _get_default_config()
+        guest_config = _get_guest_config(config)
+        if not guest_config["allow_guest_login"]:
+            return jsonify({
+                "success": False,
+                "code": "guest_login_disabled",
+                "message": "系统不允许游客登录",
+            }), 403
+        data = request.get_json() or {}
+        preview = data.get("background_preview") or {}
+        creation = _create_guest_session_atomic(
+            session_id=session_id,
+            preview_bundle_id=preview.get("bundle_id", ""),
+            max_active_guest_sessions=guest_config["max_active_guest_sessions"],
+        )
+        if not creation.get("success"):
+            status = 429 if creation.get("code") == "guest_limit_reached" else 403
+            return jsonify(creation), status
         with web_sessions_lock:
             if session_id in web_sessions:
                 api_instance = web_sessions[session_id]
@@ -32534,14 +32829,38 @@ def start_web_server(args_param):
 
             save_session_state(session_id, api_instance, force_save=True)
 
-        return jsonify(
-            {
-                "success": True,
-                "auth_username": "guest",
-                "group": "guest",
-                "is_guest": True,
-            }
+        bundle = _bind_guest_bundle_for_session(
+            session_id=session_id,
+            preview_bundle_id=preview.get("bundle_id", ""),
+            source="guest_login",
+            replace_existing=True,
         )
+        guest_token = token_manager.guest_store.create(session_id)
+        response = jsonify({
+            "success": True,
+            "auth_username": "guest",
+            "group": "guest",
+            "is_guest": True,
+            "session_id": session_id,
+            "theme_background": _bundle_to_public_payload(bundle),
+        })
+        response.set_cookie(
+            "auth_token",
+            value=guest_token,
+            max_age=guest_config["guest_token_ttl_seconds"],
+            httponly=True,
+            secure=request.is_secure,
+            samesite="Lax",
+        )
+        response.set_cookie(
+            "session_id",
+            value=session_id,
+            max_age=guest_config["guest_token_ttl_seconds"],
+            httponly=True,
+            secure=request.is_secure,
+            samesite="Lax",
+        )
+        return response
 
     @app.route("/auth/logout", methods=["POST"])
     def auth_logout():
@@ -33099,7 +33418,14 @@ def start_web_server(args_param):
 
                 if is_guest or auth_username == "guest":
                     return jsonify(
-                        {"success": True, "uuid_type": "guest", "message": "游客UUID"}
+                        {
+                            "success": True,
+                            "uuid_type": "guest",
+                            "message": "游客UUID",
+                            "theme_background": _resolve_uuid_theme_background(
+                                check_uuid, "guest", True
+                            ),
+                        }
                     )
                 elif auth_username:
                     return jsonify(
@@ -33108,6 +33434,9 @@ def start_web_server(args_param):
                             "uuid_type": "system_account",
                             "auth_username": auth_username,
                             "message": "系统账号UUID",
+                            "theme_background": _resolve_uuid_theme_background(
+                                check_uuid, auth_username, False
+                            ),
                         }
                     )
                 else:
@@ -37087,6 +37416,40 @@ def start_web_server(args_param):
                             "Guest", "allow_guest_login", fallback=True
                         ),
                     ),
+                    "max_active_guest_sessions": _get_config_value(
+                        config,
+                        "Guest",
+                        "max_active_guest_sessions",
+                        fallback=default_config.get(
+                            "Guest", "max_active_guest_sessions", fallback=100
+                        ),
+                    ),
+                    "guest_session_inactivity_timeout": _get_config_value(
+                        config,
+                        "Guest",
+                        "guest_session_inactivity_timeout",
+                        fallback=default_config.get(
+                            "Guest",
+                            "guest_session_inactivity_timeout",
+                            fallback=300,
+                        ),
+                    ),
+                    "guest_token_ttl_seconds": _get_config_value(
+                        config,
+                        "Guest",
+                        "guest_token_ttl_seconds",
+                        fallback=default_config.get(
+                            "Guest", "guest_token_ttl_seconds", fallback=3600
+                        ),
+                    ),
+                    "guest_token_grace_seconds": _get_config_value(
+                        config,
+                        "Guest",
+                        "guest_token_grace_seconds",
+                        fallback=default_config.get(
+                            "Guest", "guest_token_grace_seconds", fallback=60
+                        ),
+                    ),
                     "show_newbie_help": _get_config_value(
                         config,
                         "Help",
@@ -37495,6 +37858,8 @@ def start_web_server(args_param):
                     "allow_guest_login",
                     str(data["Guest"]["allow_guest_login"]).lower(),
                 )
+            if "Guest" in data:
+                _apply_guest_config_updates(config, data["Guest"])
             # 处理新手帮助配置保存
             if "Help" in data and "show_newbie_help" in data["Help"]:
                 ensure_section(config, "Help")
@@ -38049,6 +38414,25 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(f"获取公开主题信息失败: {e}", exc_info=True)
             return jsonify({"success": False, "message": "获取主题信息失败"}), 500
+
+    @app.route("/api/site/bootstrap", methods=["GET"])
+    def site_identity_bootstrap():
+        try:
+            return jsonify(_build_site_bootstrap_response())
+        except Exception as e:
+            logging.error("站点身份初始化失败: %s", e, exc_info=True)
+            return jsonify({"success": False, "message": "站点初始化失败"}), 500
+
+    @app.route("/auth/quick_login/sessions", methods=["GET"])
+    def quick_login_sessions():
+        identity = _resolve_request_identity()
+        if not identity.get("authenticated"):
+            return jsonify({"success": False, "message": "无可用登录身份"}), 401
+        return jsonify({
+            "success": True,
+            "principal_type": identity.get("principal_type", ""),
+            "sessions": _list_selectable_sessions_for_identity(identity),
+        })
 
     @app.route("/api/public/theme_background/consume", methods=["POST"])
     def consume_public_theme_background():

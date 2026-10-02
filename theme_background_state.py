@@ -51,7 +51,13 @@ class BackgroundStateStore:
     def _now() -> str:
         return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    def create_bundle(self, pc_url: str, mobile_url: str, source: str) -> dict:
+    def create_bundle(
+        self,
+        pc_url: str,
+        mobile_url: str,
+        source: str,
+        consume: bool = True,
+    ) -> dict:
         with self.lock:
             state = self.load()
             revision = int(state.get("next_revision", 1))
@@ -77,10 +83,10 @@ class BackgroundStateStore:
             state["bundles"][bundle_id] = {
                 "pc_assignment_id": pc_assignment_id,
                 "mobile_assignment_id": mobile_assignment_id,
-                "state": "consumed",
+                "state": "consumed" if consume else "preview",
                 "source": str(source or ""),
                 "created_at": now,
-                "consumed_at": now,
+                "consumed_at": now if consume else None,
                 "revision": revision,
             }
             self.save(state)

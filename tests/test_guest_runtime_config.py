@@ -37,6 +37,14 @@ class TestGuestRuntimeConfig(unittest.TestCase):
                 [],
             )
 
+    def test_guest_config_updates_validate_capacity(self):
+        config = main_module._get_default_config()
+        with self.assertRaises(ValueError):
+            main_module._apply_guest_config_updates(
+                config,
+                {"max_active_guest_sessions": -1},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
