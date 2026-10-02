@@ -3,7 +3,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 
-const source = readFileSync(new URL('../scripts/main.js', import.meta.url), 'utf8')
+const source = [
+  readFileSync(new URL('../scripts/main.js', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../scripts/legacy-payment-user.js', import.meta.url),
+    'utf8',
+  ),
+].join('\n')
 
 function extractFunction(name, nextName) {
   const start = source.indexOf(`function ${name}(`)
@@ -37,6 +43,9 @@ test('mobile start-all uses the same current-mode overdue gate as desktop', () =
 test('overdue gate can return skip so start-all proceeds without overdue accounts', async () => {
   const source = readFileSync(
     new URL('../scripts/main.js', import.meta.url),
+    'utf8',
+  ) + '\n' + readFileSync(
+    new URL('../scripts/legacy-payment-user.js', import.meta.url),
     'utf8',
   )
   const start = source.indexOf('async function checkOverdueBeforeStart(')

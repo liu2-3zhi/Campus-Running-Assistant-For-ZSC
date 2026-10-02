@@ -74,8 +74,10 @@ function extractFunctionSource(source, functionName) {
 }
 
 function loadFunctions(functionNames) {
-  const filePath = resolve('scripts/main.js');
-  const source = readFileSync(filePath, 'utf8');
+  const source = [
+    readFileSync(resolve('scripts/main.js'), 'utf8'),
+    readFileSync(resolve('scripts/legacy-payment-user.js'), 'utf8'),
+  ].join('\n');
   const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
   return Function(`${functionSources.join('\n\n')} return { ${functionNames.join(', ')} };`)();
 }
