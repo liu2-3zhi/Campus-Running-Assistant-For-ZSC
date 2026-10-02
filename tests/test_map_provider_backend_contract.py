@@ -294,6 +294,9 @@ class TestMapProviderBackendContract(unittest.TestCase):
             (
                 MAIN_PATH.read_text(encoding="utf-8"),
                 PAYMENT_CRYPTO_PATH.read_text(encoding="utf-8"),
+                (PROJECT_ROOT / "brute_force_manager.py").read_text(
+                    encoding="utf-8"
+                ),
             )
         )
 
