@@ -7,6 +7,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_PATH = PROJECT_ROOT / "index.html"
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
+ADMIN_CONFIG_PATH = PROJECT_ROOT / "scripts" / "legacy-admin-config.js"
 MAIN_PATH = PROJECT_ROOT / "main.py"
 CONFIG_PATH = PROJECT_ROOT / "configs" / "config.json"
 
@@ -38,7 +39,9 @@ class TestMapProviderConfigUi(unittest.TestCase):
         self.assertNotIn("tianditu_token", map_config)
 
     def test_load_system_config_renders_map_provider_controls(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + ADMIN_CONFIG_PATH.read_text(
+            encoding="utf-8"
+        )
         load_system_config_source = _extract_js_section(
             source,
             "async function loadSystemConfig() {",
@@ -59,7 +62,9 @@ class TestMapProviderConfigUi(unittest.TestCase):
         self.assertIn('createInput(\n      "Map.providers.baidu",\n      "ak",', load_system_config_source)
 
     def test_load_system_config_does_not_duplicate_html_accumulator(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + ADMIN_CONFIG_PATH.read_text(
+            encoding="utf-8"
+        )
         load_system_config_source = _extract_js_section(
             source,
             "async function loadSystemConfig() {",
@@ -69,7 +74,9 @@ class TestMapProviderConfigUi(unittest.TestCase):
         self.assertNotIn("html +=\n    html +=", load_system_config_source)
 
     def test_save_system_config_submits_global_provider_payload(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + ADMIN_CONFIG_PATH.read_text(
+            encoding="utf-8"
+        )
         save_system_config_source = _extract_js_section(
             source,
             "async function saveSystemConfig() {",
@@ -84,7 +91,9 @@ class TestMapProviderConfigUi(unittest.TestCase):
         self.assertIn('baidu: { ak: $("config-Map.providers.baidu-ak").value }', save_system_config_source)
 
     def test_save_system_config_defers_map_provider_runtime_switch(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + ADMIN_CONFIG_PATH.read_text(
+            encoding="utf-8"
+        )
         save_system_config_source = _extract_js_section(
             source,
             "async function saveSystemConfig() {",

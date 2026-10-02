@@ -4,6 +4,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
+ADMIN_CONFIG_PATH = PROJECT_ROOT / "scripts" / "legacy-admin-config.js"
 
 
 def _extract_js_section(source, start_marker, end_marker):
@@ -14,7 +15,9 @@ def _extract_js_section(source, start_marker, end_marker):
 
 class TestDailyRestartSystemConfigUi(unittest.TestCase):
     def test_load_system_config_renders_daily_restart_controls(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + ADMIN_CONFIG_PATH.read_text(
+            encoding="utf-8"
+        )
         load_system_config_source = _extract_js_section(
             source,
             "async function loadSystemConfig() {",
@@ -29,7 +32,9 @@ class TestDailyRestartSystemConfigUi(unittest.TestCase):
         self.assertIn('createInput(\n      "Daily_Restart",\n      "time",', load_system_config_source)
 
     def test_save_system_config_submits_daily_restart_payload(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + ADMIN_CONFIG_PATH.read_text(
+            encoding="utf-8"
+        )
         save_system_config_source = _extract_js_section(
             source,
             "async function saveSystemConfig() {",

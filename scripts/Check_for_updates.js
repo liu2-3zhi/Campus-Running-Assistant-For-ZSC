@@ -30,6 +30,7 @@
       "/scripts/legacy-payment.js",
       "/scripts/legacy-mobile-core.js",
       "/scripts/legacy-reminders.js",
+      "/scripts/legacy-admin-config.js",
       "/scripts/legacy-watermark.js",
       "/scripts/main.js",
     ];

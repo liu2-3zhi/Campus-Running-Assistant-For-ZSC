@@ -76,7 +76,8 @@ test('guest login sends its generated UUID and returns to a UUID URL', () => {
 })
 
 test('legacy admin config panel renders and saves the default UI option', () => {
-  const legacyScript = read('scripts/main.js')
+  const legacyScript =
+    `${read('scripts/main.js')}\n${read('scripts/legacy-admin-config.js')}`
 
   assert.match(legacyScript, /"Config",\s*"default_ui",\s*"默认 UI",\s*"select"/s)
   assert.match(legacyScript, /Config: \{\s*default_ui: \$\("config-Config-default_ui"\)\.value,/s)
