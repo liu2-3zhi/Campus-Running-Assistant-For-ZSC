@@ -19,7 +19,27 @@ import main as main_module
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MAIN_PATH = PROJECT_ROOT / "main.py"
+PAYMENT_CRYPTO_PATH = PROJECT_ROOT / "payment_crypto.py"
 DOCKER_ENTRYPOINT_PATH = PROJECT_ROOT / "docker" / "docker-entrypoint.sh"
+
+
+def _read_legacy_frontend_source():
+    return "\n\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            PROJECT_ROOT / "scripts" / "legacy-payment.js",
+            PROJECT_ROOT / "scripts" / "legacy-mobile-core.js",
+            PROJECT_ROOT / "scripts" / "legacy-reminders.js",
+            PROJECT_ROOT / "scripts" / "legacy-admin-config.js",
+            PROJECT_ROOT / "scripts" / "legacy-admin-sessions.js",
+            PROJECT_ROOT / "scripts" / "legacy-admin-users.js",
+            PROJECT_ROOT / "scripts" / "legacy-mobile-admin.js",
+            PROJECT_ROOT / "scripts" / "legacy-payment-user.js",
+            PROJECT_ROOT / "scripts" / "legacy-mobile-multi.js",
+            PROJECT_ROOT / "scripts" / "legacy-watermark.js",
+            PROJECT_ROOT / "scripts" / "main.js",
+        )
+    )
 
 
 class TestMapProviderBackendContract(unittest.TestCase):
@@ -258,7 +278,12 @@ class TestMapProviderBackendContract(unittest.TestCase):
         self.assertNotIn("ak", sanitized["baidu"])
 
     def test_sensitive_initialization_logs_do_not_include_credentials_or_signed_content(self):
-        source = MAIN_PATH.read_text(encoding="utf-8")
+        source = "\n\n".join(
+            (
+                MAIN_PATH.read_text(encoding="utf-8"),
+                PAYMENT_CRYPTO_PATH.read_text(encoding="utf-8"),
+            )
+        )
 
         self.assertNotIn("密码: admin", source)
         self.assertNotIn("发现可能的密码: {found_pwds}", source)
@@ -1126,9 +1151,7 @@ globalThis.fetch = async (url, options) => {
 
     def test_sensitive_frontend_logs_do_not_dump_payment_or_pricing_payloads(self):
         source = MAIN_PATH.read_text(encoding="utf-8")
-        legacy_source = (
-            PROJECT_ROOT / "scripts" / "main.js"
-        ).read_text(encoding="utf-8")
+        legacy_source = _read_legacy_frontend_source()
         request_log_start = legacy_source.index(
             "[PC端测试支付] 发送创建订单请求"
         )
