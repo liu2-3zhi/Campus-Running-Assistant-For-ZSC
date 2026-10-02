@@ -10,6 +10,12 @@ import tempfile
 
 from flask import jsonify, make_response, request
 
+from guest_token_store import GuestTokenStore
+from theme_background_state import (
+    BackgroundStateStore,
+    empty_state as _empty_background_state,
+)
+
 _import_failures = []
 _log_buffer = []
 _logging_exception_hooks_installed = False
@@ -4571,7 +4577,7 @@ def initialize_global_variables():
     """
     logging.info("开始初始化全局变量...")
 
-    global auth_system, token_manager, html_content
+    global auth_system, token_manager, html_content, background_state_store
     global web_sessions, web_sessions_lock, session_file_locks, session_file_locks_lock
     global session_activity, session_activity_lock
     global chrome_pool, background_task_manager
@@ -4579,6 +4585,9 @@ def initialize_global_variables():
 
     auth_system = AuthSystem()
     token_manager = TokenManager(TOKENS_STORAGE_DIR)
+    background_state_store = BackgroundStateStore(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), RANDOM_BACKGROUND_IMAGE_DIR)
+    )
     logging.info("认证系统和Token管理器已创建。")
 
     html_content = ""
@@ -5956,6 +5965,9 @@ AUTO_ATTENDANCE_CONFIG_FILE = os.path.join(
 THEME_DIR = "theme"
 RANDOM_BACKGROUND_IMAGE_DIR = "random_background_image"
 RANDOM_BACKGROUND_INDEX_FILE = os.path.join(RANDOM_BACKGROUND_IMAGE_DIR, "index.json")
+background_state_store = BackgroundStateStore(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), RANDOM_BACKGROUND_IMAGE_DIR)
+)
 THEME_METADATA_FIELDS = {"id", "label", "description", "placeholder"}
 SESSION_INDEX_FILE = None
 LOGIN_LOG_FILE = None
@@ -12724,6 +12736,7 @@ class TokenManager:
         logging.info(f"TokenManager: 初始化令牌管理器，目录: {tokens_dir}")
         self.tokens_dir = tokens_dir
         self.lock = threading.Lock()
+        self.guest_store = GuestTokenStore(os.path.join(tokens_dir, "guests"))
         if not os.path.exists(tokens_dir):
             os.makedirs(tokens_dir)
             logging.info(f"TokenManager: 创建令牌目录: {tokens_dir}")
