@@ -712,6 +712,9 @@ process.stdout.write(JSON.stringify({{
 
     def test_dynamic_inline_handlers_use_js_literals_for_string_arguments(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
+        source += "\n" + (
+            SCRIPT_PATH.parent / "legacy-watermark.js"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("function escapeInlineJsArg(value)", source)
         self.assertIn(

@@ -25,11 +25,21 @@
       document.getElementById("main-script")
     ) return;
 
-    const url = new URL("/scripts/main.js", window.location.href);
-    url.searchParams.set("version", currentVersion || Date.now().toString());
+    const version = currentVersion || Date.now().toString();
+    const scripts = [
+      "/scripts/legacy-watermark.js",
+      "/scripts/main.js",
+    ];
     // Insert during HTML parsing to preserve defer and DOMContentLoaded order.
     document.write(
-      `<script id="main-script" src="${url.pathname}${url.search}" defer=""></script>`,
+      scripts
+        .map((pathname, index) => {
+          const url = new URL(pathname, window.location.href);
+          url.searchParams.set("version", version);
+          const id = index === scripts.length - 1 ? "main-script" : "";
+          return `<script${id ? ` id="${id}"` : ""} src="${url.pathname}${url.search}" defer=""></script>`;
+        })
+        .join(""),
     );
   }
 

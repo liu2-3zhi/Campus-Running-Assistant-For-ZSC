@@ -304,6 +304,7 @@ test('showAuthLogin clears stale session notices before displaying the auth view
   globalThis.clearLogoutElsewhereOverlay = () => {
     clearCalls.push('clear');
   };
+  globalThis.loadSiteIdentityBootstrap = () => {};
 
   try {
     showAuthLogin();
@@ -317,5 +318,6 @@ test('showAuthLogin clears stale session notices before displaying the auth view
     delete globalThis.$;
     delete globalThis.checkGuestLoginEnabled;
     delete globalThis.clearLogoutElsewhereOverlay;
+    delete globalThis.loadSiteIdentityBootstrap;
   }
 });

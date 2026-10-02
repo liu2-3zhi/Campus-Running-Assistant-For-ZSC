@@ -65,9 +65,11 @@ function run({ storedVersion = '', apiOk = true, apiVersion = latestVersion, sto
 }
 
 function scriptUrl(result) {
-  assert.equal(result.written.length, 1)
-  assert.match(result.written[0], /defer=""/)
-  return new URL(result.written[0].match(/src="([^"]+)"/)[1], 'https://example.test/')
+  const written = result.written.join('')
+  const mainTag = written.match(/<script[^>]*id="main-script"[^>]*><\/script>/)?.[0]
+  assert.ok(mainTag)
+  assert.match(mainTag, /defer=""/)
+  return new URL(mainTag.match(/src="([^"]+)"/)[1], 'https://example.test/')
 }
 
 const settle = () => new Promise((resolve) => setImmediate(resolve))
