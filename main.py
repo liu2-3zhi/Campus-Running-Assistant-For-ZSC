@@ -6142,6 +6142,37 @@ def _resolve_identity_background_for_request_identity(identity):
     )
 
 
+def _apply_identity_bundle_to_theme_config(theme_config, session_id):
+    if not isinstance(theme_config, dict) or not session_id:
+        return theme_config
+    state = load_session_state(session_id)
+    if not isinstance(state, dict):
+        return theme_config
+    username = str(state.get("auth_username") or "")
+    is_guest = bool(state.get("is_guest") or username == "guest")
+    bundle = (
+        background_state_store.get_guest_session_bundle(session_id)
+        if is_guest
+        else background_state_store.get_identity_bundle(
+            _identity_key_for_username(username)
+        )
+    )
+    if not bundle:
+        return theme_config
+    env = theme_config.setdefault("global_environment_variables", {})
+    if bundle.get("pc_image_url"):
+        env["auth_login_container_background"] = (
+            "linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10)), "
+            f'url("{bundle["pc_image_url"]}") center / cover no-repeat fixed'
+        )
+    if bundle.get("mobile_image_url"):
+        env["mobile_auth_login_content_background"] = (
+            "linear-gradient(rgba(255,255,255,0.12), rgba(255,255,255,0.12)), "
+            f'url("{bundle["mobile_image_url"]}") center / cover no-repeat'
+        )
+    return theme_config
+
+
 def _list_selectable_sessions_for_identity(identity):
     if not identity or not identity.get("authenticated"):
         return []
@@ -16897,6 +16928,10 @@ class Api:
                         session_uuid=session_uuid,
                         cache_dir=theme_background_cache_dir,
                     )
+            current_theme_config = _apply_identity_bundle_to_theme_config(
+                current_theme_config,
+                session_uuid,
+            )
 
             cdn_cache_status = {}
             try:
@@ -19868,14 +19903,17 @@ class Api:
         session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
         base_dir = os.path.dirname(os.path.abspath(__file__))
         cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        theme_config = auth_system.get_theme_config(
+            current_theme_style,
+            target_list or None,
+            session_uuid=session_uuid,
+            cache_dir=cache_dir,
+        )
         return {
             "success": True,
             "theme_styles": auth_system.get_available_theme_styles(),
-            "theme_config": auth_system.get_theme_config(
-                current_theme_style,
-                target_list or None,
-                session_uuid=session_uuid,
-                cache_dir=cache_dir,
+            "theme_config": _apply_identity_bundle_to_theme_config(
+                theme_config, session_uuid
             ),
         }
 
@@ -19890,14 +19928,17 @@ class Api:
         session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
         base_dir = os.path.dirname(os.path.abspath(__file__))
         cache_dir = os.path.join(base_dir, RANDOM_BACKGROUND_IMAGE_DIR)
+        theme_config = auth_system.get_theme_config(
+            current_theme_style,
+            target_list or None,
+            session_uuid=session_uuid,
+            cache_dir=cache_dir,
+        )
         return {
             "success": True,
             "theme_styles": auth_system.get_available_theme_styles(),
-            "theme_config": auth_system.get_theme_config(
-                current_theme_style,
-                target_list or None,
-                session_uuid=session_uuid,
-                cache_dir=cache_dir,
+            "theme_config": _apply_identity_bundle_to_theme_config(
+                theme_config, session_uuid
             ),
         }
 
@@ -32459,6 +32500,7 @@ def start_web_server(args_param):
         two_fa_code = (data.get("two_fa_code") or "").strip()
         captcha_input = (data.get("captcha") or "").strip()
         captcha_id = (data.get("captcha_id") or "").strip()
+        background_preview = data.get("background_preview") or {}
         is_captcha_valid, captcha_error_msg = verify_captcha(
             captcha_id, captcha_input)
         
@@ -32742,6 +32784,14 @@ def start_web_server(args_param):
                 _login_theme_style = config.get("Config", "theme_style", fallback="default")
             except Exception:
                 _login_theme_style = "default"
+            login_background = None
+            if not auth_result.get("is_guest", False) and normalized_auth_username:
+                login_background = _bind_login_bundle_for_user(
+                    username=normalized_auth_username,
+                    preview_bundle_id=background_preview.get("bundle_id", ""),
+                    source="login_preview",
+                    replace_existing=True,
+                )
             response_data = {
                 "success": True,
                 "session_id": session_id if session_is_persistent else None,
@@ -32758,6 +32808,11 @@ def start_web_server(args_param):
                 "token": token,
                 "kicked_sessions_count": len(kicked_sessions),
                 "account_cancellation": _cancellation_status,
+                "theme_background": (
+                    _bundle_to_public_payload(login_background)
+                    if login_background
+                    else None
+                ),
             }
             if cleanup_message:
                 response_data["cleanup_message"] = cleanup_message
@@ -32773,6 +32828,15 @@ def start_web_server(args_param):
                     max_age=3600,
                     httponly=True,
                     secure=False,
+                    samesite="Lax",
+                )
+            if session_is_persistent and session_id:
+                response.set_cookie(
+                    "session_id",
+                    value=session_id,
+                    max_age=3600,
+                    httponly=True,
+                    secure=request.is_secure,
                     samesite="Lax",
                 )
 
@@ -32887,6 +32951,7 @@ def start_web_server(args_param):
         cleanup_session(session_id, "user_logout")
         response = jsonify({"success": True, "message": "登出成功"})
         response.set_cookie("auth_token", "", max_age=0)
+        response.set_cookie("session_id", "", max_age=0)
 
         return response
 
@@ -32968,6 +33033,14 @@ def start_web_server(args_param):
             max_age=3600,
             httponly=True,
             secure=False,
+            samesite="Lax",
+        )
+        response.set_cookie(
+            "session_id",
+            value=target_session_id,
+            max_age=3600,
+            httponly=True,
+            secure=request.is_secure,
             samesite="Lax",
         )
         with web_sessions_lock:
@@ -33352,10 +33425,20 @@ def start_web_server(args_param):
             type_func=lambda x: str(x).lower() in ("true", "yes", "1", "on"),
             fallback=True,
         )
+        guest_config = _get_guest_config(auth_system.config)
+        active_guest_sessions = _count_active_guest_sessions(
+            guest_config["guest_session_inactivity_timeout"]
+        )
+        max_active_guest_sessions = guest_config["max_active_guest_sessions"]
         return jsonify(
             {
                 "success": True,
                 "allow_guest_login": allow_guest_login,
+                "max_active_guest_sessions": max_active_guest_sessions,
+                "active_guest_sessions": active_guest_sessions,
+                "guest_capacity_available": (
+                    active_guest_sessions < max_active_guest_sessions
+                ),
             }
         )
 
@@ -36707,6 +36790,14 @@ def start_web_server(args_param):
                     max_age=3600,
                     httponly=True,
                     secure=False,
+                    samesite="Lax",
+                )
+                response.set_cookie(
+                    "session_id",
+                    value=new_session_id,
+                    max_age=3600,
+                    httponly=True,
+                    secure=request.is_secure,
                     samesite="Lax",
                 )
                 logging.info(

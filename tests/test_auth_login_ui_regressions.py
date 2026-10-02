@@ -163,6 +163,7 @@ globalThis.Swal = {{
   }},
 }};
 globalThis.capturePreLoginBackgroundSnapshot = () => {{}};
+globalThis.getBackgroundPreviewPayload = () => null;
 globalThis.validateInput = () => ({{ valid: true }});
 globalThis.refreshCaptcha = (formType) => refreshCalls.push(formType);
 globalThis.setButtonLoading = () => {{}};
@@ -307,6 +308,7 @@ globalThis.window = {{}};
 globalThis.console = {{ log() {{}}, info() {{}}, warn() {{}}, error() {{}} }};
 globalThis.Swal = {{ fire() {{ return Promise.resolve({{ isConfirmed: false }}); }} }};
 globalThis.capturePreLoginBackgroundSnapshot = () => {{}};
+globalThis.getBackgroundPreviewPayload = () => null;
 globalThis.validateInput = () => ({{ valid: true }});
 globalThis.refreshCaptcha = () => {{}};
 globalThis.setButtonLoading = () => {{}};
@@ -679,7 +681,7 @@ process.stdout.write(JSON.stringify({{
             source.count(
                 "const sessionIdArg = escapeInlineJsArg(session.session_id);"
             ),
-            4,
+                5,
         )
         self.assertEqual(
             source.count(

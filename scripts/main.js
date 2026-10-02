@@ -18209,6 +18209,7 @@ const paramGroups = [
 
 let pythonParams = {};
 let currentThemeConfig = {};
+let currentThemeBackgroundAssignment = null;
 let availableThemeStyles = [];
 
 let cachedMultiAccounts = [];
@@ -19121,6 +19122,9 @@ async function ensureThemeStylesLoaded(force = false, options = {}) {
 
     if (result && result.success && Array.isArray(result.theme_styles)) {
       availableThemeStyles = result.theme_styles;
+      if (result.theme_background && typeof result.theme_background === "object") {
+        currentThemeBackgroundAssignment = result.theme_background;
+      }
       if (result.theme_config && typeof result.theme_config === "object") {
         currentThemeConfig = result.theme_config;
         if (applyThemeConfig) {
@@ -19365,6 +19369,7 @@ function showAuthLogin() {
   const exitBtn = $("exit-app-btn");
   if (exitBtn) exitBtn.classList.add("hidden");
 
+  loadSiteIdentityBootstrap();
   checkGuestLoginEnabled();
 }
 
@@ -19384,6 +19389,11 @@ async function checkGuestLoginEnabled() {
     const data = await result.json();
     if (data.success && data.allow_guest_login) {
       $("guest-login-section").classList.remove("hidden");
+      const guestBtn = $("auth-guest-btn");
+      if (guestBtn && data.guest_capacity_available === false) {
+        guestBtn.disabled = true;
+        guestBtn.textContent = "访客名额已满";
+      }
     } else {
       $("guest-login-section").classList.add("hidden");
     }
@@ -20694,6 +20704,7 @@ async function handleAuthLogin(isMobile_use = false) {
   }
   const request_body = {};
   capturePreLoginBackgroundSnapshot(isMobile_use ? "mobile" : "pc");
+  request_body.background_preview = getBackgroundPreviewPayload();
 
   if (login_mode === "username") {
     request_body.auth_username = login_id;
@@ -21628,6 +21639,66 @@ async function handleAuthRegister(isMobile_use = false) {
   }
 }
 
+function getBackgroundPreviewPayload() {
+  return currentThemeBackgroundAssignment
+    ? {
+        bundle_id: currentThemeBackgroundAssignment.bundle_id || "",
+        pc: currentThemeBackgroundAssignment.pc || null,
+        mobile: currentThemeBackgroundAssignment.mobile || null,
+      }
+    : null;
+}
+
+function buildQuickLoginSessionViewModel(payload) {
+  const sessions = Array.isArray(payload?.sessions) ? payload.sessions : [];
+  return sessions
+    .filter((item) => item && item.session_id)
+    .sort((left, right) => {
+      if (left.is_current !== right.is_current) {
+        return left.is_current ? -1 : 1;
+      }
+      return Number(right.last_activity || 0) - Number(left.last_activity || 0);
+    });
+}
+
+async function loadSiteIdentityBootstrap() {
+  try {
+    const response = await fetch("/api/site/bootstrap", {
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) return result;
+    currentThemeBackgroundAssignment = result.theme_background || null;
+    if (result.identity?.quick_login_available) {
+      const confirmation = await Swal.fire({
+        icon: "question",
+        title: "检测到之前的登录记录",
+        text: "是否使用已有会话快捷登录？",
+        confirmButtonText: "快捷登录",
+        cancelButtonText: "稍后",
+        showCancelButton: true,
+      });
+      if (confirmation.isConfirmed) {
+        const sessionsResponse = await fetch("/auth/quick_login/sessions", {
+          credentials: "include",
+        });
+        const sessionsResult = await sessionsResponse.json();
+        if (sessionsResponse.ok && sessionsResult.success) {
+          window.quickLoginSessions = buildQuickLoginSessionViewModel(
+            sessionsResult,
+          );
+          showSessionPicker();
+        }
+      }
+    }
+    return result;
+  } catch (error) {
+    logMessage_Warning("[站点初始化] 身份检查失败:", error);
+    return null;
+  }
+}
+
 async function handleGuestLogin() {
   try {
     const newUUID = generateUUID();
@@ -21638,6 +21709,10 @@ async function handleGuestLogin() {
         "Content-Type": "application/json",
         "X-Session-ID": newUUID,
       },
+      credentials: "include",
+      body: JSON.stringify({
+        background_preview: getBackgroundPreviewPayload(),
+      }),
     });
 
     const result = await response.json();
@@ -21648,6 +21723,14 @@ async function handleGuestLogin() {
         window.location.href = buildLegacyUiPath(`/uuid=${newUUID}`);
       }, 1000);
     } else {
+      if (result.code === "guest_limit_reached") {
+        Swal.fire({
+          icon: "warning",
+          title: "访客名额已满",
+          text: result.message || "当前访客数量已达上限，请稍后重试或注册账号",
+        });
+        return;
+      }
       // showModalAlert(result.message || "游客登录失败", "登录失败");
       Swal.fire({
         icon: "error",
@@ -34167,6 +34250,30 @@ async function loadSessionPickerList() {
 
   listEl.innerHTML =
     '<p class="text-slate-400 text-center py-10">加载中...</p>';
+
+  if (Array.isArray(window.quickLoginSessions)) {
+    const quickSessions = window.quickLoginSessions;
+    window.quickLoginSessions = null;
+    listEl.innerHTML =
+      quickSessions.length === 0
+        ? '<p class="text-slate-400 text-center py-10">暂无可恢复会话</p>'
+        : quickSessions
+            .map((session) => {
+              const sessionIdArg = escapeInlineJsArg(session.session_id);
+              const ownerArg = escapeInlineJsArg(
+                session.username || currentAuthUsername || "",
+              );
+              return `
+                <div class="border border-slate-200 rounded-lg p-3">
+                  <p class="font-semibold text-slate-800 break-all">会话 ${session.session_id}</p>
+                  <p class="text-xs text-slate-500 mt-1">${session.is_current ? "当前会话" : "可选择"}</p>
+                  <button class="btn btn-primary mt-3 !py-1 !px-3 text-xs" onclick='selectSessionFromPicker(${sessionIdArg}, ${ownerArg})'>进入</button>
+                </div>
+              `;
+            })
+            .join("");
+    return;
+  }
 
   try {
     const headers = {
@@ -50438,6 +50545,34 @@ async function loadSystemConfig() {
       "boolean",
       "是否允许未注册用户以游客身份使用系统。",
     );
+    html += createInput(
+      "Guest",
+      "max_active_guest_sessions",
+      "最大活跃访客会话数",
+      "number",
+      "创建访客会话前检查；达到上限后直接拒绝，0 表示禁止创建。",
+    );
+    html += createInput(
+      "Guest",
+      "guest_session_inactivity_timeout",
+      "访客会话闲置超时（秒）",
+      "number",
+      "访客会话超过该时间未活动后允许清理。",
+    );
+    html += createInput(
+      "Guest",
+      "guest_token_ttl_seconds",
+      "访客 Token 最小有效期（秒）",
+      "number",
+      "访客 Token 至少保持有效的时间，实际不会早于访客会话过期。",
+    );
+    html += createInput(
+      "Guest",
+      "guest_token_grace_seconds",
+      "Token 宽限期（秒）",
+      "number",
+      "访客 Token 至少比会话到期时间多保留的秒数。",
+    );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mb-2">帮助配置</h5>';
     // 新手帮助相关配置
@@ -53863,6 +53998,22 @@ async function saveSystemConfig() {
       },
       Guest: {
         allow_guest_login: $("config-Guest-allow_guest_login").value === "true",
+        max_active_guest_sessions: parseInt(
+          $("config-Guest-max_active_guest_sessions").value,
+          10,
+        ),
+        guest_session_inactivity_timeout: parseInt(
+          $("config-Guest-guest_session_inactivity_timeout").value,
+          10,
+        ),
+        guest_token_ttl_seconds: parseInt(
+          $("config-Guest-guest_token_ttl_seconds").value,
+          10,
+        ),
+        guest_token_grace_seconds: parseInt(
+          $("config-Guest-guest_token_grace_seconds").value,
+          10,
+        ),
       },
       Help: {
         show_newbie_help: $("config-Guest-show_newbie_help").value === "true",
