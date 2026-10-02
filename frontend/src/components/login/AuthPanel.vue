@@ -265,6 +265,8 @@ const anonSessionId = crypto.randomUUID()
 
 // Guest login config
 const guestLoginEnabled = ref(false)
+const guestCapacityAvailable = ref(true)
+const backgroundPreview = ref(window.currentThemeBackgroundAssignment || null)
 
 // Available runs hint for registration
 const availableRunsText = ref('')
@@ -339,6 +341,7 @@ async function checkGuestLoginEnabled() {
     const data = await callRawAPI('/auth/get_config', 'GET')
     if (data.success && data.allow_guest_login) {
       guestLoginEnabled.value = true
+      guestCapacityAvailable.value = data.guest_capacity_available !== false
     } else {
       guestLoginEnabled.value = false
     }
@@ -701,10 +704,15 @@ async function handleGuestLogin() {
         'X-Session-ID': anonSessionId,
       },
       credentials: 'include',
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        background_preview: backgroundPreview.value,
+      }),
     })
     const data = await response.json()
     if (data.success === false) {
+      if (data.code === 'guest_limit_reached') {
+        guestCapacityAvailable.value = false
+      }
       errorMsg.value = data.message || '游客登录失败'
       return
     }
