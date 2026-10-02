@@ -156,6 +156,16 @@
 - 验证会话清理不能只看 `web_sessions` 是否为空，还必须验证 `AccountRefresh-*`、`MultiAccountMonitor` 线程已经退出，且重复登录清理后 `Api` 对象可被垃圾回收。
 - 内存诊断日志统一使用 `[内存诊断]` 前缀，至少记录 `web_sessions`、后台线程数、Playwright context 数、IP/手机号/短信缓存条目数和 Linux `max_rss_mb`；排查内存增长时优先比较 `cleanup_worker_interval` 与 `session_cleanup:*` 快照趋势。
 
+## 访客Token与身份级背景绑定
+
+- 注册用户的背景绑定按认证账号身份保存，位置为 `random_background_image/background_state.json` 的 `identity_bindings[user:<username>]`；该账号下所有 UUID 共享同一 PC/MB Bundle。
+- `/` 只要 `auth_token` 身份有效且账号已有背景绑定，即使当前没有活动 UUID，也必须返回该身份绑定背景。
+- 快捷登录接口只读取会话列表和原有背景绑定，不得创建、替换或消耗 Bundle；缺少绑定时由后续 UUID 初始化按既有规则处理。
+- 访客 Token 位于 `tokens/guests/`，每个访客 UUID 对应独立 `auth_token`。访客 Session 活跃时 Token 不得先失效，Token 到期时间必须使用 `max(now + guest_token_ttl_seconds, session_expires_at + guest_token_grace_seconds)`。
+- 访客容量按活跃 Session 统计，创建 Session、Token 和背景绑定前必须原子检查 `max_active_guest_sessions`；容量满时返回 `429 guest_limit_reached`，不得产生任何副作用。
+- 访客点击“退出应用”只能销毁当前访客 Session、Token 和 `guest_bindings`，不能执行注册用户的全局会话清理。
+- 注册用户退出应用、普通登出与会话切换路径必须保持原有语义，不能因为访客逻辑改变注册用户会话生命周期。
+
 ## 后续更新方式
 
 当以后又踩到坑时，在对应章节追加：
