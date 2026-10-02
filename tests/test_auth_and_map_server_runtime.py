@@ -54,7 +54,15 @@ class TestAuthSystemSchoolAccounts(unittest.TestCase):
 
 class TestMapServerRuntime(unittest.TestCase):
     def test_backend_map_runtime_page_does_not_load_frontend_auth_bootstrap(self):
-        source = Path(main.__file__).read_text(encoding="utf-8")
+        project_root = Path(main.__file__).resolve().parent
+        source = "\n\n".join(
+            (
+                (project_root / "background_task_manager.py").read_text(
+                    encoding="utf-8"
+                ),
+                Path(main.__file__).read_text(encoding="utf-8"),
+            )
+        )
         html = main._render_map_runtime_page()
         route_source = source[
             source.index("@app.route(MAP_RUNTIME_PATH, methods=[\"GET\"])") :
@@ -118,7 +126,15 @@ class TestMapServerRuntime(unittest.TestCase):
         self.assertEqual(["provider notice"], result["notices"])
 
     def test_chrome_browser_context_ignores_https_errors_for_backend_map_runtime(self):
-        source = Path(main.__file__).read_text(encoding="utf-8")
+        project_root = Path(main.__file__).resolve().parent
+        source = "\n\n".join(
+            (
+                (project_root / "background_task_manager.py").read_text(
+                    encoding="utf-8"
+                ),
+                Path(main.__file__).read_text(encoding="utf-8"),
+            )
+        )
         context_source = source[
             source.index("context = self._browser.new_context(") : source.index(
                 "page = context.new_page()",

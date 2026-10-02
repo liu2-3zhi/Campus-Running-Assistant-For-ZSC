@@ -131,9 +131,15 @@ class TestMultiAccountWorkerGuard(unittest.TestCase):
         acc.account_operation_lock.release()
 
     def test_adding_school_account_does_not_claim_execution_slot(self):
-        source = (
-            Path(__file__).resolve().parents[1] / "main.py"
-        ).read_text(encoding="utf-8")
+        project_root = Path(__file__).resolve().parents[1]
+        source = "\n\n".join(
+            (
+                (project_root / "background_task_manager.py").read_text(
+                    encoding="utf-8"
+                ),
+                (project_root / "main.py").read_text(encoding="utf-8"),
+            )
+        )
         add_account_block = source.split(
             "def multi_add_account(",
             1,
@@ -148,9 +154,15 @@ class TestMultiAccountWorkerGuard(unittest.TestCase):
         )
 
     def test_all_task_execution_entrypoints_use_execution_claims(self):
-        source = (
-            Path(__file__).resolve().parents[1] / "main.py"
-        ).read_text(encoding="utf-8")
+        project_root = Path(__file__).resolve().parents[1]
+        source = "\n\n".join(
+            (
+                (project_root / "background_task_manager.py").read_text(
+                    encoding="utf-8"
+                ),
+                (project_root / "main.py").read_text(encoding="utf-8"),
+            )
+        )
         single_run_block = source.split(
             "def start_single_run(",
             1,

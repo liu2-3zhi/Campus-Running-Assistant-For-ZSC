@@ -3,7 +3,21 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MAIN_PATH = PROJECT_ROOT / "main.py"
+
+
+class _BackendSource:
+    def read_text(self, encoding="utf-8"):
+        return "\n\n".join(
+            (
+                (PROJECT_ROOT / "background_task_manager.py").read_text(
+                    encoding=encoding
+                ),
+                (PROJECT_ROOT / "main.py").read_text(encoding=encoding),
+            )
+        )
+
+
+MAIN_PATH = _BackendSource()
 
 
 class TestMapProviderBusinessExecutionContract(unittest.TestCase):
@@ -49,7 +63,10 @@ class TestMapProviderBusinessExecutionContract(unittest.TestCase):
             "def _execute_tasks_background(", 1
         )[0]
 
-        self.assertIn('"map_provider": _get_active_map_provider(config)', start_block)
+        self.assertIn(
+            '"map_provider": _main()._get_active_map_provider(config)',
+            start_block,
+        )
 
     def test_single_account_manual_auto_generation_uses_provider_runtime_helper(self):
         source = MAIN_PATH.read_text(encoding="utf-8")
