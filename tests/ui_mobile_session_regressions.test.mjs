@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url'
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 function readProjectFile(relativePath) {
+  if (relativePath === 'scripts/main.js') {
+    return [
+      readProjectFile('scripts/legacy-app-runtime.js'),
+      readFileSync(resolve(PROJECT_ROOT, relativePath), 'utf8'),
+    ].join('\n\n')
+  }
   return readFileSync(resolve(PROJECT_ROOT, relativePath), 'utf8')
 }
 

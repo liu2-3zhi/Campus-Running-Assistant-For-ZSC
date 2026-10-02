@@ -2,7 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const legacy = readFileSync(new URL('../scripts/main.js', import.meta.url), 'utf8')
+const legacy = [
+  readFileSync(new URL('../scripts/legacy-app-runtime.js', import.meta.url), 'utf8'),
+  readFileSync(new URL('../scripts/main.js', import.meta.url), 'utf8'),
+].join('\n\n')
 const socketService = readFileSync(new URL('../frontend/src/services/socket.js', import.meta.url), 'utf8')
 const mainView = readFileSync(new URL('../frontend/src/views/MainView.vue', import.meta.url), 'utf8')
 const multiView = readFileSync(new URL('../frontend/src/views/MultiAccountView.vue', import.meta.url), 'utf8')

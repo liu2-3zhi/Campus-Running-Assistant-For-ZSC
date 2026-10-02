@@ -35,7 +35,12 @@ def test_frontend_parameter_metadata_matches_backend_keys():
 
 
 def test_frontends_sync_backend_auto_close_event():
-    legacy = (ROOT / "scripts/main.js").read_text(encoding="utf-8")
+    legacy = "\n\n".join(
+        (
+            (ROOT / "scripts/legacy-app-runtime.js").read_text(encoding="utf-8"),
+            (ROOT / "scripts/main.js").read_text(encoding="utf-8"),
+        )
+    )
     vue_socket = (ROOT / "frontend/src/services/socket.js").read_text(encoding="utf-8")
 
     assert 'auto_attendance_updated' in legacy
