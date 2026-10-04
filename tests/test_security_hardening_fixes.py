@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 import main as main_module
+from tests.backend_source_utils import read_backend_source
 
 
 class TestTwoFactorChallenge(unittest.TestCase):
@@ -90,13 +91,13 @@ class TestUsernamePathHardening(unittest.TestCase):
 
 class TestExecuteJSRouteRemoval(unittest.TestCase):
     def test_public_execute_js_route_is_removed(self):
-        source = Path(main_module.__file__).read_text(encoding="utf-8")
+        source = read_backend_source()
         self.assertNotIn('@app.route("/execute_js"', source)
 
 
 class TestSecurityRouteWiring(unittest.TestCase):
     def test_2fa_login_uses_server_challenge(self):
-        source = Path(main_module.__file__).read_text(encoding="utf-8")
+        source = read_backend_source()
         route_start = source.index('@app.route("/auth/2fa/verify_login"')
         route_end = source.index(
             '@app.route("/auth/admin/create_user"', route_start
@@ -110,14 +111,14 @@ class TestSecurityRouteWiring(unittest.TestCase):
         )
 
     def test_generic_api_route_checks_allowlist(self):
-        source = Path(main_module.__file__).read_text(encoding="utf-8")
+        source = read_backend_source()
         route_start = source.index('@app.route("/api/<path:method>"')
         route_source = source[route_start:route_start + 2000]
 
         self.assertIn("_is_api_method_allowed(method)", route_source)
 
     def test_payment_jump_is_sanitized_before_template_insertion(self):
-        source = Path(main_module.__file__).read_text(encoding="utf-8")
+        source = read_backend_source()
         route_start = source.index('@app.route("/api/payment/yipay_notify"')
         route_source = source[route_start:route_start + 5000]
 
@@ -125,7 +126,7 @@ class TestSecurityRouteWiring(unittest.TestCase):
         self.assertIn("_encode_inline_script_json(jump_url)", route_source)
 
     def test_frontend_config_loader_does_not_create_active_session_from_referer(self):
-        source = Path(main_module.__file__).read_text(encoding="utf-8")
+        source = read_backend_source()
         route_start = source.index('@app.route("/api/frontend_config.js")')
         route_end = source.index(
             "# Vue 前端自动构建", route_start

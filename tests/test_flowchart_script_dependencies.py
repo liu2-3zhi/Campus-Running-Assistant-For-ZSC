@@ -1,11 +1,12 @@
 import re
 import unittest
 from pathlib import Path
+from tests.backend_source_utils import BACKEND_SOURCE
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML_PATH = PROJECT_ROOT / "index.html"
-MAIN_PY_PATH = PROJECT_ROOT / "main.py"
+MAIN_PY_PATH = BACKEND_SOURCE
 SERVICE_WORKER_PATH = PROJECT_ROOT / "PWA" / "sw.js"
 
 

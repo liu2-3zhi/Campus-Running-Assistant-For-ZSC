@@ -2,6 +2,7 @@ import json
 import re
 import unittest
 from pathlib import Path
+from tests.backend_source_utils import read_backend_source
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -113,7 +114,7 @@ class TestMapProviderConfigUi(unittest.TestCase):
         self.assertNotIn("initMap(AMapInstance)", provider_changed_block)
 
     def test_backend_config_load_returns_nested_map_provider_values(self):
-        source = MAIN_PATH.read_text(encoding="utf-8")
+        source = read_backend_source()
         config_load_source = _extract_js_section(
             source,
             '@app.route("/api/admin/config/load", methods=["GET"])',

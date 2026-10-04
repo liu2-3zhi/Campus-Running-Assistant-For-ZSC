@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+const readBackend = () =>
+  [read('main.py'), read('web_server.py').replaceAll('_main().', '')].join('\n\n')
 
 test('Vue main and multi routes retain the active business UUID', () => {
   const router = read('frontend/src/router/index.js')
@@ -49,7 +51,7 @@ test('Vue maps use the legacy default center instead of Beijing', () => {
 
 test('map runtime script carries the session UUID and backend accepts it', () => {
   const runtime = read('frontend/src/services/mapKeyRuntime.js')
-  const backend = read('main.py')
+  const backend = readBackend()
 
   assert.match(runtime, /session_id/)
   assert.match(runtime, /getAuthenticatedSessionHeaderValue/)
@@ -58,7 +60,7 @@ test('map runtime script carries the session UUID and backend accepts it', () =>
 
 test('inline session management exposes session selection and deletion', () => {
   const loginView = read('frontend/src/views/LoginView.vue')
-  const backend = read('main.py')
+  const backend = readBackend()
 
   assert.match(loginView, /async function selectInlineSession/)
   assert.match(loginView, /async function deleteInlineSession/)

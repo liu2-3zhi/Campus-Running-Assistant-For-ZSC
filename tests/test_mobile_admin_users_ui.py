@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tests.backend_source_utils import read_backend_source
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -55,7 +56,7 @@ class TestMobileAdminUsersUi(unittest.TestCase):
         self.assertIn('student_number', js)
 
     def test_outstanding_details_prefers_non_admin_linked_accounts(self):
-        main = (PROJECT_ROOT / "main.py").read_text(encoding="utf-8")
+        main = read_backend_source()
 
         self.assertIn("all_linked_users = []", main)
         self.assertIn("non_admin_linked_users = []", main)

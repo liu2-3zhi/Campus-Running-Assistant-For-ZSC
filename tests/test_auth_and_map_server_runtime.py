@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import main
+from tests.backend_source_utils import read_backend_source
 
 
 class TestAuthSystemSchoolAccounts(unittest.TestCase):
@@ -54,15 +55,7 @@ class TestAuthSystemSchoolAccounts(unittest.TestCase):
 
 class TestMapServerRuntime(unittest.TestCase):
     def test_backend_map_runtime_page_does_not_load_frontend_auth_bootstrap(self):
-        project_root = Path(main.__file__).resolve().parent
-        source = "\n\n".join(
-            (
-                (project_root / "background_task_manager.py").read_text(
-                    encoding="utf-8"
-                ),
-                Path(main.__file__).read_text(encoding="utf-8"),
-            )
-        )
+        source = read_backend_source()
         html = main._render_map_runtime_page()
         route_source = source[
             source.index("@app.route(MAP_RUNTIME_PATH, methods=[\"GET\"])") :
@@ -126,13 +119,13 @@ class TestMapServerRuntime(unittest.TestCase):
         self.assertEqual(["provider notice"], result["notices"])
 
     def test_chrome_browser_context_ignores_https_errors_for_backend_map_runtime(self):
-        project_root = Path(main.__file__).resolve().parent
         source = "\n\n".join(
             (
-                (project_root / "background_task_manager.py").read_text(
-                    encoding="utf-8"
-                ),
-                Path(main.__file__).read_text(encoding="utf-8"),
+                (
+                    Path(main.__file__).resolve().parent
+                    / "background_task_manager.py"
+                ).read_text(encoding="utf-8"),
+                read_backend_source(),
             )
         )
         context_source = source[

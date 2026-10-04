@@ -1,12 +1,12 @@
 import unittest
 
 import main as main_module
+from tests.backend_source_utils import read_backend_source
 
 
 class TestAdminBillingSearchAndSummary(unittest.TestCase):
     def test_admin_billing_list_filters_by_keyword_and_returns_full_summary(self):
-        with open(main_module.__file__, "r", encoding="utf-8") as fp:
-            source = fp.read()
+        source = read_backend_source()
 
         route_anchor = '@app.route("/api/admin/billing/list", methods=["GET"])'
         start = source.index(route_anchor)
@@ -23,16 +23,14 @@ class TestAdminBillingSearchAndSummary(unittest.TestCase):
 
 class TestBillingLogs(unittest.TestCase):
     def test_admin_billing_logs_route_exists_and_accepts_keyword(self):
-        with open(main_module.__file__, "r", encoding="utf-8") as fp:
-            source = fp.read()
+        source = read_backend_source()
 
         self.assertIn('@app.route("/api/admin/billing/logs", methods=["GET"])', source)
         self.assertIn('keyword = request.args.get("keyword", "").strip()', source)
         self.assertIn('event_type = request.args.get("event_type", "").strip()', source)
 
     def test_billing_add_update_delete_write_billing_logs(self):
-        with open(main_module.__file__, "r", encoding="utf-8") as fp:
-            source = fp.read()
+        source = read_backend_source()
 
         self.assertIn('_write_billing_log(', source)
         self.assertIn('"billing_created"', source)
@@ -44,8 +42,7 @@ class TestBillingLogs(unittest.TestCase):
 
 class TestAdminUsersSearchAndLinks(unittest.TestCase):
     def test_admin_list_users_route_accepts_keyword(self):
-        with open(main_module.__file__, "r", encoding="utf-8") as fp:
-            source = fp.read()
+        source = read_backend_source()
 
         anchor = '@app.route("/auth/admin/list_users", methods=["GET"])'
         start = source.index(anchor)
@@ -57,8 +54,7 @@ class TestAdminUsersSearchAndLinks(unittest.TestCase):
         self.assertIn('school_accounts', route_source)
 
     def test_outstanding_link_route_exists_and_filters_by_student_number(self):
-        with open(main_module.__file__, "r", encoding="utf-8") as fp:
-            source = fp.read()
+        source = read_backend_source()
 
         self.assertIn('@app.route("/api/admin/school-account-linked-users", methods=["GET"])', source)
         self.assertIn('student_number = request.args.get("student_number", "").strip()', source)

@@ -1,6 +1,7 @@
 import unittest
 
 import main as main_module
+from tests.backend_source_utils import read_backend_source
 
 
 class TestDailyRestartConfigManagement(unittest.TestCase):
@@ -83,8 +84,7 @@ class TestDailyRestartConfigManagement(unittest.TestCase):
             )
 
     def test_admin_config_load_route_exposes_daily_restart_config(self):
-        with open(main_module.__file__, "r", encoding="utf-8") as fp:
-            source = fp.read()
+        source = read_backend_source()
 
         start = source.index('@app.route("/api/admin/config/load", methods=["GET"])')
         end = source.index('@app.route("/api/admin/config/save", methods=["POST"])', start)
@@ -93,8 +93,7 @@ class TestDailyRestartConfigManagement(unittest.TestCase):
         self.assertIn('"Daily_Restart": _get_daily_restart_config_view_data(config)', route_source)
 
     def test_admin_config_save_route_applies_daily_restart_updates(self):
-        with open(main_module.__file__, "r", encoding="utf-8") as fp:
-            source = fp.read()
+        source = read_backend_source()
 
         start = source.index('@app.route("/api/admin/config/save", methods=["POST"])')
         end = source.index('@app.route("/api/log_frontend", methods=["POST"])', start)

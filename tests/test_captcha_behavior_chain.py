@@ -4,10 +4,11 @@ from pathlib import Path
 from unittest import mock
 
 import main as main_module
+from tests.backend_source_utils import BACKEND_SOURCE
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 INDEX_PATH = PROJECT_ROOT / "index.html"
-MAIN_PATH = PROJECT_ROOT / "main.py"
+MAIN_PATH = BACKEND_SOURCE
 SCRIPT_SOURCE_PATHS = [
     PROJECT_ROOT / "scripts" / "legacy-payment.js",
     PROJECT_ROOT / "scripts" / "legacy-mobile-core.js",

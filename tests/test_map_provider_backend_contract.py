@@ -15,10 +15,12 @@ from flask import Flask
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 import main as main_module
+from tests.backend_source_utils import BACKEND_SOURCE
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MAIN_PATH = PROJECT_ROOT / "main.py"
+MAIN_ENTRY_PATH = PROJECT_ROOT / "main.py"
+MAIN_PATH = BACKEND_SOURCE
 API_RUNTIME_PATH = PROJECT_ROOT / "api_runtime.py"
 PAYMENT_CRYPTO_PATH = PROJECT_ROOT / "payment_crypto.py"
 DOCKER_ENTRYPOINT_PATH = PROJECT_ROOT / "docker" / "docker-entrypoint.sh"
@@ -100,7 +102,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
         return runtime_config
 
     def _route_helper_execute_js_source(self, helper_name):
-        source = MAIN_PATH.read_text(encoding="utf-8")
+        source = MAIN_ENTRY_PATH.read_text(encoding="utf-8")
         module = ast.parse(source)
         for node in ast.walk(module):
             if isinstance(node, ast.FunctionDef) and node.name == helper_name:

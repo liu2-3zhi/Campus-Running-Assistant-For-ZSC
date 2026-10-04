@@ -16,6 +16,9 @@ class _BackendSource:
                     encoding=encoding
                 ),
                 (PROJECT_ROOT / "main.py").read_text(encoding=encoding),
+                (PROJECT_ROOT / "web_server.py")
+                .read_text(encoding=encoding)
+                .replace("_main().", ""),
             )
         )
 

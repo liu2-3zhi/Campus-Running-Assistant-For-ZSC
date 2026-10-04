@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tests.backend_source_utils import read_backend_source
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -53,7 +54,7 @@ class TestMobileAdminPaymentLogsUi(unittest.TestCase):
         self.assertIn('url += `&action_type=${encodeURIComponent(actionType)}`;', source)
 
     def test_admin_payment_logs_route_accepts_action_type_query_parameter(self):
-        source = MAIN_PATH.read_text(encoding="utf-8")
+        source = read_backend_source()
 
         self.assertIn(
             'request.args.get("action_type", request.args.get("action", "")).strip()',

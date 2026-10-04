@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from tests.backend_source_utils import read_backend_source
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -7,7 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 class TestUiEntryModes(unittest.TestCase):
     def test_backend_registers_fixed_new_and_old_entries(self):
-        source = (PROJECT_ROOT / "main.py").read_text(encoding="utf-8")
+        source = read_backend_source()
         for route in (
             '@app.route("/frontend")',
             '@app.route("/frontend/")',

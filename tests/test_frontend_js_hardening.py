@@ -5,10 +5,11 @@ from unittest.mock import patch
 from flask import Flask
 
 import main
+from tests.backend_source_utils import BACKEND_SOURCE
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MAIN_PATH = PROJECT_ROOT / "main.py"
+MAIN_PATH = BACKEND_SOURCE
 
 
 class TestFrontendJavascriptHardening(unittest.TestCase):

@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from html.parser import HTMLParser
 from pathlib import Path
+from tests.backend_source_utils import read_backend_source
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -966,8 +967,7 @@ eval(cropRegistrationSource);
         self.assertIn('document.getElementById("auth-reg-sms-code")', source)
 
     def test_backend_normalizes_phone_and_sms_digits_before_validation(self):
-        main_path = PROJECT_ROOT / "main.py"
-        source = main_path.read_text(encoding="utf-8")
+        source = read_backend_source()
 
         self.assertIn("def _digits_only(value):", source)
         self.assertIn("def _normalize_phone(value):", source)
