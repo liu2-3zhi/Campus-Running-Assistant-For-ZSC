@@ -7,6 +7,16 @@ from unittest import mock
 import main
 
 
+def _read_backend_source():
+    project_root = Path(__file__).resolve().parents[1]
+    return "\n\n".join(
+        (
+            (project_root / "api_runtime.py").read_text(encoding="utf-8"),
+            (project_root / "main.py").read_text(encoding="utf-8"),
+        )
+    )
+
+
 class TestSharedSubmissionRetry(unittest.TestCase):
     def _new_api(self):
         api = object.__new__(main.Api)
@@ -60,9 +70,7 @@ class TestSharedSubmissionRetry(unittest.TestCase):
         self.assertEqual(1, api._submit_chunk.call_count)
 
     def test_single_and_multi_submission_loops_reuse_shared_retry(self):
-        source = (
-            Path(__file__).resolve().parents[1] / "main.py"
-        ).read_text(encoding="utf-8")
+        source = _read_backend_source()
         single_loop = source.split(
             "def _run_submission_thread(",
             1,

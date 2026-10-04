@@ -9,6 +9,16 @@ from unittest.mock import MagicMock, Mock, patch
 import main
 
 
+def _read_backend_source():
+    project_root = Path(__file__).resolve().parents[1]
+    return "\n\n".join(
+        (
+            (project_root / "api_runtime.py").read_text(encoding="utf-8"),
+            (project_root / "main.py").read_text(encoding="utf-8"),
+        )
+    )
+
+
 class _FakeRunInfoClient:
     def __init__(self, status):
         self._status = status
@@ -121,9 +131,7 @@ class TestMultiAccountExecutionParity(unittest.TestCase):
         self.assertEqual(["student-a", "student-b"], call_order)
 
     def test_multi_worker_uses_finalize_result_without_duplicate_settlement(self):
-        source = (
-            Path(__file__).resolve().parents[1] / "main.py"
-        ).read_text(encoding="utf-8")
+        source = _read_backend_source()
         worker_block = source.split(
             "def _multi_account_worker(",
             1,
@@ -138,9 +146,7 @@ class TestMultiAccountExecutionParity(unittest.TestCase):
         self.assertNotIn("run_data.status = 1", worker_block)
 
     def test_multi_worker_and_summary_use_shared_task_time_evaluator(self):
-        source = (
-            Path(__file__).resolve().parents[1] / "main.py"
-        ).read_text(encoding="utf-8")
+        source = _read_backend_source()
         worker_block = source.split(
             "def _multi_account_worker(",
             1,
@@ -162,9 +168,7 @@ class TestMultiAccountExecutionParity(unittest.TestCase):
         self.assertNotIn('strptime(\n                        r.start_time, "%Y-%m-%d %H:%M:%S"', summary_block)
 
     def test_multi_worker_persists_progress_and_tracks_distance(self):
-        source = (
-            Path(__file__).resolve().parents[1] / "main.py"
-        ).read_text(encoding="utf-8")
+        source = _read_backend_source()
         worker_block = source.split(
             "def _multi_account_worker(",
             1,

@@ -8,6 +8,16 @@ from unittest.mock import patch
 import main
 
 
+def _read_backend_source():
+    project_root = Path(__file__).resolve().parents[1]
+    return "\n\n".join(
+        (
+            (project_root / "api_runtime.py").read_text(encoding="utf-8"),
+            (project_root / "main.py").read_text(encoding="utf-8"),
+        )
+    )
+
+
 class TestMultiAccountGenderPayload(unittest.TestCase):
     def test_account_status_payload_includes_gender_for_expanded_filters(self):
         api = object.__new__(main.Api)
@@ -123,9 +133,7 @@ class TestMultiAccountGenderPayload(unittest.TestCase):
         self.assertEqual(3, backup_data["completed_count"])
 
     def test_multi_login_paths_share_profile_and_backup_helpers(self):
-        source = (Path(__file__).resolve().parents[1] / "main.py").read_text(
-            encoding="utf-8"
-        )
+        source = _read_backend_source()
         execution_block = source.split(
             "def _multi_account_worker(", 1
         )[1].split(

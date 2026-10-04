@@ -9,6 +9,9 @@ class _BackendSource:
     def read_text(self, encoding="utf-8"):
         return "\n\n".join(
             (
+                (PROJECT_ROOT / "api_runtime.py").read_text(
+                    encoding=encoding
+                ),
                 (PROJECT_ROOT / "background_task_manager.py").read_text(
                     encoding=encoding
                 ),

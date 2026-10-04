@@ -7,6 +7,19 @@ from types import SimpleNamespace
 import main as main_module
 
 
+def _read_backend_source():
+    project_root = Path(__file__).resolve().parents[1]
+    return "\n\n".join(
+        (
+            (project_root / "api_runtime.py").read_text(encoding="utf-8"),
+            (project_root / "background_task_manager.py").read_text(
+                encoding="utf-8"
+            ),
+            (project_root / "main.py").read_text(encoding="utf-8"),
+        )
+    )
+
+
 class FakeAccount:
     def __init__(self, username="account-1"):
         self.username = username
@@ -131,15 +144,7 @@ class TestMultiAccountWorkerGuard(unittest.TestCase):
         acc.account_operation_lock.release()
 
     def test_adding_school_account_does_not_claim_execution_slot(self):
-        project_root = Path(__file__).resolve().parents[1]
-        source = "\n\n".join(
-            (
-                (project_root / "background_task_manager.py").read_text(
-                    encoding="utf-8"
-                ),
-                (project_root / "main.py").read_text(encoding="utf-8"),
-            )
-        )
+        source = _read_backend_source()
         add_account_block = source.split(
             "def multi_add_account(",
             1,
@@ -154,15 +159,7 @@ class TestMultiAccountWorkerGuard(unittest.TestCase):
         )
 
     def test_all_task_execution_entrypoints_use_execution_claims(self):
-        project_root = Path(__file__).resolve().parents[1]
-        source = "\n\n".join(
-            (
-                (project_root / "background_task_manager.py").read_text(
-                    encoding="utf-8"
-                ),
-                (project_root / "main.py").read_text(encoding="utf-8"),
-            )
-        )
+        source = _read_backend_source()
         single_run_block = source.split(
             "def start_single_run(",
             1,
@@ -199,9 +196,7 @@ class TestMultiAccountWorkerGuard(unittest.TestCase):
         )
 
     def test_refresh_worker_pushes_user_facing_executable_task_status(self):
-        source = (
-            Path(__file__).resolve().parents[1] / "main.py"
-        ).read_text(encoding="utf-8")
+        source = _read_backend_source()
         refresh_block = source.split(
             "def _multi_refresh_worker_unlocked(",
             1,

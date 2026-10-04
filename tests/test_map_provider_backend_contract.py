@@ -19,6 +19,7 @@ import main as main_module
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MAIN_PATH = PROJECT_ROOT / "main.py"
+API_RUNTIME_PATH = PROJECT_ROOT / "api_runtime.py"
 PAYMENT_CRYPTO_PATH = PROJECT_ROOT / "payment_crypto.py"
 DOCKER_ENTRYPOINT_PATH = PROJECT_ROOT / "docker" / "docker-entrypoint.sh"
 
@@ -162,11 +163,15 @@ class TestMapProviderBackendContract(unittest.TestCase):
         self.assertIn('"coordinate_system": "bd09"', runtime_source)
 
     def test_backend_exposes_generic_map_provider_key_save_method(self):
-        source = MAIN_PATH.read_text(encoding="utf-8")
+        source = API_RUNTIME_PATH.read_text(encoding="utf-8")
+        main_source = MAIN_PATH.read_text(encoding="utf-8")
 
         self.assertIn('def save_map_provider_key(self, provider, api_key):', source)
-        self.assertIn('key_field = MAP_PROVIDER_KEY_FIELDS[provider]', source)
-        self.assertIn('"save_map_provider_key": "modify_params"', source)
+        self.assertIn(
+            'key_field = _main().MAP_PROVIDER_KEY_FIELDS[provider]',
+            source,
+        )
+        self.assertIn('"save_map_provider_key": "modify_params"', main_source)
 
     def test_tianditu_walking_falls_back_to_driving_with_explicit_notice(self):
         source = MAIN_PATH.read_text(encoding="utf-8")
@@ -190,7 +195,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
         self.assertIn('"map_provider_key_bundle": map_public_payload["map_provider_key_bundle"]', source)
 
     def test_initial_data_and_login_return_map_provider_contract(self):
-        source = MAIN_PATH.read_text(encoding="utf-8")
+        source = API_RUNTIME_PATH.read_text(encoding="utf-8")
 
         get_initial_data_source = source[
             source.index("    def get_initial_data("):
@@ -202,19 +207,22 @@ class TestMapProviderBackendContract(unittest.TestCase):
         ]
 
         self.assertIn(
-            'map_public_payload = _build_public_map_provider_frontend_payload(',
+            'map_public_payload = _main()._build_public_map_provider_frontend_payload(',
             get_initial_data_source,
         )
         self.assertIn('"map_provider": map_public_payload["map_provider"]', get_initial_data_source)
         self.assertIn('"map_providers": map_public_payload["map_providers"]', get_initial_data_source)
         self.assertIn('"map_provider_key_bundle": map_public_payload["map_provider_key_bundle"]', get_initial_data_source)
-        self.assertIn('login_map_payload = _build_public_map_provider_frontend_payload(', login_source)
+        self.assertIn(
+            'login_map_payload = _main()._build_public_map_provider_frontend_payload(',
+            login_source,
+        )
         self.assertIn('"map_provider": login_map_payload["map_provider"]', login_source)
         self.assertIn('"map_providers": login_map_payload["map_providers"]', login_source)
         self.assertIn('"map_provider_key_bundle": login_map_payload["map_provider_key_bundle"]', login_source)
 
     def test_initial_data_returns_running_background_task_status_for_provider_lock(self):
-        source = MAIN_PATH.read_text(encoding="utf-8")
+        source = API_RUNTIME_PATH.read_text(encoding="utf-8")
         get_initial_data_source = source[
             source.index("    def get_initial_data("):
             source.index("    def save_amap_key(", source.index("    def get_initial_data("))
