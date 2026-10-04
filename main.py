@@ -8,6 +8,7 @@ import ast
 import glob
 import math
 import tempfile
+import threading
 
 from flask import jsonify, make_response, request
 
@@ -154,6 +155,12 @@ from api_client import ApiClient
 from auth_system import AuthSystem, GUEST_SESSION_CREATION_LOCK
 from api_runtime import Api
 from web_server import start_web_server
+from theme_background_cache import (
+    _build_theme_background_image_url,
+    _ensure_random_background_cache_count,
+    _fetch_random_background_image,
+    _start_default_theme_background_cache_warmup,
+)
 
 from guest_token_store import GuestTokenStore
 from theme_background_state import (
@@ -199,6 +206,13 @@ class _NoopLock:
 
 
 MAX_MEMORY_SESSIONS = 100
+BACKGROUND_CACHE_TARGET_COUNT = 5
+_BACKGROUND_SELECTION_STATE = {}
+_BACKGROUND_SELECTION_LOCK = threading.Lock()
+_THEME_BACKGROUND_REFRESH_LOCK = threading.Lock()
+_THEME_BACKGROUND_REFRESH_IN_PROGRESS = False
+_THEME_BACKGROUND_WARMUP_LOCK = threading.Lock()
+_THEME_BACKGROUND_WARMUP_IN_PROGRESS = False
 
 # 支付订单状态常量（模块级，便于测试与工具函数复用）
 ORDER_STATUS_FAILED = "failed"

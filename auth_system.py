@@ -300,7 +300,7 @@ class AuthSystem:
             return {}
 
     def _build_theme_background_image_url(self, relative_path):
-        return _build_theme_background_image_url(relative_path)
+        return _main()._build_theme_background_image_url(relative_path)
 
     def _get_random_background_cache_limit_bytes(self):
         try:
@@ -427,10 +427,10 @@ class AuthSystem:
         return background_image_urls
 
     def _cleanup_random_background_cache(self, cache_dir, max_cache_size_bytes=None):
-        _cleanup_random_background_cache(cache_dir, max_cache_size_bytes)
+        _main()._cleanup_random_background_cache(cache_dir, max_cache_size_bytes)
 
     def _fetch_random_background_image(self, cache_dir, api_key, image_type):
-        return _fetch_random_background_image(cache_dir, api_key, image_type)
+        return _main()._fetch_random_background_image(cache_dir, api_key, image_type)
 
     def _ensure_background_cache_count(self, cache_dir, api_key, image_type, target_count=5):
         logging.info(f"[主题背景] 确保 {image_type} 背景缓存数量至少为 {target_count} 张...")
@@ -470,11 +470,11 @@ class AuthSystem:
             self._ensure_background_cache_count(cache_dir, api_key, image_type, target_count=_main().BACKGROUND_CACHE_TARGET_COUNT)
 
     def _refresh_default_theme_background_cache_async(self, image_types=None):
-        global _THEME_BACKGROUND_REFRESH_IN_PROGRESS
+        main_module = _main()
         with _main()._THEME_BACKGROUND_REFRESH_LOCK:
-            if _THEME_BACKGROUND_REFRESH_IN_PROGRESS:
+            if main_module._THEME_BACKGROUND_REFRESH_IN_PROGRESS:
                 return
-            _THEME_BACKGROUND_REFRESH_IN_PROGRESS = True
+            main_module._THEME_BACKGROUND_REFRESH_IN_PROGRESS = True
 
         normalized_image_types = []
         for image_type in (image_types or ["pc", "mb"]):
@@ -485,7 +485,6 @@ class AuthSystem:
             normalized_image_types = ["pc", "mb"]
 
         def _worker():
-            global _THEME_BACKGROUND_REFRESH_IN_PROGRESS
             try:
                 base_dir = os.path.dirname(os.path.abspath(__file__))
                 cache_dir = os.path.join(base_dir, _main().RANDOM_BACKGROUND_IMAGE_DIR)
@@ -506,8 +505,8 @@ class AuthSystem:
             except Exception as e:
                 logging.warning(f"[主题背景] 异步刷新背景缓存失败: {e}")
             finally:
-                with _main()._THEME_BACKGROUND_REFRESH_LOCK:
-                    _THEME_BACKGROUND_REFRESH_IN_PROGRESS = False
+                with main_module._THEME_BACKGROUND_REFRESH_LOCK:
+                    main_module._THEME_BACKGROUND_REFRESH_IN_PROGRESS = False
 
         threading.Thread(target=_worker, daemon=True).start()
 
