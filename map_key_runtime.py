@@ -6,9 +6,7 @@ import re
 import secrets
 
 
-def _main():
-    import main
-    return main
+from main_runtime import _main
 
 
 def _get_crypto_primitives():

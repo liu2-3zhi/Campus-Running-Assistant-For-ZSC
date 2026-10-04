@@ -7,9 +7,7 @@ import logging
 import os
 
 
-def _main():
-    import main
-    return main
+from main_runtime import _main
 
 
 def _load_auto_attendance_config():

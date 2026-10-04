@@ -84,6 +84,60 @@ class _FirstTagAttributeParser(HTMLParser):
 
 
 class TestAuthLoginUiRegressions(unittest.TestCase):
+    def test_legacy_app_bootstrap_runs_after_main_logging_is_defined(self):
+        app_runtime_source = (
+            PROJECT_ROOT / "scripts" / "legacy-app-runtime.js"
+        ).read_text(encoding="utf-8")
+        main_source = (PROJECT_ROOT / "scripts" / "main.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotRegex(
+            app_runtime_source,
+            re.compile(r"\ninitializeApp\(\)\.catch\("),
+        )
+        self.assertIn("function bootstrapLegacyApplication()", main_source)
+        self.assertRegex(
+            main_source,
+            re.compile(
+                r"function logMessage_Error\(\.\.\.args\)[\s\S]*"
+                r"bootstrapLegacyApplication\(\);"
+            ),
+        )
+
+    def test_register_nickname_fields_have_autocomplete(self):
+        html_source = INDEX_HTML_PATH.read_text(encoding="utf-8")
+
+        for input_id in ("auth-reg-nickname", "mobile-reg-nickname"):
+            pattern = re.compile(
+                rf'<input[^>]*id="{re.escape(input_id)}"[^>]*'
+                rf'autocomplete="nickname"',
+                re.DOTALL,
+            )
+            self.assertRegex(html_source, pattern)
+
+    def test_legacy_login_password_is_associated_with_a_form(self):
+        html_source = INDEX_HTML_PATH.read_text(encoding="utf-8")
+        password_match = re.search(
+            r'<input[^>]*id="password-entry"[^>]*>',
+            html_source,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(password_match)
+
+        prefix = html_source[: password_match.start()]
+        form_stack = []
+        for match in re.finditer(r"</?form\b[^>]*>", prefix, re.DOTALL):
+            if match.group(0).startswith("</"):
+                if form_stack:
+                    form_stack.pop()
+            else:
+                form_stack.append(match.group(0))
+        self.assertTrue(
+            form_stack,
+            "legacy password-entry input must be contained in a form",
+        )
+
     def test_pc_personal_info_contains_auth_username_field_and_binding(self):
         html_source = INDEX_HTML_PATH.read_text(encoding="utf-8")
         script_source = SCRIPT_PATH.read_text(encoding="utf-8")

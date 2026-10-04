@@ -7,9 +7,7 @@ import os
 import time
 
 
-def _main():
-    import main
-    return main
+from main_runtime import _main
 
 
 def _safe_get_config_for_health():

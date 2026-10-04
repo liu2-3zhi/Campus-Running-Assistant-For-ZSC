@@ -10,9 +10,7 @@ import threading
 import time
 
 
-def _main():
-    import main
-    return main
+from main_runtime import _main
 
 
 class TokenManager:

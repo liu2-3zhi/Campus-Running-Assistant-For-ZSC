@@ -10,9 +10,7 @@ _trusted_ip_networks_cache = None
 _trusted_ip_networks_cache_mtime = None
 
 
-def _main():
-    import main
-    return main
+from main_runtime import _main
 
 
 class _TrustedIpMatcher:

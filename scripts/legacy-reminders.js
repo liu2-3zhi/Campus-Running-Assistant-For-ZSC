@@ -1199,4 +1199,3 @@ async function checkAndShowReminders() {
     console.error("[定时提醒] 检查提醒时发生错误:", error);
   }
 }
-async

@@ -1,6 +1,9 @@
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 import main
+from main_runtime import _main
 
 
 class TestStartupSymbolBindings(unittest.TestCase):
@@ -15,6 +18,13 @@ class TestStartupSymbolBindings(unittest.TestCase):
         self.assertTrue(callable(main.MicroPixelCaptcha))
         self.assertTrue(callable(main.PlaywrightPageProxy))
         self.assertTrue(callable(main.PlaywrightContextProxy))
+
+    def test_runtime_resolution_survives_main_abspath_patch(self):
+        with patch(
+            "main.os.path.abspath",
+            return_value=str(Path(__file__).resolve().parents[1] / "main.py"),
+        ):
+            self.assertIs(_main(), main)
 
 
 if __name__ == "__main__":

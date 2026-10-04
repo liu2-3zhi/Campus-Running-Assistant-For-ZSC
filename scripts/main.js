@@ -28150,3 +28150,27 @@ async function restoreAccountAndRefreshMobile(auth_username) {
   const ok = await restoreAccount(auth_username);
   if (ok) await loadMobileMultiRemovedAccountsList();
 }
+
+function handleApplicationInitializationFailure(err) {
+  logMessage_Error("应用初始化失败:", err);
+  appInitialized = false;
+  if (cdnErrorCount > 0) {
+    if (cdnErrorTimer) clearTimeout(cdnErrorTimer);
+    const errorOverlay = document.getElementById("cdn-error-overlay");
+    if (errorOverlay) {
+      errorOverlay.style.setProperty("display", "flex", "important");
+    }
+  }
+}
+
+function bootstrapLegacyApplication() {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => {
+      initializeApp().catch(handleApplicationInitializationFailure);
+    });
+    return;
+  }
+  initializeApp().catch(handleApplicationInitializationFailure);
+}
+
+bootstrapLegacyApplication();

@@ -27,17 +27,99 @@ import threading
 import time
 import traceback
 import urllib
+import uuid
+
+import requests
+from flask import g, request
+
+from main_runtime import _main
 
 
-def _main():
-    import main
-    return main
+chrome_pool = None
+background_task_manager = None
+brute_force_manager = None
+web_sessions = {}
+web_sessions_lock = threading.Lock()
+session_file_locks = {}
+session_file_locks_lock = threading.Lock()
+session_activity = {}
+session_activity_lock = threading.Lock()
+args = None
+CDN_FILES = {}
+js_cache_storage = {}
+js_cache_lock = threading.Lock()
+js_cache_last_update = {}
+font_cache_storage = {}
+font_cache_lock = threading.Lock()
+source_map_storage = {}
+source_map_lock = threading.Lock()
+server_start_time = 0.0
+server_start_monotonic = 0.0
+cache = {}
+sms_verification_codes = {}
+sms_extended_once_keys = set()
+user_ban_cache = {}
+user_ban_cache_lock = threading.Lock()
+ip_ban_list_cache = None
+ip_ban_cache_lock = threading.Lock()
+IP_BAN_CACHE_TTL = 10
+ip_ban_cache_timestamp = 0
+socketio = None
+_midnight_runtime_reload_hook = None
+get_ip_location = None
+config = None
 
 
 def start_web_server(args_param):
     """
     启动Flask Web服务器主函数，集成SocketIO实时通信和Chrome浏览器自动化。
     """
+    global chrome_pool, background_task_manager, brute_force_manager
+    global web_sessions, web_sessions_lock, session_file_locks
+    global session_file_locks_lock, session_activity, session_activity_lock
+    global args, CDN_FILES, js_cache_storage, js_cache_lock
+    global js_cache_last_update, font_cache_storage, font_cache_lock
+    global source_map_storage, source_map_lock, server_start_time
+    global server_start_monotonic, cache, sms_verification_codes
+    global sms_extended_once_keys, user_ban_cache, user_ban_cache_lock
+    global ip_ban_list_cache, ip_ban_cache_lock, socketio
+    global _midnight_runtime_reload_hook, get_ip_location, config, requests
+
+    def _sync_runtime_state(include_ip_location=False):
+        runtime = _main()
+        runtime.chrome_pool = chrome_pool
+        runtime.background_task_manager = background_task_manager
+        runtime.brute_force_manager = brute_force_manager
+        runtime.web_sessions = web_sessions
+        runtime.web_sessions_lock = web_sessions_lock
+        runtime.session_file_locks = session_file_locks
+        runtime.session_file_locks_lock = session_file_locks_lock
+        runtime.session_activity = session_activity
+        runtime.session_activity_lock = session_activity_lock
+        runtime.args = args
+        runtime.CDN_FILES = CDN_FILES
+        runtime.js_cache_storage = js_cache_storage
+        runtime.js_cache_lock = js_cache_lock
+        runtime.js_cache_last_update = js_cache_last_update
+        runtime.font_cache_storage = font_cache_storage
+        runtime.font_cache_lock = font_cache_lock
+        runtime.source_map_storage = source_map_storage
+        runtime.source_map_lock = source_map_lock
+        runtime.server_start_time = server_start_time
+        runtime.server_start_monotonic = server_start_monotonic
+        runtime.cache = cache
+        runtime.sms_verification_codes = sms_verification_codes
+        runtime.sms_extended_once_keys = sms_extended_once_keys
+        runtime.user_ban_cache = user_ban_cache
+        runtime.user_ban_cache_lock = user_ban_cache_lock
+        runtime.ip_ban_list_cache = ip_ban_list_cache
+        runtime.ip_ban_cache_lock = ip_ban_cache_lock
+        runtime.socketio = socketio
+        runtime._midnight_runtime_reload_hook = _midnight_runtime_reload_hook
+        runtime.config = config
+        runtime.requests = requests
+        if include_ip_location:
+            runtime.get_ip_location = get_ip_location
     
     
     
@@ -2061,6 +2143,7 @@ def start_web_server(args_param):
         """
         使 IP 封禁列表缓存失效（用于添加/删除 IP 封禁后立即生效）
         """
+        global ip_ban_list_cache, ip_ban_cache_timestamp
         
         with ip_ban_cache_lock:
             ip_ban_list_cache = None
@@ -2376,6 +2459,7 @@ def start_web_server(args_param):
         """
         用户登录认证API端点。
         """
+        global config, sms_verification_codes
         
         # [修正] 使用 strict=False 允许重复项，optionxform=str 保持大小写敏感
         config = configparser.ConfigParser(strict=False)
@@ -4336,11 +4420,11 @@ def start_web_server(args_param):
             # 使用全局常量 MAX_USERNAME_LENGTH（定义在文件开头，值为200）
             if len(target_username) > _main().MAX_USERNAME_LENGTH:
                 logging.warning(
-                    f"[参数验证失败] username参数过长: {len(target_username)} > {MAX_USERNAME_LENGTH}"
+                    f"[参数验证失败] username参数过长: {len(target_username)} > {_main().MAX_USERNAME_LENGTH}"
                 )
                 return _main().jsonify({
                     "success": False,
-                    "message": f"用户名长度不能超过{MAX_USERNAME_LENGTH}个字符"
+                    "message": f"用户名长度不能超过{_main().MAX_USERNAME_LENGTH}个字符"
                 }), 400
 
             # 检查3：验证username格式，只允许字母、数字、下划线、连字符、点和@符号
@@ -4709,11 +4793,11 @@ def start_web_server(args_param):
             # 使用全局常量 MAX_USERNAME_LENGTH（定义在文件开头，值为200）
             if len(target_username) > _main().MAX_USERNAME_LENGTH:
                 logging.warning(
-                    f"[参数验证失败] username参数过长: {len(target_username)} > {MAX_USERNAME_LENGTH}"
+                    f"[参数验证失败] username参数过长: {len(target_username)} > {_main().MAX_USERNAME_LENGTH}"
                 )
                 return _main().jsonify({
                     "success": False,
-                    "message": f"用户名长度不能超过{MAX_USERNAME_LENGTH}个字符"
+                    "message": f"用户名长度不能超过{_main().MAX_USERNAME_LENGTH}个字符"
                 }), 400
 
             # 检查3：验证username格式，只允许字母、数字、下划线、连字符、点和@符号
@@ -5482,6 +5566,7 @@ def start_web_server(args_param):
         修改自己密码时，至少需要提供其中一种验证方式。
         管理员重置他人密码时，需要拥有reset_user_password权限。
         """
+        global sms_verification_codes
         # 从Flask的g对象中获取当前登录的用户名和用户组
         auth_username = _main().g.user
         api_instance = _main().g.api_instance
@@ -5627,6 +5712,7 @@ def start_web_server(args_param):
     @login_required
     def auth_user_request_account_cancellation():
         """用户申请账号注销（密码+短信验证码双重校验，默认24小时等待期）。"""
+        global sms_verification_codes
         auth_username = _main().g.user
         data = _main().request.get_json() or {}
         current_password = (data.get("current_password") or "").strip()
@@ -8576,6 +8662,7 @@ def start_web_server(args_param):
         - new_phone: 新的手机号码
         - sms_code: 发送到新手机号的短信验证码
         """
+        global sms_verification_codes
         try:
             # 读取系统配置文件
             config = configparser.ConfigParser(strict=False)
@@ -8904,7 +8991,6 @@ def start_web_server(args_param):
     def check_ip_ban(ip_address, scope="all"):
         """
         检查IP是否被封禁（带缓存，避免频繁文件 I/O）
-        
         参数:
             ip_address: 要检查的IP地址
             scope: 封禁范围 ("all" 或其他特定范围)
@@ -8912,6 +8998,7 @@ def start_web_server(args_param):
         返回:
             bool: True=已封禁, False=未封禁
         """
+        global ip_ban_list_cache, ip_ban_cache_timestamp
         
         
         current_time = time.time()
@@ -9293,6 +9380,7 @@ def start_web_server(args_param):
 
             try:
 
+                log_dir = _main().LOGIN_LOGS_DIR
                 os.makedirs(log_dir, exist_ok=True)
 
                 session_id = (
@@ -9539,7 +9627,7 @@ def start_web_server(args_param):
             if _main().save_ssl_config(current_config):
                 logging.info(
                     f"[SSL管理] {g.user} 更新SSL配置: "
-                    f"{_redact_sensitive_log_value(current_config)}"
+                    f"{_main()._redact_sensitive_log_value(current_config)}"
                 )
                 return _main().jsonify(
                     {
@@ -9652,7 +9740,7 @@ def start_web_server(args_param):
             if not os.path.exists(_main().CONFIG_FILE):
                 # 配置文件不存在，返回默认配置
                 logging.warning(
-                    f"[CDN配置] 配置文件 {CONFIG_FILE} 不存在，使用默认配置"
+                    f"[CDN配置] 配置文件 {_main().CONFIG_FILE} 不存在，使用默认配置"
                 )
                 return _main().jsonify(
                     {
@@ -9792,7 +9880,7 @@ def start_web_server(args_param):
             # 记录日志
             logging.info(
                 f"[CDN配置] {g.user} 更新CDN配置: "
-                f"{_redact_sensitive_log_value(saved_config)}"
+                f"{_main()._redact_sensitive_log_value(saved_config)}"
             )
 
             # 返回成功响应
@@ -9832,6 +9920,7 @@ def start_web_server(args_param):
         启动密码恢复任务
         需要系统管理权限（manage_system）
         """
+        global brute_force_manager
         try:
             # 细粒度权限检查：需要 'manage_system' 权限
             # manage_system 权限允许启动密码暴力破解任务
@@ -9895,6 +9984,7 @@ def start_web_server(args_param):
         停止密码恢复任务
         需要系统管理权限（manage_system）
         """
+        global brute_force_manager
         try:
             # 细粒度权限检查：需要 'manage_system' 权限
             # manage_system 权限允许停止密码暴力破解任务
@@ -9968,6 +10058,7 @@ def start_web_server(args_param):
         获取所有密码恢复任务的状态
         这是一个查询类接口，用于查看密码恢复任务的运行状态
         """
+        global brute_force_manager
         # 获取当前登录用户（由@login_required装饰器设置到g.user）
         auth_username = _main().g.user
 
@@ -10196,7 +10287,7 @@ def start_web_server(args_param):
                     </div>
                     <script>
                         // 立即跳转到指定页面
-                        window.location.href = {_encode_inline_script_json(jump_url)};
+                        window.location.href = {_main()._encode_inline_script_json(jump_url)};
                     </script>
                 </body>
                 </html>
@@ -13972,6 +14063,7 @@ def start_web_server(args_param):
         """
         验证高德地图API Key的有效性
         """
+        global requests
         # 声明使用全局 requests 变量
         # requests 已在 check_and_import_dependencies() 中导入
         
@@ -14866,7 +14958,7 @@ def start_web_server(args_param):
             # 记录调试信息：准备返回配置数据
             logging.debug(
                 f"[验证码配置] 准备返回配置数据: "
-                f"{_redact_sensitive_log_value(config_data)}"
+                f"{_main()._redact_sensitive_log_value(config_data)}"
             )
 
             # 返回成功响应
@@ -17000,7 +17092,7 @@ def start_web_server(args_param):
             # 记录日志：准备查询订单
             logging.info(
                 f"[易支付查询] 准备查询订单 - 参数: "
-                f"{_redact_sensitive_log_value(query_params)}"
+                f"{_main()._redact_sensitive_log_value(query_params)}"
             )
 
             # ========== 第4步：生成RSA签名 ==========
@@ -17016,7 +17108,7 @@ def start_web_server(args_param):
             # 记录日志：输出签名后的参数
             logging.debug(
                 f"[易支付查询] 签名后的参数: "
-                f"{_redact_sensitive_log_value(signed_params)}"
+                f"{_main()._redact_sensitive_log_value(signed_params)}"
             )
 
             # ========== 第5步：调用易支付查询API ==========
@@ -17236,7 +17328,7 @@ def start_web_server(args_param):
             # 记录日志：输出签名后的参数
             logging.debug(
                 f"[易支付订单列表] 签名后的参数: "
-                f"{_redact_sensitive_log_value(signed_params)}"
+                f"{_main()._redact_sensitive_log_value(signed_params)}"
             )
 
             # ========== 第5步：调用易支付订单列表API ==========
@@ -17795,7 +17887,7 @@ def start_web_server(args_param):
             # 记录日志：输出退款请求参数（不含签名）
             logging.info(
                 f"[退款请求] 退款参数（签名前）: "
-                f"{_redact_sensitive_log_value(refund_params)}"
+                f"{_main()._redact_sensitive_log_value(refund_params)}"
             )
 
             # ========== 第10步：生成签名 ==========
@@ -17814,7 +17906,7 @@ def start_web_server(args_param):
             # 记录日志：输出签名后的参数（包含sign和sign_type）
             logging.info(
                 f"[退款请求] 退款参数（签名后）: "
-                f"{_redact_sensitive_log_value(signed_params)}"
+                f"{_main()._redact_sensitive_log_value(signed_params)}"
             )
 
             # ========== 第11步：调用易支付退款API ==========
@@ -25408,7 +25500,7 @@ def start_web_server(args_param):
 
                 total_amount = round(single_run_cost * count, 2)
                 if not reason:
-                    reason = f"管理员补录：{_build_run_billing_reason(count, single_run_cost)}"
+                    reason = f"管理员补录：{_main()._build_run_billing_reason(count, single_run_cost)}"
 
             else:  # amount mode
                 try:
@@ -26109,7 +26201,7 @@ def start_web_server(args_param):
                             for session_id in sorted_sessions[:sessions_to_remove]:
                                 expired_sessions.append(session_id)
                         logging.warning(
-                            f"[会话清理] 内存会话数超过限制({MAX_MEMORY_SESSIONS})，额外清理了 {sessions_to_remove} 个最旧会话"
+                            f"[会话清理] 内存会话数超过限制({_main().MAX_MEMORY_SESSIONS})，额外清理了 {sessions_to_remove} 个最旧会话"
                         )
                 for session_id in expired_sessions:
                     try:
@@ -26133,7 +26225,7 @@ def start_web_server(args_param):
                 else:
                     with web_sessions_lock:
                         logging.debug(
-                            f"[会话清理] 当前内存会话数: {len(web_sessions)}/{MAX_MEMORY_SESSIONS}"
+                            f"[会话清理] 当前内存会话数: {len(web_sessions)}/{_main().MAX_MEMORY_SESSIONS}"
                         )
                 _main()._log_runtime_memory_diagnostics("cleanup_worker_interval")
             except Exception as e:
@@ -26145,6 +26237,7 @@ def start_web_server(args_param):
     logging.warning("[Eventlet 警告] 会话清理线程在 eventlet.monkey_patch 之后创建 - 可能导致 greenlet 冲突")
     cleanup_thread.start()
     logging.info(f"[线程创建] 会话清理线程已启动: {cleanup_thread.name} (id={cleanup_thread.ident})")
+    _sync_runtime_state()
     _main().start_midnight_runtime_maintenance_worker()
     logging.info("正在加载持久化会话...")
     _main().load_all_sessions(args)
@@ -26370,6 +26463,7 @@ def start_web_server(args_param):
     # 启动服务器
     # 根据SSL配置选择HTTP或HTTPS模式
     # ============================================================================
+    _sync_runtime_state(include_ip_location=True)
     server_url = f"http://{args.host}:{args.port}"
     print(f"\n{'='*60}")
     print(f"  跑步助手 Web 版本已启动")

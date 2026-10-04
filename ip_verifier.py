@@ -12,9 +12,7 @@ import urllib.parse
 import requests
 
 
-def _main():
-    import main
-    return main
+from main_runtime import _main
 
 
 def _cleanup_expired_payment_verify_probes(now_ts=None):

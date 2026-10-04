@@ -1851,6 +1851,7 @@
               id="auth-reg-nickname"
               class="input-field mt-1"
               placeholder="请输入昵称（可含中文）"
+              autocomplete="nickname"
             />
           </div>
 
@@ -2268,7 +2269,7 @@
               <p class="text-slate-500 text-sm">掌上莲峰跑步助手</p>
             </div>
 
-            <div class="space-y-5 w-full">
+            <form class="space-y-5 w-full" onsubmit="return false;">
               <div class="space-y-2">
                 <label
                   class="block text-sm font-bold leading-6 text-slate-700 flex items-center gap-2"
@@ -2354,7 +2355,7 @@
                   autocomplete="current-password"
                 />
               </div>
-            </div>
+            </form>
 
             <button
               id="login-button"
@@ -3919,6 +3920,7 @@
                   id="mobile-reg-nickname"
                   class="w-full"
                   placeholder="请输入昵称（可含中文）"
+                  autocomplete="nickname"
                 />
               </div>
 

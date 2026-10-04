@@ -193,6 +193,7 @@ from theme_background_legacy import (
 _import_failures = []
 _log_buffer = []
 _logging_exception_hooks_installed = False
+_SINGLE_INSTANCE_LOCK_HANDLE = None
 
 # 运行时在 main() 中从 product_name_generator.py 导入。
 # 这里先定义占位全局变量，便于启动校验测试对其进行 mock。
@@ -3601,6 +3602,8 @@ class CustomLogHandler(logging.FileHandler):
         """
         self.max_bytes = max_bytes
         self.base_filename = filename
+        self.rollover_failure_count = 0
+        self.rollover_retry_at = 0.0
         super().__init__(filename, mode, encoding)
 
     def emit(self, record):
@@ -3611,7 +3614,10 @@ class CustomLogHandler(logging.FileHandler):
 
             if self.stream and os.path.exists(self.baseFilename):
                 self.stream.flush()
-                if os.path.getsize(self.baseFilename) >= self.max_bytes:
+                if (
+                    os.path.getsize(self.baseFilename) >= self.max_bytes
+                    and time.monotonic() >= self.rollover_retry_at
+                ):
                     self.do_rollover()
 
             super().emit(record)
@@ -3668,9 +3674,23 @@ class CustomLogHandler(logging.FileHandler):
                 f"[日志轮转] {os.path.basename(self.baseFilename)} -> {os.path.basename(first_backup)}"
             )
         except Exception as e:
-            print(f"[日志轮转] 轮转主日志文件失败: {e}")
+            self.rollover_failure_count += 1
+            retry_delay_seconds = min(
+                60,
+                2 ** min(self.rollover_failure_count, 6),
+            )
+            self.rollover_retry_at = time.monotonic() + retry_delay_seconds
+            print(
+                f"[日志轮转] 轮转主日志文件失败: {e}；"
+                f"{retry_delay_seconds} 秒后重试"
+            )
+            self.stream = self._open()
+            return False
 
         self.stream = self._open()
+        self.rollover_failure_count = 0
+        self.rollover_retry_at = 0.0
+        return True
 
 
 def archive_old_logs():
@@ -9955,6 +9975,44 @@ def _build_main_arg_parser():
     return parser
 
 
+def _acquire_single_instance_lock(lock_path=None):
+    """Acquire a process-lifetime lock for this checkout."""
+    global _SINGLE_INSTANCE_LOCK_HANDLE
+
+    if _SINGLE_INSTANCE_LOCK_HANDLE is not None:
+        return True
+
+    target_path = lock_path or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "logs",
+        ".zx-slm-tool.lock",
+    )
+    target_dir = os.path.dirname(target_path)
+    if target_dir:
+        os.makedirs(target_dir, exist_ok=True)
+
+    lock_handle = open(target_path, "a+b")
+    try:
+        lock_handle.seek(0)
+        lock_handle.write(b"\0")
+        lock_handle.flush()
+        lock_handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(lock_handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock_handle.close()
+        return False
+
+    _SINGLE_INSTANCE_LOCK_HANDLE = lock_handle
+    return True
+
+
 
 def main():
     """主函数，启动Web服务器模式（已弃用桌面模式）"""
@@ -9963,6 +10021,13 @@ def main():
 
     if getattr(args, "daily_restart_helper", False):
         return _run_daily_restart_helper(args)
+
+    if not _acquire_single_instance_lock():
+        print(
+            "检测到当前目录已有跑步助手实例正在运行，"
+            "为避免日志和会话文件冲突，本次启动已取消。"
+        )
+        return 1
 
     # ========== 第1步：导入内置模块 ==========
     # ========== 第2步：初始化日志系统 ==========

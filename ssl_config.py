@@ -8,9 +8,7 @@ import ssl
 import cryptography
 
 
-def _main():
-    import main
-    return main
+from main_runtime import _main
 
 
 def load_ssl_config():

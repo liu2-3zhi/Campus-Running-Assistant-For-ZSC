@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 
-def _main():
-    import main
-    return main
+from main_runtime import _main
 
 
 def _decode_frontend_javascript_content(content):

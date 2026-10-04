@@ -7,9 +7,7 @@ import subprocess
 import sys
 
 
-def _main():
-    import main
-    return main
+from main_runtime import _main
 
 
 def _parse_daily_restart_time_string(time_value):

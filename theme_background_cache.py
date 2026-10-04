@@ -7,9 +7,7 @@ import os
 import threading
 
 
-def _main():
-    import main
-    return main
+from main_runtime import _main
 
 
 def _ensure_random_background_cache_count(
@@ -38,7 +36,6 @@ def _ensure_random_background_cache_count(
     if missing_count == 0:
         return
 
-    _main().Api(_main().args)
     for _ in range(missing_count):
         try:
             logging.info(f"[主题背景] 正在拉取新的 {image_type} 随机背景图以补足缓存...")

@@ -888,11 +888,24 @@ function updateSelectAllCheckboxState() {
   }
 }
 
-$("multi-account-list").addEventListener("change", (event) => {
-  if (event.target.classList.contains("account-checkbox")) {
-    updateSelectAllCheckboxState();
+function bindMultiAccountListChangeHandler() {
+  const container = document.getElementById("multi-account-list");
+  if (!container || container.dataset.changeHandlerBound === "true") {
+    return;
   }
-});
+  container.addEventListener("change", (event) => {
+    if (event.target.classList.contains("account-checkbox")) {
+      updateSelectAllCheckboxState();
+    }
+  });
+  container.dataset.changeHandlerBound = "true";
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bindMultiAccountListChangeHandler);
+} else {
+  bindMultiAccountListChangeHandler();
+}
 
 async function multi_removeAccount(username) {
   if (!username) return;

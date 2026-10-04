@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import os
+import queue
 import random
 import sys
 import threading
@@ -22,9 +23,7 @@ import uuid
 import warnings
 
 
-def _main():
-    import main
-    return main
+from main_runtime import _main
 
 
 class Api:
@@ -2339,7 +2338,7 @@ class Api:
                                     "last_activity": session_data.get(
                                         "last_accessed", 0
                                     ),
-                                    "is_current": sid == session_id,
+                                    "is_current": sid == current_session_id,
                                     "login_success": session_data.get(
                                         "login_success", False
                                     ),
@@ -6008,7 +6007,7 @@ class Api:
         # [安全修复] 限制username长度，防止DoS攻击
         if len(username) > _main().MAX_USERNAME_LENGTH:
             logging.error(
-                f"[安全] multi_add_account: username过长(>{MAX_USERNAME_LENGTH})")
+                f"[安全] multi_add_account: username过长(>{_main().MAX_USERNAME_LENGTH})")
             return {"success": False, "error": "用户名过长"}
 
         # [安全修复] 验证username格式，只允许安全字符
@@ -6025,7 +6024,7 @@ class Api:
                 return {"success": False, "error": "无效的密码"}
             if len(password) > _main().MAX_PASSWORD_LENGTH:
                 logging.error(
-                    f"[安全] multi_add_account: password过长(>{MAX_PASSWORD_LENGTH})")
+                    f"[安全] multi_add_account: password过长(>{_main().MAX_PASSWORD_LENGTH})")
                 return {"success": False, "error": "密码过长"}
 
         # [安全修复] 验证tag类型和长度
@@ -6034,7 +6033,7 @@ class Api:
                 tag = str(tag)
             if len(tag) > _main().MAX_TAG_LENGTH:
                 logging.error(
-                    f"[安全] multi_add_account: tag过长(>{MAX_TAG_LENGTH})")
+                    f"[安全] multi_add_account: tag过长(>{_main().MAX_TAG_LENGTH})")
                 return {"success": False, "error": "标签过长"}
 
         if username in self.accounts:
@@ -6044,7 +6043,7 @@ class Api:
                 # [安全修复] 限制params中的键值对数量，防止DoS攻击
                 if len(params) > _main().MAX_PARAMS_COUNT:
                     logging.error(
-                        f"[安全] multi_add_account: params包含过多键值对(>{MAX_PARAMS_COUNT})")
+                        f"[安全] multi_add_account: params包含过多键值对(>{_main().MAX_PARAMS_COUNT})")
                     return {"success": False, "error": "参数过多"}
                 for k, v in params.items():
                     if k in acc.params:
@@ -6315,7 +6314,7 @@ class Api:
 
     def multi_refresh_all_statuses(self):
         """(多线程)刷新所有账号的任务状态和统计信息"""
-        session_uuid = session.get("uuid", "unknown")
+        session_uuid = _main().session.get("uuid", "unknown")
         logging.info(
             f"[多账号自动刷新] 收到刷新请求，会话UUID: {session_uuid}, 当前账号数量: {len(self.accounts) if self.accounts else 0}"
         )
