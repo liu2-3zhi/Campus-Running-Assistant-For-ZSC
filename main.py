@@ -130,7 +130,13 @@ from ssl_config import (
     save_ssl_config,
     validate_ssl_certificate,
 )
-from background_task_manager import BackgroundTaskManager
+from background_task_manager import (
+    BackgroundTaskManager,
+    ChromeBrowserPool,
+    MicroPixelCaptcha,
+    PlaywrightContextProxy,
+    PlaywrightPageProxy,
+)
 from runtime_models import (
     AccountSession,
     RunData,

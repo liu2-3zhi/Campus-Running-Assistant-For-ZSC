@@ -5,6 +5,8 @@ import hashlib
 import json
 import logging
 import os
+import random
+import string
 import threading
 import time
 
@@ -966,9 +968,9 @@ class ChromeBrowserPool:
         # from eventlet import patcher
 
         # 获取原生的 threading 模块，用于创建真正的系统线程
-        self._native_threading = eventlet.patcher.original("threading")
+        self._native_threading = _main().eventlet.patcher.original("threading")
         # 获取原生的 queue 模块，用于线程间通信
-        self._native_queue = eventlet.patcher.original("queue")
+        self._native_queue = _main().eventlet.patcher.original("queue")
 
         # 创建请求队列：用于从 eventlet greenlet 发送操作请求到专用线程
         # 使用原生 queue.Queue 确保线程安全，且不受 eventlet 影响
@@ -1108,7 +1110,7 @@ class ChromeBrowserPool:
             logging.info("正在专用线程中初始化 Playwright...")
 
             # 启动 Playwright，这会返回一个 Playwright 实例
-            self._playwright = sync_playwright().start()
+            self._playwright = _main().sync_playwright().start()
 
             # 使用 Playwright 启动 Chromium 浏览器
             # --no-sandbox: 在 Docker/Linux 环境中必需

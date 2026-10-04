@@ -11,6 +11,10 @@ class TestStartupSymbolBindings(unittest.TestCase):
         self.assertTrue(callable(main._ensure_random_background_cache_count))
         self.assertTrue(callable(main._fetch_random_background_image))
         self.assertTrue(callable(main._build_theme_background_image_url))
+        self.assertTrue(callable(main.ChromeBrowserPool))
+        self.assertTrue(callable(main.MicroPixelCaptcha))
+        self.assertTrue(callable(main.PlaywrightPageProxy))
+        self.assertTrue(callable(main.PlaywrightContextProxy))
 
 
 if __name__ == "__main__":
