@@ -3483,6 +3483,8 @@ let isPathDrawing = false;
 let leftMouseDown = false;
 const $ = (id) => document.getElementById(id);
 
+// 高德运行路线分段缓存：{ lines, segments }，供就地着色更新复用
+let amapRouteProgressSegments = null;
 let multiAccountMap;
 let multiAccountMarkers = {};
 let multiAccountMarkerColors = {};
@@ -15829,6 +15831,7 @@ function clearMapOverlays() {
   removeSingleMapOverlay(polylines.run);
   removeSingleMapOverlay(polylines.history);
   polylines.draft = polylines.run = polylines.history = null;
+  amapRouteProgressSegments = null;
   removeSingleMapOverlay(markers);
   markers = [];
   if (runnerMarker) {
@@ -18586,12 +18589,83 @@ function drawAmapRunRoute(data) {
   if (lines.length === 0) return;
   polylines.run = lines;
   map.add(lines);
+  amapRouteProgressSegments = { lines, segments: drawableSegments };
 }
 
-function drawOnMap_signature() {
+/** 运行中就地更新分段着色（不整图重绘、不重新适配视野）。
+ *
+ * 返回 true 表示已就地更新完成，调用方不应再走整图重绘。
+ */
+function updateTaskProgressSegmentsInPlace(data) {
+  if (!data || !data.run_coords?.length || !hasActiveRouteProgress(data)) {
+    return false;
+  }
+  const provider = getActiveMapProvider();
+
+  if (provider === "amap") {
+    if (!AMapInstance || !map) return false;
+    const cached = amapRouteProgressSegments;
+    if (!cached || !Array.isArray(cached.lines) || cached.lines.length === 0) {
+      return false;
+    }
+    const route = normalizeRouteCoords(data.run_coords);
+    const segments = buildProviderRouteProgressSegmentsByProgress(route, data);
+    if (!Array.isArray(segments) || segments.length === 0) return false;
+    if (segments.length !== cached.lines.length) return false;
+    try {
+      segments.forEach((segment, index) => {
+        const line = cached.lines[index];
+        if (!line) return;
+        const styleId = segment.styleId || "route";
+        const segmentCoords = normalizeRouteCoords(segment.coords);
+        const options = {
+          strokeColor: resolveProviderRouteSegmentColor(styleId, "#ef4444", {}),
+          strokeWeight: styleId === "completed" ? 4 : 5,
+          zIndex: styleId === "current" ? 55 : 50,
+        };
+        if (typeof line.setOptions === "function") line.setOptions(options);
+        if (typeof line.setPath === "function") {
+          line.setPath(
+            segmentCoords.map((p) => new AMapInstance.LngLat(p.lng, p.lat)),
+          );
+        }
+      });
+    } catch (e) {
+      logMessage_Warning("[地图] 就地更新高德分段失败:", e);
+      return false;
+    }
+    cached.segments = segments;
+    return true;
+  }
+
+  if (typeof updateProviderRouteProgressSegmentsInPlace !== "function") {
+    return false;
+  }
+  let updated = false;
+  getSingleProviderMapContainerIds().forEach((containerId) => {
+    if (updateProviderRouteProgressSegmentsInPlace(containerId, data)) {
+      updated = true;
+    }
+  });
+  return updated;
+}
+
+function drawOnMap_signature(options = {}) {
+  const data = currentRunData;
+  if (!data) return;
+
+  // 运行中进度推进：只就地更新分段折线颜色/几何，
+  // 不重建覆盖物、不重新适配视野（否则地图会在每次 GPS 更新时复位）
+  if (
+    options.resetView === false &&
+    data.run_coords?.length > 1 &&
+    typeof updateTaskProgressSegmentsInPlace === "function" &&
+    updateTaskProgressSegmentsInPlace(data)
+  ) {
+    return;
+  }
+
   if (getActiveMapProvider() !== "amap") {
-    const data = currentRunData;
-    if (!data) return;
     getSingleProviderMapContainerIds().forEach((containerId) => {
       drawProviderTaskOnMap(containerId, data);
     });
@@ -18600,8 +18674,6 @@ function drawOnMap_signature() {
   if (!AMapInstance) return;
   if (!map) return;
   clearMapOverlays();
-  const data = currentRunData;
-  if (!data) return;
 
   if (data.recommended_coords?.length > 0) {
     let segment = [];
@@ -18649,7 +18721,12 @@ function drawOnMap_signature() {
     drawAmapRunRoute(data);
   }
   drawMarkers();
-  resetMapView();
+  // 只有在调用方明确要求时才复位视野。
+  // 历史实现在这里无条件 resetMapView()，而 updateRunnerPosition 每次 GPS
+  // 更新都会调用本函数，导致地图被反复复位（用户无法缩放/拖动）。
+  if (options.resetView !== false) {
+    resetMapView();
+  }
 }
 
 function drawOnMap() {
@@ -19684,11 +19761,12 @@ function updateRunnerPosition(
     const nextProgressIndex = currentRunData
       ? resolveRouteProgressIndex(currentRunData, currentRunData.run_coords || [])
       : previousProgressIndex;
-    const shouldRedrawProviderMarkers =
-      !!currentRunData &&
-      (!wasVisualActive ||
-        currentRunData.target_sequence !== jsTargetSequence ||
-        previousProgressIndex !== nextProgressIndex);
+    // 进度推进时只做「就地着色」：不清空覆盖物、不重新适配视野。
+    // 历史实现每前进一个点都会整图重绘并 resetMapView()，导致地图反复复位。
+    const progressAdvanced = previousProgressIndex !== nextProgressIndex;
+    const structuralChange =
+      !wasVisualActive ||
+      (!!currentRunData && currentRunData.target_sequence !== jsTargetSequence);
     if (currentRunData) {
       currentRunData.distance_covered_m = distance || 0;
       currentRunData.target_sequence = jsTargetSequence;
@@ -19696,8 +19774,12 @@ function updateRunnerPosition(
     if (getActiveMapProvider() !== "amap" && !getProviderMapInstance("map-container")) {
       initProviderMap("map-container", false);
     }
-    if (shouldRedrawProviderMarkers) {
+    if (structuralChange) {
+      // 打卡点推进/首次进入运行态：重建标记与分段（此时允许重新适配视野）
       drawOnMap_signature();
+    } else if (progressAdvanced) {
+      // 仅灰/蓝分界点移动：就地更新颜色，保持当前视野
+      drawOnMap_signature({ resetView: false });
     }
     const providerContainerIds = getSingleProviderMapContainerIds();
     providerContainerIds.forEach((containerId) => {
@@ -19751,16 +19833,19 @@ function updateRunnerPosition(
   const nextProgressIndex = currentRunData
     ? resolveRouteProgressIndex(currentRunData, currentRunData.run_coords || [])
     : previousProgressIndex;
-  const shouldRedrawMap =
-    !!currentRunData &&
-    (!wasVisualActive ||
-      currentRunData.target_sequence !== jsTargetSequence ||
-      previousProgressIndex !== nextProgressIndex);
+  const progressAdvanced = previousProgressIndex !== nextProgressIndex;
+  const structuralChange =
+    !wasVisualActive ||
+    (!!currentRunData && currentRunData.target_sequence !== jsTargetSequence);
   if (currentRunData) {
     currentRunData.target_sequence = jsTargetSequence;
   }
-  if (shouldRedrawMap) {
+  if (structuralChange) {
+    // 打卡点推进/首次进入运行态：重建标记与分段（允许重新适配视野）
     drawOnMap_signature();
+  } else if (progressAdvanced) {
+    // 仅灰/蓝分界点移动：就地更新颜色，保持当前视野
+    drawOnMap_signature({ resetView: false });
   }
   ensureRunnerMarker();
   const pos = new AMapInstance.LngLat(lon, lat);

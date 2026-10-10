@@ -603,6 +603,10 @@ function clearProviderMapOverlays(containerId, options = {}) {
   });
   providerMapOverlays[containerId] = [];
   providerMapLastFitCoords[containerId] = [];
+  // 分段折线已被移除，缓存必须失效，否则就地更新会操作已下图的覆盖物
+  if (typeof forgetProviderRouteSegmentOverlays === "function") {
+    forgetProviderRouteSegmentOverlays(containerId);
+  }
   if (options.clearRunnerMarkers === true) {
     clearProviderRunnerMarkers(containerId);
   }

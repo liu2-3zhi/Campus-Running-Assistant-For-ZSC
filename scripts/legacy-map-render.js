@@ -5,6 +5,11 @@ const MAP_COORD_X_PI = Math.PI * 3000.0 / 180.0;
 const MAP_COORD_A = 6378245.0;
 const MAP_COORD_EE = 0.00669342162296594323;
 
+// 运行路线分段折线缓存：{ containerId: { signature, lines: [...] } }
+// 用途：进度推进时只更新分段几何/颜色，不重建覆盖物、不重新 fitView，
+// 避免地图在每次 GPS 点更新时被复位。
+const providerRouteSegmentOverlays = {};
+
 function isCoordinateOutOfChina(lng, lat) {
   return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
 }
@@ -795,7 +800,16 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
           });
         }
       }
-      fitProviderMapToCoordinates(containerId, providerCoords, fitOverlay);
+      // 记住分段折线，供运行中就地更新颜色（不再整图重绘）
+      rememberProviderRouteSegmentOverlays(
+        containerId,
+        Array.isArray(line) ? line : [],
+        routeSegments,
+      );
+      // preserveView：进度推进时不要重新适配视野，避免地图被复位
+      if (options.preserveView !== true) {
+        fitProviderMapToCoordinates(containerId, providerCoords, fitOverlay);
+      }
     }
     return line;
   } catch (e) {
@@ -1200,15 +1214,18 @@ function drawProviderTaskOnMap(containerId, data) {
       ? data.draft_coords
       : data.recommended_coords || [];
   if (routeCoords.length > 0) {
+    const activeProgress = !!(data.run_coords?.length && hasActiveRouteProgress(data));
     drawProviderRouteOnMap(containerId, routeCoords, {
       strokeColor: data.run_coords?.length ? "#ef4444" : "#10b981",
       strokeWeight: data.run_coords?.length ? 5 : 4,
       strokeStyle: data.run_coords?.length ? "dashed" : "solid",
       showEndpoints: false,
-      routeSegments:
-        data.run_coords?.length && hasActiveRouteProgress(data)
-          ? buildProviderRouteProgressSegmentsByProgress(routeCoords, data)
-          : null,
+      // 运行中（进度着色）不要重新适配视野：用户的手动缩放/拖动应被保留，
+      // 需要自动回正时由 scheduleTaskMapAutoResetAfterUserInteraction 统一处理
+      preserveView: activeProgress,
+      routeSegments: activeProgress
+        ? buildProviderRouteProgressSegmentsByProgress(routeCoords, data)
+        : null,
     });
   } else {
     clearProviderMapOverlays(containerId);
@@ -1259,4 +1276,105 @@ function drawProviderTaskOnMap(containerId, data) {
       }
     });
   }
+}
+
+/**
+ * 运行中只更新分段折线（灰/蓝/红边界），不重建覆盖物、不重新 fitView。
+ *
+ * 返回 true 表示「已就地更新完成，调用方不应再走整图重绘」。
+ *
+ * 为什么需要：进度推进时灰/蓝分界点每次 GPS 更新都会变化，如果为此调用
+ * drawOnMap_signature()，会清空并重建全部覆盖物并重新适配视野，
+ * 导致用户的手动缩放/拖动被反复复位。
+ */
+function updateProviderRouteProgressSegmentsInPlace(containerId, data) {
+  if (!data || !Array.isArray(data.run_coords) || data.run_coords.length < 2) {
+    return false;
+  }
+  const cached = providerRouteSegmentOverlays[containerId];
+  if (!cached || !Array.isArray(cached.lines) || cached.lines.length === 0) {
+    return false;
+  }
+  if (!hasActiveRouteProgress(data)) {
+    return false;
+  }
+
+  const provider = providerMapInstanceProviders[containerId] || getActiveMapProvider();
+  const route = normalizeRouteCoords(data.run_coords);
+  const segments = buildProviderRouteProgressSegmentsByProgress(route, data);
+  if (!Array.isArray(segments) || segments.length === 0) {
+    return false;
+  }
+  const signature = segments
+    .map((segment) => `${segment.styleId}:${segment.coords.length}`)
+    .join("|");
+  const color = "#ef4444";
+
+  try {
+    if (provider === "amap" || provider === "tianditu" || provider === "baidu") {
+      if (segments.length !== cached.lines.length) {
+        return false;
+      }
+      segments.forEach((segment, index) => {
+        const line = cached.lines[index];
+        if (!line) return;
+        const segmentColor = resolveProviderRouteSegmentColor(
+          segment.styleId,
+          color,
+          {},
+        );
+        if (typeof line.setPath === "function") {
+          line.setPath(
+            segment.coords.map((coord) =>
+              provider === "baidu"
+                ? new BMapGL.Point(coord.lng, coord.lat)
+                : provider === "tianditu"
+                  ? new T.LngLat(coord.lng, coord.lat)
+                  : new AMapInstance.LngLat(coord.lng, coord.lat),
+            ),
+          );
+        }
+        if (typeof line.setOptions === "function") {
+          line.setOptions({ strokeColor: segmentColor, color: segmentColor });
+        }
+      });
+    } else if (provider === "tencent" && window.TMap) {
+      if (typeof cached.lines.setGeometries !== "function") {
+        return false;
+      }
+      cached.lines.setGeometries(
+        segments.map((segment, index) => ({
+          id: `route-seg-${index}`,
+          styleId: segment.styleId || "route",
+          paths: segment.coords.map((coord) => new TMap.LatLng(coord.lat, coord.lng)),
+        })),
+      );
+    } else {
+      return false;
+    }
+  } catch (e) {
+    logMessage_Warning(`[地图] 就地更新${getMapProviderDisplayName(provider)}分段失败:`, e);
+    return false;
+  }
+
+  cached.signature = signature;
+  return true;
+}
+
+/** 记录分段折线对象，供 updateProviderRouteProgressSegmentsInPlace 复用。 */
+function rememberProviderRouteSegmentOverlays(containerId, lines, segments) {
+  if (!Array.isArray(lines) || lines.length === 0) {
+    delete providerRouteSegmentOverlays[containerId];
+    return;
+  }
+  providerRouteSegmentOverlays[containerId] = {
+    lines,
+    signature: (segments || [])
+      .map((segment) => `${segment.styleId}:${segment.coords.length}`)
+      .join("|"),
+  };
+}
+
+function forgetProviderRouteSegmentOverlays(containerId) {
+  delete providerRouteSegmentOverlays[containerId];
 }
