@@ -2138,6 +2138,11 @@ let _requirePaymentForOverdueCache = {
 };
 
 async function _isPaymentRequiredForOverdueCheck() {
+  // 离线导入的任务不涉及真实账号与计费：既不查欠费也不产生支付订单
+  if (typeof IS_OFFLINE !== "undefined" && IS_OFFLINE) {
+    console.log("[欠费检查] 当前为离线测试模式，跳过欠费检查。");
+    return false;
+  }
   const now = Date.now();
   if (
     _requirePaymentForOverdueCache.value !== null &&

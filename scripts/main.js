@@ -18558,7 +18558,7 @@ function drawAmapRunRoute(data) {
   const runCoords = normalizeRouteCoords(data?.run_coords || []);
   if (runCoords.length < 2) return;
   const routeSegments = hasActiveRouteProgress(data)
-    ? buildProviderRouteProgressSegments(runCoords, data)
+    ? buildProviderRouteProgressSegmentsByProgress(runCoords, data)
     : null;
   const drawableSegments = Array.isArray(routeSegments) && routeSegments.length > 0
     ? routeSegments
@@ -18570,24 +18570,22 @@ function drawAmapRunRoute(data) {
     .map((segment) => {
       const segmentCoords = normalizeRouteCoords(segment.coords);
       if (segmentCoords.length < 2) return null;
+      const styleId = segment.styleId || "route";
       return new AMapInstance.Polyline({
         path: segmentCoords.map((p) => new AMapInstance.LngLat(p.lng, p.lat)),
-        strokeColor: resolveProviderRouteSegmentColor(
-          segment.styleId || "route",
-          "#ef4444",
-          {},
-        ),
-        strokeWeight: segment.styleId === "completed" ? 4 : 5,
+        // 与其它供应商一致：灰=已跑、蓝=正在走、红=待执行
+        strokeColor: resolveProviderRouteSegmentColor(styleId, "#ef4444", {}),
+        strokeWeight: styleId === "completed" ? 4 : 5,
         strokeStyle: "dashed",
         lineCap: "round",
         strokeOpacity: 0.85,
-        zIndex: segment.styleId === "current" ? 55 : 50,
+        zIndex: styleId === "current" ? 55 : 50,
       });
     })
     .filter(Boolean);
   if (lines.length === 0) return;
-  polylines.run = routeSegments ? lines : lines[0];
-  map.add(Array.isArray(polylines.run) ? polylines.run : [polylines.run]);
+  polylines.run = lines;
+  map.add(lines);
 }
 
 function drawOnMap_signature() {

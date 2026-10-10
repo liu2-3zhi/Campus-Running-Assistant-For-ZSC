@@ -1571,12 +1571,20 @@ globalThis.fetch = async (url, options) => {
     def test_provider_route_helpers_queue_segment_requests_for_rate_limits(self):
         expected_snippets = [
             "api_queue_interval_s ??0.1",
+            "const qpsLimit = Math.max(1, Number(pythonParams.api_qps_limit ?? 4) || 4)",
+            "const qpsIntervalMs = Math.ceil(1000 / qpsLimit)",
             "const maxFailedWaves =2",
             "let consecutiveFailedWaves =0",
             "const pendingIndexes = Array.from",
-            "await sleep(queueIntervalMs * order)",
+            # 节流：排队间隔与每秒请求上限共同决定最小间隔，避免并发触发限流
+            "await sleep(Math.max(queueIntervalMs * order, qpsIntervalMs * order))",
             "Promise.all(waveIndexes.map",
             "waveSuccessCount ===0",
+            # 限流不计入失败波次、不消耗重试预算
+            "let waveRateLimited = 0",
+            "const segmentAttempts = Array(segmentCount).fill(0)",
+            "segmentAttempts[segmentIndex] += 1",
+            "segmentAttempts[segmentIndex] < maxRetries + 1",
             "consecutiveFailedWaves >= maxFailedWaves",
             "pendingIndexes.length >0",
         ]
@@ -1591,6 +1599,22 @@ globalThis.fetch = async (url, options) => {
                 js_source = self._route_helper_execute_js_source(helper_name)
                 for snippet in expected_snippets:
                     self.assertIn(snippet, js_source)
+
+    def test_provider_route_helpers_tolerate_rate_limited_responses(self):
+        """限流响应缺少 routes[0]，必须被判为可重试而不是抛异常终止整段规划。"""
+        for helper_name in [
+            "_plan_route_path_with_amap_runtime",
+            "_plan_route_path_with_tencent_runtime",
+            "_plan_route_path_with_tianditu_runtime",
+            "_plan_route_path_with_baidu_runtime",
+        ]:
+            with self.subTest(helper=helper_name):
+                js_source = self._route_helper_execute_js_source(helper_name)
+                # 必须能识别限流、并把限流结果标记为 rateLimited（供 wave 循环区别对待）
+                self.assertIn("isRateLimited", js_source)
+                self.assertIn("rateLimited", js_source)
+                # 必须存在退避重试（指数退避：400 * Math.pow(2, ...)）
+                self.assertIn("400 * Math.pow(2,", js_source)
 
     def test_provider_runtime_completes_snapped_route_endpoints_for_baidu_and_tianditu(self):
         waypoints = [

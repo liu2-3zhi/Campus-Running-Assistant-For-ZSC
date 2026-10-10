@@ -26,6 +26,68 @@ import warnings
 from main_runtime import _main
 
 
+# ===================== 折返路径规划：路段缓存 =====================
+# 折返点探测会针对「折返点 -> 打卡点」「打卡点 -> 最后一个打卡点」反复规划同一条腿，
+# 同一任务的不同轮次、以及重复生成路线时都会命中，因此做进程内缓存。
+DETOUR_LEG_CACHE_LIMIT = 256
+_DETOUR_LEG_CACHE: "collections.OrderedDict[tuple, list]" = collections.OrderedDict()
+
+
+def _detour_leg_cache_key(provider, start, end):
+    return (
+        str(provider or ""),
+        round(float(start[0]), 6),
+        round(float(start[1]), 6),
+        round(float(end[0]), 6),
+        round(float(end[1]), 6),
+    )
+
+
+def _detour_leg_cache_get(provider, start, end):
+    key = _detour_leg_cache_key(provider, start, end)
+    cached = _DETOUR_LEG_CACHE.get(key)
+    if cached is None:
+        return None
+    _DETOUR_LEG_CACHE.move_to_end(key)
+    return [tuple(point) for point in cached]
+
+
+def _detour_leg_cache_put(provider, start, end, geometry):
+    if not geometry or len(geometry) < 2:
+        return
+    key = _detour_leg_cache_key(provider, start, end)
+    _DETOUR_LEG_CACHE[key] = [tuple(point) for point in geometry]
+    _DETOUR_LEG_CACHE.move_to_end(key)
+    while len(_DETOUR_LEG_CACHE) > DETOUR_LEG_CACHE_LIMIT:
+        _DETOUR_LEG_CACHE.popitem(last=False)
+
+
+def _detour_dedupe_points(points):
+    """按顺序归一化并去重相邻重复点，保留原始顺序。
+
+    兼容 ``(lng, lat)`` 元组/列表与 ``{"lng": .., "lat": ..}`` 字典。
+    """
+    deduped = []
+    for point in points or []:
+        try:
+            if isinstance(point, dict):
+                lng = float(point.get("lng", point.get("lon")))
+                lat = float(point.get("lat"))
+            elif isinstance(point, (list, tuple)) and len(point) >= 2:
+                lng = float(point[0])
+                lat = float(point[1])
+            else:
+                continue
+        except (TypeError, ValueError):
+            continue
+        if not (math.isfinite(lng) and math.isfinite(lat)):
+            continue
+        coord = (lng, lat)
+        if not deduped or deduped[-1] != coord:
+            deduped.append(coord)
+    return deduped
+
+
 class Api:
     """此类的方法会暴露给WebView前端的JavaScript调用"""
 
@@ -143,6 +205,8 @@ class Api:
             "api_retries": 2,
             "api_retry_delay_s": 0.5,
             "api_queue_interval_s": 0.1,
+            "api_qps_limit": 4,
+            "detour_max_overrun_ratio": 1.15,
             "ignore_task_time": True,
             "theme_base_color": "#7dd3fc",
             "theme_style": "default",
@@ -1287,6 +1351,12 @@ class Api:
             # 步骤0：检查付费控制配置
             # 从配置文件中读取 require_payment（是否需要付费）和 single_run_cost（单次费用）
             # 如果不需要付费或价格为0/负数，则跳过所有付费相关逻辑（不扣除次数、不产生欠费）
+            if getattr(self, "is_offline_mode", False):
+                logging.info(
+                    f"[付费控制] 离线测试模式，跳过次数扣除与欠费记录。"
+                    f"(认证用户: {auth_username}, 学校账号: {school_username})"
+                )
+                return
             config = configparser.ConfigParser(strict=False)
             config = _main()._read_config_ini(_main().CONFIG_JSON_FILE) or _main()._get_default_config()
             # 读取 require_payment 配置项，默认值为 true（需要付费）
@@ -3082,7 +3152,14 @@ class Api:
         return "active"
 
     def _payment_required_for_overdue_gate(self):
-        """Return whether overdue bills should block task execution."""
+        """Return whether overdue bills should block task execution.
+
+        离线导入的任务（``is_offline_mode``）不涉及真实账号与计费，
+        因此既不查欠费也不产生支付订单。
+        """
+        if getattr(self, "is_offline_mode", False):
+            logging.info("[欠费检查] 当前为离线测试模式，跳过欠费拦截。")
+            return False
         try:
             config = _main()._read_config_ini()
             if config is None:
@@ -4338,8 +4415,820 @@ class Api:
         )
         return False
 
+    # ===================== 折返补距：真实道路网络随机折返 =====================
+    DETOUR_PROBE_LIMIT = 6
+    DETOUR_MAX_ROUNDS = 12
+    DETOUR_MIN_LEG_DISTANCE_M = 20.0
+    DETOUR_FALLBACK_MIN_BACK_M = 100.0
+    # 拼接允许的最大缝隙：超过即视为会形成直线跳点而拒绝拼接
+    DETOUR_MAX_SEAM_M = 45.0
+
+    @staticmethod
+    def _route_leg_is_rate_limited(path_result):
+        text = str((path_result or {}).get("error") or "")
+        return "上限" in text or "限流" in text or "too many" in text.lower()
+
+    def _plan_detour_leg(
+        self,
+        start,
+        end,
+        *,
+        session_id=None,
+        python_params=None,
+        app_base_url=None,
+        guard_label="RouteDetour",
+        log_func=None,
+    ):
+        """规划一段折返腿（真实道路网络），带进程内缓存。
+
+        返回 {"geometry": [(lng, lat), ...], "distance_m": float, "provider": str} 或 None。
+        """
+        if session_id is None:
+            return None
+        start_coord = (float(start[0]), float(start[1]))
+        end_coord = (float(end[0]), float(end[1]))
+        if start_coord == end_coord:
+            return {"geometry": [start_coord], "distance_m": 0.0, "provider": None}
+
+        try:
+            provider = _main()._get_active_map_provider()
+        except Exception:  # nosec B110 - 供应商探测失败不阻断主流程
+            provider = None
+
+        cached = _detour_leg_cache_get(provider, start_coord, end_coord)
+        if cached is not None:
+            total = 0.0
+            for i in range(len(cached) - 1):
+                total += self._calculate_distance_m(
+                    cached[i][0], cached[i][1], cached[i + 1][0], cached[i + 1][1]
+                )
+            return {
+                "geometry": cached,
+                "distance_m": total,
+                "provider": provider,
+                "cached": True,
+            }
+
+        try:
+            result = _main()._plan_route_path_with_provider_runtime(
+                session_id,
+                [list(start_coord), list(end_coord)],
+                python_params=python_params,
+                guard_label=guard_label,
+                app_base_url=app_base_url,
+            )
+        except Exception as e:  # noqa: BLE001 - 折返腿失败必须降级而不是中断
+            logging.warning(f"[折返规划] 路段规划异常: {e}")
+            return None
+
+        if not isinstance(result, dict) or "path" not in result:
+            if self._route_leg_is_rate_limited(result):
+                logging.warning(
+                    "[折返规划] 路段规划被限流: "
+                    f"{result.get('error') if isinstance(result, dict) else result}"
+                )
+            else:
+                logging.debug(
+                    "[折返规划] 路段规划失败: "
+                    f"{result.get('error') if isinstance(result, dict) else result}"
+                )
+            return None
+
+        geometry = _detour_dedupe_points(result.get("path") or [])
+        if len(geometry) < 2:
+            return None
+
+        total = 0.0
+        for i in range(len(geometry) - 1):
+            total += self._calculate_distance_m(
+                geometry[i][0], geometry[i][1], geometry[i + 1][0], geometry[i + 1][1]
+            )
+        if total <= 0:
+            return None
+
+        provider_name = result.get("provider") or provider
+        _detour_leg_cache_put(provider_name, start_coord, end_coord, geometry)
+        return {
+            "geometry": geometry,
+            "distance_m": total,
+            "provider": provider_name,
+            "cached": False,
+        }
+
+    def _build_route_path_with_random_detours(
+        self,
+        base_path,
+        waypoints,
+        target_dist_m,
+        *,
+        session_id,
+        python_params=None,
+        app_base_url=None,
+        guard_label="RouteDetour",
+        log_func=None,
+    ):
+        """主路线不足目标距离时，从距终点 50 m 处开始按真实道路网络随机折返补距。
+
+        约束：
+        - 折返点沿用既有语义（``total_len - 50``，路线 < 100 m 时取 2/3 处）。
+        - 条件随机：只在同时满足「附加距离 >= DETOUR_MIN_LEG_DISTANCE_M」与
+          「累计长度不越过 target_dist_m」的打卡点中随机挑选，且不连续重复同一打卡点。
+        - 所有打卡点都不满足时回退：在真实道路网络上取一个沿路里程距折返点
+          > DETOUR_FALLBACK_MIN_BACK_M 的点作为折返目标。
+        - 返回几何路径的累计长度恰好等于 ``target_dist_m``（收尾精确截断），
+          以保证 ``_get_point_at_distance`` 的末点不会饱和、模拟时长不超时。
+        """
+
+        def _log(message):
+            if not log_func:
+                return
+            try:
+                log_func(message)
+            except Exception:  # nosec B110 - 日志失败不影响规划
+                pass
+
+        base = _detour_dedupe_points(base_path)
+        if len(base) < 2:
+            return list(base)
+
+        cumulative = [0.0]
+        for i in range(len(base) - 1):
+            cumulative.append(
+                cumulative[-1]
+                + self._calculate_distance_m(
+                    base[i][0], base[i][1], base[i + 1][0], base[i + 1][1]
+                )
+            )
+        total_len = cumulative[-1]
+        if total_len <= 0 or total_len >= target_dist_m:
+            return base
+
+        # ---- 折返点：距路线终点 50 m（路线 < 100 m 时取 2/3） ----
+        if total_len >= 100.0:
+            near_d = max(0.0, total_len - 50.0)
+        else:
+            near_d = total_len * 2.0 / 3.0
+        turn_idx = bisect.bisect_left(cumulative, near_d)
+        turn_idx = max(0, min(turn_idx, len(base) - 1))
+        turn_point = base[turn_idx]
+        final_path = base[: turn_idx + 1]
+        added = sum(
+            self._calculate_distance_m(
+                final_path[i][0], final_path[i][1], final_path[i + 1][0], final_path[i + 1][1]
+            )
+            for i in range(len(final_path) - 1)
+        )
+
+        normalized_waypoints = _detour_dedupe_points(waypoints)
+        if len(normalized_waypoints) < 2:
+            return self._get_path_for_distance(base, cumulative, target_dist_m)
+        dest = normalized_waypoints[-1]
+        self._detour_base_length_m = total_len
+
+        def _leg_distance(geometry):
+            total = 0.0
+            for i in range(len(geometry) - 1):
+                total += self._calculate_distance_m(
+                    geometry[i][0], geometry[i][1], geometry[i + 1][0], geometry[i + 1][1]
+                )
+            return total
+
+        def _append_leg(geometry):
+            nonlocal added
+            leg = _detour_dedupe_points(geometry)
+            if len(leg) < 2:
+                return 0.0
+            if final_path and final_path[-1] == leg[0]:
+                leg = leg[1:]
+            if not leg:
+                return 0.0
+            if final_path:
+                seam = self._calculate_distance_m(
+                    final_path[-1][0],
+                    final_path[-1][1],
+                    leg[0][0],
+                    leg[0][1],
+                )
+                # 拒绝会制造跳点/直线段的拼接（折返各腿都首尾相连，正常不会触发）
+                if seam > self.DETOUR_MAX_SEAM_M:
+                    logging.warning(
+                        f"[折返规划] 跳过 seam={seam:.1f}m 的拼接段，避免生成直线跳点"
+                    )
+                    return 0.0
+            gain = _leg_distance([final_path[-1]] + leg) if final_path else _leg_distance(leg)
+            final_path.extend(leg)
+            added += gain
+            return gain
+
+        _log(
+            f"主路线 {total_len:.0f}m 不足目标 {target_dist_m:.0f}m，"
+            f"从距终点 {total_len - near_d:.0f}m 处开始按实际道路网络随机折返"
+        )
+
+        rounds = 0
+        last_pick = None
+        fallback_used = False
+        while added + 1.0 < target_dist_m and rounds < self.DETOUR_MAX_ROUNDS:
+            rounds += 1
+            remaining = target_dist_m - added
+
+            # ---------- 条件随机：候选打卡点 ----------
+            picks, stats = self._select_detour_candidates(
+                turn_point,
+                normalized_waypoints,
+                dest,
+                remaining,
+                session_id=session_id,
+                python_params=python_params,
+                app_base_url=app_base_url,
+                guard_label=f"{guard_label}Probe",
+                log_func=_log,
+            )
+            if last_pick is not None and len(picks) > 1:
+                picks = [item for item in picks if item["waypoint"] != last_pick] or picks
+
+            appended = False
+            if picks:
+                chosen = random.choice(picks)  # nosec B311 - 模拟路径随机选点，非安全用途
+                last_pick = chosen["waypoint"]
+                _log(
+                    f"第 {rounds} 轮随机折返：选中打卡点 {chosen['label']}"
+                    f"（往返约 {chosen['round_trip_m']:.0f}m，"
+                    f"符合条件 {chosen['viable_total']} 个 / 已探测 {stats['probed']} 个）"
+                )
+                if self._append_detour_round(
+                    final_path,
+                    chosen,
+                    target_dist_m,
+                    session_id=session_id,
+                    python_params=python_params,
+                    app_base_url=app_base_url,
+                    guard_label=f"{guard_label}Loop",
+                    log_func=_log,
+                    append_leg=_append_leg,
+                ):
+                    appended = True
+
+            if not appended:
+                # ---------- 回退：所有打卡点都不符合条件 ----------
+                if not fallback_used:
+                    _log(
+                        "折返候选筛选：已探测 "
+                        f"{stats['probed']} 个打卡点，满足最小距离 "
+                        f"{stats['min_distance_ok']} 个，超出可用额度 "
+                        f"{stats['over_budget']} 个，不可达 {stats['unreachable']} 个"
+                    )
+                fallback = self._fallback_detour_point(
+                    base,
+                    cumulative,
+                    near_d,
+                    target_dist_m,
+                    budget_m=target_dist_m - added,
+                )
+                if fallback is None:
+                    _log(f"第 {rounds} 轮折返无可选目标，改用沿主路线整圈循环兜底")
+                    break
+                if not fallback_used:
+                    _log(
+                        "所有打卡点均不符合条件，回退为在道路网络上取距折返点 "
+                        f"{fallback['back_m']:.0f}m 处折返"
+                    )
+                    fallback_used = True
+                before = len(final_path)
+                fallback_candidate = self._build_fallback_detour_candidate(
+                    final_path,
+                    fallback,
+                    dest,
+                    base,
+                    target_dist_m - added,
+                    session_id=session_id,
+                    python_params=python_params,
+                    app_base_url=app_base_url,
+                    guard_label=f"{guard_label}Fallback",
+                )
+                if fallback_candidate:
+                    self._append_detour_round(
+                        final_path,
+                        fallback_candidate,
+                        target_dist_m,
+                        session_id=session_id,
+                        python_params=python_params,
+                        app_base_url=app_base_url,
+                        guard_label=f"{guard_label}FallbackLoop",
+                        log_func=_log,
+                        append_leg=_append_leg,
+                    )
+                if len(final_path) == before:
+                    break
+
+            added = self._path_length(final_path)
+
+        # ---- 兜底：折返不可用或轮次用尽时，沿主路线整圈循环凑足距离 ----
+        if added + 1.0 < target_dist_m:
+            fill_cumulative = [0.0]
+            for i in range(len(final_path) - 1):
+                fill_cumulative.append(
+                    fill_cumulative[-1]
+                    + self._calculate_distance_m(
+                        final_path[i][0],
+                        final_path[i][1],
+                        final_path[i + 1][0],
+                        final_path[i + 1][1],
+                    )
+                )
+            final_path = self._get_path_for_distance(
+                final_path, fill_cumulative, target_dist_m
+            )
+
+        # ---- 收尾：长度不超过 target_dist_m，且末点落在最后一个打卡点 ----
+        return self._finalize_detoured_path(final_path, target_dist_m, dest)
+
+    def _finalize_detoured_path(self, path, target_dist_m, dest):
+        """收尾：长度不超过 ``target_dist_m``，且不低于主路线长度，末点尽量落在终点。"""
+        result = self._finalize_detoured_path_inner(path, target_dist_m, dest)
+        floor = self._detour_length_floor()
+        if floor > 0 and self._path_length(result) < floor:
+            cleaned = _detour_dedupe_points(path)
+            if len(cleaned) >= 2:
+                return cleaned
+        return result
+
+    def _finalize_detoured_path_inner(self, path, target_dist_m, dest):
+        """收尾：长度不超过 ``target_dist_m``，末点尽量落在最后一个打卡点。
+
+        折返每圈都按额度精确拼装并落在最后一个打卡点，正常情况无需处理；
+        只有兜底循环或浮点偏差会超出，此时压掉尾部并把末点接回最后一个打卡点
+        （收尾段长度不超过路网点距，不会形成跳点或直线）。
+        """
+        cleaned = _detour_dedupe_points(path)
+        if len(cleaned) < 2:
+            return cleaned
+        dest_coord = (float(dest[0]), float(dest[1])) if dest else None
+        if dest_coord is None:
+            if self._path_length(cleaned) > target_dist_m + 0.5:
+                trimmed = self._trim_to_target(cleaned, target_dist_m)
+                return trimmed if len(trimmed) >= 2 else cleaned
+            return cleaned
+
+        if cleaned[-1] == dest_coord:
+            if self._path_length(cleaned) <= target_dist_m + 0.5:
+                return cleaned
+            fitted = self._fit_tail_to_dest(cleaned, target_dist_m, dest_coord)
+            if len(fitted) >= 2:
+                return self._enforce_target_length(fitted, target_dist_m)
+            return self._enforce_target_length(cleaned, target_dist_m)
+
+        # 末点不是终点：先截到目标距离，再尝试把末点接回终点
+        if self._path_length(cleaned) > target_dist_m + 0.5:
+            trimmed = self._trim_to_target(cleaned, target_dist_m)
+            if len(trimmed) >= 2:
+                cleaned = trimmed
+        fitted = self._fit_tail_to_dest(cleaned, target_dist_m, dest_coord)
+        if len(fitted) >= 2 and self._path_length(fitted) >= self._detour_length_floor():
+            return self._enforce_target_length(fitted, target_dist_m)
+        gap = self._calculate_distance_m(
+            cleaned[-1][0], cleaned[-1][1], dest_coord[0], dest_coord[1]
+        )
+        if gap <= self.DETOUR_MAX_SEAM_M:
+            return self._enforce_target_length(cleaned + [dest_coord], target_dist_m)
+        return self._enforce_target_length(cleaned, target_dist_m)
+
+    def _detour_length_floor(self):
+        """折返结果允许的最小长度：不得低于主路线长度。"""
+        return float(getattr(self, "_detour_base_length_m", 0.0) or 0.0)
+
+    def _enforce_target_length(self, path, target_dist_m):
+        """硬性保证：返回路径不超过目标距离（超出则按累计里程截断）。"""
+        points = _detour_dedupe_points(path)
+        if len(points) < 2:
+            return points
+        if self._path_length(points) <= target_dist_m + 0.5:
+            return points
+        trimmed = self._trim_to_target(points, target_dist_m)
+        if len(trimmed) < 2:
+            return points
+        if self._path_length(trimmed) < self._detour_length_floor():
+            return points
+        return trimmed
+
+    def _route_cumulative(self, points):
+        """返回路径的累计里程表（与 ``points`` 等长）。"""
+        cumulative = [0.0]
+        for i in range(len(points) - 1):
+            cumulative.append(
+                cumulative[-1]
+                + self._calculate_distance_m(
+                    points[i][0],
+                    points[i][1],
+                    points[i + 1][0],
+                    points[i + 1][1],
+                )
+            )
+        return cumulative
+
+    def _point_at_cumulative(self, points, cumulative, dist):
+        """按累计里程取路径上的点（段内线性插值）。"""
+        if not points:
+            return None
+        if dist <= 0:
+            return points[0]
+        if dist >= cumulative[-1]:
+            return points[-1]
+        idx = bisect.bisect_left(cumulative, dist)
+        d0, d1 = cumulative[idx - 1], cumulative[idx]
+        ratio = (dist - d0) / (d1 - d0) if d1 > d0 else 0.0
+        s, e = points[idx - 1], points[idx]
+        return (
+            s[0] + (e[0] - s[0]) * ratio,
+            s[1] + (e[1] - s[1]) * ratio,
+        )
+
+    def _fit_tail_to_dest(self, path, target_dist_m, dest_coord):
+        """让路径在不超过目标距离的前提下尽量贴近，并尽量落在 ``dest_coord``。
+
+        - 路径已落在终点：直接按累计里程精确截断（含插值），长度最贴近目标；
+        - 未落在终点：沿累计里程定位「到终点收尾段」的起点后再接回终点。
+        """
+        points = _detour_dedupe_points(path)
+        if len(points) < 2:
+            return []
+        if points[-1] == dest_coord:
+            # 已落在终点且超出预算：优先精确截断；若因此丢失终点，
+            # 则在「保留终点」的候选里取长度更贴近目标的一个。
+            # 结果绝不低于入参长度（折返只允许增加里程，不允许倒退）。
+            candidates = []
+            trimmed = self._trim_to_target(points, target_dist_m)
+            if len(trimmed) >= 2 and trimmed[-1] == dest_coord:
+                return trimmed
+            if len(trimmed) >= 2:
+                candidates.append(trimmed)
+            for cut in range(len(points) - 1, 0, -1):
+                head = points[:cut]
+                gap = self._calculate_distance_m(
+                    head[-1][0], head[-1][1], dest_coord[0], dest_coord[1]
+                )
+                shortened = self._trim_to_target(head, target_dist_m - gap)
+                if len(shortened) >= 2:
+                    candidates.append(shortened + [dest_coord])
+            if not candidates:
+                return trimmed if len(trimmed) >= 2 else []
+            best = max(candidates, key=self._path_length)
+            # 折返只允许增加里程：压缩结果不得低于主路线长度，
+            # 也不得低于入参长度（否则等于把已走的折返又删掉）。
+            floor = max(self._detour_length_floor(), self._path_length(points))
+            if self._path_length(best) < floor:
+                return points
+            return best
+
+        gap_to_dest = self._calculate_distance_m(
+            points[-1][0], points[-1][1], dest_coord[0], dest_coord[1]
+        )
+
+        cumulative = self._route_cumulative(points)
+        want = max(0.0, target_dist_m - gap_to_dest)
+        if want >= cumulative[-1]:
+            return points + [dest_coord]
+
+        idx = bisect.bisect_left(cumulative, want)
+        if idx <= 0:
+            return [points[0], dest_coord]
+        anchor = self._point_at_cumulative(points, cumulative, want)
+        head = points[:idx]
+        if anchor is not None and anchor != head[-1]:
+            head = head + [anchor]
+        if len(head) < 1:
+            return []
+        return head + [dest_coord]
+    def _trim_to_target(self, path, target_dist_m):
+        """把几何路径按累计长度截断到 ``target_dist_m``（不足则原样返回）。
+
+        末尾落在割点处并按需线性插值；若目标距离小到连第一段都放不下，
+        则返回 ``[]``（调用方据此放弃截断，绝不返回会制造跳点的短前缀）。
+        """
+        path = _detour_dedupe_points(path)
+        if len(path) < 2 or target_dist_m <= 0:
+            return []
+
+        def _seg(a, b):
+            return self._calculate_distance_m(a[0], a[1], b[0], b[1])
+
+        result = [path[0]]
+        accumulated = 0.0
+        for i in range(1, len(path)):
+            segment = _seg(path[i - 1], path[i])
+            if accumulated + segment > target_dist_m:
+                need = target_dist_m - accumulated
+                if need > 0 and segment > 0:
+                    ratio = need / segment
+                    result.append(
+                        (
+                            path[i - 1][0] + (path[i][0] - path[i - 1][0]) * ratio,
+                            path[i - 1][1] + (path[i][1] - path[i - 1][1]) * ratio,
+                        )
+                    )
+                return result
+            result.append(path[i])
+            accumulated += segment
+        return result
+
+    def _truncate_path_to_target(self, path, target_dist_m, dest=None):
+        """兼容入口：与 ``_finalize_detoured_path`` 行为一致。"""
+        return self._finalize_detoured_path(path, target_dist_m, dest)
+
+    def _select_detour_candidates(
+        self,
+        turn_point,
+        waypoints,
+        dest,
+        budget_m,
+        *,
+        session_id,
+        python_params=None,
+        app_base_url=None,
+        guard_label="RouteDetour",
+        log_func=None,
+    ):
+        """按「条件随机」筛选打卡点，返回符合约束的候选列表。
+
+        条件：
+        1. 不能超时：``round_trip <= budget_m``（budget_m 为本轮可用额度，
+           等价于累计长度不越过 target_dist_m，也就是不超过 min_d_m * 1.15）。
+        2. 满足最小距离：单次折返往返里程 >= ``DETOUR_MIN_LEG_DISTANCE_M``。
+
+        返回 ``(viable, stats)``；``viable`` 内每项含 ``out_leg`` / ``loop_leg`` /
+        ``round_trip_m``，供调用方按预算做贪心多圈追加。
+        """
+        viable = []
+        seen = set()
+        stats = {
+            "probed": 0,
+            "min_distance_ok": 0,
+            "over_budget": 0,
+            "unreachable": 0,
+            "budget_m": budget_m,
+        }
+
+        ranked = []
+        for index, point in enumerate(waypoints):
+            straight = self._calculate_distance_m(
+                turn_point[0], turn_point[1], point[0], point[1]
+            )
+            ranked.append((straight, index, point))
+        # 直线距离最远的优先探测：更可能提供足够折返里程
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        probe_pool = ranked[: self.DETOUR_PROBE_LIMIT]
+        # 全部候选都满足条件时，「随机」应覆盖全部打卡点而非只有最远的几个
+        full_pool = ranked
+
+        for pool in (probe_pool, full_pool):
+            for straight, index, point in pool:
+                if point == turn_point or point in seen:
+                    continue
+                seen.add(point)
+
+                stats["probed"] += 1
+                out_leg = self._plan_detour_leg(
+                    turn_point,
+                    point,
+                    session_id=session_id,
+                    python_params=python_params,
+                    app_base_url=app_base_url,
+                    guard_label=guard_label,
+                )
+                if not out_leg:
+                    stats["unreachable"] += 1
+                    continue
+                back_leg = self._plan_detour_leg(
+                    point,
+                    dest,
+                    session_id=session_id,
+                    python_params=python_params,
+                    app_base_url=app_base_url,
+                    guard_label=guard_label,
+                )
+                if not back_leg:
+                    stats["unreachable"] += 1
+                    continue
+
+                round_trip = out_leg["distance_m"] + back_leg["distance_m"]
+                if round_trip < self.DETOUR_MIN_LEG_DISTANCE_M:
+                    continue
+                stats["min_distance_ok"] += 1
+                # 只要「折返点到打卡点」这一段能在本轮额度内走完就可用：
+                # 返程段允许在收尾时于段内截断，因此不需要整往返都塞进额度。
+                if out_leg["distance_m"] > budget_m + 1.0:
+                    stats["over_budget"] += 1
+                    continue
+                viable.append(
+                    {
+                        "waypoint": point,
+                        "label": f"打卡点 {index + 1}",
+                        "out_leg": out_leg,
+                        "loop_leg": back_leg,
+                        "dest": dest,
+                        "round_trip_m": round_trip,
+                        "viable_total": 0,  # 稍后回填
+                    }
+                )
+            if viable:
+                break
+
+        for item in viable:
+            item["viable_total"] = len(viable)
+        return viable, stats
+
+    def _append_detour_round(
+        self,
+        final_path,
+        chosen,
+        target_dist_m,
+        *,
+        session_id,
+        python_params,
+        app_base_url,
+        guard_label,
+        log_func,
+        append_leg,
+    ):
+        """按选中打卡点追加「折返点 -> 打卡点 -> 最后一个打卡点」往返。
+
+        在「本轮剩余额度」内精确拼装，且**每一圈的末点都落在最后一个打卡点**：
+        - 额度够走完整往返时多圈追加；
+        - 只剩部分额度时，走完去程后沿返程段几何推进，不够则以**很短的收尾段**
+          接回最后一个打卡点（收尾段长度小于路网点距，不产生可见直线）。
+        """
+        out_leg = chosen["out_leg"]
+        loop_leg = chosen["loop_leg"]
+        dest_point = chosen["dest"]
+        round_trip = chosen["round_trip_m"]
+        if round_trip <= 0:
+            return False
+
+        current_length = self._path_length(final_path)
+        budget = target_dist_m - current_length
+        # 允许「部分往返」：只要本轮额度内至少能走出最小折返里程，就值得折返
+        if min(round_trip, budget) + 1.0 < self.DETOUR_MIN_LEG_DISTANCE_M:
+            return False
+
+        applied = False
+        rounds = max(1, min(int(budget // round_trip), self.DETOUR_MAX_ROUNDS))
+        for _ in range(rounds):
+            remaining = budget - (self._path_length(final_path) - current_length)
+            if remaining <= 0:
+                break
+            out_gain = append_leg(out_leg["geometry"])
+            if out_gain <= 0:
+                break
+
+            # 返程段：能整段走完就整段走完
+            tail_start = final_path[-1]
+            loop_geometry = _detour_dedupe_points(loop_leg["geometry"])
+            closing_gap = self._calculate_distance_m(
+                tail_start[0], tail_start[1], dest_point[0], dest_point[1]
+            )
+            if self._path_length(final_path) + loop_leg["distance_m"] <= target_dist_m + 0.5:
+                append_leg(loop_geometry)
+                applied = True
+                continue
+
+            if remaining <= closing_gap + 1.0:
+                # 剩余额度不足以走完返程：直接以短收尾段接回最后一个打卡点
+                append_leg([tail_start, dest_point])
+                applied = True
+                break
+
+            # 沿返程段几何推进，把「到终点的收尾距离」压到最短
+            accumulated = 0.0
+            tail = [loop_geometry[0]]
+            tail_end = loop_geometry[0]
+            for i in range(1, len(loop_geometry)):
+                step = self._calculate_distance_m(
+                    loop_geometry[i - 1][0],
+                    loop_geometry[i - 1][1],
+                    loop_geometry[i][0],
+                    loop_geometry[i][1],
+                )
+                gap_here = self._calculate_distance_m(
+                    loop_geometry[i][0], loop_geometry[i][1], dest_point[0], dest_point[1]
+                )
+                if accumulated + step + gap_here > remaining:
+                    break
+                accumulated += step
+                tail.append(loop_geometry[i])
+                tail_end = loop_geometry[i]
+            if len(tail) >= 2:
+                append_leg(tail)
+            append_leg([tail_end, dest_point])
+            applied = True
+            break
+        return applied
+
+    def _fallback_detour_point(self, base, cumulative, turn_along, target_dist_m, budget_m=None):
+        """回退目标：在真实道路网络上取沿路里程距折返点 > 100 m 的点。
+
+        ``budget_m`` 给定时，优先在「本轮额度内可达」的点中随机挑选，避免一次性
+        大幅越过目标距离而被迫砍掉大段路径。
+        """
+        if len(base) < 2:
+            return None
+        options = []
+        for i, point in enumerate(base):
+            along = cumulative[i] if i < len(cumulative) else 0.0
+            back_m = abs(along - turn_along)
+            if back_m <= self.DETOUR_FALLBACK_MIN_BACK_M:
+                continue
+            options.append((back_m, i, point))
+        if not options:
+            return None
+        if budget_m is not None and budget_m > 0:
+            within = [item for item in options if item[0] <= budget_m + 1.0]
+            if within:
+                options = within
+        back_m, index, point = random.choice(options)  # nosec B311 - 模拟路径随机选点
+        return {"index": index, "point": point, "back_m": back_m}
+
+    def _build_fallback_detour_candidate(
+        self,
+        final_path,
+        fallback,
+        dest,
+        reference_path,
+        budget_m,
+        *,
+        session_id,
+        python_params,
+        app_base_url,
+        guard_label,
+    ):
+        """构造回退折返候选：沿真实道路前往回退点，再返回最后一个打卡点。"""
+        dest_point = (float(dest[0]), float(dest[1]))
+        point = fallback["point"]
+        out_leg = self._plan_detour_leg(
+            final_path[-1],
+            point,
+            session_id=session_id,
+            python_params=python_params,
+            app_base_url=app_base_url,
+            guard_label=guard_label,
+        )
+        if not out_leg:
+            # 规划不可用时退化为沿主路线既有几何行进（仍是道路网络，不做直线跳点）
+            index = fallback["index"]
+            if reference_path and 0 <= index < len(reference_path):
+                geometry = _detour_dedupe_points(reference_path[: index + 1])
+                if len(geometry) < 2:
+                    return None
+                total = self._path_length(geometry)
+                out_leg = {"geometry": geometry, "distance_m": total, "provider": None}
+            else:
+                return None
+        if out_leg["distance_m"] > budget_m + 1.0:
+            return None
+
+        loop_leg = self._plan_detour_leg(
+            point,
+            dest_point,
+            session_id=session_id,
+            python_params=python_params,
+            app_base_url=app_base_url,
+            guard_label=guard_label,
+        )
+        if not loop_leg:
+            closing = self._calculate_distance_m(
+                point[0], point[1], dest_point[0], dest_point[1]
+            )
+            if closing <= 0:
+                return None
+            loop_leg = {
+                "geometry": [point, dest_point],
+                "distance_m": closing,
+                "provider": None,
+            }
+        return {
+            "waypoint": point,
+            "label": "道路网络回退点",
+            "out_leg": out_leg,
+            "loop_leg": loop_leg,
+            "dest": dest_point,
+            "round_trip_m": out_leg["distance_m"] + loop_leg["distance_m"],
+            "viable_total": 1,
+        }
+
+    def _path_length(self, path):
+        total = 0.0
+        for i in range(len(path) - 1):
+            total += self._calculate_distance_m(
+                path[i][0], path[i][1], path[i + 1][0], path[i + 1][1]
+            )
+        return total
+
     def _get_path_for_distance(self, path, cumulative_distances, target_dist):
-        """如果路径总长不足，则在末段提前折返凑足目标距离"""
+        """兜底补距：沿主路线整圈循环凑足目标距离。
+
+        说明：正常流程已由 ``_build_route_path_with_random_detours`` 处理（在距终点
+        50 m 处开始按真实道路网络随机折返）；本方法只在折返候选全部不可用或折返轮次
+        用尽时兜底调用，因此不再使用「最后 50~100 m 原地折返」的旧策略。
+        """
         total_len = cumulative_distances[-1]
         final_path = list(path)
         if total_len <= 0 or total_len >= target_dist:
@@ -4395,42 +5284,77 @@ class Api:
         end_d = total_len
         step_a = end_d - near_d      # 末端 -> near
         step_b = near_d - far_d      # near <-> far
-        if step_a <= 0 or step_b <= 0:
+        if step_b <= 0:
             return final_path
 
-        # 关键修正：不要先跑到终点再折返，而是在“最后50m(或2/3)”处提前开始补距
-        cut_idx = bisect.bisect_left(cumulative_distances, near_d)
-        final_path = list(path[:cut_idx])
-        added = 0.0
-        current_d = near_d
+        # 兜底策略：沿主路线整圈循环，避免旧版「最后 50~100 m 原地折返」的密集洄游。
+        # 正常流程由 _build_route_path_with_random_detours 在距终点 50 m 处
+        # 按真实道路网络随机折返处理，本分支只在折返候选全部不可用时生效。
+        #
+        # 逐圈按「剩余额度」追加；最后一圈只补部分时，用很短的收尾段接回终点，
+        # 使总长贴近目标且不超过目标（避免采样饱和导致模拟距离与实际不符）。
+        loop_gain = total_len
+        if loop_gain <= 0:
+            return final_path
+        cycle = self._cycle_points(path)
+        if len(cycle) < 2:
+            return final_path
+        cycle_len = self._path_length(cycle)
+        if cycle_len <= 0:
+            return final_path
 
-        # 先到最后50m（或2/3）点，再回到最后100m（或1/3）点
-        _append_if_new(_point_at(near_d))
-        added += step_a
+        added_cycle = 0.0
+        cycles = 0
+        max_cycles = max(
+            self.DETOUR_MAX_ROUNDS, int(math.ceil(remaining / loop_gain)) + 2
+        )
+        while added_cycle + 1.0 < remaining and cycles < max_cycles:
+            cycles += 1
+            budget = remaining - added_cycle
+            if cycle_len <= budget:
+                for pt in cycle[1:]:
+                    _append_if_new(pt)
+                added_cycle += cycle_len
+                continue
+            # 最后一圈：只补到刚好达到目标距离。收尾段必须落在最后一个打卡点，
+            # 且回接段长度不得超过剩余额度。
+            leftover = remaining - added_cycle
+            tail = self._partial_cycle_to_dest(cycle, leftover, path[-1])
+            if len(tail) >= 2:
+                for pt in tail[1:]:
+                    _append_if_new(pt)
+                added_cycle += self._path_length(tail)
+            break
+        # 硬性约束：兜底路径也不得超过目标距离
+        return self._enforce_target_length(final_path, target_dist)
 
-        if added < remaining:
-            _append_path_between(current_d, far_d)
-            current_d = far_d
-            added += step_b
+    def _partial_cycle_to_dest(self, cycle, budget_m, dest_point):
+        """在 ``budget_m`` 内取 ``cycle`` 的一段前缀，并用很短的收尾段接回终点。"""
+        if budget_m <= 0 or len(cycle) < 2:
+            return []
+        cumulative = self._route_cumulative(cycle)
+        idx = bisect.bisect_left(cumulative, budget_m)
+        if idx <= 0:
+            return []
+        head = list(cycle[:idx])
+        anchor = self._point_at_cumulative(cycle, cumulative, budget_m)
+        if anchor is not None and anchor != head[-1]:
+            head = head + [anchor]
+        if len(head) < 2:
+            return []
+        return head + [dest_point]
 
-        # 在 near/far 间折返，直到“再加最后50m可达下限”
-        while added + step_a < remaining:
-            _append_path_between(current_d, near_d)
-            current_d = near_d
-            added += step_b
-            if added + step_a >= remaining:
-                break
-            _append_path_between(current_d, far_d)
-            current_d = far_d
-            added += step_b
+    def _cycle_points(self, path):
+        """返回「接续一整圈」的几何：末点 -> 路径起点 -> 原路径内部点。
 
-        # 保险动作：最后50m -> 最后100m -> 最后50m -> 终点
-        _append_path_between(current_d, far_d)
-        current_d = far_d
-        _append_path_between(current_d, near_d)
-        current_d = near_d
-        _append_path_between(current_d, end_d)
-        return final_path
+        路线通常不是闭合环（起点与终点是不同打卡点），接续方式为直接回到路径
+        起点再沿原路线走一遍。回接段直接用 ``path[0]``，不得插值或跳过，
+        否则会制造跳点。
+        """
+        points = _detour_dedupe_points(path)
+        if len(points) < 3:
+            return []
+        return [points[-1], points[0]] + list(points[1:])
 
     def _get_point_at_distance(self, path, cumulative_distances, dist):
         """在一条路径上，根据距离找到精确的坐标点"""
@@ -4480,20 +5404,15 @@ class Api:
         target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
         target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
 
-        cumulative = [0.0]
-        for i in range(len(final_path_dedup) - 1):
-            cumulative.append(
-                cumulative[-1]
-                + self._calculate_distance_m(
-                    final_path_dedup[i][0],
-                    final_path_dedup[i][1],
-                    final_path_dedup[i + 1][0],
-                    final_path_dedup[i + 1][1],
-                )
-            )
-
-        final_geo_path = self._get_path_for_distance(
-            final_path_dedup, cumulative, target_dist_m
+        final_geo_path = self._build_route_path_with_random_detours(
+            final_path_dedup,
+            run.target_points,
+            target_dist_m,
+            session_id=getattr(self, "_web_session_id", None),
+            python_params=self.params,
+            app_base_url=getattr(self, "_web_app_base_url", None),
+            guard_label="SingleAutoGenerate",
+            log_func=self.log,
         )
 
         final_cumulative = [0.0]
@@ -8125,20 +9044,16 @@ class Api:
                     _plan_min_t_m, _plan_max_t_m = min_t_m, max_t_m
                 target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
                 target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
-                cumulative = [0.0]
-                for idx_c in range(len(final_path_dedup) - 1):
-                    cumulative.append(
-                        cumulative[-1]
-                        + self._calculate_distance_m(
-                            final_path_dedup[idx_c][0],
-                            final_path_dedup[idx_c][1],
-                            final_path_dedup[idx_c + 1][0],
-                            final_path_dedup[idx_c + 1][1],
-                        )
-                    )
 
-                final_geo_path = self._get_path_for_distance(
-                    final_path_dedup, cumulative, target_dist_m
+                final_geo_path = self._build_route_path_with_random_detours(
+                    final_path_dedup,
+                    run_data.target_points,
+                    target_dist_m,
+                    session_id=getattr(self, "_web_session_id", None),
+                    python_params=acc.params,
+                    app_base_url=getattr(self, "_web_app_base_url", None),
+                    guard_label="MultiAccountAutoGenerate",
+                    log_func=acc.log,
                 )
                 final_cumulative = [0.0]
                 for idx_c in range(len(final_geo_path) - 1):

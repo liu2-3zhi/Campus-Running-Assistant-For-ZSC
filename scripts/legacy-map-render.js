@@ -1013,6 +1013,87 @@ function appendProviderRouteProgressSegment(segments, coords, styleId) {
   segments.push({ styleId, coords: normalizedCoords });
 }
 
+function buildProviderRouteProgressSegmentsByProgress(routeCoords, data) {
+  /** 按「当前位置」切开的分段着色（PC/移动、四家供应商共用）。
+   *
+   * 期望效果：
+   * - 灰色 completed：起点 -> 最近已过打卡点，以及该点 -> 当前位置；
+   * - 蓝色 current  ：当前位置 -> 下一个打卡点；
+   * - 红色 active   ：其余待执行路段。
+   *
+   * 历史实现把「上一个已过打卡点 -> 下一个打卡点」整段涂成蓝色，
+   * 已跑过的一半不会变灰，因此这里必须显式在 runnerIndex 处切开。
+   */
+  const route = normalizeRouteCoords(routeCoords);
+  if (route.length < 2) {
+    return null;
+  }
+  const targetPoints = Array.isArray(data?.target_points)
+    ? data.target_points
+        .map(normalizeRouteCoord)
+        .filter((coord) => Number.isFinite(coord.lng) && Number.isFinite(coord.lat))
+    : [];
+
+  const runnerIndex = resolveRouteProgressIndex(data, route);
+  if (runnerIndex < 0) {
+    // 还没有定位信息：保持原有「上一打卡点 -> 下一打卡点」行为
+    return buildProviderRouteProgressSegments(route, data);
+  }
+
+  const clampedRunner = Math.max(0, Math.min(runnerIndex, route.length - 1));
+  const segments = [];
+
+  if (data?.status == 1) {
+    appendProviderRouteProgressSegment(segments, route, "completed");
+    return segments.length > 0 ? segments : null;
+  }
+
+  // 下一个打卡点：必须从当前位置向前找，避免重复圈次匹配到更早一圈
+  const sequence = resolveTaskProgressSequence(data, route);
+  const nextTargetOrdinal = Math.max(
+    1,
+    Math.min(Number.isFinite(sequence) && sequence > 0 ? sequence : 1, targetPoints.length),
+  );
+  const nextTargetPoint = targetPoints[nextTargetOrdinal - 1];
+  let nextTargetIndex = -1;
+  if (nextTargetPoint) {
+    nextTargetIndex = findNearestProviderRouteIndex(route, nextTargetPoint, clampedRunner);
+  }
+
+  // 1) 起点 -> 当前位置：全部已完成（已过打卡点 + 当前腿已跑部分）
+  appendProviderRouteProgressSegment(
+    segments,
+    route.slice(0, clampedRunner + 1),
+    "completed",
+  );
+
+  if (nextTargetIndex > clampedRunner) {
+    // 2) 当前位置 -> 下一个打卡点：正在走
+    appendProviderRouteProgressSegment(
+      segments,
+      route.slice(clampedRunner, nextTargetIndex + 1),
+      "current",
+    );
+    // 3) 下一个打卡点 -> 终点：待执行
+    if (nextTargetIndex < route.length - 1) {
+      appendProviderRouteProgressSegment(
+        segments,
+        route.slice(nextTargetIndex),
+        "active",
+      );
+    }
+  } else if (clampedRunner < route.length - 1) {
+    // 无法定位下一个打卡点时，剩余路段一律按待执行处理
+    appendProviderRouteProgressSegment(
+      segments,
+      route.slice(clampedRunner),
+      "active",
+    );
+  }
+
+  return segments.length > 0 ? segments : null;
+}
+
 function buildProviderRouteProgressSegments(routeCoords, data) {
   const route = normalizeRouteCoords(routeCoords);
   if (route.length < 2) {
@@ -1126,7 +1207,7 @@ function drawProviderTaskOnMap(containerId, data) {
       showEndpoints: false,
       routeSegments:
         data.run_coords?.length && hasActiveRouteProgress(data)
-          ? buildProviderRouteProgressSegments(routeCoords, data)
+          ? buildProviderRouteProgressSegmentsByProgress(routeCoords, data)
           : null,
     });
   } else {

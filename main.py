@@ -1082,6 +1082,10 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
             const maxRetries = pythonParams.api_retries ?? 2;
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
             const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
+            // 每秒请求上限（默认 4 次/秒）：与排队间隔共同决定段间最小间隔，
+            // 避免一次性并发发出全部路段请求而触发地图服务限流
+            const qpsLimit = Math.max(1, Number(pythonParams.api_qps_limit ?? 4) || 4);
+            const qpsIntervalMs = Math.ceil(1000 / qpsLimit);
             const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -1110,7 +1114,8 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
             }
 
             function extractSegmentPath(result) {
-                const firstRoute = result && result.routes && result.routes[0];
+                const routes = result && result.routes;
+                const firstRoute = Array.isArray(routes) && routes.length > 0 ? routes[0] : null;
                 const steps = firstRoute && Array.isArray(firstRoute.steps) ? firstRoute.steps : [];
                 const path = [];
                 steps.forEach(step => {
@@ -1118,6 +1123,15 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                     stepPath.forEach(pt => path.push({ lng: Number(pt.lng), lat: Number(pt.lat) }));
                 });
                 return path;
+            }
+
+            // 高德通过 result.info 反馈错误；限流时 info 会带「上限/限流/CUQPS」等字样
+            function isRateLimited(result, status) {
+                const info = String((result && (result.info || result.message)) || status || '');
+                return info.indexOf('上限') >= 0
+                    || info.indexOf('限流') >= 0
+                    || info.indexOf('CUQPS') >= 0
+                    || info.indexOf('超出') >= 0;
             }
 
             async function planPath() {
@@ -1143,48 +1157,65 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                 const allPath = [];
 
                 const searchSegment = (start, end) => new Promise((resolve) => {
-                    let settled = false;
-                    const timeoutId = window.setTimeout(() => {
-                        if (settled) {
-                            return;
-                        }
-                        settled = true;
-                        resolve({ error: '地图路线服务请求超时' });
-                    }, 15000);
-
-                    service.search(start, end, (status, result) => {
-                        if (settled) {
-                            return;
-                        }
-                        settled = true;
-                        window.clearTimeout(timeoutId);
-                        if (status === 'complete') {
-                            const segmentPath = extractSegmentPath(result);
-                            if (segmentPath.length > 0) {
-                                resolve({ path: segmentPath });
+                    const attempts = { count: 0 };
+                    const runOnce = () => {
+                        attempts.count += 1;
+                        let settled = false;
+                        const timeoutId = window.setTimeout(() => {
+                            if (settled) {
                                 return;
                             }
-                        }
-                        const errorInfo = result && result.info ? result.info : status || 'Unknown error';
-                        resolve({ error: 'Path planning failed: ' + errorInfo });
-                    });
+                            settled = true;
+                            resolve({ error: '地图路线服务请求超时' });
+                        }, 15000);
+
+                        service.search(start, end, (status, result) => {
+                            if (settled) {
+                                return;
+                            }
+                            settled = true;
+                            window.clearTimeout(timeoutId);
+                            if (status === 'complete') {
+                                const segmentPath = extractSegmentPath(result);
+                                if (segmentPath.length > 0) {
+                                    resolve({ path: segmentPath });
+                                    return;
+                                }
+                            }
+                            const errorInfo = result && result.info ? result.info : status || 'Unknown error';
+                            if (isRateLimited(result, status) && attempts.count <= 4) {
+                                // 限流退避：标记 rateLimited，避免被当成「该段无路线」
+                                const backoff = Math.min(5000, 400 * Math.pow(2, attempts.count));
+                                window.setTimeout(runOnce, backoff + Math.random() * 200);
+                                return;
+                            }
+                            resolve({
+                                error: 'Path planning failed: ' + errorInfo,
+                                rateLimited: isRateLimited(result, status),
+                            });
+                        });
+                    };
+                    runOnce();
                 });
 
                 const segmentCount = waypoints.length - 1;
                 const segmentPaths = Array(segmentCount).fill(null);
                 const segmentErrors = Array(segmentCount).fill(null);
                 const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
+                const segmentAttempts = Array(segmentCount).fill(0);
                 let consecutiveFailedWaves =0;
 
                 while (pendingIndexes.length >0) {
                     const waveIndexes = pendingIndexes.slice();
                     pendingIndexes.length = 0;
                     const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
-                        await sleep(queueIntervalMs * order);
+                        // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
+                        await sleep(Math.max(queueIntervalMs * order, qpsIntervalMs * order));
                         const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1]);
                         return { segmentIndex, result };
                     }));
                     let waveSuccessCount = 0;
+                    let waveRateLimited = 0;
                     waveResults.forEach(({ segmentIndex, result }) => {
                         if (result && Array.isArray(result.path) && result.path.length > 0) {
                             segmentPaths[segmentIndex] = result.path;
@@ -1192,12 +1223,25 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                             return;
                         }
                         segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
-                        pendingIndexes.push(segmentIndex);
+                        if (result && result.rateLimited) {
+                            // 限流不代表「该段无路线」：不消耗重试预算，退避后重排
+                            waveRateLimited += 1;
+                        } else {
+                            segmentAttempts[segmentIndex] += 1;
+                        }
+                        if (segmentAttempts[segmentIndex] < maxRetries + 1) {
+                            pendingIndexes.push(segmentIndex);
+                        }
                     });
                     if (waveSuccessCount ===0) {
-                        consecutiveFailedWaves += 1;
-                        if (consecutiveFailedWaves >= maxFailedWaves) {
-                            break;
+                        if (waveRateLimited > 0) {
+                            // 整波被限流：退避等待，不累计失败波次
+                            await sleep(Math.min(5000, 600 * waveRateLimited));
+                        } else {
+                            consecutiveFailedWaves += 1;
+                            if (consecutiveFailedWaves >= maxFailedWaves) {
+                                break;
+                            }
                         }
                     } else {
                         consecutiveFailedWaves =0;
@@ -1206,7 +1250,6 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                         await sleep(retryDelayMs);
                     }
                 }
-
                 for (let i = 0; i < segmentCount; i += 1) {
                     const segmentPath = segmentPaths[i];
                     const realStart = waypoints[i];
@@ -1264,6 +1307,10 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             const maxRetries = pythonParams.api_retries ?? 2;
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
             const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
+            // 每秒请求上限（默认 4 次/秒）：与排队间隔共同决定段间最小间隔，
+            // 避免一次性并发发出全部路段请求而触发地图服务限流
+            const qpsLimit = Math.max(1, Number(pythonParams.api_qps_limit ?? 4) || 4);
+            const qpsIntervalMs = Math.ceil(1000 / qpsLimit);
             const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             let jsonpRequestId = 0;
@@ -1331,7 +1378,19 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                 if (!Array.isArray(polyline) || polyline.length < 2) {
                     return [];
                 }
+                // 防御式校验：腾讯返回的是一维数组，长度必须为偶数，
+                // 且每项都要能转成有限数值，否则直接判为无效（避免产生畸形点）
+                if (polyline.length % 2 !== 0) {
+                    return [];
+                }
                 const coors = polyline.slice();
+                for (let i = 0; i < coors.length; i += 1) {
+                    const value = Number(coors[i]);
+                    if (!Number.isFinite(value)) {
+                        return [];
+                    }
+                    coors[i] = value;
+                }
                 for (let i = 2; i < coors.length; i += 1) {
                     coors[i] = Number(coors[i - 2]) + Number(coors[i]) / 1000000;
                 }
@@ -1347,25 +1406,58 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             }
 
             function extractRoutePathPoints(routeResponse) {
-                const routes = routeResponse && routeResponse.result && routeResponse.result.routes;
-                const firstRoute = Array.isArray(routes) ? routes[0] : null;
-                const polyline = firstRoute && Array.isArray(firstRoute.polyline) ? firstRoute.polyline : null;
+                // 防御式解析：限流等异常响应不带 result 字段，
+                // 直接取 routes[0] 会抛 TypeError 并让整段规划失败
+                const result = routeResponse && routeResponse.result;
+                const routes = result && result.routes;
+                const firstRoute = Array.isArray(routes) && routes.length > 0 ? routes[0] : null;
+                if (!firstRoute) {
+                    return null;
+                }
+                const polyline = Array.isArray(firstRoute.polyline) ? firstRoute.polyline : null;
                 return decodePolyline(polyline);
             }
 
-            async function searchSegment(startCoord, endCoord) {
-                const data = await requestJsonp(buildRouteUrl(startCoord, endCoord));
+            // 地图服务的限流响应（腾讯 status=120 每秒请求量已达上限）
+            function isRateLimited(data) {
                 if (!data || typeof data !== 'object') {
-                    return { error: '路线服务未返回有效数据。' };
+                    return false;
                 }
-                if (data.status !== 0) {
-                    return { error: data.message || `路线服务返回状态异常：${data.status}` };
+                if (Number(data.status) === 120) {
+                    return true;
                 }
-                const pathPoints = extractRoutePathPoints(data);
-                if (pathPoints.length < 2) {
-                    return { error: '路线服务未返回可绘制的有效路径点。' };
+                const message = String(data.message || '');
+                return message.indexOf('上限') >= 0 || message.indexOf('限流') >= 0;
+            }
+
+            async function searchSegment(startCoord, endCoord) {
+                let rateLimitHits = 0;
+                while (true) {
+                    const data = await requestJsonp(buildRouteUrl(startCoord, endCoord));
+                    if (!data || typeof data !== 'object') {
+                        return { error: '路线服务未返回有效数据。' };
+                    }
+                    if (isRateLimited(data)) {
+                        rateLimitHits += 1;
+                        if (rateLimitHits > 4) {
+                            return { error: data.message || '路线服务限流', rateLimited: true };
+                        }
+                        // 限流退避：指数增长并加入抖动，避免同步重试再次撞上限
+                        await sleep(Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200);
+                        continue;
+                    }
+                    if (data.status !== 0) {
+                        return { error: data.message || `路线服务返回状态异常：${data.status}` };
+                    }
+                    const pathPoints = extractRoutePathPoints(data);
+                    if (pathPoints === null) {
+                        return { error: '路线服务响应缺少 result.routes。' };
+                    }
+                    if (pathPoints.length < 2) {
+                        return { error: '路线服务未返回可绘制的有效路径点。' };
+                    }
+                    return { path: pathPoints };
                 }
-                return { path: pathPoints };
             }
 
             if (!Array.isArray(waypointsPy) || waypointsPy.length < 2) {
@@ -1379,17 +1471,20 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             const segmentPaths = Array(segmentCount).fill(null);
             const segmentErrors = Array(segmentCount).fill(null);
             const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
+            const segmentAttempts = Array(segmentCount).fill(0);
             let consecutiveFailedWaves =0;
 
             while (pendingIndexes.length >0) {
                 const waveIndexes = pendingIndexes.slice();
                 pendingIndexes.length = 0;
                 const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
-                    await sleep(queueIntervalMs * order);
+                    // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
+                    await sleep(Math.max(queueIntervalMs * order, qpsIntervalMs * order));
                     const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1]);
                     return { segmentIndex, result };
                 }));
                 let waveSuccessCount = 0;
+                let waveRateLimited = 0;
                 waveResults.forEach(({ segmentIndex, result }) => {
                     if (result && Array.isArray(result.path) && result.path.length > 0) {
                         segmentPaths[segmentIndex] = result.path;
@@ -1397,12 +1492,25 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                         return;
                     }
                     segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
-                    pendingIndexes.push(segmentIndex);
+                    if (result && result.rateLimited) {
+                        // 限流不代表「该段无路线」：不消耗重试预算，退避后重排
+                        waveRateLimited += 1;
+                    } else {
+                        segmentAttempts[segmentIndex] += 1;
+                    }
+                    if (segmentAttempts[segmentIndex] < maxRetries + 1) {
+                        pendingIndexes.push(segmentIndex);
+                    }
                 });
                 if (waveSuccessCount ===0) {
-                    consecutiveFailedWaves += 1;
-                    if (consecutiveFailedWaves >= maxFailedWaves) {
-                        break;
+                    if (waveRateLimited > 0) {
+                        // 整波被限流：退避等待，不累计失败波次
+                        await sleep(Math.min(5000, 600 * waveRateLimited));
+                    } else {
+                        consecutiveFailedWaves += 1;
+                        if (consecutiveFailedWaves >= maxFailedWaves) {
+                            break;
+                        }
                     }
                 } else {
                     consecutiveFailedWaves =0;
@@ -1411,7 +1519,6 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                     await sleep(retryDelayMs);
                 }
             }
-
             for (let i = 0; i < segmentCount; i += 1) {
                 const segmentPath = segmentPaths[i];
                 const realStart = waypoints[i];
@@ -1464,6 +1571,10 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             const maxRetries = pythonParams.api_retries ?? 2;
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
             const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
+            // 每秒请求上限（默认 4 次/秒）：与排队间隔共同决定段间最小间隔，
+            // 避免一次性并发发出全部路段请求而触发地图服务限流
+            const qpsLimit = Math.max(1, Number(pythonParams.api_qps_limit ?? 4) || 4);
+            const qpsIntervalMs = Math.ceil(1000 / qpsLimit);
             const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             const GCJ_PI = Math.PI;
@@ -1608,27 +1719,61 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                 return points;
             }
 
+            // 天地图限流：HTTP 429 或响应体带「上限/限流/超出」等字样
+            function isRateLimited(response, bodyText) {
+                if (response && response.status === 429) {
+                    return true;
+                }
+                const text = String(bodyText || '');
+                return text.indexOf('上限') >= 0
+                    || text.indexOf('限流') >= 0
+                    || text.indexOf('超出') >= 0
+                    || text.indexOf('too many') >= 0;
+            }
+
             async function searchSegment(startCoord, endCoord) {
-                const controller = new AbortController();
-                const timeoutId = window.setTimeout(() => {
-                    controller.abort();
-                }, 15000);
-                try {
-                    const response = await fetch(buildDrivingRouteUrl(startCoord, endCoord), {
-                        signal: controller.signal
-                    });
-                    if (!response.ok) {
-                        return { error: `路线服务请求失败：HTTP ${response.status}` };
+                const maxRateLimitRetries = 4;
+                let rateLimitHits = 0;
+                while (true) {
+                    const controller = new AbortController();
+                    const timeoutId = window.setTimeout(() => {
+                        controller.abort();
+                    }, 15000);
+                    try {
+                        const response = await fetch(buildDrivingRouteUrl(startCoord, endCoord), {
+                            signal: controller.signal
+                        });
+                        const bodyText = await response.text();
+                        if (!response.ok) {
+                            const limited = isRateLimited(response, bodyText);
+                            if (limited && rateLimitHits < maxRateLimitRetries) {
+                                rateLimitHits += 1;
+                                await sleep(Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200);
+                                continue;
+                            }
+                            return {
+                                error: `路线服务请求失败：HTTP ${response.status}`,
+                                rateLimited: limited
+                            };
+                        }
+                        if (isRateLimited(response, bodyText) && rateLimitHits < maxRateLimitRetries) {
+                            rateLimitHits += 1;
+                            await sleep(Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200);
+                            continue;
+                        }
+                        try {
+                            return { path: extractRoutePathPoints(bodyText) };
+                        } catch (parseError) {
+                            return { error: `路线服务返回无效数据：${parseError && parseError.message ? parseError.message : String(parseError)}` };
+                        }
+                    } catch (error) {
+                        if (error && error.name === 'AbortError') {
+                            return { error: '地图路线服务请求超时' };
+                        }
+                        return { error: `路线服务请求失败：${error && error.message ? error.message : String(error)}` };
+                    } finally {
+                        window.clearTimeout(timeoutId);
                     }
-                    const xmlText = await response.text();
-                    return { path: extractRoutePathPoints(xmlText) };
-                } catch (error) {
-                    if (error && error.name === 'AbortError') {
-                        return { error: '地图路线服务请求超时' };
-                    }
-                    return { error: `路线服务请求失败：${error && error.message ? error.message : String(error)}` };
-                } finally {
-                    window.clearTimeout(timeoutId);
                 }
             }
 
@@ -1646,17 +1791,20 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             const segmentPaths = Array(segmentCount).fill(null);
             const segmentErrors = Array(segmentCount).fill(null);
             const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
+            const segmentAttempts = Array(segmentCount).fill(0);
             let consecutiveFailedWaves =0;
 
             while (pendingIndexes.length >0) {
                 const waveIndexes = pendingIndexes.slice();
                 pendingIndexes.length = 0;
                 const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
-                    await sleep(queueIntervalMs * order);
+                    // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
+                    await sleep(Math.max(queueIntervalMs * order, qpsIntervalMs * order));
                     const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1]);
                     return { segmentIndex, result };
                 }));
                 let waveSuccessCount = 0;
+                let waveRateLimited = 0;
                 waveResults.forEach(({ segmentIndex, result }) => {
                     if (result && Array.isArray(result.path) && result.path.length > 0) {
                         segmentPaths[segmentIndex] = result.path;
@@ -1664,12 +1812,25 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                         return;
                     }
                     segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
-                    pendingIndexes.push(segmentIndex);
+                    if (result && result.rateLimited) {
+                        // 限流不代表「该段无路线」：不消耗重试预算，退避后重排
+                        waveRateLimited += 1;
+                    } else {
+                        segmentAttempts[segmentIndex] += 1;
+                    }
+                    if (segmentAttempts[segmentIndex] < maxRetries + 1) {
+                        pendingIndexes.push(segmentIndex);
+                    }
                 });
                 if (waveSuccessCount ===0) {
-                    consecutiveFailedWaves += 1;
-                    if (consecutiveFailedWaves >= maxFailedWaves) {
-                        break;
+                    if (waveRateLimited > 0) {
+                        // 整波被限流：退避等待，不累计失败波次
+                        await sleep(Math.min(5000, 600 * waveRateLimited));
+                    } else {
+                        consecutiveFailedWaves += 1;
+                        if (consecutiveFailedWaves >= maxFailedWaves) {
+                            break;
+                        }
                     }
                 } else {
                     consecutiveFailedWaves =0;
@@ -1678,7 +1839,6 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                     await sleep(retryDelayMs);
                 }
             }
-
             for (let i = 0; i < segmentCount; i += 1) {
                 const segmentPath = segmentPaths[i];
                 const realStart = waypoints[i];
@@ -1731,6 +1891,10 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             const maxRetries = pythonParams.api_retries ?? 2;
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
             const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
+            // 每秒请求上限（默认 4 次/秒）：与排队间隔共同决定段间最小间隔，
+            // 避免一次性并发发出全部路段请求而触发地图服务限流
+            const qpsLimit = Math.max(1, Number(pythonParams.api_qps_limit ?? 4) || 4);
+            const qpsIntervalMs = Math.ceil(1000 / qpsLimit);
             const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -1857,25 +2021,56 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                 return searchInstance;
             }
 
+            // 百度限流：状态码或错误文案带「上限/限流/超出」等字样
+            function isRateLimited(status, message) {
+                const text = String(message || '');
+                if (text.indexOf('上限') >= 0
+                    || text.indexOf('限流') >= 0
+                    || text.indexOf('超出') >= 0
+                    || text.indexOf('too many') >= 0) {
+                    return true;
+                }
+                return false;
+            }
+
             function searchSegment(startCoord, endCoord, routeType, map) {
                 return new Promise((resolve) => {
-                    let settled = false;
-                    const timeoutId = window.setTimeout(() => {
-                        if (settled) {
-                            return;
-                        }
-                        settled = true;
-                        resolve({ error: '地图路线服务请求超时' });
-                    }, 15000);
-                    const searchInstance = createRouteSearch(routeType, map, (result) => {
-                        if (settled) {
-                            return;
-                        }
-                        settled = true;
-                        window.clearTimeout(timeoutId);
-                        resolve(result);
-                    });
-                    searchInstance.search(startCoord, endCoord);
+                    const maxRateLimitRetries = 4;
+                    let rateLimitHits = 0;
+                    const runOnce = () => {
+                        let settled = false;
+                        const timeoutId = window.setTimeout(() => {
+                            if (settled) {
+                                return;
+                            }
+                            settled = true;
+                            resolve({ error: '地图路线服务请求超时' });
+                        }, 15000);
+                        const searchInstance = createRouteSearch(routeType, map, (result) => {
+                            if (settled) {
+                                return;
+                            }
+                            settled = true;
+                            window.clearTimeout(timeoutId);
+                            if (result && result.error && isRateLimited(null, result.error)
+                                && rateLimitHits < maxRateLimitRetries) {
+                                // 限流退避：标记 rateLimited，避免被当成「该段无路线」
+                                rateLimitHits += 1;
+                                window.setTimeout(
+                                    runOnce,
+                                    Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200
+                                );
+                                return;
+                            }
+                            if (result && result.error && isRateLimited(null, result.error)) {
+                                resolve({ error: result.error, rateLimited: true });
+                                return;
+                            }
+                            resolve(result);
+                        });
+                        searchInstance.search(startCoord, endCoord);
+                    };
+                    runOnce();
                 });
             }
 
@@ -1896,17 +2091,20 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             const segmentPaths = Array(segmentCount).fill(null);
             const segmentErrors = Array(segmentCount).fill(null);
             const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
+            const segmentAttempts = Array(segmentCount).fill(0);
             let consecutiveFailedWaves =0;
 
             while (pendingIndexes.length >0) {
                 const waveIndexes = pendingIndexes.slice();
                 pendingIndexes.length = 0;
                 const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
-                    await sleep(queueIntervalMs * order);
-                    const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1], routeType, map);
+                    // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
+                    await sleep(Math.max(queueIntervalMs * order, qpsIntervalMs * order));
+                    const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1]);
                     return { segmentIndex, result };
                 }));
                 let waveSuccessCount = 0;
+                let waveRateLimited = 0;
                 waveResults.forEach(({ segmentIndex, result }) => {
                     if (result && Array.isArray(result.path) && result.path.length > 0) {
                         segmentPaths[segmentIndex] = result.path;
@@ -1914,12 +2112,25 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                         return;
                     }
                     segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
-                    pendingIndexes.push(segmentIndex);
+                    if (result && result.rateLimited) {
+                        // 限流不代表「该段无路线」：不消耗重试预算，退避后重排
+                        waveRateLimited += 1;
+                    } else {
+                        segmentAttempts[segmentIndex] += 1;
+                    }
+                    if (segmentAttempts[segmentIndex] < maxRetries + 1) {
+                        pendingIndexes.push(segmentIndex);
+                    }
                 });
                 if (waveSuccessCount ===0) {
-                    consecutiveFailedWaves += 1;
-                    if (consecutiveFailedWaves >= maxFailedWaves) {
-                        break;
+                    if (waveRateLimited > 0) {
+                        // 整波被限流：退避等待，不累计失败波次
+                        await sleep(Math.min(5000, 600 * waveRateLimited));
+                    } else {
+                        consecutiveFailedWaves += 1;
+                        if (consecutiveFailedWaves >= maxFailedWaves) {
+                            break;
+                        }
                     }
                 } else {
                     consecutiveFailedWaves =0;
@@ -1928,7 +2139,6 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                     await sleep(retryDelayMs);
                 }
             }
-
             for (let i = 0; i < segmentCount; i += 1) {
                 const segmentPath = segmentPaths[i];
                 const realStart = waypoints[i];
@@ -1995,7 +2205,62 @@ def _route_point_distance_sq(left, right):
     ) ** 2
 
 
+def _align_waypoints_to_route(route_points, waypoints):
+    """把打卡点按顺序单调对齐到路线点（动态规划，最小化总偏移）。
+
+    返回与 ``waypoints`` 等长的路线索引列表（单调不减），无法对齐时返回 None。
+    """
+    n = len(route_points)
+    m = len(waypoints)
+    if n == 0 or m == 0 or m > n:
+        return None
+
+    # cost[j][i] = 打卡点 j 对齐到路线点 i 的代价（归一化坐标下的平方距离）
+    costs = [
+        [
+            _route_point_distance_sq(route_points[i], waypoints[j])
+            for i in range(n)
+        ]
+        for j in range(m)
+    ]
+
+    # prefix[j][i] = 第 j 个打卡点取路线点 i 时，前 j+1 个打卡点（含 i）的最小累计代价
+    prefix = [[0.0] * n for _ in range(m)]
+    parent = [[-1] * n for _ in range(m)]
+    prefix[0] = list(costs[0])
+    for j in range(1, m):
+        best = float("inf")
+        best_index = -1
+        for i in range(n):
+            if prefix[j - 1][i] < best:
+                best = prefix[j - 1][i]
+                best_index = i
+            prefix[j][i] = best + costs[j][i]
+            parent[j][i] = best_index
+
+    end_index = min(range(n), key=lambda i: prefix[m - 1][i])
+    aligned = [0] * m
+    aligned[m - 1] = end_index
+    for j in range(m - 1, 0, -1):
+        aligned[j - 1] = parent[j][aligned[j]]
+        if aligned[j - 1] < 0:
+            return None
+    return aligned
+
+
 def _complete_route_path_with_waypoint_endpoints(path, waypoints):
+    """把地图服务「吸附」后偏掉的打卡点补回规划路径。
+
+    关键约束：**顺序保持的单调对齐**。历史实现在每一轮都从路径末尾做全局
+    最近邻匹配，后面的打卡点被依次追加到路径尾部，等于用直线把打卡点串起来
+    （实测 115 点主路线被补成 124 点，出现 285m/277m/214m 的直线段）。
+
+    现在的做法：
+    1. 先用动态规划把打卡点按顺序单调对齐到路线点（最小化总偏移）；
+    2. 对齐误差超过阈值的打卡点，替换其对应的那一段路线点（原地替换，
+       不会把打卡点搬到路径末尾，也不会产生跨段的直线）；
+    3. 首尾打卡点按同样的阈值在两端补齐。
+    """
     if not isinstance(path, list) or not isinstance(waypoints, list) or len(waypoints) < 2:
         return path
     normalized_waypoints = [
@@ -2006,44 +2271,58 @@ def _complete_route_path_with_waypoint_endpoints(path, waypoints):
     if len(normalized_waypoints) < 2:
         return path
 
-    completed_path = list(path)
-    if not completed_path:
+    route_points = [_normalize_provider_route_point(point) for point in path]
+    route_points = [point for point in route_points if point]
+    if not route_points:
         return normalized_waypoints
 
-    start = normalized_waypoints[0]
-    first_point = _normalize_provider_route_point(completed_path[0])
-    if not _route_points_are_close(first_point, start):
-        completed_path.insert(0, start)
+    # 吸附误差量级：超过该距离才认为打卡点不在规划路径上，需要替换
+    snap_tolerance_m = 30.0
+    tolerance_sq = snap_tolerance_m * snap_tolerance_m
 
-    insert_after_index = 0
-    for waypoint in normalized_waypoints[1:-1]:
-        existing_index = next(
-            (
-                index
-                for index, point in enumerate(completed_path[insert_after_index:], start=insert_after_index)
-                if _route_points_are_close(_normalize_provider_route_point(point), waypoint)
-            ),
-            None,
-        )
-        if existing_index is not None:
-            insert_after_index = existing_index
+    def _metric_distance_sq(left, right):
+        """按米制换算的平方距离（经度需按纬度做 cos 缩放）。"""
+        if not left or not right:
+            return float("inf")
+        avg_lat = math.radians((float(left["lat"]) + float(right["lat"])) / 2.0)
+        dx = (float(left["lng"]) - float(right["lng"])) * math.cos(avg_lat) * 111320.0
+        dy = (float(left["lat"]) - float(right["lat"])) * 110540.0
+        return dx * dx + dy * dy
+
+    aligned = _align_waypoints_to_route(route_points, normalized_waypoints)
+    if aligned is None:
+        completed_path = list(route_points)
+        first = _normalize_provider_route_point(completed_path[0])
+        if not _route_points_are_close(first, normalized_waypoints[0]):
+            completed_path.insert(0, normalized_waypoints[0])
+        last = _normalize_provider_route_point(completed_path[-1])
+        if not _route_points_are_close(last, normalized_waypoints[-1]):
+            completed_path.append(normalized_waypoints[-1])
+        return completed_path
+
+    replacements = {}
+    for waypoint_index, route_index in enumerate(aligned):
+        waypoint = normalized_waypoints[waypoint_index]
+        if _route_points_are_close(route_points[route_index], waypoint):
             continue
+        if _metric_distance_sq(route_points[route_index], waypoint) <= tolerance_sq:
+            continue
+        replacements.setdefault(route_index, []).append(waypoint)
 
-        nearest_index = min(
-            range(insert_after_index, len(completed_path)),
-            key=lambda index: _route_point_distance_sq(
-                _normalize_provider_route_point(completed_path[index]),
-                waypoint,
-            ),
-        )
-        insert_index = max(insert_after_index + 1, nearest_index + 1)
-        insert_index = min(insert_index, len(completed_path))
-        completed_path.insert(insert_index, waypoint)
-        insert_after_index = insert_index
+    completed_path = []
+    for index, point in enumerate(route_points):
+        completed_path.append(point)
+        # 打卡点只做「原地插入」，绝不删除或替换既有路线点，
+        # 否则会把真实道路几何删掉、制造跳点
+        for waypoint in replacements.get(index, []):
+            if not _route_points_are_close(completed_path[-1], waypoint):
+                completed_path.append(waypoint)
 
+    start = normalized_waypoints[0]
+    if not _route_points_are_close(completed_path[0], start):
+        completed_path.insert(0, start)
     end = normalized_waypoints[-1]
-    last_point = _normalize_provider_route_point(completed_path[-1])
-    if not _route_points_are_close(last_point, end):
+    if not _route_points_are_close(completed_path[-1], end):
         completed_path.append(end)
 
     return completed_path

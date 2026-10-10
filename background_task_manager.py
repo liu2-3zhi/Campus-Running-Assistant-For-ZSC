@@ -129,12 +129,18 @@ class BackgroundTaskManager:
         # ========== 欠费检查（前后端双重校验中的后端校验） ==========
         # - 单账号模式：仅检查当前学校账号
         # - 多账号模式：检查当前多账号列表中的所有学校账号
-        config = _main()._read_config_ini()
-        require_payment = True
-        if config is not None:
-            require_payment = config.getboolean(
-                "Payment_Settings", "require_payment", fallback=True
-            )
+        # - 离线导入任务：不涉及真实账号与计费，直接跳过（不查欠费、不产生订单）
+        if getattr(api_instance, "is_offline_mode", False):
+            logging.info("[欠费检查] 离线测试模式，跳过欠费拦截。")
+            config = None
+            require_payment = False
+        else:
+            config = _main()._read_config_ini()
+            require_payment = True
+            if config is not None:
+                require_payment = config.getboolean(
+                    "Payment_Settings", "require_payment", fallback=True
+                )
 
         auth_username = getattr(api_instance, "auth_username", None)
         if require_payment and auth_username:

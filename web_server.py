@@ -12517,6 +12517,7 @@ def start_web_server(args_param):
         # - 单账号模式：优先检查请求中的 school_username；未传则检查当前账号
         # - 多账号模式：优先检查请求中的 school_usernames；未传则检查已添加账号列表
         # - 仅在 require_payment 开启时拦截
+        # - 离线导入任务不涉及真实账号与计费，直接跳过
         try:
             config = _main()._read_config_ini()
             require_payment = True
@@ -12524,6 +12525,9 @@ def start_web_server(args_param):
                 require_payment = config.getboolean(
                     "Payment_Settings", "require_payment", fallback=True
                 )
+            if getattr(api_instance, "is_offline_mode", False):
+                require_payment = False
+                logging.info("[欠费检查] 离线测试模式，跳过接口级欠费拦截。")
 
             if require_payment:
                 def _normalize_target_usernames(single_input, multi_input):
