@@ -8,7 +8,46 @@ WORKDIR /build
 # 先拷贝依赖清单，利用 Docker 缓存层
 COPY frontend/package.json frontend/package-lock.json* ./frontend/
 
-RUN cd frontend && npm ci --prefer-offline
+# 安装依赖。
+# 说明：这里刻意不再使用 `--prefer-offline`。
+# 该参数只在“缓存命中”时省流量，缓存未命中时依然要走网络；而 CI 的
+# buildx 缓存经常缺失（构建日志里的
+# "local cache import at /tmp/.buildx-cache skipped due to err ..."），
+# 此时任何网络抖动都会让整条命令以 exit 1 失败，且只留下
+# "npm error A complete log of this run can be found in: ..." 这种被截断的报错。
+# 因此这里改为：
+#   1. 放宽 fetch 重试次数与超时；
+#   2. 关闭 audit / fund（两者都会额外发起 registry 请求）；
+#   3. 显式重试整条 npm ci，并在最终失败时打印完整调试日志。
+ENV npm_config_fetch_retries=5 \
+    npm_config_fetch_retry_mintimeout=20000 \
+    npm_config_fetch_retry_maxtimeout=120000 \
+    npm_config_audit=false \
+    npm_config_fund=false
+
+RUN cd frontend && \
+    for attempt in 1 2 3; do \
+        echo "=== npm ci 第 ${attempt}/3 次尝试 ==="; \
+        if npm ci --no-audit --no-fund --loglevel=http; then \
+            echo "=== npm ci 成功 ==="; \
+            break; \
+        fi; \
+        if [ "${attempt}" = "3" ]; then \
+            echo "=== npm ci 连续 3 次失败，打印完整 npm 调试日志 ==="; \
+            ls -t /root/.npm/_logs/*.log 2>/dev/null | head -n 1 | xargs -r cat; \
+            exit 1; \
+        fi; \
+        echo "=== npm ci 第 ${attempt} 次失败，清理残留后重试 ==="; \
+        rm -rf node_modules; \
+        sleep $((attempt * 10)); \
+    done
+
+# 校验依赖确实装全了：
+# 缺少 linux 原生二进制时 vite 会在构建阶段才报错，且信息不直观；
+# 这里提前失败并给出明确原因。node_modules 在 .dockerignore 中被排除，
+# 所以这不会把本机依赖带进镜像。
+RUN test -d frontend/node_modules/@tailwindcss/oxide || \
+        (echo "依赖不完整：缺少 @tailwindcss/oxide（tailwindcss 的 linux 原生二进制）" && exit 1)
 
 # 再拷贝源码与 vite 配置（outDir 指向 ../dist）
 COPY frontend/ ./frontend/
