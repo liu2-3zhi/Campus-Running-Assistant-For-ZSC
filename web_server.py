@@ -3030,15 +3030,32 @@ def start_web_server(args_param):
     def auth_switch_session():
         """
         会话切换API - 在多标签页间切换时更新认证token和cookie。
+
+        当前会话由 _main().resolve_request_session_id() 解析：
+        请求头 X-Session-ID 优先，其次 session_id Cookie，最后路径中的
+        /uuid=<uuid>。只信任请求头会让"直接从根路径打开首页"的用户
+        （前端没有会话 UUID）在快捷登录时收到"缺少会话ID参数"。
         """
-        current_session_id = _main().normalize_session_uuid(
-            _main().request.headers.get("X-Session-ID", "")
-        )
+        current_session_id = _main().resolve_request_session_id()
         data = _main().request.get_json() or {}
         target_session_id = _main().normalize_session_uuid(data.get("target_session_id", ""))
 
-        if not current_session_id or not target_session_id:
+        if not current_session_id:
+            logging.warning(
+                "[切换会话] 无法解析当前会话ID（请求头/Cookie/路径均无有效 UUID）"
+            )
             return _main().jsonify({"success": False, "message": "缺少会话ID参数"}), 400
+
+        if not target_session_id:
+            logging.warning(
+                f"[切换会话] 缺少目标会话ID（当前会话 {current_session_id[:8]}）"
+            )
+            return (
+                _main().jsonify(
+                    {"success": False, "message": "缺少目标会话ID参数"}
+                ),
+                400,
+            )
         username = None
         is_guest = True
         auth_username = ""
@@ -6568,7 +6585,10 @@ def start_web_server(args_param):
     @app.route("/auth/user/sessions", methods=["GET"])
     def auth_user_sessions():
         """获取用户的所有会话"""
-        session_id = _main().normalize_session_uuid(_main().request.headers.get("X-Session-ID", ""))
+        # 会话来源：请求头 → session_id Cookie → 路径 /uuid=<uuid>。
+        # 只信任请求头会让未携带 UUID 的页面（如直接从根路径打开的首页）
+        # 在快捷登录流程里拿到 401。
+        session_id = _main().resolve_request_session_id()
         api_instance = None
         is_guest = False
         auth_username = ""
@@ -6708,7 +6728,8 @@ def start_web_server(args_param):
     @app.route("/auth/user/delete_session", methods=["POST"])
     def auth_user_delete_session():
         """删除用户的一个会话"""
-        session_id = _main().normalize_session_uuid(_main().request.headers.get("X-Session-ID", ""))
+        # 会话来源：请求头 → session_id Cookie → 路径 /uuid=<uuid>
+        session_id = _main().resolve_request_session_id()
         if not session_id or session_id not in web_sessions:
             return _main().jsonify({"success": False, "message": "未登录"}), 401
 
@@ -6751,7 +6772,8 @@ def start_web_server(args_param):
     @app.route("/auth/user/create_session_persistence", methods=["POST"])
     def auth_user_create_session_persistence():
         """创建会话持久化文件（登录状态下）"""
-        session_id = _main().normalize_session_uuid(_main().request.headers.get("X-Session-ID", ""))
+        # 会话来源：请求头 → session_id Cookie → 路径 /uuid=<uuid>
+        session_id = _main().resolve_request_session_id()
 
         api_instance = None
         is_guest = True

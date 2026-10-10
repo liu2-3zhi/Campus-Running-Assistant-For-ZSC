@@ -7661,6 +7661,44 @@ def normalize_session_uuid(session_id):
     return normalized.lower()
 
 
+# 从请求路径中提取 /uuid=<uuid> 形式的会话 UUID
+PATH_SESSION_UUID_PATTERN = re.compile(
+    r"/uuid=([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})",
+    re.IGNORECASE,
+)
+
+
+def resolve_request_session_id():
+    """
+    解析当前请求所属的会话 UUID，按可靠性依次回退：
+
+        1. X-Session-ID 请求头（前端显式携带，最可靠）
+        2. session_id Cookie（服务端下发，httponly）
+        3. 请求路径中的 /uuid=<uuid>
+
+    背景:
+        前端只在通过 /uuid=<uuid> 打开页面时才持有会话 UUID
+        （getAuthenticatedSessionHeaderValue() 依赖 authSessionUUID /
+        sessionUUID）。直接从根路径打开首页时两者都为空，请求头会是空串，
+        于是任何"仅信任请求头"的接口都会误判为"缺少会话ID参数"。
+
+    返回值:
+        str: 规范化后的 UUID v4；三者都拿不到时返回空字符串。
+    """
+    header_session_id = normalize_session_uuid(
+        request.headers.get("X-Session-ID", "")
+    )
+    if header_session_id:
+        return header_session_id
+
+    cookie_session_id = normalize_session_uuid(request.cookies.get("session_id", ""))
+    if cookie_session_id:
+        return cookie_session_id
+
+    path_match = PATH_SESSION_UUID_PATTERN.search(request.path or "")
+    return normalize_session_uuid(path_match.group(1) if path_match else "")
+
+
 def resolve_admin_origin_session_context(
     target_session_id, origin_session_id, token, lock_held=False
 ):
