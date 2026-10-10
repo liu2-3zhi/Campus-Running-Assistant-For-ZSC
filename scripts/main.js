@@ -3548,12 +3548,12 @@ const paramDefs = {
   task_gap_min_s: {
     label: "任务间隙下限",
     unit: "s",
-    help: "连续执行任务之间的最短等待时间。",
+    help: "确认还有下一个可执行任务后，两个任务之间的最短等待时间（默认 600 秒）。",
   },
   task_gap_max_s: {
     label: "任务间隙上限",
     unit: "s",
-    help: "连续执行任务之间的最长等待时间。",
+    help: "确认还有下一个可执行任务后，两个任务之间的最长等待时间（默认 1800 秒）。",
   },
 
   api_fallback_line: {
@@ -8155,6 +8155,7 @@ const permissionTranslations = {
   modify_permission_groups: "修改权限组",
 
   auto_fill_password: "查看所有学校账号密码",
+  view_school_account_passwords: "查看本账号学校账号密码",
   import_offline: "导入离线文件",
   export_data: "导出数据",
   import_data: "导入数据",

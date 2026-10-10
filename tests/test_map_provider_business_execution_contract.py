@@ -26,6 +26,24 @@ class _BackendSource:
 MAIN_PATH = _BackendSource()
 
 
+# 多账号"执行单个任务"的流程已从 _multi_account_worker 主循环抽成
+# _run_single_multi_account_task（便于独立测试重新拉取任务的调度逻辑）。
+# 断言这两段源码的拼接结果，保证契约覆盖实际执行体。
+_WORKER_START = "def _multi_account_worker("
+_WORKER_END = "def _run_all_multi_accounts_thread("
+_TASK_BODY_START = "def _run_single_multi_account_task("
+_TASK_BODY_END = "def _multi_fetch_attendance_stats("
+
+
+def _multi_worker_block(source):
+    """返回多账号 worker 的调度段 + 单任务执行体（拼接）。"""
+    worker_block = source.split(_WORKER_START, 1)[1].split(_WORKER_END, 1)[0]
+    task_block = source.split(_TASK_BODY_START, 1)[1].split(
+        _TASK_BODY_END, 1
+    )[0]
+    return worker_block + "\n" + task_block
+
+
 class TestMapProviderBusinessExecutionContract(unittest.TestCase):
     def test_run_all_auto_generation_uses_backend_provider_dispatch_instead_of_frontend_amap_callback(self):
         source = MAIN_PATH.read_text(encoding="utf-8")
@@ -39,9 +57,7 @@ class TestMapProviderBusinessExecutionContract(unittest.TestCase):
 
     def test_multi_account_business_execution_uses_provider_runtime_helper(self):
         source = MAIN_PATH.read_text(encoding="utf-8")
-        worker_block = source.split("def _multi_account_worker(", 1)[1].split(
-            "def _run_all_multi_accounts_thread(", 1
-        )[0]
+        worker_block = _multi_worker_block(source)
 
         self.assertIn("_plan_route_path_with_provider_runtime(", worker_block)
         self.assertNotIn("AMapLoader", worker_block)
@@ -96,9 +112,7 @@ class TestMapProviderBusinessExecutionContract(unittest.TestCase):
         run_all_block = source.split("def _run_all_tasks_manager(", 1)[1].split(
             "def get_task_history(", 1
         )[0]
-        worker_block = source.split("def _multi_account_worker(", 1)[1].split(
-            "def _run_all_multi_accounts_thread(", 1
-        )[0]
+        worker_block = _multi_worker_block(source)
         background_block = source.split("def _execute_tasks_background(", 1)[1].split(
             "def stop_task(", 1
         )[0]

@@ -200,7 +200,7 @@ class Api:
             "speed_random_mps": 0.5,
             "location_random_m": 1.5,
             "task_gap_min_s": 600,
-            "task_gap_max_s": 3600,
+            "task_gap_max_s": 1800,
             "api_fallback_line": False,
             "api_retries": 2,
             "api_retry_delay_s": 0.5,
@@ -1346,6 +1346,16 @@ class Api:
     ):
         """
         任务完成后处理可用次数扣减或欠费次数增加的逻辑。
+
+        扣减优先级（两段式，先系统账号后学校账号）:
+            第一优先级 —— 平台（系统）账号：system_accounts/{auth}.json 的
+                available_runs >= 1 时扣减 1 次；available_runs == -1 表示无限，
+                直接跳过且不产生任何欠费。
+            第二优先级 —— 学校账号：仅当系统账号 available_runs <= 0 时，
+                才对该学校账号 overdue_count +1 并生成一条账单记录。
+
+        也就是说，欠费只发生在系统账号次数确实用尽之后，不会因为学校账号
+        自身状态而产生欠费。
         """
         try:
             # 步骤0：检查付费控制配置
@@ -1409,16 +1419,18 @@ class Api:
                 f"[次数扣减] 用户 {auth_username} 当前可用次数: {available_runs}"
             )
 
-            # 步骤3：如果是无限次数（-1），直接返回
+            # 步骤3：如果是无限次数（-1），直接返回（无限账号不产生欠费）
             if available_runs == -1:
                 logging.debug(
                     f"[次数扣减] 用户 {auth_username} 拥有无限次数，跳过扣减"
                 )
                 return
 
-            # 步骤4：判断是扣减 available_runs 还是增加 overdue_count
+            # 步骤4：按优先级扣减
+            #   第一优先级：平台（系统）账号的 available_runs
+            #   第二优先级：学校账号的 overdue_count（仅在第一优先级不足时）
             if available_runs >= 1:
-                # 情况A：可用次数 >= 1，扣减1次
+                # 第一优先级命中：扣减系统账号可用次数
                 user_data["available_runs"] = available_runs - 1
 
                 # 保存更新后的用户数据
@@ -1426,11 +1438,11 @@ class Api:
                     json.dump(user_data, f, indent=2, ensure_ascii=False)
 
                 logging.info(
-                    f"[次数扣减] 用户 {auth_username} 扣减1次可用次数，"
+                    f"[次数扣减] 扣减来源=系统账号：用户 {auth_username} 扣减1次可用次数，"
                     f"剩余: {user_data['available_runs']} 次"
                 )
             else:
-                # 情况B：可用次数 <= 0，增加对应学校账号的欠费次数
+                # 第二优先级：系统账号可用次数已用尽，转为该学校账号的欠费次数
                 # 加载该认证用户的所有学校账号配置
                 school_accounts = self._load_user_school_accounts(
                     auth_username)
@@ -1473,14 +1485,16 @@ class Api:
                     )
 
                     logging.info(
-                        f"[次数扣减] 用户 {auth_username} 可用次数不足（当前: {available_runs}），"
-                        f"学校账号 {school_username} 欠费次数 +1，当前欠费: {account_info['overdue_count']} 次"
+                        f"[次数扣减] 扣减来源=学校账号：系统账号 {auth_username} 可用次数不足"
+                        f"（当前: {available_runs}），学校账号 {school_username} 欠费次数 +1，"
+                        f"当前欠费: {account_info['overdue_count']} 次"
                     )
                 else:
-                    # 如果学校账号不在配置中，记录警告
+                    # 如果学校账号不在配置中，记录警告（不得静默成功）
                     logging.warning(
-                        f"[次数扣减] 在用户 {auth_username} 的学校账号配置中未找到 {school_username}，"
-                        f"无法增加欠费次数"
+                        f"[次数扣减] 扣减来源=学校账号，但认证用户 {auth_username} 的学校账号配置中"
+                        f"未找到 {school_username}，无法增加欠费次数；"
+                        f"本次不计欠费（系统账号可用次数: {available_runs}）"
                     )
 
         except Exception as e:
@@ -2054,47 +2068,61 @@ class Api:
                 users = []
                 logging.debug(f"游客用户请求 get_initial_data，返回空用户列表")
             elif auth_username and not is_guest:
+                # 账号列表可见性共三档：
+                #   all  —— auto_fill_password（或管理员组）：可见所有学校账号
+                #   own  —— view_school_account_passwords：可见自己的学校账号
+                #   none —— 两者皆无：不可见任何学校账号
+                # 这里只决定"能列出哪些账号"，密码字段是否下发另由
+                # web_server._apply_password_visibility 控制。
+                password_visibility = "none"
+                try:
+                    password_visibility = (
+                        _main().auth_system.resolve_password_visibility(auth_username)
+                    )
+                except Exception as e:
+                    logging.warning(
+                        f"解析用户 {auth_username} 的密码可见级别时出错: {e}"
+                    )
+
                 has_view_all_permission = False
+                has_view_own_permission = False
 
                 if auth_group in ["admin", "super_admin"]:
                     has_view_all_permission = True
                     logging.debug(
                         f"用户 {auth_username} 是管理员，拥有查看所有账户的权限"
                     )
-                elif hasattr(self, "auth_system"):
-                    try:
-                        has_view_all_permission = _main().auth_system.check_permission(
-                            auth_username, "auto_fill_password"
-                        )
-                        if has_view_all_permission:
-                            logging.debug(
-                                f"用户 {auth_username} 通过自定义权限获得了查看所有账户的权限"
-                            )
-                    except Exception as e:
-                        logging.warning(
-                            f"检查用户 {auth_username} 的 auto_fill_password 权限时出错: {e}"
-                        )
-                        pass
+                elif password_visibility == "all":
+                    has_view_all_permission = True
+                    logging.debug(
+                        f"用户 {auth_username} 通过 auto_fill_password 获得了查看所有账户的权限"
+                    )
+                elif password_visibility == "own":
+                    has_view_own_permission = True
+                    logging.debug(
+                        f"用户 {auth_username} 具备查看本账号学校账号密码的权限"
+                    )
 
                 if has_view_all_permission:
                     users = all_users
                     logging.debug(
                         f"用户 {auth_username} 有权限，返回所有 {len(users)} 个学校账户"
                     )
-                else:
-                    users = []
-
+                elif has_view_own_permission:
+                    # 中层权限：至少能看到自己关联的学校账号（否则中层用户
+                    # 会因为缺少 auto_fill_password 而连自己的账号都看不到）
                     school_accounts = self._load_user_school_accounts(
                         auth_username)
-
-                    if school_accounts:
-                        users = list(school_accounts.keys())
-                        logging.debug(
-                            f"普通用户 {auth_username} 无全局权限，返回其自己的 {len(users)} 个学校账户"
-                        )
-                    else:
-                        logging.debug(f"普通用户 {auth_username} 还没有任何学校账户")
-                        users = []
+                    users = list(school_accounts.keys()) if school_accounts else []
+                    logging.debug(
+                        f"用户 {auth_username} 具备本账号密码查看权限，"
+                        f"返回其自己的 {len(users)} 个学校账户"
+                    )
+                else:
+                    users = []
+                    logging.debug(
+                        f"用户 {auth_username} 无学校账号可见权限，返回空列表"
+                    )
             else:
                 users = all_users
                 logging.debug(
@@ -3990,9 +4018,22 @@ class Api:
         return task.get("response")
 
     def _finalize_run(
-        self, run_data: _main().RunData, task_index: int, client: _main().ApiClient
+        self,
+        run_data: _main().RunData,
+        task_index: int,
+        client: _main().ApiClient,
+        school_username: str = None,
+        auth_username: str = None,
     ) -> bool:
-        """在所有数据提交后，查询服务器确认任务是否已标记为完成"""
+        """
+        在所有数据提交后，查询服务器确认任务是否已标记为完成。
+
+        参数:
+            school_username: 本次任务对应的学校账号。多账号模式必须显式传入，
+                否则结算会回退到 client.app.user_data 并取到空值，
+                导致出现"跳过结算"与"计入完成数"口径不一致的日志。
+            auth_username: 认证（系统）用户名，缺省时从 api_instance 推断。
+        """
         log_func = (
             client.app.log if hasattr(
                 client.app, "log") else client.app.api_bridge.log
@@ -4012,19 +4053,33 @@ class Api:
                     # 在任务成功执行完成后，需要根据用户的可用次数进行扣减或记录欠费
                     # 这里处理单账号模式下的后台任务完成情况
                     try:
-                        # 从 api_instance 获取认证用户名和学校账号用户名
-                        auth_username = getattr(
-                            self, "auth_username", None)
-                        bound_user_data = getattr(
-                            getattr(client, "app", None),
-                            "user_data",
-                            None,
+                        # ========== 解析认证用户名与学校账号 ==========
+                        # 认证用户名（平台账号）：优先显式传入，其次取 api_instance 的属性
+                        resolved_auth_username = (
+                            auth_username
+                            if auth_username is not None
+                            else getattr(self, "auth_username", None)
                         )
-                        school_username = getattr(
-                            bound_user_data,
-                            "username",
-                            "",
-                        ) or getattr(self.user_data, "username", None)
+
+                        # 学校账号：优先使用调用方显式传入的值。
+                        # 多账号模式下 client.app.user_data 指向平台会话而不是
+                        # 本次任务的学校账号，回退链会取到空值，于是日志把跳过
+                        # 结算的原因错误地归结为"游客或未设置"。
+                        resolved_school_username = school_username
+                        if not resolved_school_username:
+                            bound_user_data = getattr(
+                                getattr(client, "app", None),
+                                "user_data",
+                                None,
+                            )
+                            resolved_school_username = getattr(
+                                bound_user_data,
+                                "username",
+                                "",
+                            ) or getattr(self.user_data, "username", None)
+
+                        auth_username = resolved_auth_username
+                        school_username = resolved_school_username
 
                         # 只有当两者都存在且认证用户不是游客时，才执行扣减逻辑
                         if auth_username and auth_username != "guest" and school_username:
@@ -4060,9 +4115,19 @@ class Api:
                                 )
                             # ========== 结束：任务计数处理 ==========
                         else:
-                            logging.debug(
-                                f"[单账号后台任务] 跳过次数扣减：认证用户={auth_username}, "
-                                f"学校账号={school_username}（游客或未设置）"
+                            # 明确区分"游客/未设置认证用户"与"未取到学校账号"，
+                            # 避免出现"跳过扣减"与"计入完成数"口径不一致却看不出原因
+                            missing_fields = []
+                            if not auth_username:
+                                missing_fields.append("认证用户为空")
+                            elif auth_username == "guest":
+                                missing_fields.append("认证用户为游客")
+                            if not school_username:
+                                missing_fields.append("学校账号为空")
+                            logging.warning(
+                                f"[单账号后台任务] 跳过次数扣减：认证用户={auth_username!r}, "
+                                f"学校账号={school_username!r}, "
+                                f"原因={'/'.join(missing_fields) or '未知'}"
                             )
                     except Exception as e:
                         # 捕获异常，避免影响主流程
@@ -7377,6 +7442,23 @@ class Api:
 
             self._multi_fetch_and_summarize_tasks(acc)
 
+            # 顺带回收所有超时的自动签到记录（与当前账号是否登录无关），
+            # 确保"刷新一次"也能清理那些已不在会话中的账号记录。
+            try:
+                sweep = _main().expire_stale_auto_attendance_accounts(
+                    reason="refresh_worker"
+                )
+                if sweep.get("removed"):
+                    logging.info(
+                        f"[多账号刷新] 已回收 {len(sweep['removed'])} 条超时自动签到记录: "
+                        f"{sweep['removed']}"
+                    )
+            except Exception as sweep_error:
+                logging.error(
+                    f"[多账号刷新] 回收超时自动签到记录失败: {sweep_error}",
+                    exc_info=True,
+                )
+
             if not preserve_now:
                 self._multi_fetch_attendance_stats(acc)
 
@@ -8677,6 +8759,578 @@ class Api:
 
         acc.has_pending_tasks = executable > 0
 
+    @staticmethod
+    def _format_multi_task_summary(acc: _main().AccountSession) -> str:
+        """
+        把账号的任务统计格式化为单行文本。
+
+        数据全部取自 _multi_fetch_and_summarize_tasks() 已写入的 acc.summary，
+        不引入新的统计口径。四个要素缺一不可，便于用户一眼判断
+        "为什么没跑起来"（可执行 0 / 未开始若干 / 已过期若干）。
+        """
+        summary = getattr(acc, "summary", None) or {}
+        return (
+            f"可执行 {summary.get('executable', 0)} 个 / "
+            f"未开始 {summary.get('not_started', 0)} 个 / "
+            f"已过期 {summary.get('expired', 0)} 个 / "
+            f"共 {summary.get('total', 0)} 个"
+        )
+
+    def _log_multi_task_summary(
+        self,
+        acc: _main().AccountSession,
+        prefix: str = "任务统计",
+        level: int = logging.INFO,
+    ) -> str:
+        """
+        在多账号日志中输出任务统计（Q2/Q4 的统一出口）。
+
+        参数:
+            acc: 账号会话
+            prefix: 日志前缀，例如 "任务统计" / "任务执行流程结束"
+            level: 同时写入系统日志的级别
+        """
+        text = self._format_multi_task_summary(acc)
+        message = f"{prefix}: {text}"
+        try:
+            acc.log(message)
+        except Exception:  # nosec B110 - 日志失败不能影响主流程
+            pass
+        logging.log(level, f"[{getattr(acc, 'username', '?')}] {message}")
+        return message
+
+    def _count_multi_remaining_tasks(
+        self,
+        acc: _main().AccountSession,
+        attempted_keys: set,
+        run_only_incomplete: bool = True,
+    ) -> int:
+        """
+        统计"当前仍待执行、且本次尚未尝试过"的任务数量。
+
+        用于退出前显式记录剩余待执行数量（Q4）：只统计服务端仍标记为未完成、
+        时间状态为 active、且本次运行未尝试过的任务。已被本次尝试过的任务
+        即使服务端仍为未完成，也不计入（避免把刚失败的任务算成"剩余"）。
+        """
+        now = datetime.datetime.now()
+        ignore_time = acc.params.get("ignore_task_time", True)
+        remaining = 0
+        for run in getattr(acc, "all_run_data", []) or []:
+            if run_only_incomplete and getattr(run, "status", 0) != 0:
+                continue
+            if self._get_task_time_state(run, ignore_time, now) != "active":
+                continue
+            if self._multi_task_key(run) in attempted_keys:
+                continue
+            remaining += 1
+        return remaining
+
+    @staticmethod
+    def _multi_task_key(run) -> str:
+        """
+        多账号任务去重键。
+
+        必须与 _multi_fetch_and_summarize_tasks() 的去重键保持一致
+        （errandId|errandSchedule|startTime|endTime），否则同一任务会被
+        重复执行或错误跳过。
+        """
+        return "|".join(
+            str(getattr(run, field, "") or "")
+            for field in ("errand_id", "errand_schedule", "start_time", "end_time")
+        )
+
+    def _select_next_multi_task(
+        self,
+        acc: _main().AccountSession,
+        attempted_keys: set,
+        run_only_incomplete: bool,
+    ):
+        """
+        从当前 acc.all_run_data 中挑出下一个应当执行的任务。
+
+        每完成一个任务都会重新拉取任务列表，因此本函数每轮都会基于最新的
+        服务端数据决策，而不是启动时固化的快照（Q3）。
+
+        返回值:
+            RunData 或 None（None 表示本轮已无任务可执行）
+        """
+        now = datetime.datetime.now()
+        ignore_time = acc.params.get("ignore_task_time", True)
+        for run in getattr(acc, "all_run_data", []) or []:
+            if self._get_task_time_state(run, ignore_time, now) != "active":
+                continue
+            if run_only_incomplete and getattr(run, "status", 0) != 0:
+                continue
+            if self._multi_task_key(run) in attempted_keys:
+                continue
+            return run
+        return None
+
+    def _run_single_multi_account_task(
+        self,
+        acc: _main().AccountSession,
+        run_data,
+        task_index: int,
+        task_name_short: str,
+    ) -> str:
+        """
+        执行单个多账号任务的完整流程（详情 → 规划 → 提交 → 确认）。
+
+        从 _multi_account_worker 的主循环中抽出，使"每完成一个任务就重新
+        拉取任务列表"的调度逻辑可以被独立测试。
+
+        返回值:
+            "success"  —— 服务器已确认完成
+            "failed"   —— 该任务无法完成（详情失败/无打卡点/规划失败/未确认）
+            "aborted"  —— 运行被停止信号中断
+        """
+        details_resp = acc.api_client.get_run_details(
+            run_data.errand_id, acc.user_data.id, run_data.errand_schedule
+        )
+        if not (details_resp and details_resp.get("success")):
+            acc.log(f"获取任务详情失败，跳过。")
+            return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
+
+        details = details_resp.get("data", {}).get("errandDetail", {})
+        waypoints = [
+            (float(p["lon"]), float(p["lat"]))
+            for p in details.get("geoCoorList", [])
+            if p.get("lon") is not None
+        ]
+        if not waypoints:
+            task_name = details.get("title", run_data.run_name)
+            acc.log(f"跳过: 任务 '{task_name}' 无打卡点")
+            return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
+        run_data.target_points = waypoints
+
+        api_path_coords = None
+
+        if not _main().chrome_pool:
+            acc.log("错误: Chrome浏览器池不可用，无法进行路径规划。")
+            return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
+
+        try:
+            acc.log("正在按当前地图供应商进行路径规划...")
+
+            session_id = getattr(self, "_web_session_id", None)
+            if not session_id:
+                acc.log(
+                    "错误: 无法获取会话ID（_web_session_id 属性不存在），跳过任务。"
+                )
+                logging.error(
+                    f"多账号模式缺少 _web_session_id 属性，账号: {acc.username}"
+                )
+                return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
+
+            path_coords = _main()._plan_route_path_with_provider_runtime(
+                session_id,
+                waypoints,
+                python_params=acc.params,
+                guard_label="MultiAccountPathPlanning",
+                app_base_url=getattr(self, "_web_app_base_url", None),
+            )
+            for notice in path_coords.get("notices", []):
+                acc.log(notice)
+
+
+            if path_coords and "path" in path_coords:
+                api_path_coords = path_coords["path"]
+                acc.log(f"路径规划成功。")
+            else:
+                error_msg = (
+                    path_coords.get("error", "未知错误")
+                    if path_coords
+                    else "无响应"
+                )
+                acc.log(f"路径规划失败: {error_msg}")
+                return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
+
+        except Exception as e:
+            logging.error(f"Chrome浏览器池路径规划失败: {e}", exc_info=True)
+            acc.log(f"路径规划异常: {str(e)}")
+            return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
+
+        if not api_path_coords:
+            acc.log("路径规划失败，跳过任务。")
+            return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
+
+        logging.debug(
+            f"[{acc.username}] 路径规划返回点数: {len(api_path_coords)}"
+        )
+
+        min_t_m, max_t_m, min_d_m = (
+            acc.params.get("min_time_m", 20),
+            acc.params.get("max_time_m", 30),
+            acc.params.get("min_dist_m", 2000),
+        )
+
+        final_path_dedup = []
+        last_coord = None
+        for p in api_path_coords:
+            longitude = p.get("lng", p.get("lon"))
+            if longitude is None:
+                return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
+            coord = (longitude, p["lat"])
+            if coord != last_coord:
+                final_path_dedup.append(coord)
+                last_coord = coord
+
+        if not final_path_dedup:
+            acc.log("路径处理失败：无有效坐标点。")
+            return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
+
+        logging.debug(
+            f"[{acc.username}] 路径去重后点数: {len(final_path_dedup)}"
+        )
+
+        _plan_min_t_m = min_t_m * 1.02
+        _plan_max_t_m = max_t_m * 0.98
+        if _plan_max_t_m <= _plan_min_t_m:
+            _plan_min_t_m, _plan_max_t_m = min_t_m, max_t_m
+        target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
+        target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
+
+        final_geo_path = self._build_route_path_with_random_detours(
+            final_path_dedup,
+            run_data.target_points,
+            target_dist_m,
+            session_id=getattr(self, "_web_session_id", None),
+            python_params=acc.params,
+            app_base_url=getattr(self, "_web_app_base_url", None),
+            guard_label="MultiAccountAutoGenerate",
+            log_func=acc.log,
+        )
+        final_cumulative = [0.0]
+        for idx_c in range(len(final_geo_path) - 1):
+            final_cumulative.append(
+                final_cumulative[-1]
+                + self._calculate_distance_m(
+                    final_geo_path[idx_c][0],
+                    final_geo_path[idx_c][1],
+                    final_geo_path[idx_c + 1][0],
+                    final_geo_path[idx_c + 1][1],
+                )
+            )
+
+        actual_total_dist = final_cumulative[-1] if final_cumulative else 0.0
+        if actual_total_dist == 0:
+            acc.log("路径计算距离为0，跳过。")
+            return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
+
+        acc.log(
+            f"路径计算完成: 目标距离 {actual_total_dist:.1f}m, 目标耗时 {target_time_s:.1f}s"
+        )
+
+        avg_speed = actual_total_dist / target_time_s
+        new_run_coords = []
+        start = final_geo_path[0]
+        new_run_coords.append(
+            self._gps_random_offset(
+                start[0], start[1], acc.params) + (0,)
+        )
+        t_elapsed, d_covered = 0.0, 0.0
+
+        while t_elapsed < target_time_s:
+            interval = min(
+                random.uniform(
+                    acc.params["interval_ms"] * 0.9,
+                    acc.params["interval_ms"] * 1.1,
+                )
+                / 1000.0,
+                target_time_s - t_elapsed,
+            )
+            if interval <= 0.1:
+                break
+
+            d_covered = min(
+                d_covered
+                + random.uniform(avg_speed * 0.9,
+                                 avg_speed * 1.1) * interval,
+                actual_total_dist,
+            )
+            lon, lat = self._get_point_at_distance(
+                final_geo_path, final_cumulative, d_covered
+            )
+            lon_o, lat_o = self._gps_random_offset(
+                lon, lat, acc.params)
+            new_run_coords.append((lon_o, lat_o, int(interval * 1000)))
+            t_elapsed += interval
+            if d_covered >= actual_total_dist:
+                break
+
+        run_data.run_coords = new_run_coords
+        run_data.total_run_distance_m = d_covered
+        run_data.total_run_time_s = t_elapsed
+
+        acc.log(f"已生成模拟轨迹: {len(new_run_coords)} 个GPS点")
+
+        run_data.trid = f"{acc.user_data.student_id}{int(time.time() * 1000)}"
+        start_time_ms = str(int(time.time() * 1000))
+        submission_successful = True
+        total_points = max(1, len(run_data.run_coords))
+        run_data.distance_covered_m = 0.0
+        run_data.current_point_index = 0
+        run_data.suppress_last_target_until_finish = True
+
+        if total_points <= 1:
+            acc.log("警告: 生成的轨迹点数过少，无法执行任务。")
+            return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
+
+        _mr_exec_start_real = time.time()
+        _mr_last_point_gps = run_data.run_coords[0]
+        _mr_last_auto_save_time = time.time()
+        _mr_exec_point_idx = 0
+        _mr_target_time_s = float(getattr(run_data, "total_run_time_s", 0.0) or 0.0)
+        if _mr_target_time_s <= 1.0:
+            _mr_target_time_s = sum(max(0.0, d) / 1000.0 for _, _, d in run_data.run_coords)
+        _mr_target_time_s = max(1.0, _mr_target_time_s)
+        _mr_prefix_plan_s = [0.0]
+        _mr_acc_plan_s = 0.0
+        for _, _, _dur_ms in run_data.run_coords:
+            _mr_acc_plan_s += max(0.0, _dur_ms) / 1000.0
+            _mr_prefix_plan_s.append(_mr_acc_plan_s)
+        _mr_pid_kp = _main().PID_KP
+        _mr_pid_ki = _main().PID_KI
+        _mr_pid_kd = _main().PID_KD
+        _mr_pid_deadzone = _main().PID_DEADZONE
+        _mr_pid_integral = 0.0
+        _mr_pid_prev_error = 0.0
+        _mr_pid_deadzone_boost = 1.0
+
+        for chunk_idx in range(0, len(run_data.run_coords), 5):
+            logging.debug(
+                f"[{acc.username}] 执行进度: {chunk_idx}/{len(run_data.run_coords)}"
+            )
+            if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
+                submission_successful = False
+                return "aborted"
+                break
+
+            chunk = run_data.run_coords[chunk_idx: chunk_idx + 5]
+            processed_points = chunk_idx
+            for lon, lat, dur_ms in chunk:
+                if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
+                    submission_successful = False
+                    return "aborted"
+                    break
+
+                session_id = getattr(self, "_web_session_id", None)
+
+                acc.current_position = {"lon": lon, "lat": lat}
+
+                if session_id and _main().socketio:
+                    try:
+                        _main().socketio.emit(
+                            "multi_position_update",
+                            {
+                                "username": acc.username,
+                                "lon": lon,
+                                "lat": lat,
+                                "name": acc.user_data.name,
+                            },
+                            room=session_id,
+                        )
+                        time.sleep(0.001)
+                    except Exception as e:
+                        logging.debug(
+                            f"Failed to emit multi_position_update: {e}"
+                        )
+
+                _mr_elapsed_real_s = time.time() - _mr_exec_start_real
+                _mr_elapsed_real_min = _mr_elapsed_real_s / 60.0
+                _mr_actual_sleep_s = dur_ms / 1000.0
+                if True:
+                    _mr_planned_elapsed_s = min(
+                        _mr_target_time_s,
+                        _mr_prefix_plan_s[min(_mr_exec_point_idx, len(_mr_prefix_plan_s) - 1)],
+                    )
+                    _mr_expected_frac = _mr_planned_elapsed_s / _mr_target_time_s
+                    _mr_actual_frac = _mr_elapsed_real_s / _mr_target_time_s
+                    _mr_progress_diff = _mr_actual_frac - _mr_expected_frac
+                    _mr_error = _mr_progress_diff
+                    _mr_in_deadzone = abs(_mr_error) <= _mr_pid_deadzone
+                    if _mr_in_deadzone:
+                        _mr_pid_deadzone_boost = min(
+                            _main().PID_DEADZONE_BOOST_MAX,
+                            _mr_pid_deadzone_boost + _main().PID_DEADZONE_BOOST_STEP,
+                        )
+                    else:
+                        _mr_pid_deadzone_boost = 1.0
+                    _mr_error_for_pid = _mr_error
+                    _mr_pid_integral = max(
+                        -_main().PID_INTEGRAL_LIMIT,
+                        min(_main().PID_INTEGRAL_LIMIT, _mr_pid_integral + _mr_error_for_pid),
+                    )
+                    _mr_pid_derivative = _mr_error_for_pid - _mr_pid_prev_error
+                    _mr_pid_prev_error = _mr_error_for_pid
+                    _mr_pid_p_term = _mr_pid_kp * _mr_error_for_pid
+                    _mr_pid_i_term = _mr_pid_ki * _mr_pid_integral
+                    _mr_pid_d_term = _mr_pid_kd * _mr_pid_derivative
+                    _mr_pid_out = _mr_pid_deadzone_boost * (
+                        _mr_pid_p_term
+                        + _mr_pid_i_term
+                        + _mr_pid_d_term
+                    )
+                    _mr_sleep_ratio = max(0.35, min(1.70, 1.0 - _mr_pid_out))
+                    _mr_actual_sleep_s = _mr_actual_sleep_s * _mr_sleep_ratio
+                    if _mr_error_for_pid > 0:
+                        _mr_remaining_s = max(1.0, _mr_target_time_s - _mr_elapsed_real_s)
+                        _mr_remaining_pts = max(1, total_points - _mr_exec_point_idx)
+                        _mr_actual_sleep_s = min(_mr_actual_sleep_s, _mr_remaining_s / _mr_remaining_pts)
+                        logging.debug(
+                            f"[{acc.username}] 进度偏慢，PID自动加速: "
+                            f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
+                            f"时间误差={_mr_progress_diff:.2%}, 实际累计={_mr_elapsed_real_s:.1f}s, "
+                            f"规划累计={_mr_planned_elapsed_s:.1f}s, "
+                            f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
+                            f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
+                            f"新等待时间={_mr_actual_sleep_s:.2f}s"
+                        )
+                    elif _mr_error < 0:
+                        logging.debug(
+                            f"[{acc.username}] 进度偏快，PID自动减速: "
+                            f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
+                            f"时间误差={_mr_progress_diff:.2%}, 实际累计={_mr_elapsed_real_s:.1f}s, "
+                            f"规划累计={_mr_planned_elapsed_s:.1f}s, "
+                            f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
+                            f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
+                            f"新等待时间={_mr_actual_sleep_s:.2f}s"
+                        )
+                    else:
+                        logging.debug(
+                            f"[{acc.username}] 进度正常(±{_mr_pid_deadzone:.0%}): "
+                            f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
+                            f"时间误差={_mr_progress_diff:.2%}，实际累计={_mr_elapsed_real_s:.1f}s, "
+                            f"规划累计={_mr_planned_elapsed_s:.1f}s, "
+                            f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
+                            f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
+                            f"等待时间={_mr_actual_sleep_s:.2f}s"
+                        )
+                else:
+                    logging.debug(
+                            f"[{acc.username}] 已执行时间={_mr_elapsed_real_min:.2f}分钟，未接近目标时间，无需调整执行速度。")
+
+                if acc.stop_event.wait(timeout=_mr_actual_sleep_s):
+                    submission_successful = False
+                    return "aborted"
+                    break
+
+                run_data.distance_covered_m += self._calculate_distance_m(
+                    _mr_last_point_gps[0],
+                    _mr_last_point_gps[1],
+                    lon,
+                    lat,
+                )
+                _mr_last_point_gps = (lon, lat, dur_ms)
+                _mr_exec_point_idx += 1
+                run_data.current_point_index = _mr_exec_point_idx
+
+                processed_points += 1
+                try:
+                    pct = int(processed_points * 100 / total_points)
+                    self._update_account_status_js(
+                        acc,
+                        progress_pct=pct,
+                        progress_text=f"运行 {task_index}/{len(attempted_task_keys)}: {task_name_short} · {pct}%",
+                        progress_extra=f"{processed_points}/{total_points} 点",
+                    )
+                except Exception:
+                    pass
+
+                if session_id and (
+                    time.time() - _mr_last_auto_save_time >= 30
+                ):
+                    try:
+                        if (
+                            hasattr(_main(), "web_sessions_lock")
+                            and hasattr(_main(), "web_sessions")
+                        ):
+                            with _main().web_sessions_lock:
+                                if session_id in _main().web_sessions:
+                                    _main().save_session_state(
+                                        session_id,
+                                        _main().web_sessions[session_id],
+                                    )
+                                    _mr_last_auto_save_time = time.time()
+                    except Exception as e:
+                        logging.error(
+                            f"[{acc.username}] 任务执行中自动保存会话失败: {e}"
+                        )
+
+            if not submission_successful:
+                break
+
+            is_final_chunk = chunk_idx + 5 >= len(run_data.run_coords)
+            if not self._submit_chunk_with_retries(
+                run_data,
+                chunk,
+                start_time_ms,
+                is_final_chunk,
+                chunk_idx,
+                acc.api_client,
+                acc.user_data,
+                stop_event=acc.stop_event,
+                log_func=acc.log,
+                stop_predicate=self.multi_run_stop_flag.is_set,
+            ):
+                submission_successful = False
+                break
+
+        if submission_successful:
+            run_data.suppress_last_target_until_finish = False
+            if run_data.target_points and run_data.target_sequence < len(run_data.target_points):
+                try:
+                    end_lon, end_lat, _ = run_data.run_coords[-1]
+                    self.check_target_reached_during_run(run_data, end_lon, end_lat)
+                except Exception:  # nosec B110 - 目标检查失败不影响主流程
+                    pass
+            acc.log(f"任务 {run_data.run_name} 数据提交完毕，等待服务器确认...")
+            time.sleep(3)
+            if self._finalize_run(
+                run_data,
+                -1,
+                acc.api_client,
+                school_username=acc.user_data.username,
+                auth_username=getattr(self, "auth_username", None),
+            ):
+                task_succeeded = True
+                # 完成计数在 _finalize_run 内已处理；此处仅刷新展示用的统计
+                self._multi_fetch_and_summarize_tasks(acc)
+                self._update_account_status_js(acc, summary=acc.summary)
+                acc.log(f"任务 {run_data.run_name} 执行流程完成。")
+                self._update_account_status_js(
+                    acc,
+                    status_text="任务已完成",
+                    progress_pct=100,
+                    progress_text=f"运行 {task_index}/{len(attempted_task_keys)}: {task_name_short} · 100%",
+                    progress_extra="",
+                )
+            else:
+                task_succeeded = False
+                acc.log(f"任务 {run_data.run_name} 未被服务器确认完成。")
+                self._update_account_status_js(
+                    acc,
+                    status_text="任务未确认完成",
+                )
+            session_id = getattr(self, "_web_session_id", None)
+            if session_id:
+                try:
+                    _main().save_session_state(
+                        session_id,
+                        self,
+                        force_save=True,
+                    )
+                except Exception as e:
+                    logging.error(
+                        f"[{acc.username}] 任务结束后保存会话失败: {e}"
+                    )
+        if not (self.multi_run_stop_flag.is_set() or acc.stop_event.is_set()):
+            acc.log(f"任务 {run_data.run_name} 执行失败。")
+            self._update_account_status_js(acc, status_text="任务失败")
+
+        return "success" if task_succeeded else "failed"
+
+
     def _multi_fetch_attendance_stats(self, acc: _main().AccountSession):
         """(多账号) 获取单个账号的签到统计 - 循环获取所有通知"""
         if not acc.user_data.id:
@@ -8867,523 +9521,99 @@ class Api:
 
                 acc.last_refresh_time = time.time()
 
-            tasks_to_run_candidates = []
-            now = datetime.datetime.now()
-            ignore_time = acc.params.get("ignore_task_time", True)
-            acc.log(
-                f"分析任务参数: ignore_task_time={ignore_time}, run_only_incomplete={run_only_incomplete}"
-            )
-            for r in acc.all_run_data:
-                if self._get_task_time_state(r, ignore_time, now) == "active":
-                    tasks_to_run_candidates.append(r)
-
-            tasks_to_run = (
-                [t for t in tasks_to_run_candidates if t.status == 0]
-                if run_only_incomplete
-                else tasks_to_run_candidates
-            )
-
-            acc.log(
-                f"任务筛选结果: 候选任务={len(tasks_to_run_candidates)}, 待执行任务={len(tasks_to_run)}"
-            )
-
-            if not tasks_to_run:
-                self._update_account_status_js(acc, status_text="无任务可执行")
-                self._update_multi_global_buttons()
-                return
-            else:
-                acc.has_pending_tasks = True
-
+            # ========== 任务调度：每完成一个任务就重新拉取任务列表（Q3）==========
+            # 旧实现把启动时筛选出的 tasks_to_run 固化成列表后一次性遍历，
+            # 运行期间新发布到服务端的待执行任务不会被追加，导致"有 2 个待执行
+            # 只跑了 1 个"的现象。现在改为每轮都重新拉取并重新挑任务。
             task_outcomes = {}
+            attempted_task_keys: set[str] = set()
+            successful_tasks = 0
+            failed_tasks = 0
+            aborted = False
+            # 第一个任务前不等待；只有"已确认还有下一个可执行任务"时才进入任务间隔等待
+            has_completed_any = False
 
-            if delay > 0:
-                end_time = time.time() + delay
-                while time.time() < end_time:
-                    if acc.stop_event.is_set() or self.multi_run_stop_flag.is_set():
-                        self._update_account_status_js(acc, status_text="已中止")
-                        self._update_multi_global_buttons()
-                        return
-                    remaining = end_time - time.time()
-                    self._update_account_status_js(
-                        acc, status_text=f"延迟 {remaining:.0f}s"
-                    )
-                    time.sleep(1)
-
-            for i, run_data in enumerate(tasks_to_run):
+            while True:
+                # ---- 中止检查 ----
                 if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
-                    task_outcomes[id(run_data)] = "aborted"
+                    aborted = True
                     self._update_account_status_js(acc, status_text="已中止")
                     self._update_multi_global_buttons()
                     break
 
-                task_outcomes[id(run_data)] = "failed"
-
-                task_name_short = (
-                    run_data.run_name[:10] + "..."
-                    if len(run_data.run_name) > 10
-                    else run_data.run_name
-                )
-
-                self._update_account_status_js(
-                    acc,
-                    status_text=f"运行 {i+1}/{len(tasks_to_run)}: {task_name_short}",
-                    progress_pct=0,
-                    progress_text=f"运行 {i+1}/{len(tasks_to_run)}: {task_name_short} · 0%",
-                    progress_extra="",
-                )
-
-                acc.log(f"开始执行任务: {run_data.run_name}")
-
-                if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
-                    task_outcomes[id(run_data)] = "aborted"
-                    self._update_account_status_js(acc, status_text="已中止")
+                # ---- 安全上限：防止服务端持续返回同一批未完成任务导致死循环 ----
+                if len(attempted_task_keys) >= _main().MULTI_WORKER_MAX_TASKS:
+                    acc.log(
+                        f"已达到单次运行的任务上限 "
+                        f"{_main().MULTI_WORKER_MAX_TASKS} 个，停止继续挑任务。"
+                    )
                     break
 
-                details_resp = acc.api_client.get_run_details(
-                    run_data.errand_id, acc.user_data.id, run_data.errand_schedule
-                )
-                if not (details_resp and details_resp.get("success")):
-                    acc.log(f"获取任务详情失败，跳过。")
-                    continue
+                # ---- 第一步：重新拉取任务列表 ----
+                # 每次都基于最新服务端状态决策，因此任务体内部的
+                # _multi_fetch_and_summarize_tasks() 之后无需再次拉取。
+                self._multi_fetch_and_summarize_tasks(acc)
 
-                details = details_resp.get("data", {}).get("errandDetail", {})
-                waypoints = [
-                    (float(p["lon"]), float(p["lat"]))
-                    for p in details.get("geoCoorList", [])
-                    if p.get("lon") is not None
-                ]
-                if not waypoints:
-                    task_name = details.get("title", run_data.run_name)
-                    acc.log(f"跳过: 任务 '{task_name}' 无打卡点")
-                    continue
-                run_data.target_points = waypoints
-
-                api_path_coords = None
-
-                if not _main().chrome_pool:
-                    acc.log("错误: Chrome浏览器池不可用，无法进行路径规划。")
-                    continue
-
-                try:
-                    acc.log("正在按当前地图供应商进行路径规划...")
-
-                    session_id = getattr(self, "_web_session_id", None)
-                    if not session_id:
-                        acc.log(
-                            "错误: 无法获取会话ID（_web_session_id 属性不存在），跳过任务。"
-                        )
-                        logging.error(
-                            f"多账号模式缺少 _web_session_id 属性，账号: {acc.username}"
-                        )
-                        continue
-
-                    path_coords = _main()._plan_route_path_with_provider_runtime(
-                        session_id,
-                        waypoints,
-                        python_params=acc.params,
-                        guard_label="MultiAccountPathPlanning",
-                        app_base_url=getattr(self, "_web_app_base_url", None),
-                    )
-                    for notice in path_coords.get("notices", []):
-                        acc.log(notice)
-
-
-                    if path_coords and "path" in path_coords:
-                        api_path_coords = path_coords["path"]
-                        acc.log(f"路径规划成功。")
-                    else:
-                        error_msg = (
-                            path_coords.get("error", "未知错误")
-                            if path_coords
-                            else "无响应"
-                        )
-                        acc.log(f"路径规划失败: {error_msg}")
-                        continue
-
-                except Exception as e:
-                    logging.error(f"Chrome浏览器池路径规划失败: {e}", exc_info=True)
-                    acc.log(f"路径规划异常: {str(e)}")
-                    continue
-
-                if not api_path_coords:
-                    acc.log("路径规划失败，跳过任务。")
-                    continue
-
-                logging.debug(
-                    f"[{acc.username}] 路径规划返回点数: {len(api_path_coords)}"
-                )
-
-                min_t_m, max_t_m, min_d_m = (
-                    acc.params.get("min_time_m", 20),
-                    acc.params.get("max_time_m", 30),
-                    acc.params.get("min_dist_m", 2000),
-                )
-
-                final_path_dedup = []
-                last_coord = None
-                for p in api_path_coords:
-                    longitude = p.get("lng", p.get("lon"))
-                    if longitude is None:
-                        continue
-                    coord = (longitude, p["lat"])
-                    if coord != last_coord:
-                        final_path_dedup.append(coord)
-                        last_coord = coord
-
-                if not final_path_dedup:
-                    acc.log("路径处理失败：无有效坐标点。")
-                    continue
-
-                logging.debug(
-                    f"[{acc.username}] 路径去重后点数: {len(final_path_dedup)}"
-                )
-
-                _plan_min_t_m = min_t_m * 1.02
-                _plan_max_t_m = max_t_m * 0.98
-                if _plan_max_t_m <= _plan_min_t_m:
-                    _plan_min_t_m, _plan_max_t_m = min_t_m, max_t_m
-                target_time_s = random.uniform(_plan_min_t_m * 60, _plan_max_t_m * 60)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
-                target_dist_m = random.uniform(min_d_m, min_d_m * 1.15)  # nosec B311 - 用于跑步路径规划的随机参数，非安全用途
-
-                final_geo_path = self._build_route_path_with_random_detours(
-                    final_path_dedup,
-                    run_data.target_points,
-                    target_dist_m,
-                    session_id=getattr(self, "_web_session_id", None),
-                    python_params=acc.params,
-                    app_base_url=getattr(self, "_web_app_base_url", None),
-                    guard_label="MultiAccountAutoGenerate",
-                    log_func=acc.log,
-                )
-                final_cumulative = [0.0]
-                for idx_c in range(len(final_geo_path) - 1):
-                    final_cumulative.append(
-                        final_cumulative[-1]
-                        + self._calculate_distance_m(
-                            final_geo_path[idx_c][0],
-                            final_geo_path[idx_c][1],
-                            final_geo_path[idx_c + 1][0],
-                            final_geo_path[idx_c + 1][1],
-                        )
-                    )
-
-                actual_total_dist = final_cumulative[-1] if final_cumulative else 0.0
-                if actual_total_dist == 0:
-                    acc.log("路径计算距离为0，跳过。")
-                    continue
-
+                ignore_time = acc.params.get("ignore_task_time", True)
                 acc.log(
-                    f"路径计算完成: 目标距离 {actual_total_dist:.1f}m, 目标耗时 {target_time_s:.1f}s"
+                    f"分析任务参数: ignore_task_time={ignore_time}, "
+                    f"run_only_incomplete={run_only_incomplete}"
+                )
+                # 任务时间状态统一由 _get_task_time_state() 评估，多账号 worker
+                # 与任务汇总必须共用同一判定，不得各自解析时间字符串。
+                active_task_count = sum(
+                    1
+                    for r in (getattr(acc, "all_run_data", None) or [])
+                    if self._get_task_time_state(r, ignore_time, datetime.datetime.now())
+                    == "active"
+                )
+                logging.debug(
+                    f"[{acc.username}] 本轮候选任务（时间状态 active）: {active_task_count}"
+                )
+                self._log_multi_task_summary(acc, prefix="任务统计")
+
+                # ---- 第二步：从最新列表中挑出下一个可执行任务 ----
+                run_data = self._select_next_multi_task(
+                    acc,
+                    attempted_task_keys,
+                    run_only_incomplete,
                 )
 
-                avg_speed = actual_total_dist / target_time_s
-                new_run_coords = []
-                start = final_geo_path[0]
-                new_run_coords.append(
-                    self._gps_random_offset(
-                        start[0], start[1], acc.params) + (0,)
-                )
-                t_elapsed, d_covered = 0.0, 0.0
+                if run_data is None:
+                    # 没有下一个可执行任务：直接结束，**不进入任务间隔等待**
+                    break
 
-                while t_elapsed < target_time_s:
-                    interval = min(
-                        random.uniform(
-                            acc.params["interval_ms"] * 0.9,
-                            acc.params["interval_ms"] * 1.1,
-                        )
-                        / 1000.0,
-                        target_time_s - t_elapsed,
-                    )
-                    if interval <= 0.1:
-                        break
+                # ---- 第三步：确认有新任务后才进入任务间隔等待 ----
+                # 必须先确定"确实还有下一个任务"再等待；
+                # 若先等待后拉取，最后一个任务跑完还要白等一轮才退出。
+                acc.has_pending_tasks = True
 
-                    d_covered = min(
-                        d_covered
-                        + random.uniform(avg_speed * 0.9,
-                                         avg_speed * 1.1) * interval,
-                        actual_total_dist,
-                    )
-                    lon, lat = self._get_point_at_distance(
-                        final_geo_path, final_cumulative, d_covered
-                    )
-                    lon_o, lat_o = self._gps_random_offset(
-                        lon, lat, acc.params)
-                    new_run_coords.append((lon_o, lat_o, int(interval * 1000)))
-                    t_elapsed += interval
-                    if d_covered >= actual_total_dist:
-                        break
-
-                run_data.run_coords = new_run_coords
-                run_data.total_run_distance_m = d_covered
-                run_data.total_run_time_s = t_elapsed
-
-                acc.log(f"已生成模拟轨迹: {len(new_run_coords)} 个GPS点")
-
-                run_data.trid = f"{acc.user_data.student_id}{int(time.time() * 1000)}"
-                start_time_ms = str(int(time.time() * 1000))
-                submission_successful = True
-                total_points = max(1, len(run_data.run_coords))
-                run_data.distance_covered_m = 0.0
-                run_data.current_point_index = 0
-                run_data.suppress_last_target_until_finish = True
-
-                if total_points <= 1:
-                    acc.log("警告: 生成的轨迹点数过少，无法执行任务。")
-                    continue
-
-                _mr_exec_start_real = time.time()
-                _mr_last_point_gps = run_data.run_coords[0]
-                _mr_last_auto_save_time = time.time()
-                _mr_exec_point_idx = 0
-                _mr_target_time_s = float(getattr(run_data, "total_run_time_s", 0.0) or 0.0)
-                if _mr_target_time_s <= 1.0:
-                    _mr_target_time_s = sum(max(0.0, d) / 1000.0 for _, _, d in run_data.run_coords)
-                _mr_target_time_s = max(1.0, _mr_target_time_s)
-                _mr_prefix_plan_s = [0.0]
-                _mr_acc_plan_s = 0.0
-                for _, _, _dur_ms in run_data.run_coords:
-                    _mr_acc_plan_s += max(0.0, _dur_ms) / 1000.0
-                    _mr_prefix_plan_s.append(_mr_acc_plan_s)
-                _mr_pid_kp = _main().PID_KP
-                _mr_pid_ki = _main().PID_KI
-                _mr_pid_kd = _main().PID_KD
-                _mr_pid_deadzone = _main().PID_DEADZONE
-                _mr_pid_integral = 0.0
-                _mr_pid_prev_error = 0.0
-                _mr_pid_deadzone_boost = 1.0
-
-                for chunk_idx in range(0, len(run_data.run_coords), 5):
-                    logging.debug(
-                        f"[{acc.username}] 执行进度: {chunk_idx}/{len(run_data.run_coords)}"
-                    )
-                    if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
-                        submission_successful = False
-                        task_outcomes[id(run_data)] = "aborted"
-                        break
-
-                    chunk = run_data.run_coords[chunk_idx: chunk_idx + 5]
-                    processed_points = chunk_idx
-                    for lon, lat, dur_ms in chunk:
-                        if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
-                            submission_successful = False
-                            task_outcomes[id(run_data)] = "aborted"
+                # 账号级启动延迟：仅在"确实已经挑到任务"时才延迟，避免无任务时白等。
+                if delay > 0 and not has_completed_any:
+                    delay_end_time = time.time() + delay
+                    while time.time() < delay_end_time:
+                        if acc.stop_event.is_set() or self.multi_run_stop_flag.is_set():
+                            aborted = True
+                            self._update_account_status_js(acc, status_text="已中止")
+                            self._update_multi_global_buttons()
                             break
-
-                        session_id = getattr(self, "_web_session_id", None)
-
-                        acc.current_position = {"lon": lon, "lat": lat}
-
-                        if session_id and _main().socketio:
-                            try:
-                                _main().socketio.emit(
-                                    "multi_position_update",
-                                    {
-                                        "username": acc.username,
-                                        "lon": lon,
-                                        "lat": lat,
-                                        "name": acc.user_data.name,
-                                    },
-                                    room=session_id,
-                                )
-                                time.sleep(0.001)
-                            except Exception as e:
-                                logging.debug(
-                                    f"Failed to emit multi_position_update: {e}"
-                                )
-
-                        _mr_elapsed_real_s = time.time() - _mr_exec_start_real
-                        _mr_elapsed_real_min = _mr_elapsed_real_s / 60.0
-                        _mr_actual_sleep_s = dur_ms / 1000.0
-                        if True:
-                            _mr_planned_elapsed_s = min(
-                                _mr_target_time_s,
-                                _mr_prefix_plan_s[min(_mr_exec_point_idx, len(_mr_prefix_plan_s) - 1)],
-                            )
-                            _mr_expected_frac = _mr_planned_elapsed_s / _mr_target_time_s
-                            _mr_actual_frac = _mr_elapsed_real_s / _mr_target_time_s
-                            _mr_progress_diff = _mr_actual_frac - _mr_expected_frac
-                            _mr_error = _mr_progress_diff
-                            _mr_in_deadzone = abs(_mr_error) <= _mr_pid_deadzone
-                            if _mr_in_deadzone:
-                                _mr_pid_deadzone_boost = min(
-                                    _main().PID_DEADZONE_BOOST_MAX,
-                                    _mr_pid_deadzone_boost + _main().PID_DEADZONE_BOOST_STEP,
-                                )
-                            else:
-                                _mr_pid_deadzone_boost = 1.0
-                            _mr_error_for_pid = _mr_error
-                            _mr_pid_integral = max(
-                                -_main().PID_INTEGRAL_LIMIT,
-                                min(_main().PID_INTEGRAL_LIMIT, _mr_pid_integral + _mr_error_for_pid),
-                            )
-                            _mr_pid_derivative = _mr_error_for_pid - _mr_pid_prev_error
-                            _mr_pid_prev_error = _mr_error_for_pid
-                            _mr_pid_p_term = _mr_pid_kp * _mr_error_for_pid
-                            _mr_pid_i_term = _mr_pid_ki * _mr_pid_integral
-                            _mr_pid_d_term = _mr_pid_kd * _mr_pid_derivative
-                            _mr_pid_out = _mr_pid_deadzone_boost * (
-                                _mr_pid_p_term
-                                + _mr_pid_i_term
-                                + _mr_pid_d_term
-                            )
-                            _mr_sleep_ratio = max(0.35, min(1.70, 1.0 - _mr_pid_out))
-                            _mr_actual_sleep_s = _mr_actual_sleep_s * _mr_sleep_ratio
-                            if _mr_error_for_pid > 0:
-                                _mr_remaining_s = max(1.0, _mr_target_time_s - _mr_elapsed_real_s)
-                                _mr_remaining_pts = max(1, total_points - _mr_exec_point_idx)
-                                _mr_actual_sleep_s = min(_mr_actual_sleep_s, _mr_remaining_s / _mr_remaining_pts)
-                                logging.debug(
-                                    f"[{acc.username}] 进度偏慢，PID自动加速: "
-                                    f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
-                                    f"时间误差={_mr_progress_diff:.2%}, 实际累计={_mr_elapsed_real_s:.1f}s, "
-                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, "
-                                    f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
-                                    f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
-                                    f"新等待时间={_mr_actual_sleep_s:.2f}s"
-                                )
-                            elif _mr_error < 0:
-                                logging.debug(
-                                    f"[{acc.username}] 进度偏快，PID自动减速: "
-                                    f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
-                                    f"时间误差={_mr_progress_diff:.2%}, 实际累计={_mr_elapsed_real_s:.1f}s, "
-                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, "
-                                    f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
-                                    f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
-                                    f"新等待时间={_mr_actual_sleep_s:.2f}s"
-                                )
-                            else:
-                                logging.debug(
-                                    f"[{acc.username}] 进度正常(±{_mr_pid_deadzone:.0%}): "
-                                    f"实际时间进度={_mr_actual_frac:.2%}, 规划时间进度={_mr_expected_frac:.2%}, "
-                                    f"时间误差={_mr_progress_diff:.2%}，实际累计={_mr_elapsed_real_s:.1f}s, "
-                                    f"规划累计={_mr_planned_elapsed_s:.1f}s, "
-                                    f"P={_mr_pid_p_term:.4f}, I={_mr_pid_i_term:.4f}, D={_mr_pid_d_term:.4f}, "
-                                    f"PID={_mr_pid_out:.4f}, Boost={_mr_pid_deadzone_boost:.2f}, "
-                                    f"等待时间={_mr_actual_sleep_s:.2f}s"
-                                )
-                        else:
-                            logging.debug(
-                                    f"[{acc.username}] 已执行时间={_mr_elapsed_real_min:.2f}分钟，未接近目标时间，无需调整执行速度。")
-
-                        if acc.stop_event.wait(timeout=_mr_actual_sleep_s):
-                            submission_successful = False
-                            task_outcomes[id(run_data)] = "aborted"
-                            break
-
-                        run_data.distance_covered_m += self._calculate_distance_m(
-                            _mr_last_point_gps[0],
-                            _mr_last_point_gps[1],
-                            lon,
-                            lat,
-                        )
-                        _mr_last_point_gps = (lon, lat, dur_ms)
-                        _mr_exec_point_idx += 1
-                        run_data.current_point_index = _mr_exec_point_idx
-
-                        processed_points += 1
-                        try:
-                            pct = int(processed_points * 100 / total_points)
-                            self._update_account_status_js(
-                                acc,
-                                progress_pct=pct,
-                                progress_text=f"运行 {i+1}/{len(tasks_to_run)}: {task_name_short} · {pct}%",
-                                progress_extra=f"{processed_points}/{total_points} 点",
-                            )
-                        except Exception:
-                            pass
-
-                        if session_id and (
-                            time.time() - _mr_last_auto_save_time >= 30
-                        ):
-                            try:
-                                if (
-                                    hasattr(_main(), "web_sessions_lock")
-                                    and hasattr(_main(), "web_sessions")
-                                ):
-                                    with _main().web_sessions_lock:
-                                        if session_id in _main().web_sessions:
-                                            _main().save_session_state(
-                                                session_id,
-                                                _main().web_sessions[session_id],
-                                            )
-                                            _mr_last_auto_save_time = time.time()
-                            except Exception as e:
-                                logging.error(
-                                    f"[{acc.username}] 任务执行中自动保存会话失败: {e}"
-                                )
-
-                    if not submission_successful:
-                        break
-
-                    is_final_chunk = chunk_idx + 5 >= len(run_data.run_coords)
-                    if not self._submit_chunk_with_retries(
-                        run_data,
-                        chunk,
-                        start_time_ms,
-                        is_final_chunk,
-                        chunk_idx,
-                        acc.api_client,
-                        acc.user_data,
-                        stop_event=acc.stop_event,
-                        log_func=acc.log,
-                        stop_predicate=self.multi_run_stop_flag.is_set,
-                    ):
-                        submission_successful = False
-                        break
-
-                if submission_successful:
-                    run_data.suppress_last_target_until_finish = False
-                    if run_data.target_points and run_data.target_sequence < len(run_data.target_points):
-                        try:
-                            end_lon, end_lat, _ = run_data.run_coords[-1]
-                            self.check_target_reached_during_run(run_data, end_lon, end_lat)
-                        except Exception:  # nosec B110 - 目标检查失败不影响主流程
-                            pass
-                    acc.log(f"任务 {run_data.run_name} 数据提交完毕，等待服务器确认...")
-                    time.sleep(3)
-                    if self._finalize_run(run_data, -1, acc.api_client):
-                        task_outcomes[id(run_data)] = "success"
-                        self._multi_fetch_and_summarize_tasks(acc)
-                        self._update_account_status_js(acc, summary=acc.summary)
-                        acc.log(f"任务 {run_data.run_name} 执行流程完成。")
+                        delay_remaining = delay_end_time - time.time()
                         self._update_account_status_js(
-                            acc,
-                            status_text="任务已完成",
-                            progress_pct=100,
-                            progress_text=f"运行 {i+1}/{len(tasks_to_run)}: {task_name_short} · 100%",
-                            progress_extra="",
+                            acc, status_text=f"延迟 {delay_remaining:.0f}s"
                         )
-                    else:
-                        task_outcomes[id(run_data)] = "failed"
-                        acc.log(f"任务 {run_data.run_name} 未被服务器确认完成。")
-                        self._update_account_status_js(
-                            acc,
-                            status_text="任务未确认完成",
-                        )
-                    session_id = getattr(self, "_web_session_id", None)
-                    if session_id:
-                        try:
-                            _main().save_session_state(
-                                session_id,
-                                self,
-                                force_save=True,
-                            )
-                        except Exception as e:
-                            logging.error(
-                                f"[{acc.username}] 任务结束后保存会话失败: {e}"
-                            )
-                else:
-                    if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
-                        task_outcomes[id(run_data)] = "aborted"
-                        acc.log(f"任务 {run_data.run_name} 执行被中止。")
-                        self._update_account_status_js(acc, status_text="已中止")
-                    else:
-                        acc.log(f"任务 {run_data.run_name} 执行失败。")
-                        self._update_account_status_js(acc, status_text="任务失败")
+                        time.sleep(1)
+                    if aborted:
+                        break
+                    # 延迟只对本次运行的第一个任务生效
+                    delay = 0
 
-                if i < len(tasks_to_run) - 1:
+                # 任务间隔：只有"已经跑过至少一个任务"且"已确认还有下一个"才等待
+                if has_completed_any:
                     wait_time = random.uniform(
                         acc.params["task_gap_min_s"], acc.params["task_gap_max_s"]
+                    )
+                    acc.log(
+                        f"已确认存在下一个可执行任务，进入任务间隔等待 {wait_time:.0f}s。"
                     )
                     should_break_worker = False
                     end_time = time.time() + wait_time
@@ -9397,24 +9627,102 @@ class Api:
                         )
                         time.sleep(1)
                     if should_break_worker:
+                        aborted = True
                         self._update_account_status_js(acc, status_text="已中止")
                         break
 
-            if not acc.stop_event.is_set():
-                successful_tasks = sum(
-                    1 for outcome in task_outcomes.values() if outcome == "success"
+                # ---- 第四步：执行该任务 ----
+                # 用已尝试集合的长度作为展示序号，与旧实现的 i+1 语义保持一致
+                attempted_task_keys.add(self._multi_task_key(run_data))
+                task_index = len(attempted_task_keys)
+
+                task_name_short = (
+                    run_data.run_name[:10] + "..."
+                    if len(run_data.run_name) > 10
+                    else run_data.run_name
                 )
-                final_status = _main()._build_multi_account_completion_status(
-                    len(task_outcomes),
-                    successful_tasks,
-                )
-                self._update_account_status_js(
+
+                outcome = self._run_single_multi_account_task(
                     acc,
-                    status_text=final_status,
-                    progress_pct=100,
-                    progress_text=final_status,
-                    progress_extra="",
+                    run_data,
+                    task_index,
+                    task_name_short,
                 )
+                task_outcomes[id(run_data)] = outcome
+                if outcome == "aborted":
+                    aborted = True
+                    self._update_account_status_js(acc, status_text="已中止")
+                    break
+
+                has_completed_any = True
+
+
+                if not acc.stop_event.is_set():
+                    if not attempted_task_keys:
+                        # 一个任务都没跑：保持旧实现的"无任务可执行"语义，
+                        # 并刷新全局按钮状态（旧代码在提前 return 前会调用它）。
+                        self._update_account_status_js(acc, status_text="无任务可执行")
+                        self._update_multi_global_buttons()
+                        return
+
+                    successful_tasks = sum(
+                        1 for outcome in task_outcomes.values() if outcome == "success"
+                    )
+                    failed_tasks = sum(
+                        1 for outcome in task_outcomes.values() if outcome == "failed"
+                    )
+                    aborted = aborted or self.multi_run_stop_flag.is_set()
+                    # 退出前显式记录剩余待执行数量（Q4）。
+                    # 先按最新服务端状态刷新一次，再统计"未完成 + active + 本次未尝试"的任务。
+                    try:
+                        self._multi_fetch_and_summarize_tasks(acc)
+                        remaining_count = self._count_multi_remaining_tasks(
+                            acc, attempted_task_keys, run_only_incomplete
+                        )
+                        remaining_text = f"剩余待执行 {remaining_count}"
+                    except Exception as remaining_error:
+                        logging.error(
+                            f"[{acc.username}] 统计剩余待执行任务失败: {remaining_error}",
+                            exc_info=True,
+                        )
+                        remaining_text = "剩余待执行 未知"
+
+                    summary_message = (
+                        f"任务执行流程结束：成功 {successful_tasks} / "
+                        f"失败 {failed_tasks} / {remaining_text}"
+                        + ("（已中止）" if aborted else "")
+                    )
+                    acc.log(summary_message)
+                    logging.info(f"[{acc.username}] {summary_message}")
+                    self._log_multi_task_summary(
+                        acc, prefix="结束时的任务统计", level=logging.INFO
+                    )
+
+                    final_status = _main()._build_multi_account_completion_status(
+                        len(task_outcomes),
+                        successful_tasks,
+                    )
+                    self._update_account_status_js(
+                        acc,
+                        status_text=final_status,
+                        progress_pct=100,
+                        progress_text=final_status,
+                        progress_extra="",
+                    )
+                else:
+                    # 被中止时同样记录剩余量，便于判断"是没任务还是被中断"
+                    try:
+                        self._multi_fetch_and_summarize_tasks(acc)
+                        remaining_count = self._count_multi_remaining_tasks(
+                            acc, attempted_task_keys, run_only_incomplete
+                        )
+                    except Exception:  # nosec B110 - 中止路径的统计失败不影响退出
+                        remaining_count = "未知"
+                    logging.info(
+                        f"[{acc.username}] 任务执行流程中止：成功 "
+                        f"{sum(1 for o in task_outcomes.values() if o == 'success')} / "
+                        f"剩余待执行 {remaining_count}"
+                    )
 
         except Exception:
             logging.error(
@@ -10021,6 +10329,10 @@ class Api:
         # 记录线程启动日志
         logging.info(f"[账号刷新线程] 启动 - 账号ID: {account_id}")
 
+        # 连续未启用自动签到的轮次计数：达到阈值后线程主动退出，
+        # 避免自动签到关闭后线程永久驻留空转
+        disabled_rounds = 0
+
         stop_event = stop_event or self._get_session_stop_event()
 
         try:
@@ -10057,7 +10369,16 @@ class Api:
                         school_username)
 
                     if not is_auto_attendance_enabled:
-                        # 未启用自动签到，等待30秒后重新检查
+                        # 未启用自动签到：累计未启用轮次，连续多轮仍未启用则退出线程。
+                        # 旧实现无条件 continue + wait(30)，导致线程永久存活空转
+                        # （自动签到关闭后台线程却不退出，属于"无限期存在"的根因之一）。
+                        disabled_rounds += 1
+                        if disabled_rounds >= _main().AUTO_ATTENDANCE_DISABLED_ROUNDS_BEFORE_EXIT:
+                            logging.info(
+                                f"[账号刷新线程] 账号 {account_id} (学校账号: {school_username}) "
+                                f"连续 {disabled_rounds} 轮未启用自动签到，线程退出"
+                            )
+                            break
                         logging.debug(
                             f"[账号刷新线程] 账号 {account_id} (学校账号: {school_username}) 未启用自动签到，等待..."
                         )
@@ -10067,6 +10388,9 @@ class Api:
                             break
                         # 继续下一次循环
                         continue
+
+                    # 本轮确认启用，重置未启用计数
+                    disabled_rounds = 0
 
                     # === 第三步：检查是否已登录 ===
                     # 确保账号已登录（有有效的 user_data.id）
@@ -10214,6 +10538,25 @@ class Api:
             and not self.stop_account_monitor.is_set()
         ):
             try:
+                # === 第零步：回收所有超时的自动签到记录 ===
+                # 这一步与当前是否登录某个账号无关，是修复"自动签到账号无限期
+                # 存在"的关键：仅靠 _is_auto_attendance_enabled() 的读路径清理，
+                # 永远不会评估那些已不在会话中的账号。
+                try:
+                    sweep = _main().expire_stale_auto_attendance_accounts(
+                        reason="monitor_sweep"
+                    )
+                    if sweep.get("removed"):
+                        logging.info(
+                            f"[多账号监控] 已回收 {len(sweep['removed'])} 条超时自动签到记录: "
+                            f"{sweep['removed']}"
+                        )
+                except Exception as sweep_error:
+                    logging.error(
+                        f"[多账号监控] 回收超时自动签到记录失败: {sweep_error}",
+                        exc_info=True,
+                    )
+
                 # === 第一步：检查是否处于多账号模式 ===
                 if not self.is_multi_account_mode:
                     # 如果不在多账号模式，等待5秒后重新检查
@@ -10263,6 +10606,45 @@ class Api:
                             exc_info=True
                         )
 
+                # === 第三步之二：清理不再需要的刷新线程记录 ===
+                # 自动签到关闭或账号登出后，刷新线程会自行退出；此处回收其字典项，
+                # 避免 account_refresh_threads 无限增长，也让"线程仍在"的旧记录
+                # 不再阻止后续重新创建线程。
+                try:
+                    active_account_ids = set()
+                    for username, acc in list(self.accounts.items()):
+                        if (
+                            acc.user_data
+                            and acc.user_data.id
+                            and acc.user_data.username
+                            and _main()._is_auto_attendance_enabled(
+                                acc.user_data.username
+                            )
+                        ):
+                            active_account_ids.add(str(acc.user_data.id))
+
+                    with self.threads_lock:
+                        stale_ids = [
+                            account_id
+                            for account_id, thread in list(
+                                self.account_refresh_threads.items()
+                            )
+                            if account_id not in active_account_ids
+                            and not thread.is_alive()
+                        ]
+                        for account_id in stale_ids:
+                            self.account_refresh_threads.pop(account_id, None)
+                    if stale_ids:
+                        logging.info(
+                            f"[多账号监控] 已回收 {len(stale_ids)} 个已停止的刷新线程记录: "
+                            f"{stale_ids}"
+                        )
+                except Exception as cleanup_error:
+                    logging.error(
+                        f"[多账号监控] 清理刷新线程记录失败: {cleanup_error}",
+                        exc_info=True,
+                    )
+
                 # === 第四步：等待一段时间后再次检查 ===
                 # 每60秒检查一次所有账号的线程状态
                 # 使用 wait 而不是 sleep，以便能响应停止信号
@@ -10288,6 +10670,8 @@ class Api:
         (单账号) 后台自动刷新通知和签到的线程 (已修复)
         已废弃但保留以兼容旧代码，改为从JSON配置读取自动签到状态
         """
+        # 连续未启用自动签到的轮次计数：达到阈值后线程主动退出
+        disabled_rounds = 0
         while not self.stop_auto_refresh.is_set():
             try:
                 if not self.user_data.id or self.is_multi_account_mode:
@@ -10306,6 +10690,8 @@ class Api:
                     school_username) if school_username else False
 
                 if is_enabled:
+                    # 本轮确认启用，重置未启用计数
+                    disabled_rounds = 0
                     self.log("(后台) 自动签到已启用，正在检查...")
                     auto_attendance_closed = self._check_and_trigger_auto_attendance(self)
                     if auto_attendance_closed:
@@ -10336,7 +10722,14 @@ class Api:
                                 f"[_auto_refresh_worker] 无法推送通知：socketio 实例不可用"
                             )
                 else:
-                    pass
+                    # 未启用自动签到：累计未启用轮次，连续多轮仍未启用则退出线程，
+                    # 避免线程在自动签到关闭后永久驻留空转。
+                    disabled_rounds += 1
+                    if disabled_rounds >= _main().AUTO_ATTENDANCE_DISABLED_ROUNDS_BEFORE_EXIT:
+                        logging.info(
+                            f"[_auto_refresh_worker] 连续 {disabled_rounds} 轮未启用自动签到，线程退出"
+                        )
+                        break
 
                 self.log(f"自动刷新完成，等待 {refresh_interval_s} 秒后再次刷新...")
                 if self.stop_auto_refresh.wait(timeout=refresh_interval_s):

@@ -17,6 +17,25 @@ import uuid
 from main_runtime import _main
 
 
+# 学校账号密码可见级别（高 → 低）
+#   ALL  : 持有 auto_fill_password（或管理员组）—— 可看所有用户的学校账号密码
+#   OWN  : 持有 view_school_account_passwords —— 只能看当前系统账号自己关联的学校账号密码
+#   NONE : 两者皆无 —— 不返回任何密码字段
+PASSWORD_VISIBILITY_ALL = "all"
+PASSWORD_VISIBILITY_OWN = "own"
+PASSWORD_VISIBILITY_NONE = "none"
+
+# 各内置权限组对新增权限的默认值（仅用于回填缺失键，不覆盖已有配置）
+BUILTIN_PERMISSION_DEFAULTS = {
+    "view_school_account_passwords": {
+        "guest": False,
+        "user": False,
+        "admin": True,
+        "super_admin": True,
+    },
+}
+
+
 class AuthSystem:
     """用户认证和权限管理系统"""
 
@@ -26,6 +45,8 @@ class AuthSystem:
         self.config = self._load_config()
         logging.info("配置文件已加载")
         self.permissions = self._load_permissions()
+        # 回填内置权限组中缺失的新权限键（只补齐缺失项，不覆盖任何已有值）
+        self._ensure_builtin_permissions()
         logging.info("权限配置已加载")
         # [修正] 使用 RLock (可重入锁) 替代 Lock。
         # 原因: register_user 方法持有锁时会调用 unbind_phone_from_user，后者也会请求锁。
@@ -251,6 +272,58 @@ class AuthSystem:
                     return json.load(f)
             except Exception:
                 return default_perms
+
+    def _ensure_builtin_permissions(self):
+        """
+        为已存在的 permissions.json 回填新增的内置权限键。
+
+        背景:
+            新增权限（如 view_school_account_passwords）只写进
+            _create_permissions_json() 的默认模板时，**已存在**的
+            permissions.json 不会自动获得该键。缺少键的组会被
+            check_permission() 视为 False，导致管理员也无法使用新功能，
+            且权限面板看不到该权限项。
+
+        行为:
+            - 只补齐 BUILTIN_PERMISSION_DEFAULTS 中声明、且组内**缺失**的键；
+            - 绝不覆盖任何已有值（用户自定义调整不会被重置）；
+            - 只处理内置组，不动自定义权限组；
+            - 无变更时不写盘。
+        """
+        try:
+            groups = self.permissions.get("permission_groups")
+            if not isinstance(groups, dict):
+                return
+
+            changed = False
+            backfilled = {}
+            for permission, group_defaults in BUILTIN_PERMISSION_DEFAULTS.items():
+                for group_name, default_value in group_defaults.items():
+                    group_info = groups.get(group_name)
+                    if not isinstance(group_info, dict):
+                        continue
+                    # 只处理内置组，避免给自定义组强加语义
+                    if group_info.get("is_system") is False:
+                        continue
+                    perms = group_info.get("permissions")
+                    if not isinstance(perms, dict):
+                        continue
+                    if permission in perms:
+                        continue
+                    perms[permission] = default_value
+                    changed = True
+                    backfilled.setdefault(permission, {})[group_name] = default_value
+
+            if changed:
+                self._save_permissions()
+                logging.info(
+                    f"[权限配置] 已回填新增内置权限键: {backfilled}"
+                )
+        except Exception as e:
+            # 回填失败不能阻断启动：缺少键时按 False 处理是安全的
+            logging.error(
+                f"[权限配置] 回填内置权限键失败: {e}", exc_info=True
+            )
 
     def _save_permissions(self):
         """保存权限配置"""
@@ -1208,6 +1281,45 @@ class AuthSystem:
                 "theme": user_data.get("theme", "light"),
                 "session_ids": user_data.get("session_ids", []),
             }
+
+    def resolve_password_visibility(self, auth_username):
+        """
+        解析调用者的"学校账号密码可见级别"。
+
+        密码可见性共三档（高 → 低）：
+            "all"  —— 持有 auto_fill_password（或属于管理员组）：
+                      可查看**所有**认证用户的所有学校账号密码。
+            "own"  —— 持有 view_school_account_passwords：
+                      仅可查看**当前登录系统账号自己关联**的学校账号密码。
+            "none" —— 两者皆无：不返回任何密码字段。
+
+        返回值:
+            str: "all" / "own" / "none"
+
+        异常处理:
+            权限数据读取异常时回退为 "none"（安全默认值），
+            并与 check_permission 保持一致的判定口径。
+        """
+        try:
+            group = self.get_user_group(auth_username)
+
+            # 管理员组天然拥有全量可见性（与 get_initial_data 的既有判定一致）
+            if group in ("admin", "super_admin"):
+                return PASSWORD_VISIBILITY_ALL
+
+            if self.check_permission(auth_username, "auto_fill_password"):
+                return PASSWORD_VISIBILITY_ALL
+
+            if self.check_permission(auth_username, "view_school_account_passwords"):
+                return PASSWORD_VISIBILITY_OWN
+
+            return PASSWORD_VISIBILITY_NONE
+        except Exception as e:
+            logging.error(
+                f"[密码可见性] 解析用户 {auth_username} 的密码可见级别失败: {e}",
+                exc_info=True,
+            )
+            return PASSWORD_VISIBILITY_NONE
 
     def check_permission(self, auth_username, permission):
         """检查用户是否有特定权限（支持差分化权限）"""

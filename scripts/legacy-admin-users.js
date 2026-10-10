@@ -353,11 +353,17 @@ async function loadSchoolAccounts() {
                   </div>
                   
                   <!-- 密码显示行 -->
+                  <!-- 后端会按密码可见级别脱敏：拿不到密码时显示占位符，
+                       而不是留空造成"密码为空"的误解 -->
                   <div class="text-sm">
                     <span class="text-slate-500">密码:</span>
-                    <span class="font-mono text-slate-600 ml-2">${escapeHtml(
-                      password,
-                    )}</span>
+                    ${
+                      password
+                        ? `<span class="font-mono text-slate-600 ml-2">${escapeHtml(
+                            password,
+                          )}</span>`
+                        : `<span class="text-slate-400 ml-2 italic">无权查看</span>`
+                    }
                   </div>
                   
                   <!-- UA 显示行（仅当 UA 存在时显示） -->

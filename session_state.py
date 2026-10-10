@@ -458,6 +458,28 @@ def restore_session_to_api_instance(api_instance, state):
             saved_params = state["params"]
             if isinstance(saved_params, dict):
                 api_instance.params.update(saved_params)
+                # 一次性迁移旧的"任务间隔"默认值。
+                # 会话里持久化的是完整参数快照，会覆盖 global_params 的新默认值，
+                # 因此只改代码默认值无法让已存在的会话生效。
+                # 仅当持久化值恰好等于旧默认值 (600, 3600) 时才视为"沿用旧默认"，
+                # 任何其它取值都视为用户自定义并原样保留。
+                try:
+                    _legacy_gap_default = (600, 3600)
+                    _saved_gap = (
+                        saved_params.get("task_gap_min_s"),
+                        saved_params.get("task_gap_max_s"),
+                    )
+                    if _saved_gap == _legacy_gap_default:
+                        api_instance.params["task_gap_min_s"] = 600
+                        api_instance.params["task_gap_max_s"] = 1800
+                        logging.info(
+                            "[会话恢复] 检测到旧的任务间隔默认值 "
+                            f"{_legacy_gap_default}，已迁移为 (600, 1800)"
+                        )
+                except Exception as _gap_error:
+                    logging.warning(
+                        f"[会话恢复] 迁移任务间隔默认值失败: {_gap_error}"
+                    )
         if "device_ua" in state:
             api_instance.device_ua = state["device_ua"]
         if "cached_notifications" in state:
@@ -682,12 +704,19 @@ def restore_session_to_api_instance(api_instance, state):
                         break
 
             if has_auto_attendance:
+                # 只有确实存在启用自动签到的账号时才启动线程。
+                # 旧实现无论是否存在都无条件 start()，会留下一个永久驻留
+                # 且无事可做的线程（属于"自动签到无限期存在"的一种表现）。
                 api_instance.stop_multi_auto_refresh.clear()
-            api_instance.multi_auto_refresh_thread = threading.Thread(
-                target=api_instance._multi_auto_attendance_worker, daemon=True
-            )
-            api_instance.multi_auto_refresh_thread.start()
-            logging.info(f"会话恢复: 已重启多账号自动签到后台线程")
+                api_instance.multi_auto_refresh_thread = threading.Thread(
+                    target=api_instance._multi_auto_attendance_worker, daemon=True
+                )
+                api_instance.multi_auto_refresh_thread.start()
+                logging.info(f"会话恢复: 已重启多账号自动签到后台线程")
+            else:
+                logging.info(
+                    "会话恢复: 无账号启用自动签到，跳过启动多账号自动签到线程"
+                )
 
         logging.info(
             f"会话状态恢复完成: 任务数={len(api_instance.all_run_data)}, 选中索引={api_instance.current_run_idx}, 多账号模式={api_instance.is_multi_account_mode}"

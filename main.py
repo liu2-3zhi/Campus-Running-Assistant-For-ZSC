@@ -24,6 +24,7 @@ from auto_attendance_config import (
     _migrate_auto_attendance_from_ini,
     _record_auto_attendance_success,
     _save_auto_attendance_config,
+    expire_stale_auto_attendance_accounts,
 )
 from runtime_maintenance import (
     _append_daily_full_restart_log,
@@ -254,6 +255,14 @@ ENABLE_FRONTEND_JS_ANTI_DEBUG = False
 # 自动签到功能配置
 AUTO_ATTENDANCE_NOTICE_LIMIT = 5  # 自动签到时拉取的通知数量上限
 AUTO_ATTENDANCE_MAX_MINUTES = 120  # 自动签到最长持续时间（分钟），超时后自动关闭
+# 自动签到关闭后，刷新线程连续多少轮确认未启用即自行退出（每轮约 30 秒）。
+# 需要大于 1 以避免配置读写的瞬时抖动导致线程误退。
+AUTO_ATTENDANCE_DISABLED_ROUNDS_BEFORE_EXIT = 2
+
+# 多账号 worker 单次运行最多尝试执行多少个任务。
+# 新的调度逻辑会在每完成一个任务后重新拉取任务列表，因此需要上限兜底，
+# 防止服务端持续返回同一批未完成任务时陷入死循环。
+MULTI_WORKER_MAX_TASKS = 50
 
 # 跑步 PID 参数（单账号/多账号共用）
 PID_KP = 4.80
@@ -4333,6 +4342,29 @@ def auto_init_system():
         # 修复：函数已移至模块级别，直接调用而非通过Api类
         _migrate_auto_attendance_from_ini()
 
+        # 启动时回收一次超时的自动签到记录。
+        # 这些记录可能在进程未运行时就已经到期，且其所属账号此后从未登录，
+        # 因此必须有一个不依赖登录状态的清理入口，否则会永久驻留。
+        try:
+            _sweep_result = expire_stale_auto_attendance_accounts(
+                reason="startup_sweep"
+            )
+            if _sweep_result.get("removed"):
+                logging.info(
+                    f"[系统初始化] 已回收 {len(_sweep_result['removed'])} 条超时自动签到记录: "
+                    f"{_sweep_result['removed']}"
+                )
+                print(
+                    f"[系统初始化] 已回收 {len(_sweep_result['removed'])} 条超时自动签到记录"
+                )
+            if not _sweep_result.get("save_ok", True):
+                logging.warning("[系统初始化] 回收超时自动签到记录时写盘失败，将在下次启动重试")
+        except Exception as _sweep_error:
+            logging.error(
+                f"[系统初始化] 回收超时自动签到记录失败: {_sweep_error}",
+                exc_info=True,
+            )
+
         logging.info("步骤2.8: 执行旧版数据结构自动迁移...")
         print("[系统初始化] 执行旧版数据结构自动迁移...")
         _run_auto_data_migrations_from_main()
@@ -7397,6 +7429,7 @@ def _create_permissions_json(force=False):
                     "view_logs": False,
                     "clear_logs": False,
                     "auto_fill_password": False,
+                    "view_school_account_passwords": False,
                     "import_offline": True,
                     "export_data": True,
                     "modify_params": True,
@@ -7432,6 +7465,7 @@ def _create_permissions_json(force=False):
                     "view_logs": False,
                     "clear_logs": False,
                     "auto_fill_password": False,
+                    "view_school_account_passwords": False,
                     "import_offline": True,
                     "export_data": True,
                     "modify_params": True,
@@ -7474,6 +7508,7 @@ def _create_permissions_json(force=False):
                     "view_all_sessions": True,
                     "force_logout_users": True,
                     "auto_fill_password": True,
+                    "view_school_account_passwords": True,
                     "import_offline": True,
                     "export_data": True,
                     "modify_params": True,
@@ -7523,6 +7558,7 @@ def _create_permissions_json(force=False):
                     "delete_permission_groups": True,
                     "modify_permission_groups": True,
                     "auto_fill_password": True,
+                    "view_school_account_passwords": True,
                     "import_offline": True,
                     "export_data": True,
                     "modify_params": True,

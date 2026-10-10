@@ -85,6 +85,78 @@ def start_web_server(args_param):
     global ip_ban_list_cache, ip_ban_cache_lock, socketio
     global _midnight_runtime_reload_hook, get_ip_location, config, requests
 
+    def _resolve_password_visibility(auth_username):
+        """
+        解析调用者的学校账号密码可见级别（委托给 AuthSystem）。
+
+        返回值: "all" / "own" / "none"
+            all  = 持有 auto_fill_password 或属于管理员组，可看所有用户的学校账号密码
+            own  = 持有 view_school_account_passwords，只能看自己关联的学校账号密码
+            none = 两者皆无，不返回任何密码字段
+        """
+        try:
+            return _main().auth_system.resolve_password_visibility(auth_username)
+        except Exception as exc:
+            logging.error(
+                f"[密码可见性] 解析用户 {auth_username} 的可见级别失败: {exc}",
+                exc_info=True,
+            )
+            return "none"
+
+    def _apply_password_visibility(accounts, auth_username, target_username):
+        """
+        按调用者的可见级别对学校账号字典做密码脱敏。
+
+        规则:
+            all  —— 原样返回（保留 password / ua）
+            own  —— 仅当 target_username 就是调用者自己时保留 password / ua，
+                    否则置空
+            none —— 全部置空
+
+        注意:
+            只清空 password / ua 两个敏感字段，其余字段（overdue_count、
+            completed_count 等）结构保持不变，避免前端取值报错。
+            下层账号列表的可见性仍由 get_initial_data().users 与
+            manage_users 控制，本函数只负责"密码这一层"。
+        """
+        visibility = _resolve_password_visibility(auth_username)
+
+        if visibility == "all":
+            logging.info(
+                f"[密码可见性] 调用者={auth_username} 级别=all 目标={target_username} "
+                f"账号数={len(accounts or {})}（返回完整密码）"
+            )
+            return accounts
+
+        if not isinstance(accounts, dict):
+            return accounts
+
+        if visibility == "own" and target_username == auth_username:
+            logging.info(
+                f"[密码可见性] 调用者={auth_username} 级别=own 目标={target_username} "
+                f"账号数={len(accounts)}（本人账号，返回完整密码）"
+            )
+            return accounts
+
+        redacted = {}
+        for account_name, account_info in accounts.items():
+            if isinstance(account_info, dict):
+                # 只覆盖敏感字段，保留其它统计字段
+                sanitized = dict(account_info)
+                if sanitized.get("password"):
+                    sanitized["password"] = ""
+                if sanitized.get("ua"):
+                    sanitized["ua"] = ""
+                redacted[account_name] = sanitized
+            else:
+                # 旧格式（值是密码字符串）直接置空
+                redacted[account_name] = ""
+        logging.info(
+            f"[密码可见性] 调用者={auth_username} 级别={visibility} 目标={target_username} "
+            f"账号数={len(redacted)}（已脱敏密码）"
+        )
+        return redacted
+
     def _sync_runtime_state(include_ip_location=False):
         runtime = _main()
         runtime.chrome_pool = chrome_pool
@@ -4681,6 +4753,13 @@ def start_web_server(args_param):
                     if account_name in allowed_users_set
                 }
 
+            # 步骤6.5：按密码可见级别脱敏（见 _apply_password_visibility 文档）
+            # manage_users 只决定"能列出哪些账号"，密码本身另由
+            # auto_fill_password / view_school_account_passwords 控制。
+            filtered_accounts = _apply_password_visibility(
+                filtered_accounts, auth_username, target_username
+            )
+
             # 记录过滤结果，用于审计和调试
             logging.info(
                 f"[过滤完成] 用户 {auth_username} 查询 {target_username} 的账号: "
@@ -4937,6 +5016,13 @@ def start_web_server(args_param):
                     if account_name in allowed_users_set
                 }
 
+            # 步骤6.5：按密码可见级别脱敏（见 _apply_password_visibility 文档）
+            # manage_users 只决定"能列出哪些账号"，密码本身另由
+            # auto_fill_password / view_school_account_passwords 控制。
+            filtered_accounts = _apply_password_visibility(
+                filtered_accounts, auth_username, target_username
+            )
+
             # 记录过滤结果，用于审计和调试
             logging.info(
                 f"[过滤完成] 用户 {auth_username} 查询 {target_username} 的账号: "
@@ -4985,17 +5071,29 @@ def start_web_server(args_param):
     @app.route("/auth/admin/get_all_users_school_accounts", methods=["GET"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def auth_admin_get_all_users_school_accounts():
-        """获取所有认证用户的 school_account 列表（管理员或有 auto_fill_password 权限）"""
+        """获取所有认证用户的 school_account 列表（需要 auto_fill_password 级别权限）"""
         # 从Flask的g对象中获取当前登录的用户名
         auth_username = _main().g.user
 
-        # 细粒度权限检查：需要 'manage_users' 权限
-        # manage_users 权限允许查看所有用户的学校账号信息
-        # 这是高度敏感的批量数据访问操作
+        # 细粒度权限检查：
+        #   1) manage_users —— 允许批量访问用户的学校账号信息
+        #   2) 密码可见级别必须为 all（auto_fill_password 或管理员组）
+        # 本接口会一次性返回**所有用户**的学校账号密码，因此仅凭中层权限
+        # view_school_account_passwords 或单独 manage_users 都不足。
         if not _main().auth_system.check_permission(auth_username, "manage_users"):
             return _main().jsonify({
                 "success": False,
                 "message": "权限不足，需要用户管理权限（manage_users）"
+            }), 403
+
+        if _resolve_password_visibility(auth_username) != "all":
+            logging.warning(
+                f"[密码可见性] 用户 {auth_username} 尝试访问全量学校账号密码接口被拒绝"
+                f"（需要 auto_fill_password 级别权限）"
+            )
+            return _main().jsonify({
+                "success": False,
+                "message": "权限不足，需要查看所有学校账号密码的权限（auto_fill_password）"
             }), 403
 
         # 定义用户账号目录路径
@@ -13141,12 +13239,37 @@ def start_web_server(args_param):
                     result = func()
 
                 if method == "on_user_selected" and result and isinstance(result, dict):
-                    has_auto_fill = False
-                    if hasattr(api_instance, "auth_username"):
-                        has_auto_fill = _main().auth_system.check_permission(
-                            api_instance.auth_username, "auto_fill_password"
-                        )
-                    if not has_auto_fill:
+                    # 密码回传按可见级别控制：
+                    #   all  —— 任意学校账号都回传密码
+                    #   own  —— 仅当被选账号属于调用者自己关联的学校账号时回传
+                    #   none —— 一律清空
+                    selected_username = (
+                        params.get("username") if isinstance(params, dict) else None
+                    )
+                    caller = getattr(api_instance, "auth_username", None)
+                    allow_password = False
+                    if caller:
+                        visibility = _resolve_password_visibility(caller)
+                        if visibility == "all":
+                            allow_password = True
+                        elif visibility == "own" and selected_username:
+                            try:
+                                own_accounts = api_instance._load_user_school_accounts(
+                                    caller
+                                ) or {}
+                            except Exception as own_error:
+                                logging.error(
+                                    f"[密码可见性] 加载用户 {caller} 的学校账号失败: {own_error}",
+                                    exc_info=True,
+                                )
+                                own_accounts = {}
+                            allow_password = selected_username in own_accounts
+                        if not allow_password:
+                            logging.info(
+                                f"[密码可见性] 调用者={caller} 级别={visibility} "
+                                f"被选账号={selected_username} -> 不下发密码"
+                            )
+                    if not allow_password:
                         result["password"] = ""
                 auto_save_methods = [
                     "login",

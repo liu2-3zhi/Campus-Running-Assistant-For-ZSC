@@ -128,6 +128,160 @@ def _save_auto_attendance_config(config):
         return False
 
 
+def _get_auto_attendance_max_age_minutes():
+    """读取自动签到允许的最大持续时长（分钟），读取失败时回退到 120 分钟。"""
+    try:
+        return float(_main().AUTO_ATTENDANCE_MAX_MINUTES)
+    except Exception:
+        return 120.0
+
+
+def _auto_attendance_is_expired(account_info, now=None):
+    """
+    判断单条自动签到记录是否已超过最大持续时长。
+
+    这是全系统唯一的超时判定实现，_is_auto_attendance_enabled() 与
+    expire_stale_auto_attendance_accounts() 都复用它，避免出现两套口径。
+
+    参数:
+        account_info (dict): enabled_accounts 中的单条记录
+        now (datetime, 可选): 用于比较的当前 UTC 时间，默认取系统当前时间
+
+    返回值:
+        (bool, str): (是否过期, 说明文本)
+            说明文本用于日志，包含"已启用 N 分钟"或异常原因。
+
+    设计说明:
+        - enabled_at 缺失、不可解析、或落在未来时间时，一律判定为"过期"。
+          旧实现遇到解析失败会跳过超时检查并返回启用状态，导致损坏的记录
+          永久驻留（这正是"自动签到账号无限期存在"的根因之一）。
+          无法确认启用时间的记录不应无限期保留，因此按过期回收。
+    """
+    if now is None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+    max_age_minutes = _get_auto_attendance_max_age_minutes()
+
+    if not isinstance(account_info, dict):
+        return True, "记录格式损坏（非字典）"
+
+    enabled_at_str = account_info.get("enabled_at")
+    if not enabled_at_str:
+        return True, "缺少 enabled_at 字段"
+
+    try:
+        enabled_at = datetime.datetime.strptime(
+            str(enabled_at_str), "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=datetime.timezone.utc)
+    except (ValueError, TypeError):
+        return True, f"enabled_at 格式异常: {enabled_at_str!r}"
+
+    elapsed_minutes = (now - enabled_at).total_seconds() / 60.0
+
+    # 时间落在未来（时钟回拨或写入错误）同样无法确认时长，按过期回收
+    if elapsed_minutes < 0:
+        return True, f"enabled_at 位于未来时间: {enabled_at_str!r}"
+
+    if elapsed_minutes >= max_age_minutes:
+        return True, f"已启用 {elapsed_minutes:.1f} 分钟（上限 {max_age_minutes:g} 分钟）"
+
+    return False, f"已启用 {elapsed_minutes:.1f} 分钟"
+
+
+def _emit_auto_attendance_disabled(school_username, account_info, **extra):
+    """向记录关联的会话推送"自动签到已关闭"事件（失败不影响主流程）。"""
+    session_uuid = (account_info or {}).get("session_uuid")
+    sio = getattr(_main(), "socketio", None)
+    if not session_uuid or not sio:
+        return
+    try:
+        payload = {"enabled": False}
+        payload.update(extra)
+        sio.emit("auto_attendance_updated", payload, room=session_uuid)
+    except Exception as e:
+        logging.warning(f"[自动签到配置] 推送自动关闭状态失败: {e}")
+
+
+def expire_stale_auto_attendance_accounts(now=None, reason="timeout"):
+    """
+    回收所有已超时的自动签到记录（权威清理入口）。
+
+    功能说明:
+        遍历配置中的**全部** enabled_accounts 记录并逐条判定超时，
+        与调用方当前是否登录某个账号无关。
+
+        这是修复"自动签到账号无限期存在"的关键：旧实现只在
+        _is_auto_attendance_enabled() 被调用时才对**那一个**账号做超时检查，
+        而该函数只会收到当前已登录账号的用户名。因此被移除的账号、用户
+        不再登录的账号、从未登录过的账号，其记录永远不会被评估，永久驻留。
+
+    参数:
+        now (datetime, 可选): 用于比较的当前 UTC 时间
+        reason (str): 清理原因，写入日志
+
+    返回值:
+        dict: {
+            "checked": 检查的记录数,
+            "removed": 被移除的账号名列表,
+            "expired": [{"school_username":..., "detail":...}, ...],
+            "save_ok": 写盘是否成功（无变更时为 True）
+        }
+
+    幂等性:
+        重复调用无副作用；无变更时不写盘。
+    """
+    result = {"checked": 0, "removed": [], "expired": [], "save_ok": True}
+
+    try:
+        with _main().CONFIG_JSON_LOCK:
+            config = _load_auto_attendance_config()
+            enabled_accounts = config.get("enabled_accounts", {}) or {}
+            result["checked"] = len(enabled_accounts)
+
+            if not enabled_accounts:
+                return result
+
+            expired_names = []
+            for school_username, account_info in list(enabled_accounts.items()):
+                is_expired, detail = _auto_attendance_is_expired(account_info, now)
+                if not is_expired:
+                    continue
+                expired_names.append(school_username)
+                result["expired"].append(
+                    {"school_username": school_username, "detail": detail}
+                )
+
+            if not expired_names:
+                return result
+
+            for school_username in expired_names:
+                account_info = enabled_accounts.pop(school_username, {})
+                result["removed"].append(school_username)
+                logging.info(
+                    f"[自动签到配置] 回收超时自动签到记录 - 学校账号: {school_username}, "
+                    f"原因: {reason}"
+                )
+                _emit_auto_attendance_disabled(
+                    school_username, account_info, reason=reason
+                )
+
+            # 写盘失败时回滚内存态，避免"内存已删、磁盘仍在"的不一致
+            if not _save_auto_attendance_config(config):
+                logging.error(
+                    f"[自动签到配置] 回收超时记录写盘失败，已回滚，"
+                    f"下次启动将重试: {result['removed']}"
+                )
+                result["save_ok"] = False
+                result["removed"] = []
+
+            return result
+    except Exception as e:
+        logging.error(f"[自动签到配置] 回收超时记录失败: {e}", exc_info=True)
+        result["save_ok"] = False
+        result["removed"] = []
+        return result
+
+
 def _record_auto_attendance_success(school_username, params):
     """记录一次新的自动签到成功，并在达到阈值时关闭自动签到。"""
     if not params.get("auto_attendance_stop_after_success", True):
@@ -334,32 +488,17 @@ def _is_auto_attendance_enabled(school_username):
         # 获取该账号的配置信息
         account_info = config["enabled_accounts"][school_username]
 
-        # 检查是否超过最大持续时间（_main().AUTO_ATTENDANCE_MAX_MINUTES 分钟）
-        enabled_at_str = account_info.get("enabled_at")
-        if enabled_at_str:
-            try:
-                # 解析启用时间（ISO8601格式，带Z后缀表示UTC）
-                enabled_at = datetime.datetime.strptime(
-                    enabled_at_str, "%Y-%m-%dT%H:%M:%SZ"
-                ).replace(tzinfo=datetime.timezone.utc)
-                # 计算已启用的时长（分钟）
-                elapsed_minutes = (
-                    datetime.datetime.now(datetime.timezone.utc) - enabled_at
-                ).total_seconds() / 60.0
+        # 复用全局唯一的超时判定，避免与批量回收出现两套口径
+        is_expired, detail = _auto_attendance_is_expired(account_info)
 
-                if elapsed_minutes >= _main().AUTO_ATTENDANCE_MAX_MINUTES:
-                    # 超时，自动禁用该账号的自动签到
-                    logging.info(
-                        f"[自动签到配置] 账号 {school_username} 已启用超过 "
-                        f"{_main().AUTO_ATTENDANCE_MAX_MINUTES} 分钟（实际 {elapsed_minutes:.1f} 分钟），自动关闭自动签到"
-                    )
-                    _disable_auto_attendance(school_username)
-                    return False
-            except ValueError:
-                # 时间格式解析失败，忽略超时检查，正常返回启用状态
-                logging.warning(
-                    f"[自动签到配置] 账号 {school_username} 的启用时间格式异常: {enabled_at_str}，跳过超时检查"
-                )
+        if is_expired:
+            # 超时（或启用时间无法确认），自动禁用该账号的自动签到
+            logging.info(
+                f"[自动签到配置] 账号 {school_username} 自动签到已到期"
+                f"（{detail}），自动关闭"
+            )
+            _disable_auto_attendance(school_username)
+            return False
 
         # 账号在启用列表中且未超时，返回True
         return True

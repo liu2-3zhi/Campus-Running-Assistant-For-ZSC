@@ -85,6 +85,15 @@ class TestSharedSubmissionRetry(unittest.TestCase):
             "def _multi_refresh_worker(",
             1,
         )[0]
+        # 单任务执行体已从主循环抽成 _run_single_multi_account_task，
+        # 提交循环位于其中，需拼接后才是完整的多账号执行路径
+        multi_loop += "def _run_single_multi_account_task(" + source.split(
+            "def _run_single_multi_account_task(",
+            1,
+        )[1].split(
+            "def _multi_fetch_attendance_stats(",
+            1,
+        )[0]
 
         self.assertIn("_submit_chunk_with_retries(", single_loop)
         self.assertIn("_submit_chunk_with_retries(", multi_loop)

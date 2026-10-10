@@ -139,6 +139,15 @@ class TestMultiAccountExecutionParity(unittest.TestCase):
             "def _run_all_multi_accounts_thread(",
             1,
         )[0]
+        # 单任务执行体已从主循环抽成 _run_single_multi_account_task，
+        # 拼接后才是完整的多账号执行路径
+        worker_block += source.split(
+            "def _run_single_multi_account_task(",
+            1,
+        )[1].split(
+            "def _multi_fetch_attendance_stats(",
+            1,
+        )[0]
 
         self.assertIn("if self._finalize_run(", worker_block)
         self.assertNotIn("_deduct_available_runs_or_increment_overdue(", worker_block)
@@ -152,6 +161,15 @@ class TestMultiAccountExecutionParity(unittest.TestCase):
             1,
         )[1].split(
             "def _run_all_multi_accounts_thread(",
+            1,
+        )[0]
+        # 单任务执行体已从主循环抽成 _run_single_multi_account_task，
+        # 拼接后才是完整的多账号执行路径
+        worker_block += source.split(
+            "def _run_single_multi_account_task(",
+            1,
+        )[1].split(
+            "def _multi_fetch_attendance_stats(",
             1,
         )[0]
         summary_block = source.split(
@@ -174,6 +192,15 @@ class TestMultiAccountExecutionParity(unittest.TestCase):
             1,
         )[1].split(
             "def _run_all_multi_accounts_thread(",
+            1,
+        )[0]
+        # 单任务执行体已从主循环抽成 _run_single_multi_account_task，
+        # 拼接后才是完整的多账号执行路径
+        worker_block += source.split(
+            "def _run_single_multi_account_task(",
+            1,
+        )[1].split(
+            "def _multi_fetch_attendance_stats(",
             1,
         )[0]
 
