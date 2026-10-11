@@ -4423,12 +4423,17 @@ async function addMobileAllConfigs() {
       result.accounts_missing_password &&
       result.accounts_missing_password.length > 0
     ) {
-      const missingCount = result.accounts_missing_password.length;
-      const firstMissing = result.accounts_missing_password[0].username;
-      showModalAlert(
-        `批量添加完成。\n但有 ${missingCount} 个账号缺少密码（如 ${firstMissing}）。\n请使用"手动添加"功能补全密码。`,
-        "提示",
-      );
+      // 交给统一的四阶段补密码流程（会询问是否补密码、支持勾选与逐个补全），
+      // 不再用"如 xxx"这种只列一个的提示代替完整清单。
+      if (typeof startMissingPasswordFlow === "function") {
+        startMissingPasswordFlow(result.accounts_missing_password);
+      } else {
+        const missingCount = result.accounts_missing_password.length;
+        showModalAlert(
+          `批量添加完成。\n但有 ${missingCount} 个账号缺少密码。\n请使用"手动添加"功能补全密码。`,
+          "提示",
+        );
+      }
     } else {
       showModalAlert("批量添加配置成功", "成功");
     }
@@ -4494,13 +4499,30 @@ async function confirmManualAccountAdd() {
 
   try {
     showModalAlert("正在添加账号...", "提示");
+    // 参数必须用命名对象：传对象会让后端把它当 username 本身，
+    // 直接返回"无效的用户名"。
     const result = await callPythonAPI("multi_add_account", {
       username: username,
       password: password,
+      tag: undefined,
       params: {},
     });
 
-    if (result.success) {
+    if (result && result.success === false && result.reason === "already_exists") {
+      // 账号已存在且状态正常，不算添加成功
+      showModalAlert(result.message || `账号 ${username} 已存在，未重复添加。`);
+      closeManualAccountModal();
+      await mobileRefreshMultiAccounts();
+    } else if (
+      result &&
+      result.success === false &&
+      result.reason === "account_running"
+    ) {
+      showModalAlert(
+        result.message || "该账号正在执行任务，请先停止后再试。",
+        "错误",
+      );
+    } else if (result && result.success) {
       showModalAlert("账号添加成功", "成功");
       closeManualAccountModal();
       await mobileRefreshMultiAccounts();
@@ -4519,11 +4541,14 @@ async function confirmManualAccountAdd() {
 }
 function importMobileAccountList() {
   try {
-    if (typeof importMultiAccountList === "function") {
-      importMultiAccountList();
+    // 之前这里调用 importMultiAccountList()，但该函数全项目未定义，
+    // 因此按钮永远只弹"导入功能未实现"。统一委托桌面端同一个导入实现，
+    // 提示也走同一套合并结果弹窗（multi_importFromExcel 内部会 input.click()）。
+    if (typeof multi_importFromExcel === "function") {
+      multi_importFromExcel();
     } else {
       showModalAlert("导入功能未实现", "错误");
-      console.error("[移动端] importMultiAccountList函数未定义");
+      console.error("[移动端] multi_importFromExcel函数未定义");
     }
   } catch (error) {
     console.error("[移动端] 导入账号列表失败:", error);

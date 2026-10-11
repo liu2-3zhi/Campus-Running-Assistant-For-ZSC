@@ -337,6 +337,16 @@ async function addFromConfig() {
       showAddModal.value = true
       return
     }
+    // 账号已存在且状态正常：不是添加成功
+    if (result?.reason === 'already_exists') {
+      appStore.addLog(result.message || `账号 ${selectedUser.value} 已存在，未重复添加。`, 'WARN', 'Multi')
+      await loadAccounts()
+      return
+    }
+    if (result?.reason === 'account_running') {
+      appStore.addLog(result.message || '该账号正在执行任务，请先停止后再试。', 'WARN', 'Multi')
+      return
+    }
     if (result?.success === false) throw new Error(result.message || '添加账号失败')
     appStore.addLog(`已添加账号: ${selectedUser.value}`, 'INFO', 'Multi')
     selectedUser.value = ''
@@ -360,11 +370,22 @@ async function addAllFromConfig() {
 async function addManual() {
   if (!manualInput.username || !manualInput.password) return
   try {
-    await checkedAPI('multi_add_account', {
+    const result = await callAPI('multi_add_account', {
       username: manualInput.username,
       password: manualInput.password,
       tag: manualInput.tag || undefined,
     })
+    if (result?.reason === 'already_exists') {
+      appStore.addLog(result.message || `账号 ${manualInput.username} 已存在，未重复添加。`, 'WARN', 'Multi')
+      showAddModal.value = false
+      await loadAccounts()
+      return
+    }
+    if (result?.reason === 'account_running') {
+      appStore.addLog(result.message || '该账号正在执行任务，请先停止后再试。', 'WARN', 'Multi')
+      return
+    }
+    if (result?.success === false) throw new Error(result.message || '添加账号失败')
     appStore.addLog(`已添加账号: ${manualInput.username}`, 'INFO', 'Multi')
     manualInput.username = ''
     manualInput.password = ''
@@ -395,11 +416,26 @@ async function importExcel() {
         reader.onerror = reject
         reader.readAsDataURL(file)
       })
-      await checkedAPI('multi_import_accounts', {
+      const result = await checkedAPI('multi_import_accounts', {
         base64_content: String(base64).split(',')[1],
         filename: file.name,
       })
-      appStore.addLog(`Excel 导入成功: ${file.name}`, 'INFO', 'Multi')
+      // 导入结果汇总成功 / 跳过 / 失败全部结果
+      const parts = [
+        `新增 ${result?.imported_count ?? 0}`,
+        `已存在 ${result?.already_exists_count ?? 0}`,
+        `缺密码 ${result?.skipped_count ?? 0}`,
+      ]
+      if (result?.duplicate_in_file_count) parts.push(`文件内重复 ${result.duplicate_in_file_count}`)
+      if (result?.skipped_running_count) parts.push(`执行中跳过 ${result.skipped_running_count}`)
+      appStore.addLog(`Excel 导入完成（${parts.join('，')}）: ${file.name}`, 'INFO', 'Multi')
+      if (result?.skipped_count) {
+        appStore.addLog(
+          `有 ${result.skipped_count} 个账号缺少密码未导入，请在旧版界面的多账号面板中用"添加"按钮逐个补全密码。`,
+          'WARN',
+          'Multi',
+        )
+      }
       await loadAccounts()
     } catch (err) {
       appStore.addLog(`Excel 导入失败: ${err.message}`, 'ERROR', 'Multi')

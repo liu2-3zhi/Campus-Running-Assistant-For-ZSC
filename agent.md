@@ -109,9 +109,22 @@
 
 - 同一学校账号在同一时间只允许一个“任务执行”入口，包括单账号单任务、单账号全部任务、多账号单账号任务、多账号全部任务和后台任务；不能只依赖某个 `Api` 实例里的 `worker_thread` 判断。
 - 执行互斥必须使用进程级学校账号执行槽，启动时原子占用并在线程结束时释放。多账号登录后还要把学号别名加入同一执行槽，覆盖“登录名与学号不同”以及“单账号页面与多账号页面同时使用同一学校账号”的情况。
-- 单纯添加学校账号、刷新状态、读取通知不占任务执行槽；同一账号已有任务执行时，只让这些辅助刷新暂时让路，不能阻止账号添加。
+- 单纯添加学校账号、刷新状态、读取通知不占任务执行槽；**添加“新”账号**不受其它账号（甚至同一学校账号的其它入口）正在执行的限制。
+- 但对**已存在**账号重复调用 `multi_add_account` 不是“添加”，而是 `already_exists` 无操作，不得借它重建会话——见下面那条 `multi_add_account` 契约。
 - 多账号 worker 在任务真正开始执行前必须把 `status_text` 改写成 `正在执行 i/n: <任务名>`（`n` 取本轮任务统计里的可执行数、只增不减且不小于 `i`；未知时退化为 `正在执行: <任务名>`）并重置进度：状态字段原先只在延迟/等待/完成时更新，任务运行期间停留在“延迟 0s”“等待 Ns”这类旧文案上；该字段就是前端列表（含管理员查看他人会话时看到的列表）显示的状态，不改写会让用户以为任务没在跑。进度文案 `运行 i/n: <任务名>` 的分母同样用这个计划任务数（`_run_single_multi_account_task(..., planned_total=...)`），不要退回成恒等于当前序号。相关回归测试见 `tests/test_multi_account_task_reloop.py`。
 - 多账号的两种等待必须用可区分的文案，不能退回裸的 `延迟 Ns` / `等待 Ns`：开跑前是 `开始前等待 Ns: 待执行 i/n 个任务`，两个任务之间是 `任务间等待 Ns: 下一个 i/n · <任务名>`。裸文案分不清是“开跑前等”还是“任务之间等”，也看不出后面还有没有任务、下一个是第几个。等待态与执行态必须复用同一份任务名截断逻辑（`_shorten_task_name_for_status`），否则同一任务在两种状态下会显示不同名字。相关回归测试见 `tests/test_multi_account_task_reloop.py::TestWaitStatusTextsBehavior`。
+- `multi_add_account` 对**已存在账号**分三档处理，不得退回“无条件从配置重读密码并强制重登”：
+  1. **状态正常**（`is_first_login_verified` 为真且 `user_data.id` 非空）且**未给新密码** → 返回 `success=False, reason="already_exists"`，只允许更新 tag/params，**绝不清空 `acc.api_client.session.cookies`、绝不置空 `acc.user_data.id`**；
+  2. **状态异常**（首次验证未通过 = 密码错误，或 `user_data.id` 为空 = 会话已失效）→ **允许覆盖**：写入新密码并重建会话。否则“密码填错了想改对”永远无法恢复，只能删掉再加回；
+  3. **状态正常但用户显式给了不同密码** → 允许覆盖（用户明确要改密码），但该账号正在执行任务时必须拒绝并返回 `reason="account_running"`，提示先停止任务。
+  覆盖前必须用 `_is_multi_account_execution_active()` 确认该账号没有在跑，落盘走共用方法 `_reset_account_session_for_relogin()`。
+  批量导入走 `only_if_missing=True`：**不得用文件里的密码覆盖状态正常的账号**（文件密码可能过期或与本地记录不同），异常账号仍会恢复。
+  真实事故（2026-10-11 19:07）：任务跑到 250/411 时前端对同一账号又提交了一次 `multi_add_account`，旧代码无条件清空会话，4 秒后下一次提交变成“0 个 Cookie、无 shiroCookie、无 Authorization”的裸请求，被学校服务器拒绝为 400 `userId不能为空`（这是**认证失败**的表象，不是业务字段缺失），重试 10 次后任务中止。相关回归测试见 `tests/test_multi_add_account_running_guard.py`。
+- **密码只有在登录成功后才写入配置**，这是硬约束：`_save_config(username, password=None, ...)` 的语义是“保留现有密码”，因此凡是把密码落盘的地方都必须显式传密码。落盘时机只有两处，都在 `_multi_refresh_worker_unlocked` 里：首次登录验证成功的分支，以及已验证账号重新登录成功的分支（后者历史上写成 `_save_config(acc.username)`，导致用户改了密码即使登录成功也**永远写不进去**，已修）。
+  改密码走“暂存 → 验证 → 落盘”：`multi_add_account` 对已存在账号用 `_stage_pending_account_password()` 把新密码只放进内存（同时用 `_password_before_change` 记住旧密码）并重建会话；登录成功由 `_commit_pending_account_password()` 落盘，失败由 `_rollback_pending_account_password()` 还原成原密码。这样“输错新密码”永远不会把原本可用的凭据弄丢。新增账号与改参数两条路径同样**不得**提前写未验证的密码（`_save_config(username, password=None, ua=...)` / `_save_config(username)`）。相关回归测试见 `tests/test_password_persistence_timing.py`。
+- 缺密码账号补全走四阶段流程，且**缺密码账号不限数量**：任何展示环节都不得截断、不得“只列前 N 个”、不得出现“等 N 个”这类省略，一律用可滚动卡片完整显示。阶段 1 询问“发现以下账号缺少密码，是否要补密码？”并给出「放弃所有无密码账号 / 补全所有账号密码 / 补全部分账号密码」；阶段 2 是勾选表格（第一列勾选框、第二列账号，带全选与“已选 N / 共 M”）；阶段 3 逐个补密码并显示“当前进度 i/N，还有 N-i 个账号待补密码”，第一个账号的放弃按钮显示“放弃所有无密码账号”、后续显示“放弃剩余 N 个账号”；阶段 4 才弹导入结果。**阶段 2 一个都不勾选必须等价于放弃全部并正常收尾**（不得弹密码框、不得卡死）。所有退出路径（补完 / 跳过到队尾 / 放弃剩余 / 放弃所有 / 取消 / 关闭弹窗）必须汇聚到唯一收尾函数 `flushMissingFlowDone()`，否则登记了收尾回调的调用方（导入结果弹窗）会永远等不到、或者重复弹。`#multi-add-user-close`/`#multi-add-user-cancel` 在补密码流程中必须走“跳过当前”而不是直接关闭弹窗。相关回归测试见 `tests/test_missing_password_flow.py`。
+- 导入账号的提示必须合并成**一个**弹窗，且汇总成功 / 跳过 / 失败**全部**结果（`【成功导入】`/`【已存在，未重复添加】`/`【缺少密码，已跳过】`/`【执行中，已跳过】`/【文件内重复行】/`【失败】`），为空的段落不渲染，名单同样不截断。弹窗必须等缺密码补全流程结束后才出现。**后端禁止再用 `self.window.evaluate_js("alert(...)")` 弹提示**：那会和前端弹窗形成两套提示，而且历史上只列前 20 个；缺密码提示的唯一出口是阶段 1。`multi_import_accounts` 的返回必须带 `imported_count`/`already_exists_count`/`skipped_count`/`failed`/`accounts_missing_password`/`accounts`，其中 `already_exists` **不得**计入 `imported_count`。`accounts_missing_password` 的键名与 `multi_load_accounts_from_config` 保持一致，便于前端复用同一套队列。相关回归测试见 `tests/test_multi_import_accounts_merged_summary.py`。
+- `_run_single_multi_account_task` 这类“抽出的大方法”里，所有被末尾 `return` 引用的结果标记必须在函数早期无条件初始化（例如 `task_succeeded = False`）。只在 `if submission_successful:` 的 if/else 里赋值，会让“提交失败”这条正常分支抛 `UnboundLocalError` 并让整个 worker 崩溃。判定标准是**真正驱动那条分支**，只断言源码里存在赋值语句抓不到。相关回归测试见 `tests/test_multi_account_submission_failure_path.py`。
 - 多账号收尾状态文案固定为“状态词 + (成功/总数)”（`全部完成 (3/3)`、`全部失败 (0/3)`、`部分成功 (1/3)，2个任务失败`、`无任务可执行`）。状态词必须原样保留，因为 `getMultiAccountStatusClass` 按这些词着色；前端匹配必须用 `includes` 而不是整串相等，否则带数量的文案会掉进默认色。相关回归测试见 `tests/test_multi_account_completion_status.py`。
 - `_update_account_status_js()` 必须无条件更新账号对象上的 `status_text`/`progress_*` 字段，socket 推送只是附加通道：多账号列表的轮询接口 `multi_get_all_accounts_status` 读的就是这些字段，缺 `socketio` 或会话 ID 时直接 return 会让状态栏永远停在旧文案。
 

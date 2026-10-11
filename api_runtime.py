@@ -6958,7 +6958,9 @@ class Api:
                         }
                     )
                 else:
-                    add_result = self.multi_add_account(username, password)
+                    add_result = self.multi_add_account(
+                        username, password, only_if_missing=True
+                    )
                     if add_result and add_result.get("action") == "request_password":
                         accounts_missing_password.append(
                             {
@@ -6979,9 +6981,19 @@ class Api:
         final_status["accounts_missing_password"] = accounts_missing_password
         return final_status
 
-    def multi_add_account(self, username, password, tag=None, params=None):
+    def multi_add_account(
+        self, username, password, tag=None, params=None, *, only_if_missing=False
+    ):
         """
         模式二：手动或选择性添加账号
+
+        Args:
+            only_if_missing: 批量导入用。为 True 时，对**状态正常**的已存在
+                账号一律跳过，绝不用文件里的密码去覆盖一个正在正常工作的
+                会话（文件里的密码可能与本地记录不同，或本来就过期）。
+                异常状态的账号仍然会走恢复路径。
+                手动添加走默认值 False：那时给出新密码就是"我要改密码"，
+                应当允许覆盖。
         """
         # [安全修复] 验证username输入，防止路径遍历和注入攻击
         if not username or not isinstance(username, str):
@@ -7021,6 +7033,28 @@ class Api:
                 return {"success": False, "error": "标签过长"}
 
         if username in self.accounts:
+            # 「添加」对**状态正常**的已存在账号是无操作：只允许更新元数据
+            # （tag / params），绝不动会话与凭证。
+            #
+            # 「状态正常」的判定 = 密码验证过（is_first_login_verified）
+            #                      且会话已建立（user_data.id 非空）
+            #   - is_first_login_verified 由多账号刷新线程在登录成功后置 True，
+            #     是"这个密码是对的"的权威依据；
+            #   - user_data.id 由登录响应写入，为空表示当前没有可用会话。
+            #
+            # 账号处于异常状态时必须允许**覆盖**，否则"密码填错了想改对"
+            # 就永远无法恢复（只能删掉再加回）：
+            #   - 首次验证失败（密码错误 / 账号不存在）→ is_first_login_verified=False
+            #   - 刷新失败、id 被清空 → user_data.id 为空
+            # 这两种情况都按"新添加"处理，覆盖密码并重建会话。
+            #
+            # 历史行为（反面教材）：不分青红皂白"从配置重读密码并强制重登"，
+            # 清空 cookies、置空 user_data.id、另起刷新线程。真实事故
+            # （2026-10-11 19:07）：任务跑到 250/411 时前端对同一账号又提交了
+            # 一次 multi_add_account，会话被清空，4 秒后下一次提交变成
+            # "0 个 Cookie、无 shiroCookie、无 Authorization"的裸请求，
+            # 被学校服务器拒绝为 400 `userId不能为空`（这是**认证失败**的表象，
+            # 不是业务字段缺失），重试 10 次后任务中止。
             acc = self.accounts[username]
 
             if params and isinstance(params, dict):
@@ -7033,58 +7067,92 @@ class Api:
                     if k in acc.params:
                         acc.params[k] = v
 
-            if password and acc.password != password:
+            account_is_healthy = bool(
+                getattr(acc, "is_first_login_verified", False)
+                and getattr(getattr(acc, "user_data", None), "id", "")
+            )
+            password_changed = bool(password) and (
+                acc.password != password
+            )
+
+            # 导入时（only_if_missing）不允许用文件里的密码覆盖正常账号
+            if only_if_missing:
+                password_changed = False
+
+            # 只有"状态正常 且 没给新密码"才是真正的"已存在，跳过"。
+            # 给了新密码说明用户想改密码，异常状态说明需要恢复 —— 都要覆盖。
+            if account_is_healthy and not password_changed:
+                if tag is not None:
+                    acc.tag = str(tag)
+                    self._save_account_tag(username, acc.tag)
+                    self.log(f"已更新账号 [{username}] 的标记：{acc.tag}。")
+
+                self.log(f"账号 [{username}] 已存在，未重复添加。")
+                logging.info(
+                    f"[{username}] 账号已存在且状态正常，跳过重复添加"
+                    f"（不清空会话、不重新登录）"
+                )
+                return {
+                    "success": False,
+                    "reason": "already_exists",
+                    "message": f"账号 {username} 已存在，未重复添加。",
+                    "username": username,
+                    "accounts": self.multi_get_all_accounts_status().get(
+                        "accounts", []
+                    ),
+                }
+
+            # 走到这里说明要覆盖：异常状态恢复，或用户显式改了密码。
+            if self._is_multi_account_execution_active(acc):
+                # 运行中不能重建会话，否则会重演上面那次事故
+                reason_text = (
+                    "密码需要更新" if password_changed else "账号状态异常需要重新登录"
+                )
+                self.log(
+                    f"账号 [{username}] 正在执行任务，{reason_text}，"
+                    f"本次未覆盖。请先停止该账号的任务后重试。"
+                )
+                return {
+                    "success": False,
+                    "reason": "account_running",
+                    "message": (
+                        f"账号 {username} 正在执行任务，{reason_text}，"
+                        f"未执行覆盖。请先停止该账号的任务后重试。"
+                    ),
+                    "username": username,
+                    "accounts": self.multi_get_all_accounts_status().get(
+                        "accounts", []
+                    ),
+                }
+
+            # 覆盖前先记下原有密码，然后**只在内存里**换成新密码去试。
+            # 关键约定：新密码只有登录成功才落盘（见
+            # _multi_refresh_worker_unlocked），登录失败就回滚成旧密码，
+            # 这样"输错新密码"永远不会把原本可用的凭据弄丢。
+            # 落盘统一走 _commit_pending_account_password/_rollback_pending_account_password。
+            if password_changed:
+                self._stage_pending_account_password(acc, password)
+                self.log(
+                    f"账号 [{username}] 新密码已暂存，将重新登录验证；"
+                    f"验证通过后才写入配置。"
+                )
+            elif password:
+                # 状态异常的账号（本来就没有可用密码）：直接用新密码去试
                 acc.password = password
                 self.log(f"已更新账号 [{username}] 的密码。")
-            else:
-                self.log(f"账号 [{username}] 已存在，正在从配置文件刷新...")
-                # [增强] 使用权限感知的账号加载方法
-                auth_username, is_admin = self._get_auth_user_and_check_admin()
-                reloaded_password = None
-                reloaded_ua = None
-
-                if auth_username:
-                    # 根据权限加载账号列表（管理员查看所有，普通用户仅查看自己的）
-                    accounts = self._load_accounts_by_permission(auth_username)
-
-                    account_info = accounts.get(username)
-                    if account_info:
-                        if isinstance(account_info, dict):
-                            reloaded_password = account_info.get("password")
-                            reloaded_ua = account_info.get("ua")
-                        else:
-                            # 旧格式兼容（直接字符串）
-                            reloaded_password = account_info
-                    else:
-                        logging.debug(
-                            f"账号 {username} 未在 {('所有' if is_admin else '当前用户的')} 账户列表中找到")
-                else:
-                    logging.debug(f"无法获取认证用户，跳过密码刷新")
-
-                if reloaded_password:
-                    acc.password = reloaded_password
-                    logging.info(f"已从配置文件重新加载账号 {username} 的密码")
-                if reloaded_ua:
-                    acc.device_ua = reloaded_ua
-                    logging.info(f"已从配置文件重新加载账号 {username} 的UA")
 
             if tag is not None:
                 acc.tag = str(tag)
                 self._save_account_tag(username, acc.tag)
                 self.log(f"已更新账号 [{username}] 的标记：{acc.tag}。")
 
-            try:
-                self._update_account_status_js(acc, status_text="刷新中...")
-                try:
-                    acc.api_client.session.cookies.clear()
-                except Exception:
-                    pass
-                acc.user_data.id = ""
-                threading.Thread(
-                    target=self._multi_refresh_worker, args=(acc,), daemon=True
-                ).start()
-            except Exception:
-                logging.error(f"更新账号后触发刷新失败: {traceback.format_exc()}")
+            if not password_changed:
+                self.log(
+                    f"账号 [{username}] 处于异常状态"
+                    f"（首次验证未通过或会话已失效），将重新登录。"
+                )
+
+            self._reset_account_session_for_relogin(acc, username)
             self._update_multi_global_buttons()
             return self.multi_get_all_accounts_status([{"success": True}])
 
@@ -7160,8 +7228,12 @@ class Api:
         if needs_verification:
             self.accounts[username].is_first_login_verified = False
             self.accounts[username].is_verifying = True
+            # 这里**不能**把密码写进配置：此刻密码还没经过登录验证，
+            # 写进去会让一个错误的密码覆盖原有凭据。
+            # 密码统一由 _multi_refresh_worker_unlocked 在登录成功后落盘，
+            # 因此 _save_config 的语义是 "password=None 时保留现有密码"。
+            # 这里只同步 UA。
             try:
-                # pass  # 不再保存到 INI
                 self._save_config(
                     username, password=None, ua=self.accounts[username].device_ua
                 )
@@ -7198,11 +7270,9 @@ class Api:
                 logging.error(f"Full traceback: {traceback.format_exc()}")
 
         try:
-            threading.Thread(
-                target=self._multi_refresh_worker,
-                args=(self.accounts[username],),
-                daemon=True,
-            ).start()
+            self._reset_account_session_for_relogin(
+                self.accounts[username], username
+            )
         except Exception:
             logging.error(f"启动刷新线程失败: {traceback.format_exc()}")
 
@@ -7249,6 +7319,64 @@ class Api:
                 logging.warning(f"保存账号到 school_accounts 失败: {e}")
 
         return self.multi_get_all_accounts_status([{"success": True}])
+
+    def _stage_pending_account_password(self, acc, new_password):
+        """把新密码暂存到内存并记住旧密码，等待登录验证。
+
+        新密码先写进 `acc.password` 供登录使用；登录成功后由
+        `_commit_pending_account_password` 才真正写进配置，
+        失败则由 `_rollback_pending_account_password` 还原。
+        """
+        setattr(acc, "_pending_password", new_password)
+        setattr(acc, "_password_before_change", getattr(acc, "password", ""))
+        acc.password = new_password
+
+    def _pending_account_password(self, acc):
+        """返回待验证的新密码；没有待验证密码时返回 None。"""
+        if getattr(acc, "_pending_password", None) is None:
+            return None
+        return acc.password
+
+    def _commit_pending_account_password(self, acc):
+        """登录成功：把暂存的新密码正式落盘，并清掉暂存标记。"""
+        pending = self._pending_account_password(acc)
+        if pending is None:
+            return
+        # 没有待验证密码的账号走原路径（保留 "password=None 保留现有密码" 语义）
+        self._save_config(acc.username, acc.password, acc.device_ua)
+        setattr(acc, "_pending_password", None)
+        setattr(acc, "_password_before_change", None)
+        acc.log("新密码登录验证成功，已写入配置。")
+
+    def _rollback_pending_account_password(self, acc):
+        """登录失败：撤销内存里的新密码，恢复成原来可用的密码。"""
+        if self._pending_account_password(acc) is None:
+            return
+        previous = getattr(acc, "_password_before_change", "") or ""
+        acc.password = previous
+        setattr(acc, "_pending_password", None)
+        setattr(acc, "_password_before_change", None)
+        acc.log("新密码登录验证失败，已恢复原有密码。")
+
+    def _reset_account_session_for_relogin(self, acc, username=None):
+        """清空账号的会话状态并另起线程重新登录。
+
+        提取出来是为了让"新增账号"和"覆盖异常账号"走同一条路径，
+        避免两处各写一份而漂移。
+
+        调用方**必须**先确认该账号没有在执行任务（见
+        `_is_multi_account_execution_active`）：清空 cookies 会让运行中的
+        提交变成无凭证的裸请求，被服务器拒绝为 400 `userId不能为空`。
+        """
+        username = username or getattr(acc, "username", "")
+        try:
+            acc.api_client.session.cookies.clear()
+        except Exception:  # nosec B110 - 清理失败不阻塞重登
+            pass
+        acc.user_data.id = ""
+        threading.Thread(
+            target=self._multi_refresh_worker, args=(acc,), daemon=True
+        ).start()
 
     def multi_remove_account(self, username):
         """移除一个账号"""
@@ -7392,6 +7520,9 @@ class Api:
                         else "网络请求无响应"
                     )
 
+                    # 新密码验证失败：回滚成原有密码，绝不把可用凭据弄丢
+                    self._rollback_pending_account_password(acc)
+
                     if not acc.is_first_login_verified:
                         acc.is_verifying = False
                         acc.is_first_login_verified = False
@@ -7431,10 +7562,18 @@ class Api:
                     except Exception as e:
                         logging.error(f"保存密码到配置文件失败: {e}", exc_info=True)
                 else:
+                    # 之前已验证过的账号重新登录成功：
+                    # - 有待验证的新密码 → 此刻才正式落盘；
+                    # - 没有 → 必须显式带上密码，否则 _save_config 的语义是
+                    #   "password=None 时保留现有密码"，密码会永远写不进去。
                     ini_path = os.path.join(
                         self.user_dir, f"{acc.username}.ini")
-                    if os.path.exists(ini_path):
-                        self._save_config(acc.username)
+                    if self._pending_account_password(acc) is not None:
+                        self._commit_pending_account_password(acc)
+                    elif os.path.exists(ini_path):
+                        self._save_config(
+                            acc.username, acc.password, acc.device_ua
+                        )
 
                 self._update_account_status_js(
                     acc, name=acc.user_data.name, status_text="获取数据..."
@@ -7680,10 +7819,69 @@ class Api:
             logging.error(f"解码Base64内容失败: {e}")
             return {"success": False, "message": f"文件处理失败: {e}"}
 
-        try:
-            imported = 0
-            seen_usernames: set[str] = set()
+        # 逐行处理逻辑在三种格式之间完全一致，抽成一个辅助方法，
+        # 避免 .xlsx / .xls / .csv 各写一份而慢慢漂移。
+        state = {
+            "added": [],
+            "already_exists": [],
+            "skipped_no_password": [],
+            "duplicate_in_file": [],
+            "skipped_running": [],
+            "failed": [],
+            "total_rows": 0,
+        }
+        seen_usernames: set[str] = set()
 
+        def handle_row(raw_username, raw_password, raw_tag) -> None:
+            """处理一行；结果直接累加到 state。"""
+            username = str(raw_username or "").strip()
+            if not username:
+                return
+            state["total_rows"] += 1
+
+            if username in seen_usernames:
+                state["duplicate_in_file"].append(username)
+                return
+            seen_usernames.add(username)
+
+            tag = str(raw_tag).strip() if raw_tag else None
+            password = str(raw_password or "").strip()
+
+            # 行内没给密码时，回退到已保存的密码
+            if not password:
+                auth_username = getattr(self, "auth_username", None)
+                if auth_username:
+                    accounts = self._load_user_school_accounts(auth_username)
+                    account_info = accounts.get(username)
+                    if account_info:
+                        password = account_info.get("password") or ""
+
+            if not password:
+                state["skipped_no_password"].append(
+                    {"username": username, "tag": tag}
+                )
+                return
+
+            result = self.multi_add_account(
+                username, password, tag=tag, only_if_missing=True
+            )
+            if isinstance(result, dict) and result.get("reason") == "already_exists":
+                state["already_exists"].append(username)
+            elif isinstance(result, dict) and result.get("success"):
+                state["added"].append(username)
+            else:
+                # 账号正在执行任务（reason=account_running）等其它失败：
+                # 单独归一类，避免被误报成"已存在"或"导入成功"
+                reason = (
+                    result.get("reason")
+                    if isinstance(result, dict)
+                    else None
+                )
+                state["skipped_running" if reason else "failed"].append(
+                    username
+                )
+
+        try:
             if ext == ".xlsx":
                 try:
                     wb = _main().openpyxl.load_workbook(
@@ -7701,82 +7899,27 @@ class Api:
                     )
 
                 sh = wb.active
-                skipped_no_password = []
                 for row in sh.iter_rows(min_row=2, values_only=True):
                     if not row or len(row) < 1:
                         continue
-                    username = str(row[0] or "").strip()
-                    password = str(row[1] or "").strip() if len(
-                        row) > 1 else ""
-                    tag = None
-                    if len(row) > 2 and row[2]:
-                        tag = str(row[2]).strip()
-
-                    if not username:
-                        continue
-                    if username in seen_usernames:
-                        continue
-                    seen_usernames.add(username)
-
-                    # 从新路径加载密码
-                    auth_username = getattr(self, "auth_username", None)
-                    loaded_password = None
-                    if auth_username:
-                        accounts = self._load_user_school_accounts(
-                            auth_username)
-                        account_info = accounts.get(username)
-                        if account_info:
-                            loaded_password = account_info.get("password")
-                    final_password = password or (loaded_password or "")
-
-                    if not final_password:
-                        skipped_no_password.append(username)
-                        continue
-
-                    self.multi_add_account(username, final_password, tag=tag)
-                    imported += 1
+                    handle_row(
+                        row[0],
+                        row[1] if len(row) > 1 else "",
+                        row[2] if len(row) > 2 else None,
+                    )
 
             elif ext == ".xls":
                 file_stream.seek(0)
                 book = _main().xlrd.open_workbook(file_contents=file_stream.read())
                 sh = book.sheet_by_index(0)
-                skipped_no_password = []
                 for r in range(1, sh.nrows):
-                    username = str(sh.cell_value(r, 0) or "").strip()
-                    password = ""
-                    if sh.ncols >= 2:
-                        password = str(sh.cell_value(r, 1) or "").strip()
-                    tag = None
-                    if sh.ncols >= 3:
-                        tag_val = sh.cell_value(r, 2)
-                        if tag_val:
-                            tag = str(tag_val).strip()
-
-                    if username:
-                        if username in seen_usernames:
-                            continue
-                        seen_usernames.add(username)
-
-                        # 从新路径加载密码
-                        auth_username = getattr(self, "auth_username", None)
-                        loaded_password = None
-                        if auth_username:
-                            accounts = self._load_user_school_accounts(
-                                auth_username)
-                            account_info = accounts.get(username)
-                            if account_info:
-                                loaded_password = account_info.get("password")
-                        final_password = password or (loaded_password or "")
-                        if not final_password:
-                            skipped_no_password.append(username)
-                            continue
-
-                        self.multi_add_account(
-                            username, final_password, tag=tag)
-                        imported += 1
+                    handle_row(
+                        sh.cell_value(r, 0),
+                        sh.cell_value(r, 1) if sh.ncols >= 2 else "",
+                        sh.cell_value(r, 2) if sh.ncols >= 3 else None,
+                    )
 
             elif ext == ".csv":
-                skipped_no_password = []
                 file_stream.seek(0)
                 text_stream = io.TextIOWrapper(
                     file_stream, encoding="utf-8-sig", newline=""
@@ -7796,59 +7939,93 @@ class Api:
                         first_row = False
                         continue
                     first_row = False
-                    username = (row[0] or "").strip()
-                    password = (row[1] or "").strip() if len(row) > 1 else ""
-                    tag = None
-                    if len(row) > 2 and row[2]:
-                        tag = row[2].strip()
-
-                    if username:
-                        if username in seen_usernames:
-                            continue
-                        seen_usernames.add(username)
-
-                        # 从新路径加载密码
-                        auth_username = getattr(self, "auth_username", None)
-                        loaded_password = None
-                        if auth_username:
-                            accounts = self._load_user_school_accounts(
-                                auth_username)
-                            account_info = accounts.get(username)
-                            if account_info:
-                                loaded_password = account_info.get("password")
-                        final_password = password or (loaded_password or "")
-                        if not final_password:
-                            skipped_no_password.append(username)
-                            continue
-
-                        self.multi_add_account(
-                            username, final_password, tag=tag)
-                        imported += 1
+                    handle_row(
+                        row[0],
+                        row[1] if len(row) > 1 else "",
+                        row[2] if len(row) > 2 else None,
+                    )
 
             else:
                 return {"success": False, "message": f"不支持的导入格式: {ext}"}
 
-            self.log(f"成功导入 {imported} 个账号。")
-            if skipped_no_password:
-                msg = "以下账号缺少密码，已跳过导入。请在多账号控制台手动添加并输入密码：\n" + "\n".join(
-                    skipped_no_password[:20]
-                )
-                try:
-                    if self.window:
-                        self.window.evaluate_js(f"alert({json.dumps(msg)})")
-                except Exception:
-                    logging.debug(
-                        "Alert skipped_no_password failed (non-fatal).")
-                self.log(
-                    f"缺少密码的账号（共 {len(skipped_no_password)}）：{', '.join(skipped_no_password)}"
-                )
-
-            return self.multi_get_all_accounts_status()
+            summary = self._build_import_summary(state)
+            # 前端靠 accounts 刷新多账号列表；旧实现返回的是
+            # multi_get_all_accounts_status()，这里补回来
+            summary["accounts"] = self.multi_get_all_accounts_status().get(
+                "accounts", []
+            )
+            self.log(summary["message"])
+            logging.info(
+                f"导入完成：共 {summary['total_rows']} 行，"
+                f"新增 {summary['imported_count']}，"
+                f"已存在 {summary['already_exists_count']}，"
+                f"缺密码 {summary['skipped_count']}，"
+                f"文件内重复 {summary['duplicate_in_file_count']}"
+            )
+            return summary
 
         except Exception as e:
             self.log(f"导入失败: {e}")
             logging.error(f"导入多账号配置失败，详细错误信息: {traceback.format_exc()}")
             return {"success": False, "message": f"导入失败: {e}"}
+
+    @staticmethod
+    def _build_import_summary(state):
+        """把逐行结果汇总成一份给前端用的完整结果。
+
+        刻意**不做任何截断**：缺密码账号清单可能很长，截断会让用户
+        无法知道到底哪些账号没导进来（历史上后端 alert 只列 20 个，
+        这正是要修掉的问题）。
+        """
+        added = list(state.get("added") or [])
+        already = list(state.get("already_exists") or [])
+        skipped = list(state.get("skipped_no_password") or [])
+        duplicated = list(state.get("duplicate_in_file") or [])
+        running = list(state.get("skipped_running") or [])
+        failed_other = list(state.get("failed") or [])
+
+        failed = [{"username": u, "reason": "already_exists"} for u in already]
+        failed += [
+            {"username": item["username"], "reason": "skipped_no_password"}
+            for item in skipped
+        ]
+        failed += [
+            {"username": u, "reason": "account_running"} for u in running
+        ]
+        failed += [{"username": u, "reason": "failed"} for u in failed_other]
+
+        message = (
+            f"导入完成：新增 {len(added)} 个，"
+            f"已存在跳过 {len(already)} 个，"
+            f"缺密码跳过 {len(skipped)} 个"
+        )
+        if running:
+            message += f"，执行中跳过 {len(running)} 个"
+        if failed_other:
+            message += f"，失败 {len(failed_other)} 个"
+        if duplicated:
+            message += f"，文件内重复 {len(duplicated)} 个"
+
+        return {
+            "success": True,
+            "message": message,
+            "total_rows": int(state.get("total_rows") or 0),
+            "imported_count": len(added),
+            "already_exists_count": len(already),
+            "skipped_count": len(skipped),
+            "duplicate_in_file_count": len(duplicated),
+            "skipped_running_count": len(running),
+            "failed_count": len(failed_other),
+            "added": added,
+            "already_exists": already,
+            # 键名与 multi_load_accounts_from_config 保持一致，
+            # 前端可以直接复用同一套缺密码补全队列
+            "accounts_missing_password": skipped,
+            "duplicate_in_file": duplicated,
+            "skipped_running": running,
+            "failed_names": failed_other,
+            "failed": failed,
+        }
 
     def multi_export_accounts_summary(self):
         """导出多账号汇总，支持 Web模式直接返回文件内容"""
@@ -7947,7 +8124,10 @@ class Api:
                 if key == "auto_attendance_success_limit":
                     target_params[key] = max(1, int(target_params[key]))
 
-                self._save_config(username, self.accounts[username].password)
+                # 只保存参数，不保存密码：无论这个密码是否已验证过，
+                # 改参数都不该顺手把内存里的密码写进凭据库。
+                # 密码只在登录成功后由 _multi_refresh_worker_unlocked 落盘。
+                self._save_config(username)
                 self.log(f"已更新账号 [{username}] 的参数 {key}。")
 
                 # 当 auto_attendance_enabled 参数改变时，更新JSON配置文件
@@ -8902,6 +9082,12 @@ class Api:
             int(task_index),
             int(attempted_count or 0),
         )
+        # 必须先声明结果标记：下面的成功分支只在"提交成功"时才赋值，
+        # 提交失败/中止的路径会直接跳到函数末尾的 return，
+        # 漏掉这行就会抛
+        # UnboundLocalError: cannot access local variable 'task_succeeded'
+        # 使 worker 整体崩溃，且任务已提交的成果也一起丢掉。
+        task_succeeded = False
         try:
             total_tasks = max(task_index, int(planned_total or 0))
         except Exception:
