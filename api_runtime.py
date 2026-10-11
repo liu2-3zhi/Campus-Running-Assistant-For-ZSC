@@ -9654,6 +9654,22 @@ class Api:
                     else run_data.run_name
                 )
 
+                # 任务真正开始执行：把状态从"延迟/等待/排队"切换到正在执行的任务。
+                # 否则状态栏会一直停留在启动延迟时的旧文案（例如"延迟 0s"），
+                # 管理员查看他人会话时看到的也是同一个状态字段。
+                running_status_text = (
+                    f"正在执行: {run_data.run_name}"
+                    if len(run_data.run_name) <= 24
+                    else f"正在执行: {run_data.run_name[:24]}..."
+                )
+                self._update_account_status_js(
+                    acc,
+                    status_text=running_status_text,
+                    progress_pct=0,
+                    progress_text=f"运行 {task_index}/{task_index}: {task_name_short}",
+                    progress_extra="",
+                )
+
                 outcome = self._run_single_multi_account_task(
                     acc,
                     run_data,

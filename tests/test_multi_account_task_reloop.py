@@ -382,6 +382,40 @@ class TestWorkerReloopBehavior(unittest.TestCase):
             self.executed, ["e1"], "被中止后不得继续挑下一个任务"
         )
 
+    def test_task_start_sets_running_status_with_task_name(self):
+        """任务真正开始执行时必须改写状态文案。
+
+        否则状态栏会停留在启动延迟/任务间隔的旧文案（例如"延迟 0s"），
+        管理员查看他人会话时看到的也是这个字段，会误以为任务没在跑。
+        """
+        self.api._multi_account_worker(self.acc, 0, True)
+
+        status_updates = [
+            call.kwargs.get("status_text")
+            for call in self.api._update_account_status_js.call_args_list
+            if call.kwargs.get("status_text")
+        ]
+        running_updates = [
+            text for text in status_updates if text.startswith("正在执行")
+        ]
+
+        self.assertEqual(
+            len(running_updates),
+            len(self.executed),
+            "每个被调度的任务都要先进入'正在执行'状态",
+        )
+        self.assertIn("正在执行: task-e1", running_updates)
+        self.assertIn("正在执行: task-e2", running_updates)
+
+    def test_task_start_clears_stale_delay_status(self):
+        """启动延迟结束后不得把"延迟 0s"留在状态栏。"""
+        self.acc.status_text = "延迟 0s"
+
+        self.api._multi_account_worker(self.acc, 0, True)
+
+        final_status = self.acc.status_text
+        self.assertNotIn("延迟", final_status)
+
 
 if __name__ == "__main__":
     unittest.main()
