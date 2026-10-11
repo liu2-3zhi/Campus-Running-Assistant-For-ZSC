@@ -97,13 +97,16 @@ function getMultiAccountStatusClass(statusText) {
     "status-text font-semibold text-xs px-2 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap";
   const normalizedStatus = String(statusText || "").trim();
 
-  if (normalizedStatus === "全部完成") {
+  // 状态文案现在会带数量（例如「全部完成 (3/3)」「任务间等待 300s: 下一个 2/3 · xxx」），
+  // 因此不能再做整串相等比较，否则带数量的文案会掉进默认色（sky），
+  // 绿色/红色/琥珀色的语义就丢了。
+  if (normalizedStatus.includes("全部完成")) {
     return `${baseClass} text-emerald-700 bg-emerald-100`;
   }
-  if (normalizedStatus === "全部失败") {
+  if (normalizedStatus.includes("全部失败")) {
     return `${baseClass} text-red-700 bg-red-100`;
   }
-  if (normalizedStatus.startsWith("部分成功")) {
+  if (normalizedStatus.includes("部分成功")) {
     return `${baseClass} text-amber-700 bg-amber-100`;
   }
   if (
@@ -111,6 +114,15 @@ function getMultiAccountStatusClass(statusText) {
     normalizedStatus.includes("无可执行")
   ) {
     return `${baseClass} text-slate-500 bg-slate-100`;
+  }
+  // 等待态用琥珀色区分于「正在执行」的天蓝色，方便一眼看出没在跑
+  if (
+    normalizedStatus.includes("等待") ||
+    normalizedStatus.startsWith("已中止") ||
+    normalizedStatus.includes("失败") ||
+    normalizedStatus.includes("出错")
+  ) {
+    return `${baseClass} text-amber-700 bg-amber-100`;
   }
   return `${baseClass} text-sky-600 bg-sky-100`;
 }

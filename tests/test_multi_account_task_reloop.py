@@ -265,7 +265,10 @@ class TestWorkerReloopBehavior(unittest.TestCase):
             }
 
         self.api._multi_fetch_and_summarize_tasks = fake_fetch
-        self.api._update_account_status_js = mock.Mock()
+        self.status_calls = []
+        self.api._update_account_status_js = mock.Mock(
+            side_effect=lambda acc, **kwargs: self.status_calls.append(kwargs)
+        )
         self.api._update_multi_global_buttons = mock.Mock()
 
         def fake_run_task(
@@ -486,6 +489,138 @@ class TestWorkerReloopBehavior(unittest.TestCase):
 
         final_status = self.acc.status_text
         self.assertNotIn("延迟", final_status)
+
+
+class TestMultiAccountStatusTextContract(unittest.TestCase):
+    """状态文案契约：两种等待必须可区分，且带上进度与下一个任务名。
+
+    旧文案只有裸的 `延迟 12s` 与 `等待 300s`：
+    分不清是"开跑前等"还是"两个任务之间等"，也看不出后面还有没有任务、
+    点的是第几个任务。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.source = inspect.getsource(main_module.Api._multi_account_worker)
+
+    def test_two_wait_texts_are_distinct(self):
+        self.assertIn("开始前等待", self.source)
+        self.assertIn("任务间等待", self.source)
+
+    def test_bare_wait_texts_are_gone(self):
+        self.assertNotIn('status_text=f"延迟 {delay_remaining', self.source)
+        self.assertNotIn('status_text=f"等待 {remaining', self.source)
+
+    def test_wait_texts_carry_progress_and_next_task(self):
+        self.assertIn("待执行 {next_task_index}/", self.source)
+        self.assertIn("下一个 {next_task_index}/", self.source)
+        self.assertIn("next_task_name", self.source)
+
+    def test_running_status_reuses_shared_name_shortening(self):
+        """等待态与执行态必须显示同一个任务名。"""
+        self.assertIn(
+            "next_task_name = self._shorten_task_name_for_status(", self.source
+        )
+        self.assertIn("task_name_for_status = next_task_name", self.source)
+
+    def test_shorten_helper(self):
+        api = object.__new__(main_module.Api)
+
+        self.assertEqual(api._shorten_task_name_for_status("短任务"), "短任务")
+        self.assertEqual(
+            api._shorten_task_name_for_status("a" * 30), "a" * 24 + "..."
+        )
+        self.assertEqual(api._shorten_task_name_for_status(None), "")
+
+
+class TestWaitStatusTextsBehavior(unittest.TestCase):
+    """真正驱动 worker，抓取它发出的等待文案。"""
+
+    def setUp(self):
+        self.api = object.__new__(main_module.Api)
+        self.api._init_state_variables()
+        self.api.is_multi_account_mode = True
+        self.api.multi_run_stop_flag.clear()
+        # 间隔取极小正数：等待循环至少执行一轮以便观察文案，又几乎不耗时
+        self.api.global_params["task_gap_min_s"] = 0.4
+        self.api.global_params["task_gap_max_s"] = 0.4
+        self.api._update_multi_global_buttons = mock.Mock()
+
+    def _run(self, phases, delay=0.0):
+        acc = _FakeAccount([])
+        acc.params.update({"task_gap_min_s": 0.4, "task_gap_max_s": 0.4})
+        acc.api_client = mock.Mock()
+        acc.device_ua = "ua"
+        acc.is_first_login_verified = True
+        acc.status_text = ""
+        # 满足 skip_refresh：刚刷新过 + 已有任务数据，
+        # 否则 worker 会先走去登录流程，而不是直接进入任务调度。
+        acc.last_refresh_time = time.time()
+        acc.all_run_data = [_make_run("placeholder", status=1)]
+
+        state = {"phase": 0}
+
+        def fake_fetch(target):
+            target.all_run_data = [
+                _make_run(eid, status=status)
+                for eid, status in phases[state["phase"]]
+            ]
+            target.summary = {
+                "total": len(target.all_run_data),
+                "executable": sum(
+                    1 for r in target.all_run_data if r.status == 0
+                ),
+                "not_started": 0,
+                "expired": 0,
+            }
+
+        self.api._multi_fetch_and_summarize_tasks = fake_fetch
+
+        def fake_task(target, rd, ti, tn, attempted_count=1, planned_total=None):
+            state["phase"] = min(state["phase"] + 1, len(phases) - 1)
+            fake_fetch(target)
+            return "success"
+
+        self.api._run_single_multi_account_task = fake_task
+
+        seen = []
+        self.api._update_account_status_js = mock.Mock(
+            side_effect=lambda _acc, **kw: seen.append(kw.get("status_text"))
+        )
+        self.api._multi_account_worker(acc, delay, True)
+        return seen
+
+    def test_gap_wait_text_is_specific(self):
+        texts = self._run(
+            [
+                [("e1", 0)],
+                [("e1", 1), ("e2", 0)],
+                [("e1", 1), ("e2", 1)],
+            ]
+        )
+
+        gap_texts = [t for t in texts if t and "任务间等待" in t]
+        self.assertTrue(gap_texts, f"未出现任务间等待文案；实际: {texts}")
+        self.assertIn(
+            "下一个 2/", gap_texts[0], f"应指明下一个是第 2 个任务: {gap_texts[0]}"
+        )
+        self.assertIn("·", gap_texts[0], f"应带上任务名: {gap_texts[0]}")
+
+    def test_delay_wait_text_is_specific(self):
+        texts = self._run([[("e1", 0)], [("e1", 1)]], delay=1.4)
+
+        delay_texts = [t for t in texts if t and "开始前等待" in t]
+        self.assertTrue(delay_texts, f"未出现开始前等待文案；实际: {texts}")
+        self.assertIn("待执行 1/", delay_texts[0])
+
+    def test_no_gap_wait_text_when_no_next_task(self):
+        texts = self._run([[("only", 0)], [("only", 1)]])
+
+        self.assertFalse(
+            [t for t in texts if t and "任务间等待" in t],
+            "没有下一个任务时不应出现任务间等待文案",
+        )
+
 
 
 if __name__ == "__main__":

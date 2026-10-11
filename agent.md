@@ -111,6 +111,8 @@
 - 执行互斥必须使用进程级学校账号执行槽，启动时原子占用并在线程结束时释放。多账号登录后还要把学号别名加入同一执行槽，覆盖“登录名与学号不同”以及“单账号页面与多账号页面同时使用同一学校账号”的情况。
 - 单纯添加学校账号、刷新状态、读取通知不占任务执行槽；同一账号已有任务执行时，只让这些辅助刷新暂时让路，不能阻止账号添加。
 - 多账号 worker 在任务真正开始执行前必须把 `status_text` 改写成 `正在执行 i/n: <任务名>`（`n` 取本轮任务统计里的可执行数、只增不减且不小于 `i`；未知时退化为 `正在执行: <任务名>`）并重置进度：状态字段原先只在延迟/等待/完成时更新，任务运行期间停留在“延迟 0s”“等待 Ns”这类旧文案上；该字段就是前端列表（含管理员查看他人会话时看到的列表）显示的状态，不改写会让用户以为任务没在跑。进度文案 `运行 i/n: <任务名>` 的分母同样用这个计划任务数（`_run_single_multi_account_task(..., planned_total=...)`），不要退回成恒等于当前序号。相关回归测试见 `tests/test_multi_account_task_reloop.py`。
+- 多账号的两种等待必须用可区分的文案，不能退回裸的 `延迟 Ns` / `等待 Ns`：开跑前是 `开始前等待 Ns: 待执行 i/n 个任务`，两个任务之间是 `任务间等待 Ns: 下一个 i/n · <任务名>`。裸文案分不清是“开跑前等”还是“任务之间等”，也看不出后面还有没有任务、下一个是第几个。等待态与执行态必须复用同一份任务名截断逻辑（`_shorten_task_name_for_status`），否则同一任务在两种状态下会显示不同名字。相关回归测试见 `tests/test_multi_account_task_reloop.py::TestWaitStatusTextsBehavior`。
+- 多账号收尾状态文案固定为“状态词 + (成功/总数)”（`全部完成 (3/3)`、`全部失败 (0/3)`、`部分成功 (1/3)，2个任务失败`、`无任务可执行`）。状态词必须原样保留，因为 `getMultiAccountStatusClass` 按这些词着色；前端匹配必须用 `includes` 而不是整串相等，否则带数量的文案会掉进默认色。相关回归测试见 `tests/test_multi_account_completion_status.py`。
 - `_update_account_status_js()` 必须无条件更新账号对象上的 `status_text`/`progress_*` 字段，socket 推送只是附加通道：多账号列表的轮询接口 `multi_get_all_accounts_status` 读的就是这些字段，缺 `socketio` 或会话 ID 时直接 return 会让状态栏永远停在旧文案。
 
 ## 登录和会话提示规则
@@ -164,6 +166,7 @@
 - IP 和手机号缓存必须同时具备 TTL 与最大条目数；短信验证码必须定期删除过期项，并在新增和查询时执行边界清理。
 - 验证会话清理不能只看 `web_sessions` 是否为空，还必须验证 `AccountRefresh-*`、`MultiAccountMonitor` 线程已经退出，且重复登录清理后 `Api` 对象可被垃圾回收。
 - 内存诊断日志统一使用 `[内存诊断]` 前缀，至少记录 `web_sessions`、后台线程数、Playwright context 数、IP/手机号/短信缓存条目数和 Linux `max_rss_mb`；排查内存增长时优先比较 `cleanup_worker_interval` 与 `session_cleanup:*` 快照趋势。
+- 日志轮转按“顺序编号、不搬动历史文件”执行：`zx-slm-tool.log` 是当前写入文件，写满后改名为下一个编号 `zx-slm-tool-NN.log`（从 01 起），**已存在的历史文件保持原名不动**，因此编号越小越旧、越大越新。禁止退回旧的“把所有 `-0N` 依次后移、删掉最大号、再把当前文件塞进 `-01`”方案：那样每轮转都要重命名全部历史文件，而且 `-01` 会永远是最新的，与编号直觉相反。历史文件前缀必须由各处理器自己的文件名推导（`zx-slm-tool` / `zx-slm-tool-WARNING` / `zx-slm-tool-ERROR`），不能写死成一个前缀，否则 WARNING/ERROR 的备份会互相覆盖并与主日志撞名。保留数量由 `Logging.log_backup_count` 配置（默认 10），裁剪时从编号最小也就是最旧的一端删起。相关回归测试见 `tests/test_log_rotation_ordering.py`。
 - `TokenManager` 是“每用户一个 token”，`verify_token()` 不校验 session_id：清理单个会话时不能只按 `browsing_activity` 判断用户是否还在使用。管理员查看态（上帝模式）和 `/auth/switch_session` 之后，管理员的实际活动会话在 `web_sessions` 里可能登记为别人的会话，`get_user_sessions(管理员)` 里也没有它，直接 `invalidate_token` 会删掉仍在使用的 token 文件，让管理员整个浏览态 401 掉线。失效判定依次为：该用户其他会话有新鲜浏览记录 → 命中管理员查看态保活窗口 → `TokenManager.get_token_last_activity()` 显示 token 最近仍在刷新；三者都不成立才允许删除 token。显式登出、强制登出、账号注销仍各自主动调用 `invalidate_token`，不受该判定影响。
 - “必须立刻让旧凭证失效”的路径统一走 `web_server.py` 的 `_purge_user_credentials()`：删除用户、强制重置密码、用户修改自己的密码、强制登出用户。顺序固定为：吊销 token（每用户一个，反查索引同步清理）→ 汇总该用户全部会话（内存 + 用户文件登记 + 调用方补充）→ 逐个 `cleanup_session()` → 按需清空用户文件 `session_ids`；禁止只删 `web_sessions` 或只删会话文件。删除用户前必须先用 `get_user_sessions()` 取出登记的会话 ID，否则只存在于磁盘的会话文件会在下次启动时被重新加载。用户修改自己的密码时用 `keep_session_id` 保留当前会话并 `create_token()` 补发 token 写回 cookie，其他会话/设备全部失效。
 - 销毁单个会话（`/auth/admin/destroy_session`、用户删除自己的会话、不活跃回收）不要无条件吊销 token：`cleanup_inactive_session()` 只在“这确实是该用户最后一个会话”时才 `invalidate_token()`，判定用 `_collect_other_user_sessions()`（内存活跃会话 + 确实存在状态文件的持久化会话，历史残留 ID 不算）；例外是 `_is_user_token_in_active_use()` 为真（查看态/切换态下活动会话登记在别人名下）时仍然保留 token，否则管理员查看态会被连带踢下线。`get_user_sessions()` 里残留的旧 ID 不能当作“还有其他会话”，否则 token 永远不失效。

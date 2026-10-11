@@ -9444,6 +9444,18 @@ class Api:
                 path_result["error"] = data
             completion_event.set()
 
+    @staticmethod
+    def _shorten_task_name_for_status(run_name, limit: int = 24) -> str:
+        """把任务名压缩到状态栏可读长度（超长截断加省略号）。
+
+        状态文案（等待中/正在执行）统一复用，避免各处各写一份截断逻辑
+        导致同一任务在等待态与执行态显示不同名字。
+        """
+        name = str(run_name or "").strip()
+        if len(name) <= limit:
+            return name
+        return f"{name[:limit]}..."
+
     def _multi_account_worker(
         self, acc: _main().AccountSession, delay: float, run_only_incomplete: bool
     ):
@@ -9627,6 +9639,17 @@ class Api:
                 # 若先等待后拉取，最后一个任务跑完还要白等一轮才退出。
                 acc.has_pending_tasks = True
 
+                # 状态文案要让人一眼看出"在等什么、等的是第几个任务"：
+                # 旧文案只有裸的 `延迟 12s` / `等待 300s`，两种等待无法区分，
+                # 也看不出后面还有没有任务。这里统一成
+                # `开始前等待 Ns: 待执行 i/n 个任务` 与
+                # `任务间等待 Ns: 下一个 i/n · 任务名`。
+                next_task_index = len(attempted_task_keys) + 1
+                next_task_name = self._shorten_task_name_for_status(
+                    run_data.run_name
+                )
+                effective_total_for_wait = max(next_task_index, planned_total)
+
                 # 账号级启动延迟：仅在"确实已经挑到任务"时才延迟，避免无任务时白等。
                 if delay > 0 and not has_completed_any:
                     delay_end_time = time.time() + delay
@@ -9638,7 +9661,12 @@ class Api:
                             break
                         delay_remaining = delay_end_time - time.time()
                         self._update_account_status_js(
-                            acc, status_text=f"延迟 {delay_remaining:.0f}s"
+                            acc,
+                            status_text=(
+                                f"开始前等待 {delay_remaining:.0f}s: "
+                                f"待执行 {next_task_index}/"
+                                f"{effective_total_for_wait} 个任务"
+                            ),
                         )
                         time.sleep(1)
                     if aborted:
@@ -9662,7 +9690,12 @@ class Api:
                             break
                         remaining = end_time - time.time()
                         self._update_account_status_js(
-                            acc, status_text=f"等待 {remaining:.0f}s"
+                            acc,
+                            status_text=(
+                                f"任务间等待 {remaining:.0f}s: "
+                                f"下一个 {next_task_index}/"
+                                f"{effective_total_for_wait} · {next_task_name}"
+                            ),
                         )
                         time.sleep(1)
                     if should_break_worker:
@@ -9684,11 +9717,7 @@ class Api:
                 # 任务真正开始执行：把状态从"延迟/等待/排队"切换到正在执行的任务。
                 # 否则状态栏会一直停留在启动延迟时的旧文案（例如"延迟 0s"），
                 # 管理员查看他人会话时看到的也是同一个状态字段。
-                task_name_for_status = (
-                    run_data.run_name
-                    if len(run_data.run_name) <= 24
-                    else f"{run_data.run_name[:24]}..."
-                )
+                task_name_for_status = next_task_name
                 # 分母不能小于当前序号（计划数是在挑任务之前统计的）。
                 effective_total = max(task_index, planned_total)
                 if effective_total > 1:

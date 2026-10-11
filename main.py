@@ -2346,16 +2346,23 @@ def _complete_route_path_with_waypoint_endpoints(path, waypoints):
 
 
 def _build_multi_account_completion_status(total_tasks, successful_tasks):
+    """多账号单个账号的收尾状态文案。
+
+    文案以「状态词 + (成功/总数)」的形式给出，既保留原来一眼可辨的状态词
+    （`全部完成` / `全部失败` / `部分成功` / `无任务可执行`，前端按这些词
+    着色，见 getMultiAccountStatusClass），又补上数量，避免"全部完成"
+    到底是 1 个还是 10 个任务无从判断。
+    """
     total_tasks = max(0, int(total_tasks or 0))
     successful_tasks = max(0, min(total_tasks, int(successful_tasks or 0)))
     if total_tasks == 0:
         return "无任务可执行"
-    if successful_tasks == total_tasks:
-        return "全部完成"
-    if successful_tasks == 0:
-        return "全部失败"
     failed_tasks = total_tasks - successful_tasks
-    return f"部分成功，{failed_tasks}个任务失败"
+    if failed_tasks == 0:
+        return f"全部完成 ({successful_tasks}/{total_tasks})"
+    if successful_tasks == 0:
+        return f"全部失败 (0/{total_tasks})"
+    return f"部分成功 ({successful_tasks}/{total_tasks})，{failed_tasks}个任务失败"
 
 
 
@@ -3892,19 +3899,108 @@ class ContextEnrichFilter(logging.Filter):
 class CustomLogHandler(logging.FileHandler):
     """
     自定义日志处理器，实现文件大小检查和轮转。
+
+    轮转规则（顺序编号，不搬动历史文件）:
+        - `zx-slm-tool.log` 是当前正在写的文件；
+        - 每写满一次，就把它改名成下一个编号 `zx-slm-tool-NN.log`，
+          NN 从 01 开始递增；**已存在的历史文件保持原名不动**；
+        - 因此 `-01` 永远是最旧的，编号越大越新（与时间顺序一致）。
     """
 
+    #: 单个主日志最多保留多少个历史文件（含 01）
+    MAX_BACKUP_COUNT = 10
+
+    #: 历史文件编号的位数，例：01 -> "01"
+    BACKUP_INDEX_WIDTH = 2
+
     def __init__(
-        self, filename, mode="a", encoding="utf-8", max_bytes=10 * 1024 * 1024
+        self,
+        filename,
+        mode="a",
+        encoding="utf-8",
+        max_bytes=10 * 1024 * 1024,
+        backup_count=None,
     ):
         """
         初始化自定义日志处理器。
         """
         self.max_bytes = max_bytes
         self.base_filename = filename
+        # 每个处理器可独立配置保留数量，缺省用类默认值
+        self.backup_count = max(
+            1,
+            int(
+                CustomLogHandler.MAX_BACKUP_COUNT
+                if backup_count is None
+                else backup_count
+            ),
+        )
         self.rollover_failure_count = 0
         self.rollover_retry_at = 0.0
         super().__init__(filename, mode, encoding)
+
+    def _resolve_backup_prefix(self):
+        """历史文件的前缀：由处理器自己的文件名推导。
+
+        必须按处理器分别推导，不能写死成 `zx-slm-tool`：
+        WARNING / ERROR 处理器各自轮转时，若都用同一个前缀，
+        它们的备份会互相覆盖，而且会与主日志的备份撞名。
+        """
+        base = os.path.basename(self.baseFilename)
+        if base.endswith(".log"):
+            base = base[: -len(".log")]
+        return base or "zx-slm-tool"
+
+    def _list_backup_files(self):
+        """列出该处理器的历史文件，返回 [(编号, 完整路径)]（按编号升序）。"""
+        log_dir = os.path.dirname(self.baseFilename)
+        prefix = self._resolve_backup_prefix()
+        pattern = re.compile(
+            rf"^{re.escape(prefix)}-(\d{{{self.BACKUP_INDEX_WIDTH},}})\.log$"
+        )
+
+        found = []
+        try:
+            entries = os.listdir(log_dir)
+        except OSError:
+            return found
+
+        for name in entries:
+            match = pattern.match(name)
+            if not match:
+                continue
+            found.append((int(match.group(1)), os.path.join(log_dir, name)))
+
+        found.sort(key=lambda item: item[0])
+        return found
+
+    def _next_backup_path(self):
+        """返回本次轮转应写入的历史文件路径（最大编号 +1）。"""
+        log_dir = os.path.dirname(self.baseFilename)
+        backups = self._list_backup_files()
+        next_index = backups[-1][0] + 1 if backups else 1
+        return os.path.join(
+            log_dir,
+            f"{self._resolve_backup_prefix()}-{next_index:0{self.BACKUP_INDEX_WIDTH}d}.log",
+        )
+
+    def _prune_old_backups(self):
+        """超过保留上限时，从编号最小（最旧）的开始删除。"""
+        backups = self._list_backup_files()
+        excess = len(backups) - self.backup_count
+        if excess <= 0:
+            return
+
+        for index, path in backups[:excess]:
+            try:
+                os.remove(path)
+                print(
+                    f"[日志轮转] 已删除最旧的历史日志: {os.path.basename(path)}"
+                )
+            except OSError as exc:
+                print(
+                    f"[日志轮转] 删除 {os.path.basename(path)} 失败: {exc}"
+                )
 
     def emit(self, record):
         """
@@ -3927,51 +4023,24 @@ class CustomLogHandler(logging.FileHandler):
 
     def do_rollover(self):
         """
-        执行标准的日志轮转。
+        执行日志轮转：把当前文件改名成下一个编号，不搬动已存在的历史文件。
         """
         if self.stream:
             self.stream.close()
             self.stream = None
 
-        log_dir = os.path.dirname(self.baseFilename)
-        base_name = "zx-slm-tool"
-
-        max_backup_count = 10
-
-        for i in range(max_backup_count, 0, -1):
-            old_log = os.path.join(log_dir, f"{base_name}-{i:02d}.log")
-
-            if i == max_backup_count:
-                if os.path.exists(old_log):
-                    try:
-                        os.remove(old_log)
-                        print(
-                            f"[日志轮转] 已删除最旧的日志文件: {os.path.basename(old_log)}"
-                        )
-                    except Exception as e:
-                        print(f"[日志轮转] 删除 {os.path.basename(old_log)} 失败: {e}")
-            else:
-                if os.path.exists(old_log):
-                    new_log = os.path.join(
-                        log_dir, f"{base_name}-{i+1:02d}.log")
-                    try:
-                        os.rename(old_log, new_log)
-                        print(
-                            f"[日志轮转] {os.path.basename(old_log)} -> {os.path.basename(new_log)}"
-                        )
-                    except Exception as e:
-                        print(
-                            f"[日志轮转] 重命名 {os.path.basename(old_log)} 失败: {e}"
-                        )
-
-        first_backup = os.path.join(log_dir, f"{base_name}-01.log")
         try:
-            if os.path.exists(first_backup):
-                os.remove(first_backup)
+            target_path = self._next_backup_path()
 
-            os.rename(self.baseFilename, first_backup)
+            # 正常情况下不会撞名；万一撞上（例如手工放了个同号文件），
+            # 先让开，避免 rename 覆盖掉已有日志。
+            if os.path.exists(target_path):
+                os.remove(target_path)
+
+            os.rename(self.baseFilename, target_path)
             print(
-                f"[日志轮转] {os.path.basename(self.baseFilename)} -> {os.path.basename(first_backup)}"
+                f"[日志轮转] {os.path.basename(self.baseFilename)} -> "
+                f"{os.path.basename(target_path)}"
             )
         except Exception as e:
             self.rollover_failure_count += 1
@@ -3981,11 +4050,14 @@ class CustomLogHandler(logging.FileHandler):
             )
             self.rollover_retry_at = time.monotonic() + retry_delay_seconds
             print(
-                f"[日志轮转] 轮转主日志文件失败: {e}；"
+                f"[日志轮转] 轮转日志文件失败: {e}；"
                 f"{retry_delay_seconds} 秒后重试"
             )
             self.stream = self._open()
             return False
+
+        # 轮转成功后再裁剪，避免"删了旧的却没能建新的"
+        self._prune_old_backups()
 
         self.stream = self._open()
         self.rollover_failure_count = 0
@@ -4118,6 +4190,7 @@ def setup_logging():
     配置详细的日志系统（带自定义轮转逻辑）。
     """
     log_rotation_size_mb = 10
+    log_backup_count = CustomLogHandler.MAX_BACKUP_COUNT
     archive_max_size_mb = 5120
     global log_dir, archive_dir
     log_dir = "logs"
@@ -4131,6 +4204,11 @@ def setup_logging():
                 log_rotation_size_mb = config.getint(
                     "Logging", "log_rotation_size_mb", fallback=10
                 )
+                log_backup_count = config.getint(
+                    "Logging",
+                    "log_backup_count",
+                    fallback=CustomLogHandler.MAX_BACKUP_COUNT,
+                )
                 archive_max_size_mb = config.getint(
                     "Logging", "archive_max_size_mb", fallback=5120
                 )
@@ -4140,6 +4218,9 @@ def setup_logging():
                 )
     except Exception as e:
         print(f"[日志系统] 读取配置失败，使用默认值: {e}")
+
+    # 保留数量至少要能放下 1 个历史文件
+    log_backup_count = max(1, int(log_backup_count))
 
     if not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)
@@ -4172,7 +4253,11 @@ def setup_logging():
 
     max_bytes = log_rotation_size_mb * 1024 * 1024
     file_handler = CustomLogHandler(
-        log_file, mode="a", encoding="utf-8", max_bytes=max_bytes
+        log_file,
+        mode="a",
+        encoding="utf-8",
+        max_bytes=max_bytes,
+        backup_count=log_backup_count,
     )
     file_handler.setLevel(logging.DEBUG)
 
@@ -4191,6 +4276,7 @@ def setup_logging():
         mode="a",
         encoding="utf-8",
         max_bytes=max_bytes,
+        backup_count=log_backup_count,
     )
 
     warning_file_handler.setLevel(logging.WARNING)
@@ -4210,6 +4296,7 @@ def setup_logging():
         mode="a",
         encoding="utf-8",
         max_bytes=max_bytes,
+        backup_count=log_backup_count,
     )
 
     error_file_handler.setLevel(logging.ERROR)
@@ -4254,6 +4341,10 @@ def setup_logging():
     logging.info(f"错误日志文件: {error_log_file}")
     logging.info(f"日志级别: DEBUG (所有级别)")
     logging.info(f"日志轮转: 单文件最大{log_rotation_size_mb}MB")
+    logging.info(
+        f"日志轮转: 最多保留 {log_backup_count} 个历史文件"
+        f"（zx-slm-tool-01.log 最旧，编号越大越新）"
+    )
     logging.info(
         f"归档目录: {archive_dir}, 最大{archive_max_size_mb}MB{'（不限制）' if archive_max_size_mb == 0 else ''}"
     )
@@ -5350,6 +5441,7 @@ def _get_default_config():
 
     config["Logging"] = {
         "log_rotation_size_mb": "10",
+        "log_backup_count": "10",
         "archive_max_size_mb": "5120",
         "random_background_cache_max_size_mb": "1024",
         "log_dir": "logs",
@@ -5807,9 +5899,14 @@ def _write_config_with_comments(config_obj, filepath):
         # [Logging] 配置
         f.write("[Logging]\n")
         f.write("# 单个日志文件最大大小（MB）\n")
-        f.write("# 超过此大小时会自动轮转到新文件（如 zx-slm-tool-01.log）\n")
+        f.write("# 超过此大小时会把当前日志改名为下一个编号（如 zx-slm-tool-01.log）\n")
+        f.write("# 编号从 01 开始递增，01 最旧、编号越大越新；历史文件不会被搬动\n")
         f.write(
             f"log_rotation_size_mb = {config_obj.get('Logging', 'log_rotation_size_mb', fallback='10')}\n"
+        )
+        f.write("# 历史日志最多保留多少个（按编号从最旧开始删除）\n")
+        f.write(
+            f"log_backup_count = {config_obj.get('Logging', 'log_backup_count', fallback='10')}\n"
         )
         f.write("# 归档目录最大大小（MB）\n")
         f.write("# 超过此大小时会删除最早的归档文件，设置为0表示不限制\n")
