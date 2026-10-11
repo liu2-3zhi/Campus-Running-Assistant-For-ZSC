@@ -3785,7 +3785,7 @@ def initialize_global_variables():
 
     global admin_view_origin_activity, admin_view_origin_activity_lock
     admin_view_origin_activity = {}
-    admin_view_origin_activity_lock = threading.Lock()
+    admin_view_origin_activity_lock = threading.RLock()
 
     # 全局变量：缓存服务器的公网IP地址（IPv4 和 IPv6）
     # 用于 is_allowed_ip() 函数中判断请求是否来自服务器本身
@@ -8950,6 +8950,53 @@ def clear_admin_view_origin_session(session_id):
         admin_view_origin_activity.pop(session_id, None)
 
 
+def _collect_other_user_sessions(username, exclude_session_id):
+    """收集该用户名下仍然真实存在的其他会话。
+
+    用于判断"被销毁的会话是不是该用户唯一的会话"：
+
+        - 内存中（web_sessions）仍活跃、且属于该用户的其他会话；
+        - 用户文件登记的、并且确实存在持久化状态文件的其他会话。
+
+    只登记在用户文件里但既不在内存也没有状态文件的会话 ID 属于历史残留，
+    不能因为它的存在而让 token 一直不失效。
+    """
+    username = str(username or "").strip()
+    if not username:
+        return []
+
+    exclude_session_id = normalize_session_uuid(exclude_session_id)
+    others = []
+
+    try:
+        with web_sessions_lock:
+            live_sessions = list(web_sessions.items())
+        for sid, api_instance in live_sessions:
+            if not sid or sid == exclude_session_id:
+                continue
+            if getattr(api_instance, "auth_username", "") == username:
+                others.append(sid)
+    except Exception as error:
+        logging.warning("[会话清理] 统计内存中的其他会话失败: %s", error)
+
+    try:
+        stored_sessions = auth_system.get_user_sessions(username) or []
+    except Exception as error:
+        logging.warning("[会话清理] 读取用户会话列表失败: %s", error)
+        stored_sessions = []
+
+    for sid in stored_sessions:
+        if not sid or sid == exclude_session_id or sid in others:
+            continue
+        try:
+            if os.path.exists(get_session_file_path(sid)):
+                others.append(sid)
+        except Exception:
+            continue
+
+    return others
+
+
 def _is_user_token_in_active_use(username, timeout_seconds):
     """判断该用户的 token 是否仍在被使用（最近刷新过）。
 
@@ -9260,7 +9307,7 @@ def cleanup_inactive_session(session_id, reason="manual"):
         ) and not getattr(api_instance, "is_guest", True):
             username = api_instance.auth_username
             runtime_username = username
-            is_browsing = False
+            other_sessions = []
             is_token_in_use = False
             timeout = 300
             try:
@@ -9272,28 +9319,27 @@ def cleanup_inactive_session(session_id, reason="manual"):
                             "session_inactivity_timeout",
                             fallback=300,
                         )
-                user_sids = auth_system.get_user_sessions(username)
-                current_ts = time.time()
-                with browsing_activity_lock:
-                    for sid in user_sids:
-                        if sid == session_id:
-                            continue
-
-                        last_browse_ts = browsing_activity.get(sid, 0)
-                        if current_ts - last_browse_ts < timeout:
-                            is_browsing = True
-                            break
+                other_sessions = _collect_other_user_sessions(
+                    username, session_id
+                )
             except Exception as e:
-                logging.error(f"检查浏览状态失败: {e}", exc_info=True)
+                logging.error(f"检查用户其他会话失败: {e}", exc_info=True)
 
-            if not is_browsing:
-                # 管理员查看态（上帝模式）或 /auth/switch_session 之后，
-                # 管理员的活动会话在 web_sessions 里可能登记为别人的会话，
-                # 上面的 browsing_activity 判断不到。此时如果 token 仍在被
-                # 刷新（有请求在用它鉴权），删除 token 会让管理员的整个
-                # 浏览态 401 掉线，所以这里再看一次 token 的最近活动时间。
-                # 这一步必须独立于上面的浏览状态检查：否则检查浏览状态时
-                # 的任何异常都会让 token 被误删。
+            if other_sessions:
+                # 该用户还有其他会话：销毁其中一个会话不应该吊销"每用户一个"
+                # 的 token，否则其他页面会被一起踢下线。
+                logging.info(
+                    "[会话清理] 用户 %s 还有其他 %d 个会话，跳过 token 失效: session=%s",
+                    username,
+                    len(other_sessions),
+                    session_id,
+                )
+            else:
+                # 这是该用户最后一个会话：默认应该吊销 token；但如果能证明
+                # token 仍在被刷新（管理员查看态/切换态下，活动会话在
+                # web_sessions 里登记为别人的会话），删除它会让查看者的整个
+                # 浏览态 401 掉线，因此仍然保留。
+                # 这一步必须独立于上面的其他会话检查：否则检查出错时会误删。
                 try:
                     is_token_in_use = _is_user_token_in_active_use(
                         username, timeout
@@ -9320,11 +9366,11 @@ def cleanup_inactive_session(session_id, reason="manual"):
                     exc_info=True,
                 )
 
-            if not is_browsing and not is_token_in_use:
+            if not other_sessions and not is_token_in_use:
                 try:
                     token_manager.invalidate_token(username, session_id)
                     logging.info(
-                        "[会话清理] 已使用户 %s 的会话 %s 的 token 失效（无其他浏览行为）",
+                        "[会话清理] 已使用户 %s 最后一个会话 %s 的 token 失效",
                         username,
                         session_id,
                     )
@@ -9337,12 +9383,6 @@ def cleanup_inactive_session(session_id, reason="manual"):
                         token_error,
                         exc_info=True,
                     )
-            elif is_browsing:
-                logging.info(
-                    "[会话清理] 用户 %s 仍在其他页面浏览，跳过 token 失效: session=%s",
-                    username,
-                    session_id,
-                )
 
         if api_instance is not None:
             shutdown = getattr(api_instance, "shutdown_session_runtime", None)

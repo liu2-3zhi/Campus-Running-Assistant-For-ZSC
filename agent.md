@@ -162,6 +162,10 @@
 - 验证会话清理不能只看 `web_sessions` 是否为空，还必须验证 `AccountRefresh-*`、`MultiAccountMonitor` 线程已经退出，且重复登录清理后 `Api` 对象可被垃圾回收。
 - 内存诊断日志统一使用 `[内存诊断]` 前缀，至少记录 `web_sessions`、后台线程数、Playwright context 数、IP/手机号/短信缓存条目数和 Linux `max_rss_mb`；排查内存增长时优先比较 `cleanup_worker_interval` 与 `session_cleanup:*` 快照趋势。
 - `TokenManager` 是“每用户一个 token”，`verify_token()` 不校验 session_id：清理单个会话时不能只按 `browsing_activity` 判断用户是否还在使用。管理员查看态（上帝模式）和 `/auth/switch_session` 之后，管理员的实际活动会话在 `web_sessions` 里可能登记为别人的会话，`get_user_sessions(管理员)` 里也没有它，直接 `invalidate_token` 会删掉仍在使用的 token 文件，让管理员整个浏览态 401 掉线。失效判定依次为：该用户其他会话有新鲜浏览记录 → 命中管理员查看态保活窗口 → `TokenManager.get_token_last_activity()` 显示 token 最近仍在刷新；三者都不成立才允许删除 token。显式登出、强制登出、账号注销仍各自主动调用 `invalidate_token`，不受该判定影响。
+- “必须立刻让旧凭证失效”的路径统一走 `web_server.py` 的 `_purge_user_credentials()`：删除用户、强制重置密码、用户修改自己的密码、强制登出用户。顺序固定为：吊销 token（每用户一个，反查索引同步清理）→ 汇总该用户全部会话（内存 + 用户文件登记 + 调用方补充）→ 逐个 `cleanup_session()` → 按需清空用户文件 `session_ids`；禁止只删 `web_sessions` 或只删会话文件。删除用户前必须先用 `get_user_sessions()` 取出登记的会话 ID，否则只存在于磁盘的会话文件会在下次启动时被重新加载。用户修改自己的密码时用 `keep_session_id` 保留当前会话并 `create_token()` 补发 token 写回 cookie，其他会话/设备全部失效。
+- 销毁单个会话（`/auth/admin/destroy_session`、用户删除自己的会话、不活跃回收）不要无条件吊销 token：`cleanup_inactive_session()` 只在“这确实是该用户最后一个会话”时才 `invalidate_token()`，判定用 `_collect_other_user_sessions()`（内存活跃会话 + 确实存在状态文件的持久化会话，历史残留 ID 不算）；例外是 `_is_user_token_in_active_use()` 为真（查看态/切换态下活动会话登记在别人名下）时仍然保留 token，否则管理员查看态会被连带踢下线。`get_user_sessions()` 里残留的旧 ID 不能当作“还有其他会话”，否则 token 永远不失效。
+- “退出应用/登出”（`/api/shutdown`、`/auth/logout`）必须先经 `_resolve_logout_target_sessions()` 解析销毁目标：查看态下 X-Session-ID 指向的是**被查看的会话**，必须用 cookie token 反查调用者，只销毁调用者自己的来源会话（请求头来源会话优先，其次 `session_id` Cookie，再退化为该调用者的其他活跃会话），绝不能销毁被查看用户的会话；token 是否吊销同样交给 `cleanup_inactive_session()` 的“最后一个会话”判定。
+- 查看态但没有来源会话头的请求（god_mode 兜底）必须在 `g` 上打标记（`admin_view_without_origin` + `viewed_session_id`）：手工校验 token 的命名路由（例如 `/auth/admin/all_sessions`）要识别这种状态，否则会拿被查看会话的 owner 去校验查看者的 token，返回 401 并清空 `auth_token` Cookie，把管理员直接踢成未登录。
 
 ## 访客Token与身份级背景绑定
 

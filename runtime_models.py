@@ -24,12 +24,10 @@ class TokenManager:
         # token 值 -> 用户名 的反查索引。
         # token 是"每用户一个"，业务层拿到 cookie 里的 token 时无法直接知道
         # 它属于哪个用户；管理员查看/切换到他人会话的场景必须知道调用者是谁
-        # 才能按权限放行。索引在 create_token 时写入，缺失时按目录扫描兜底。
+        # 才能按权限放行。索引在启动时扫描一次，之后由 create_token 增量维护，
+        # 请求路径上不再扫描目录（鉴权链路持有 web_sessions_lock，不能做磁盘扫描）。
         self._token_owner_index = {}
         self._token_owner_index_lock = threading.Lock()
-        self._token_owner_index_scanned_at = 0.0
-        # 反查失败时的全目录扫描最小间隔与文件数上限，避免被未知 token 打爆。
-        self._token_owner_scan_min_interval = 5.0
         self._token_owner_scan_limit = 2000
         self.guest_store = _main().GuestTokenStore(os.path.join(tokens_dir, "guests"))
         if not os.path.exists(tokens_dir):
@@ -37,6 +35,10 @@ class TokenManager:
             logging.info(f"TokenManager: 创建令牌目录: {tokens_dir}")
         else:
             logging.debug(f"TokenManager: 令牌目录已存在: {tokens_dir}")
+        self._token_owner_index.update(self._scan_token_owners())
+        logging.info(
+            f"TokenManager: 令牌反查索引初始化完成，条目数: {len(self._token_owner_index)}"
+        )
         logging.info("TokenManager: 初始化完成")
         logging.info("=" * 80)
 
@@ -87,31 +89,18 @@ class TokenManager:
         return scanned
 
     def resolve_username_by_token(self, token):
-        """按 token 值反查持有它的用户名。
+        """按 token 值反查持有它的用户名（O(1)，只查内存索引）。
 
-        命中索引时是 O(1)；未命中时（例如服务重启后由旧 token 发起的请求）
-        做一次受限的全目录扫描，并在扫描间隔内不再重复扫描。
-        找不到、参数非法或扫描被限流时返回空字符串。
+        索引在 TokenManager 初始化时建立，之后由 create_token 增量维护，
+        因此这里不做目录扫描：鉴权链路可能在持有 web_sessions_lock 的情况下
+        调用它，磁盘扫描会拖住全局会话锁。运行期手工放入的令牌文件需要
+        重启服务后才会进入索引；查不到时返回空字符串（调用方按未认证处理）。
         """
         token_value = str(token or "").strip()
         if not token_value:
             return ""
 
         with self._token_owner_index_lock:
-            owner = self._token_owner_index.get(token_value)
-            if owner:
-                return owner
-            now = time.time()
-            if (
-                now - self._token_owner_index_scanned_at
-                < self._token_owner_scan_min_interval
-            ):
-                return ""
-            self._token_owner_index_scanned_at = now
-
-        scanned = self._scan_token_owners()
-        with self._token_owner_index_lock:
-            self._token_owner_index.update(scanned)
             return self._token_owner_index.get(token_value, "")
 
     def _get_token_file_path(self, username):

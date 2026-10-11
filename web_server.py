@@ -1840,6 +1840,11 @@ def start_web_server(args_param):
                     return _main().jsonify({"success": False, "message": "用户名格式无效"}), 401
                 # 业务身份切换为已验证的查看者；业务 API 仍作用在目标会话实例上。
                 auth_username = god_mode_admin
+                # 标记"查看态但没有来源会话头"：手工校验 token 的命名路由
+                # （例如 /auth/admin/all_sessions）必须识别这种情况，否则会拿
+                # 被查看会话的 owner 去校验查看者的 token 并返回 401 + 清除 cookie。
+                _main().g.admin_view_without_origin = True
+                _main().g.viewed_session_id = session_id
             if not god_mode_admin and getattr(api_instance, "is_guest", False):
                 return _main().jsonify({"success": False, "message": "游客无权访问此功能"}), 403
 
@@ -1853,17 +1858,27 @@ def start_web_server(args_param):
                 ):
                     _main().auth_system.delete_user(auth_username)
                     # 账号已注销：token 必须显式吊销，不能依赖会话清理里的
-                    # "token 仍在活动使用中"判定。
+                    # "token 仍在使用/还有其他会话"判定。
                     try:
                         _main().token_manager.invalidate_token(auth_username)
                     except Exception as token_error:
                         logging.warning(
                             f"[账号注销] 吊销 token 失败: {token_error}"
                         )
-                    _main().cleanup_session(
-                        session_id,
-                        reason="account_cancelled",
-                    )
+                    # 查看态下 session_id 是"被别人查看的会话"，注销的是查看者
+                    # 自己，绝不能销毁被查看用户的会话。
+                    if not god_mode_admin:
+                        _main().cleanup_session(
+                            session_id,
+                            reason="account_cancelled",
+                        )
+                    else:
+                        logging.info(
+                            "[账号注销] 查看态请求：仅吊销查看者 %s 的 token，"
+                            "不销毁被查看会话 %s",
+                            auth_username,
+                            session_id[:8],
+                        )
                     return _main().jsonify({"success": False, "message": "账号已注销"}), 403
             except Exception as _e:
                 logging.warning(f"[账号注销] 惰性处理失败: {_e}")
@@ -1945,6 +1960,9 @@ def start_web_server(args_param):
                     return _main().jsonify({"success": False, "message": "用户名格式无效"}), 401
                 auth_username = god_mode_admin
                 auth_group = str(view_identity.get("group") or "user")
+                # 与 login_required 一致：标记"查看态但没有来源会话头"。
+                _main().g.admin_view_without_origin = True
+                _main().g.viewed_session_id = session_id
 
             # 2. 验证管理员权限 (检查权限组)
             ADMIN_GROUPS = ["admin", "super_admin"]
@@ -1962,6 +1980,230 @@ def start_web_server(args_param):
             return f(*args, **kwargs)
 
         return decorated_function
+    # ==============================================================================
+
+    def _purge_user_credentials(
+        target_username,
+        reason,
+        extra_sessions=None,
+        keep_session_id="",
+        clear_stored_session_list=False,
+    ):
+        """立即作废某个用户的凭证并清理其会话。
+
+        用于“删除用户 / 重置密码 / 修改密码 / 强制销毁会话”这类必须立刻让
+        旧 cookie 失效的路径。顺序固定：
+
+            1. 吊销 token（TokenManager 是每用户一个 token，反查索引会同步清理）；
+            2. 收集该用户全部会话：内存中的 + 用户文件登记的 + 调用方补充的；
+            3. 逐个走统一会话销毁逻辑 cleanup_session()（禁止只删除 web_sessions）；
+            4. 按需清空用户文件里的 session_ids。
+
+        Args:
+            target_username: 目标用户
+            reason: 传给 cleanup_session 的清理原因
+            extra_sessions: 调用方额外提供的会话 ID（例如用户文件删除前先取出的）
+            keep_session_id: 保留在线的会话（改密后给当前页面重新签发 token 时用）
+            clear_stored_session_list: 是否清空用户文件的 session_ids
+
+        Returns:
+            int: 实际清理的会话数量
+        """
+        cleaned_count = 0
+        target_username = str(target_username or "").strip()
+        if not target_username:
+            return cleaned_count
+
+        keep_session_id = _main().normalize_session_uuid(keep_session_id)
+
+        token_invalidated = False
+        try:
+            _main().token_manager.invalidate_token(target_username)
+            token_invalidated = True
+        except Exception as error:
+            logging.warning(
+                "[凭证作废] 吊销 token 失败: user=%s, error=%s",
+                target_username,
+                error,
+            )
+
+        sessions_to_kill = []
+        with web_sessions_lock:
+            for sid, api in list(web_sessions.items()):
+                if getattr(api, "auth_username", "") == target_username:
+                    sessions_to_kill.append(sid)
+
+        for sid in list(extra_sessions or []):
+            if sid and sid not in sessions_to_kill:
+                sessions_to_kill.append(sid)
+
+        try:
+            for sid in _main().auth_system.get_user_sessions(target_username) or []:
+                if sid and sid not in sessions_to_kill:
+                    sessions_to_kill.append(sid)
+        except Exception as error:
+            logging.warning(
+                "[凭证作废] 读取用户会话列表失败: user=%s, error=%s",
+                target_username,
+                error,
+            )
+
+        kept_session = ""
+        for sid in sessions_to_kill:
+            if keep_session_id and sid == keep_session_id:
+                kept_session = sid
+                continue
+            try:
+                _main().cleanup_session(sid, reason=reason)
+                cleaned_count += 1
+            except Exception as error:
+                logging.error(
+                    "[凭证作废] 清理会话失败: session=%s, error=%s",
+                    sid,
+                    error,
+                    exc_info=True,
+                )
+
+        if clear_stored_session_list:
+            try:
+                user_file = _main().auth_system.get_user_file_path(target_username)
+                if os.path.exists(user_file):
+                    with _main().auth_system.lock:
+                        with open(user_file, "r", encoding="utf-8") as f:
+                            user_data = json.load(f)
+
+                        user_data["session_ids"] = []
+
+                        with open(user_file, "w", encoding="utf-8") as f:
+                            json.dump(user_data, f, indent=2, ensure_ascii=False)
+            except Exception as error:
+                logging.error(
+                    "[凭证作废] 清空用户会话列表失败: user=%s, error=%s",
+                    target_username,
+                    error,
+                )
+
+        logging.info(
+            "[凭证作废] user=%s, reason=%s, token_invalidated=%s, "
+            "cleaned_sessions=%d, kept_session=%s",
+            target_username,
+            reason,
+            token_invalidated,
+            cleaned_count,
+            kept_session[:8] if kept_session else "-",
+        )
+        return cleaned_count
+
+    def _resolve_logout_target_sessions(requested_session_id):
+        """解析“退出应用/登出”应该销毁的会话。
+
+        管理员查看态（上帝模式、或 /auth/switch_session 切到他人会话）下，
+        X-Session-ID 指向的是**被查看的会话**；退出应用只能销毁调用者自己的
+        会话（老版查看态的来源会话就是管理员本来的会话），绝不能连带销毁
+        被查看用户的会话。
+
+        判定方式：cookie 里的 token 是"每用户一个"，用 token 反查持有者，
+        与请求会话的持有者比较：
+
+            - 两者相同（或无法反查）→ 普通登出，销毁请求会话本身；
+            - 两者不同 → 查看态，销毁持有者自己的来源会话（请求头来源会话
+              优先，其次 session_id Cookie，再退化为该持有者的其他活跃会话）。
+
+        Returns:
+            (sessions_to_destroy, caller_username, is_guest_session)
+        """
+        requested_session_id = _main().normalize_session_uuid(requested_session_id)
+        requested_owner = ""
+        requested_is_guest = False
+
+        with web_sessions_lock:
+            if requested_session_id and requested_session_id in web_sessions:
+                requested_api = web_sessions[requested_session_id]
+                requested_owner = str(
+                    getattr(requested_api, "auth_username", "") or ""
+                ).strip()
+                requested_is_guest = bool(getattr(requested_api, "is_guest", True))
+
+        if requested_is_guest:
+            return (
+                [requested_session_id] if requested_session_id else [],
+                requested_owner,
+                True,
+            )
+
+        cookie_token = _main().request.cookies.get("auth_token")
+        token_owner = ""
+        reverse_lookup = getattr(
+            _main().token_manager, "resolve_username_by_token", None
+        )
+        if callable(reverse_lookup) and cookie_token:
+            try:
+                resolved = reverse_lookup(cookie_token)
+                if isinstance(resolved, str):
+                    token_owner = resolved.strip()
+            except Exception as error:
+                logging.warning("[用户登出] 反查 token 持有者失败: %s", error)
+
+        if (
+            not requested_session_id
+            or not token_owner
+            or token_owner == requested_owner
+        ):
+            return (
+                [requested_session_id] if requested_session_id else [],
+                requested_owner or token_owner,
+                False,
+            )
+
+        # 查看态：只清理调用者自己的会话。
+        candidates = []
+        origin_header_id = _main().normalize_session_uuid(
+            _main().request.headers.get(_main().ADMIN_ORIGIN_SESSION_HEADER, "")
+        )
+        if origin_header_id:
+            candidates.append(origin_header_id)
+        cookie_session_id = _main().normalize_session_uuid(
+            _main().request.cookies.get("session_id", "")
+        )
+        if cookie_session_id and cookie_session_id not in candidates:
+            candidates.append(cookie_session_id)
+
+        with web_sessions_lock:
+            live_sessions = list(web_sessions.items())
+        for sid, api_instance in live_sessions:
+            if not sid or sid in candidates or sid == requested_session_id:
+                continue
+            if getattr(api_instance, "auth_username", "") == token_owner:
+                candidates.append(sid)
+
+        verified_targets = []
+        for sid in candidates:
+            if sid == requested_session_id:
+                # 被查看的会话永远不在这里销毁。
+                continue
+            with web_sessions_lock:
+                api_instance = web_sessions.get(sid)
+            if api_instance is None:
+                continue
+            if getattr(api_instance, "is_guest", True):
+                continue
+            if getattr(api_instance, "auth_username", "") != token_owner:
+                continue
+            if not _main()._verify_session_cookie_token(sid, token_owner, cookie_token):
+                continue
+            if sid not in verified_targets:
+                verified_targets.append(sid)
+
+        if not verified_targets:
+            logging.warning(
+                "[用户登出] 查看态下未找到调用者 %s 自己的会话，"
+                "仅清理请求会话之外的残留状态: viewed=%s",
+                token_owner,
+                requested_session_id[:8] if requested_session_id else "-",
+            )
+
+        return verified_targets, token_owner, False
+
     # ==============================================================================
 
     @app.before_request
@@ -3016,34 +3258,39 @@ def start_web_server(args_param):
     def auth_logout():
         """
         安全退出系统并清理所有会话数据。
+
+        查看态（管理员正在查看他人会话）下销毁的是调用者自己的来源会话，
+        被查看用户的会话不受影响。
         """
         session_id = _main().request.headers.get("X-Session-ID", "")
 
         if not session_id:
             return _main().jsonify({"success": False, "message": "缺少会话ID"}), 400
 
-        username = None
-        guest_session = False
-        with web_sessions_lock:
-            if session_id in web_sessions:
-                api_instance = web_sessions[session_id]
-                if hasattr(api_instance, "auth_username"):
-                    username = api_instance.auth_username
-                    is_guest = getattr(api_instance, "is_guest", True)
-                    guest_session = is_guest
-                    if not is_guest and username:
-                        _main().token_manager.invalidate_token(username, session_id)
-                        logging.info(
-                            f"用户 {username} 登出，session: {session_id[:16]}..."
-                        )
-        if guest_session:
-            if getattr(_main().token_manager, "guest_store", None):
-                _main().token_manager.guest_store.invalidate(session_id)
-            _main().background_state_store.remove_guest_binding(session_id)
-        _main().cleanup_session(
-            session_id,
-            "guest_session_destroyed" if guest_session else "user_logout",
+        targets, username, guest_session = _resolve_logout_target_sessions(
+            session_id
         )
+
+        if guest_session:
+            for target_session_id in targets:
+                if getattr(_main().token_manager, "guest_store", None):
+                    _main().token_manager.guest_store.invalidate(target_session_id)
+                _main().background_state_store.remove_guest_binding(
+                    target_session_id
+                )
+        elif username:
+            logging.info(
+                f"用户 {username} 登出，会话: {[sid[:16] for sid in targets]}"
+            )
+
+        for target_session_id in targets:
+            # token 是否吊销由统一会话销毁逻辑判断：只有该用户最后一个会话
+            # 被销毁时才失效，避免把其他页面/设备一起踢下线。
+            _main().cleanup_session(
+                target_session_id,
+                "guest_session_destroyed" if guest_session else "user_logout",
+            )
+
         response = _main().jsonify({"success": True, "message": "登出成功"})
         response.set_cookie("auth_token", "", max_age=0)
         response.set_cookie("session_id", "", max_age=0)
@@ -3120,6 +3367,22 @@ def start_web_server(args_param):
         is_valid, reason = _main().token_manager.verify_token(
             username, current_session_id, token_from_cookie
         )
+        if not is_valid:
+            # 查看态：当前会话是"被查看用户的会话"，cookie 里的 token 属于
+            # 查看者。此时校验必然不匹配，不能因此清 cookie 并让查看者掉线，
+            # 而应该按查看者身份继续切换（例如切回自己的会话）。
+            view_identity = _main().resolve_admin_view_identity(
+                current_session_id, token_from_cookie, username
+            )
+            if view_identity:
+                logging.info(
+                    "[切换会话] 管理员查看态：按 %s 的身份继续切换（当前正在查看 %s）",
+                    view_identity["username"],
+                    username,
+                )
+                username = view_identity["username"]
+                is_valid = True
+
         if not is_valid:
             logging.warning(
                 f"切换会话失败：用户 {username} 的当前会话 {current_session_id[:8]} token 无效 ({reason})"
@@ -4063,17 +4326,40 @@ def start_web_server(args_param):
         session_id = _main().request.headers.get("X-Session-ID", "")
 
         data = _main().request.json
-        target_username = data.get("username", "")
+        target_username = str(data.get("username", "") or "").strip()
+        if not target_username:
+            return _main().jsonify({"success": False, "message": "用户名不能为空"}), 400
+
+        # 用户文件删除后就查不到该用户登记的会话了，先取出持久化会话 ID，
+        # 否则只存在于磁盘的会话文件会在下次启动时被重新加载。
+        stored_sessions = []
+        try:
+            stored_sessions = list(
+                _main().auth_system.get_user_sessions(target_username) or []
+            )
+        except Exception as error:
+            logging.warning(
+                f"[删除用户] 读取用户 {target_username} 会话列表失败: {error}"
+            )
 
         result = _main().auth_system.delete_user(target_username)
         if result.get("success"):
+            # 被删除的用户必须立即失效：吊销 token 并销毁其全部会话，
+            # 不能依赖会话清理时的“token 仍在使用”判定。
+            cleaned_count = _purge_user_credentials(
+                target_username,
+                reason="user_deleted",
+                extra_sessions=stored_sessions,
+            )
+            result["cleaned_sessions"] = cleaned_count
+
             # 使用统一函数获取客户端真实IP
             ip_address = _main().request.environ.get(
                 "REMOTE_ADDR") or _main().request.remote_addr
             _main().auth_system.log_audit(
                 auth_username,
                 "delete_user",
-                f"删除用户: {target_username}",
+                f"删除用户: {target_username} (清理了 {cleaned_count} 个会话)",
                 ip_address,
                 session_id,
             )
@@ -4146,47 +4432,15 @@ def start_web_server(args_param):
         if not target_username:
             return _main().jsonify({"success": False, "message": "用户名不能为空"}), 400
 
-        # 1. 使 Token 失效 (删除 token 文件)
-        _main().token_manager.invalidate_token(target_username)
+        # 吊销 token + 清理该用户全部会话 + 清空用户文件中的 session_ids，
+        # 全部走统一的凭证作废逻辑（顺序固定，避免只删部分会话）。
+        cleaned_count = _purge_user_credentials(
+            target_username,
+            reason="admin_force_logout",
+            clear_stored_session_list=True,
+        )
 
-        # 2. 查找并清理所有内存中的活跃会话
-        sessions_to_kill = []
-        with web_sessions_lock:
-            for sid, api in web_sessions.items():
-                if getattr(api, "auth_username", "") == target_username:
-                    sessions_to_kill.append(sid)
-
-        # 3. 查找用户文件记录的会话 (包括可能不在内存中但持久化的)
-        try:
-            stored_sessions = _main().auth_system.get_user_sessions(target_username)
-            for sid in stored_sessions:
-                if sid not in sessions_to_kill:
-                    sessions_to_kill.append(sid)
-        except Exception as e:
-            logging.warning(f"获取用户存储会话失败: {e}")
-
-        cleaned_count = 0
-        for sid in sessions_to_kill:
-            # 调用全局清理函数，清理内存、文件和索引
-            _main().cleanup_session(sid, reason="admin_force_logout")
-            cleaned_count += 1
-
-        # 4. 清空用户配置文件中的会话列表
-        try:
-            user_file = _main().auth_system.get_user_file_path(target_username)
-            if os.path.exists(user_file):
-                with _main().auth_system.lock:
-                    with open(user_file, "r", encoding="utf-8") as f:
-                        user_data = json.load(f)
-
-                    user_data["session_ids"] = []
-
-                    with open(user_file, "w", encoding="utf-8") as f:
-                        json.dump(user_data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logging.error(f"强制登出清理用户文件失败: {e}")
-
-        # 5. 记录审计日志
+        # 记录审计日志
         # 使用统一函数获取客户端真实IP
         ip_address = _main().request.environ.get("REMOTE_ADDR") or _main().request.remote_addr
         _main().auth_system.log_audit(
@@ -4229,13 +4483,21 @@ def start_web_server(args_param):
             return _main().jsonify({"success": False, "message": "缺少用户名或新密码"}), 400
         result = _main().auth_system.reset_user_password(target_username, new_password)
         if result.get("success"):
+            # 密码被管理员强制重置后，旧 cookie 必须立即失效：吊销 token
+            # 并清理该用户全部会话，用户只能用新密码重新登录。
+            cleaned_count = _purge_user_credentials(
+                target_username,
+                reason="admin_force_reset_password",
+            )
+            result["cleaned_sessions"] = cleaned_count
+
             # 使用统一函数获取客户端真实IP
             ip_address = _main().request.environ.get(
                 "REMOTE_ADDR") or _main().request.remote_addr
             _main().auth_system.log_audit(
                 auth_username,
                 "force_reset_password",
-                f"强制重置了用户 {target_username} 的密码",
+                f"强制重置了用户 {target_username} 的密码 (清理了 {cleaned_count} 个会话)",
                 ip_address,
                 session_id,
             )
@@ -5860,8 +6122,54 @@ def start_web_server(args_param):
             if sms_verified_phone in sms_verification_codes:
                 del sms_verification_codes[sms_verified_phone]
 
-        # 返回操作结果
-        return _main().jsonify(result)
+        if not result.get("success"):
+            return _main().jsonify(result)
+
+        # 密码变更后旧 cookie 必须立即失效，不能继续用旧凭证访问。
+        current_session_id = _main().normalize_session_uuid(
+            getattr(_main().g, "session_id", "")
+        )
+        refreshed_token = ""
+        if is_self_change:
+            # 改自己的密码：作废旧 token 并清理其他会话/设备，但保留当前会话，
+            # 再为当前会话补发 token 写回 cookie，避免用户改完密码立刻掉线。
+            cleaned_count = _purge_user_credentials(
+                target_username,
+                reason="password_changed",
+                keep_session_id=current_session_id,
+            )
+            if current_session_id:
+                try:
+                    refreshed_token = _main().token_manager.create_token(
+                        target_username, current_session_id
+                    )
+                except Exception as error:
+                    logging.error(
+                        f"[密码修改] 为当前会话重新签发 token 失败: {error}"
+                    )
+            else:
+                logging.warning(
+                    "[密码修改] 无法解析当前会话 ID，用户需要重新登录"
+                )
+        else:
+            # 管理员重置他人密码：吊销 token 并清理对方全部会话。
+            cleaned_count = _purge_user_credentials(
+                target_username,
+                reason="password_reset",
+            )
+
+        result["cleaned_sessions"] = cleaned_count
+        response = _main().jsonify(result)
+        if refreshed_token:
+            response.set_cookie(
+                "auth_token",
+                value=refreshed_token,
+                max_age=3600,
+                httponly=True,
+                secure=False,
+                samesite="Lax",
+            )
+        return response
 
     @app.route("/auth/user/request_account_cancellation", methods=["POST"])
     @login_required
@@ -6971,6 +7279,12 @@ def start_web_server(args_param):
 
         session_id = _main().normalize_session_uuid(_main().request.headers.get("X-Session-ID", ""))
         auth_session_id = _main().normalize_session_uuid(getattr(_main().g, "session_id", ""))
+        # 查看态有两种：带来源会话头（能用来源会话校验），以及没有来源会话头
+        # 但已由 login_required 验证过查看者身份（god_mode 兜底）。后者不能再
+        # 拿被查看会话的 owner 去校验查看者的 token，否则会 401 并清除 cookie。
+        is_admin_view_fallback = bool(
+            getattr(_main().g, "admin_view_without_origin", False)
+        )
         is_admin_origin_view = (
             auth_session_id
             and session_id
@@ -6978,7 +7292,7 @@ def start_web_server(args_param):
             and getattr(_main().g, "viewed_session_id", "") == session_id
         )
 
-        if is_admin_origin_view:
+        if is_admin_origin_view or is_admin_view_fallback:
             api_instance = _main().g.api_instance
             auth_username = _main().g.user
             is_guest = getattr(api_instance, "is_guest", False)
@@ -7001,7 +7315,7 @@ def start_web_server(args_param):
             auth_username = getattr(api_instance, "auth_username", None)
             is_guest = getattr(api_instance, "is_guest", True)
 
-        if not is_guest and auth_username:
+        if not is_guest and auth_username and not is_admin_view_fallback:
             token_session_id = auth_session_id if is_admin_origin_view else session_id
             token_from_cookie = _main().request.cookies.get("auth_token")
             if not token_from_cookie:
@@ -7156,11 +7470,16 @@ def start_web_server(args_param):
         if target_session_id == session_id:
             return _main().jsonify({"success": False, "message": "不能销毁当前会话"})
         target_username = "unknown"
+        target_is_guest = True
         with web_sessions_lock:
             if target_session_id in web_sessions:
                 target_api = web_sessions[target_session_id]
                 target_username = getattr(
                     target_api, "auth_username", "unknown")
+                target_is_guest = getattr(target_api, "is_guest", True)
+
+        # 只销毁这一个会话；token 是否吊销交给统一会话销毁逻辑判断——
+        # 只有这确实是该用户最后一个会话时才吊销，否则保留让他的其他页面继续使用。
         _main().cleanup_session(
             target_session_id,
             reason="admin_force_logout",
@@ -11816,34 +12135,25 @@ def start_web_server(args_param):
                     {"success": True, "message": "登出成功", "redirect_url": "/"}
                 )
 
-            # 初始化用户名变量，用于后续token失效操作
-            username = None
+            # 解析退出应用要销毁的会话：查看态下必须是调用者自己的来源会话，
+            # 而不是正在被查看的会话。
+            targets, username, guest_session = _resolve_logout_target_sessions(
+                session_id
+            )
 
-            # 使用线程锁保护 web_sessions 字典的并发访问
-            with web_sessions_lock:
-                # 检查会话ID是否存在于 web_sessions 中
-                if session_id in web_sessions:
-                    # 获取对应的API实例
-                    api_instance = web_sessions[session_id]
+            if guest_session:
+                for target_session_id in targets:
+                    if getattr(_main().token_manager, "guest_store", None):
+                        _main().token_manager.guest_store.invalidate(
+                            target_session_id
+                        )
+                    _main().background_state_store.remove_guest_binding(
+                        target_session_id
+                    )
 
-                    # 检查是否有关联的认证用户名
-                    if hasattr(api_instance, "auth_username"):
-                        username = api_instance.auth_username
-                        # 检查是否为访客用户，访客用户不需要使token失效
-                        is_guest = getattr(api_instance, "is_guest", True)
-
-                        # 只有非访客用户才需要使token失效
-                        if not is_guest and username:
-                            # 调用token管理器使该用户的token失效
-                            _main().token_manager.invalidate_token(
-                                username, session_id)
-                            logging.info(
-                                f"[用户登出] 用户 {username} 的 token 已失效，session: {session_id[:16]}..."
-                            )
-
-            # 调用会话清理函数，删除会话数据、会话文件等
-            # 这个函数会处理 web_sessions 字典删除、会话文件删除、活动记录清理等
-            _main().cleanup_session(session_id, "user_logout")
+            for target_session_id in targets:
+                # token 是否吊销由统一会话销毁逻辑判断（最后一个会话才吊销）。
+                _main().cleanup_session(target_session_id, "user_logout")
 
             # 构建成功响应，包含重定向URL
             response = _main().jsonify(
@@ -11853,7 +12163,10 @@ def start_web_server(args_param):
             # 清除客户端的认证cookie，设置 max_age=0 使其立即过期
             response.set_cookie("auth_token", "", max_age=0)
 
-            logging.info(f"[用户登出] 用户登出成功，已返回重定向响应")
+            logging.info(
+                f"[用户登出] 用户登出成功（用户: {username or '未知'}，"
+                f"清理会话: {[sid[:16] for sid in targets]}），已返回重定向响应"
+            )
 
             return response
 
@@ -13110,25 +13423,22 @@ def start_web_server(args_param):
                                 )
                             )
                         if not restored_token_valid and not admin_origin_context:
-                            try:
-                                super_admin = _main().auth_system.config.get(
-                                    "Admin",
-                                    "super_admin",
-                                    fallback="admin",
+                            # 与内存会话分支一致：按 cookie token 反查查看者身份，
+                            # 只要具备 view_all_sessions 就允许继续查看（不限于超管）。
+                            admin_view_identity = (
+                                _main().resolve_admin_view_identity(
+                                    session_id,
+                                    request_token,
+                                    state_username,
                                 )
-                                if state_username != super_admin:
-                                    super_admin_valid, _reason = (
-                                        _main().token_manager.verify_token(
-                                            super_admin,
-                                            session_id,
-                                            request_token,
-                                        )
-                                    )
-                                    restored_token_valid = bool(
-                                        super_admin_valid
-                                    )
-                            except Exception:
-                                restored_token_valid = False
+                            )
+                            if admin_view_identity:
+                                restored_token_valid = True
+                                logging.info(
+                                    "[API鉴权] 管理员查看态（恢复会话）：允许 %s 访问用户 %s 的会话",
+                                    admin_view_identity["username"],
+                                    state_username,
+                                )
                         if not restored_token_valid and not admin_origin_context:
                             return (
                                 _main().jsonify(
