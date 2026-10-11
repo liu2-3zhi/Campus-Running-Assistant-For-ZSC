@@ -961,6 +961,62 @@ function returnToAdminSession() {
   }
 }
 
+// 新增：清除"返回管理员会话"记录并隐藏按钮
+function clearAdminReturnOriginState(reason = "") {
+  try {
+    localStorage.removeItem(ADMIN_RETURN_ORIGIN_STORAGE_KEY);
+  } catch (_error) {
+    // Storage may be unavailable in restricted browser contexts.
+  }
+  const overlay = document.getElementById("admin-return-overlay");
+  if (overlay) {
+    overlay.classList.add("hidden");
+  }
+  if (reason) {
+    logMessage_Info("[上帝模式] 已清除返回按钮记录：" + reason);
+  }
+}
+
+// 来源会话（管理员自己的会话）可能已经被销毁：例如管理员在查看他人会话时
+// 关闭浏览器，来源会话被回收；之后再登录并新建会话，localStorage 里的旧记录
+// 会让右上角继续显示"返回管理员会话"，点进去只会跳到已销毁的 UUID。
+// 这里向后端确认来源会话是否还存在（/auth/check_uuid_type 返回 unknown 表示
+// 会话文件已删除），不存在就清掉记录并隐藏按钮。
+let adminReturnOriginVerifyToken = 0;
+let adminReturnOriginVerifiedFor = "";
+let adminReturnOriginVerifyPromise = null;
+
+function verifyAdminReturnOriginSession(originSession, currentUUID) {
+  if (!originSession || !currentUUID || originSession === currentUUID) {
+    return Promise.resolve();
+  }
+  if (adminReturnOriginVerifiedFor === originSession) {
+    // 同一来源会话只校验一次；重复调用复用正在进行的请求。
+    return adminReturnOriginVerifyPromise || Promise.resolve();
+  }
+  adminReturnOriginVerifiedFor = originSession;
+
+  const requestToken = ++adminReturnOriginVerifyToken;
+  adminReturnOriginVerifyPromise = fetch("/auth/check_uuid_type", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uuid: originSession }),
+  })
+    .then((response) => response.json())
+    .then((result) => {
+      if (requestToken !== adminReturnOriginVerifyToken) return;
+      if (getStoredAdminReturnOriginSession() !== originSession) return;
+      if (getCurrentLegacySessionUUID() !== currentUUID) return;
+      if (result && result.success && result.uuid_type === "unknown") {
+        clearAdminReturnOriginState("来源会话已不存在: " + originSession);
+      }
+    })
+    .catch((error) => {
+      logMessage_Warning("[上帝模式] 校验来源会话状态失败:", error);
+    });
+  return adminReturnOriginVerifyPromise;
+}
+
 // 新增：检查是否需要显示返回按钮
 function checkAdminReturnState() {
   const originSession = getStoredAdminReturnOriginSession();
@@ -989,6 +1045,8 @@ function checkAdminReturnState() {
     console.log("[上帝模式] 检测到管理员查看他人会话，显示返回按钮");
     // 初始化拖拽功能
     initDraggableAdminBtn();
+    // 显示之前先确认来源会话是否仍然存在，避免留下失效的返回按钮
+    verifyAdminReturnOriginSession(originSession, currentUUID);
   } else {
     overlay.classList.add("hidden");
     // 修正：如果当前就在来源会话（管理员自己的会话），则清理掉localStorage标记
@@ -6285,6 +6343,8 @@ async function handleAuthLogin(isMobile_use = false) {
           promoteAuth: false,
         });
         authSessionUUID = result.auth_session_id || activeSessionId;
+        // 重新登录说明用户回到了自己的会话，旧的"返回管理员会话"记录已失效。
+        clearAdminReturnOriginState("重新登录");
         logMessage_Info(
           "[登录成功] 会话ID已设置:",
           sessionUUID.substring(0, 16) + "...",
@@ -6292,6 +6352,7 @@ async function handleAuthLogin(isMobile_use = false) {
       } else if (result.auth_session_id) {
         authSessionUUID = result.auth_session_id;
         sessionUUID = null;
+        clearAdminReturnOriginState("重新登录");
         logMessage_Info(
           "[登录成功] 认证会话已建立，请选择或创建业务会话:",
           authSessionUUID.substring(0, 16) + "...",
@@ -6751,6 +6812,7 @@ async function handle2FAVerify() {
           promoteAuth: false,
         });
         authSessionUUID = result.auth_session_id || activeSessionId;
+        clearAdminReturnOriginState("2FA验证成功，重新登录");
         logMessage_Info(
           "[2FA验证成功] 会话ID已设置:",
           sessionUUID.substring(0, 16) + "...",
@@ -6758,6 +6820,7 @@ async function handle2FAVerify() {
       } else if (result.auth_session_id) {
         authSessionUUID = result.auth_session_id;
         sessionUUID = null;
+        clearAdminReturnOriginState("2FA验证成功，重新登录");
         logMessage_Info(
           "[2FA验证成功] 认证会话已建立，请选择或创建业务会话:",
           authSessionUUID.substring(0, 16) + "...",
@@ -14819,6 +14882,8 @@ async function createNewSessionFromPicker() {
     if (result.success) {
       logMessage_Info(`会话持久化文件已创建: ${result.message}`);
       setActiveLegacySession(result.session_id || newUUID);
+      // 新会话属于当前调用者自己，"返回管理员会话"的旧记录已无意义。
+      clearAdminReturnOriginState("创建新会话");
       if (result.cleanup_message) {
         logMessage_Info(`提示: ${result.cleanup_message}`);
       }
@@ -16283,6 +16348,8 @@ async function onLogin() {
   const mapProviderSessionUUID = getApiRequestSessionHeaderValue("login");
   let result = await callPythonAPI("login", user, pass);
   if (result.success) {
+    // 登录成功说明用户回到自己的会话，旧的"返回管理员会话"记录已失效。
+    clearAdminReturnOriginState("重新登录");
     try {
       result = await hydrateMapProviderSecretsForLegacy(
         result,
