@@ -10,7 +10,7 @@ import math
 import tempfile
 import threading
 
-from flask import jsonify, make_response, request
+from flask import jsonify, make_response, request, send_from_directory
 
 from payment_crypto import RsaSigner
 from config_adapter import JsonConfigAdapter
@@ -9836,6 +9836,20 @@ def _collect_overdue_accounts_from_billing(school_usernames):
 sms_verification_codes = {}
 sms_extended_once_keys = set()
 SMS_VERIFICATION_CODE_MAX_ENTRIES = 5000
+
+# 短信发送频率限制使用的缓存（IP / 手机号 / 上次发送时间）。
+#
+# 历史背景：这个 cache 原本与 sms_verification_codes 一起在
+# start_web_server() 里用 global 初始化。d78b438 把 Web 服务拆到
+# web_server.py 时，cache 的初始化随 start_web_server 一起搬走了，但
+# 使用它的 sms_send_code / sms_test_send（现在位于本模块的
+# _register_sms_routes 内）没有跟着搬，于是这两个接口一被调用就抛
+# NameError: name 'cache' is not defined。
+#
+# 这里在 main.py 重新提供模块级 cache，与同模块的 sms_verification_codes
+# 放在一起；web_server.py 里另有一个同名的独立 cache，两者互不影响
+# （main.py 中的使用点都是本模块内的裸名字引用）。
+cache = {}
 
 
 def _build_sms_extend_once_key(phone, code):

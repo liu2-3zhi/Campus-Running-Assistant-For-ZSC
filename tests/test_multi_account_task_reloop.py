@@ -268,7 +268,9 @@ class TestWorkerReloopBehavior(unittest.TestCase):
         self.api._update_account_status_js = mock.Mock()
         self.api._update_multi_global_buttons = mock.Mock()
 
-        def fake_run_task(acc, run_data, task_index, task_name_short):
+        def fake_run_task(
+            acc, run_data, task_index, task_name_short, attempted_count=1
+        ):
             self.executed.append(run_data.errand_id)
             # 任务完成后服务端状态推进
             self.phase = min(self.phase + 1, len(self._phase_tasks) - 1)
@@ -367,7 +369,9 @@ class TestWorkerReloopBehavior(unittest.TestCase):
         )
 
     def test_aborted_task_stops_scheduling(self):
-        def abort_task(acc, run_data, task_index, task_name_short):
+        def abort_task(
+            acc, run_data, task_index, task_name_short, attempted_count=1
+        ):
             self.executed.append(run_data.errand_id)
             return "aborted"
 

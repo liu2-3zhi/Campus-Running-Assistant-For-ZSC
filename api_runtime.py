@@ -8872,6 +8872,7 @@ class Api:
         run_data,
         task_index: int,
         task_name_short: str,
+        attempted_count: int = 1,
     ) -> str:
         """
         执行单个多账号任务的完整流程（详情 → 规划 → 提交 → 确认）。
@@ -8879,11 +8880,22 @@ class Api:
         从 _multi_account_worker 的主循环中抽出，使"每完成一个任务就重新
         拉取任务列表"的调度逻辑可以被独立测试。
 
+        参数:
+            task_index: 当前任务是本次运行的第几个（从 1 开始）
+            attempted_count: 本次运行累计已尝试的任务数量。抽出方法后它不再
+                能直接读取调用方的 attempted_task_keys 集合，必须显式传入，
+                否则进度文案会抛 NameError（曾因此导致 worker 整体崩溃）。
+
         返回值:
             "success"  —— 服务器已确认完成
             "failed"   —— 该任务无法完成（详情失败/无打卡点/规划失败/未确认）
             "aborted"  —— 运行被停止信号中断
         """
+        # 兜底：调用方漏传或传入非法值时，至少退化为"当前序号/当前序号"
+        attempted_count = max(
+            int(task_index),
+            int(attempted_count or 0),
+        )
         details_resp = acc.api_client.get_run_details(
             run_data.errand_id, acc.user_data.id, run_data.errand_schedule
         )
@@ -9231,7 +9243,7 @@ class Api:
                     self._update_account_status_js(
                         acc,
                         progress_pct=pct,
-                        progress_text=f"运行 {task_index}/{len(attempted_task_keys)}: {task_name_short} · {pct}%",
+                        progress_text=f"运行 {task_index}/{attempted_count}: {task_name_short} · {pct}%",
                         progress_extra=f"{processed_points}/{total_points} 点",
                     )
                 except Exception:
@@ -9302,7 +9314,7 @@ class Api:
                     acc,
                     status_text="任务已完成",
                     progress_pct=100,
-                    progress_text=f"运行 {task_index}/{len(attempted_task_keys)}: {task_name_short} · 100%",
+                    progress_text=f"运行 {task_index}/{attempted_count}: {task_name_short} · 100%",
                     progress_extra="",
                 )
             else:
@@ -9647,6 +9659,7 @@ class Api:
                     run_data,
                     task_index,
                     task_name_short,
+                    attempted_count=task_index,
                 )
                 task_outcomes[id(run_data)] = outcome
                 if outcome == "aborted":
