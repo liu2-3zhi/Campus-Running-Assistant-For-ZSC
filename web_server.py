@@ -7151,6 +7151,35 @@ def start_web_server(args_param):
         api_instance = web_sessions[session_id]
         auth_username = getattr(api_instance, "auth_username", "")
         is_guest = getattr(api_instance, "is_guest", False)
+
+        # 身份以 cookie token 的持有者为准：查看态下当前会话是"被查看用户的
+        # 会话"，如果按会话 owner 建新会话并签发 token，会把被查看用户的 token
+        # 写进查看者的 cookie，同时覆盖对方的令牌文件（把对方其他页面踢下线）。
+        cookie_token = _main().request.cookies.get("auth_token")
+        reverse_lookup = getattr(
+            _main().token_manager, "resolve_username_by_token", None
+        )
+        if callable(reverse_lookup) and cookie_token:
+            try:
+                token_owner = reverse_lookup(cookie_token)
+            except Exception as error:
+                token_owner = ""
+                logging.warning("[创建会话] 反查 token 持有者失败: %s", error)
+            if (
+                isinstance(token_owner, str)
+                and token_owner.strip()
+                and token_owner.strip() != auth_username
+                and _main()._verify_session_cookie_token(
+                    session_id, token_owner.strip(), cookie_token
+                )
+            ):
+                logging.info(
+                    "[创建会话] 查看态：按调用者 %s 创建会话（当前会话属于 %s）",
+                    token_owner.strip(),
+                    auth_username,
+                )
+                auth_username = token_owner.strip()
+
         data = _main().request.json or {}
         new_session_id = _main().normalize_session_uuid(data.get("session_id", ""))
 

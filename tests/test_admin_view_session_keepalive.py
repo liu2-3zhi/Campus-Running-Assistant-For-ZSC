@@ -1485,6 +1485,14 @@ class CredentialRouteContractTests(unittest.TestCase):
         block = source[start:end]
         self.assertGreaterEqual(block.count("resolve_admin_view_identity("), 2)
 
+    def test_create_session_uses_caller_identity_in_view_mode(self):
+        """查看态下创建会话必须按查看者签发 token，不能把被查看用户的 token
+        写进查看者 cookie（同时覆盖对方令牌文件）。"""
+        block = self._route_block("/auth/user/create_session_persistence")
+        self.assertIn('"resolve_username_by_token"', block)
+        self.assertIn("auth_username = token_owner.strip()", block)
+        self.assertIn("_verify_session_cookie_token(", block)
+
 
 if __name__ == "__main__":
     unittest.main()
