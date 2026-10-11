@@ -932,6 +932,26 @@ class TokenOwnerReverseLookupTests(unittest.TestCase):
             self.manager.resolve_username_by_token("no-such-token"), ""
         )
 
+    def test_expired_token_cleanup_drops_reverse_lookup_entry(self):
+        token = self.manager.create_token("manager", TARGET_SESSION_ID)
+        self.assertEqual(
+            self.manager.resolve_username_by_token(token), "manager"
+        )
+
+        # 手工把过期时间调到过去，模拟令牌自然过期后的定期清理。
+        token_path = Path(self.temp_dir) / "manager.json"
+        token_data = json.loads(token_path.read_text(encoding="utf-8"))
+        token_data["expires_at"] = time.time() - 10
+        token_path.write_text(json.dumps(token_data), encoding="utf-8")
+
+        self.manager.cleanup_expired_tokens("manager")
+
+        self.assertFalse(token_path.exists())
+        # 索引里不能留下已经删掉的令牌条目（否则长期运行会缓慢增长）。
+        with self.manager._token_owner_index_lock:
+            self.assertNotIn(token, self.manager._token_owner_index)
+        self.assertEqual(self.manager.resolve_username_by_token(token), "")
+
 
 class CheckOverdueRouteContractTests(unittest.TestCase):
     """锁定被报告的接口本身仍受 login_required 保护。"""

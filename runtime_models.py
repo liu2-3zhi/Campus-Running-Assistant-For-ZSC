@@ -301,6 +301,7 @@ class TokenManager:
         Args:
             username: 用户名
         """
+        removed = False
         with self.lock:
             token_file = self._get_token_file_path(username)
 
@@ -315,10 +316,15 @@ class TokenManager:
 
                 if current_time > token_data.get("expires_at", 0):
                     os.remove(token_file)
+                    removed = True
                     logging.info(f"清理了过期令牌: {username}")
 
             except Exception as e:
                 logging.error(f"清理过期令牌时出错: {e}")
+
+        if removed:
+            # 令牌文件已删除，反查索引同步清理，避免过期条目长期驻留。
+            self._forget_token_owner(username)
 
     def detect_multi_device_login(self, username, new_session_id):
         """检测多设备登录"""
