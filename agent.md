@@ -126,6 +126,9 @@
 - 前端相关链路重点看 `getApiRequestSessionHeaderValue()`、`callPythonAPI()`、`handleAuthLogin()`、`loadInitialData()` 和 `showAuthLogin()`。
 - 切回登录页或认证登录页时应清理旧的 `logout-elsewhere-overlay`；当登录页已可见、登录中、或当前没有可用 session 时，应抑制过期会话和多设备登录旧响应，避免未登录状态继续显示倒计时提示。
 - 管理员从老版 UI 查看不属于自己的会话时，只能进入“查看态”：前端记录来源会话并随 API 请求发送 `X-Admin-Origin-Session-ID`，后端用来源会话验证管理员身份和权限，但业务 API 仍操作目标会话；切到管理员自己的会话才允许走普通 `/auth/switch_session`。
+- 老版 UI 只有 `callPythonAPI`/`callPythonAPI_raw`（都调用 `addAdminViewOriginSessionHeader`）链路会带 `X-Admin-Origin-Session-ID`；裸 `fetch`（例如 `/api/check_overdue`）只带 `X-Session-ID`，必须自己补来源会话头。因此 `login_required`/`admin_required` 和通用 `/api/<path:method>` 都要有“查看态身份兜底”：用 cookie token 反查调用者（`TokenManager.resolve_username_by_token`），要求 token 持有者不是被查看会话的持有者、token 仍有效、且具备 `view_all_sessions`。**能进入他人会话的不一定是超级管理员，禁止把兜底写成“只认 `Admin/super_admin`”**；`admin_required` 再用反查到的真实用户组过管理员组检查。通用 API 的这个兜底不能用 `reason == "token_mismatch"` 当门槛：被查看用户的 token 文件缺失或过期时 reason 是 `no_token_file`/`token_expired`，查看者自己的凭证仍然有效，卡门槛会让正在查看他人会话的管理员 401 掉线。
+- 管理员查看态的来源会话必须续期：查看态请求是来源会话仍在使用中的唯一证据，`resolve_admin_origin_session_context()` 校验成功时必须调用 `touch_admin_view_origin_session()` 同步 `session_activity`、`browsing_activity` 和保活窗口。否则管理员进入他人会话后来源会话不再收到 API 流量，会话不活跃监控会在 `session_inactivity_timeout` 后回收它；回收时因为该用户没有其他浏览行为还会删除 token 文件（`TokenManager` 每用户只有一个 token，`verify_token` 不校验 session_id），查看态随后整体 401。保活窗口当前是 `ADMIN_VIEW_ORIGIN_KEEPALIVE_SECONDS`（1800s），窗口过期后还可以用 `is_admin_view_origin_owner_active()`（查看者 token 最近仍被刷新）继续保活，浏览器彻底关闭后来源会话必须能回到普通回收逻辑；会话被显式销毁时要 `clear_admin_view_origin_session()`。保活更新只是辅助状态，内部异常必须吞掉，不能影响鉴权结果。
+- 老版 UI 的 `refreshUserList` 30 秒轮询在 socket.io 连接成功后会被清掉，`/auth/check_uuid_type` 也不带会话头，所以查看态页面可能长时间没有携带 `X-Admin-Origin-Session-ID` 的请求；只靠保活窗口会把掉线时间推迟到约 30 分钟。任何 API 请求都要尽量带上来源会话头（`callPythonAPI_raw` 已补），并且来源会话回收时不能连带吊销查看者的 token。
 - 会话列表中的多账号登录状态不能直接读取 `Api.login_success` 或 `AccountSession.login_success`；必须基于当前 `accounts` 列表实时判断，只要仍存在任意 `is_first_login_verified=True` 的账号才显示已登录。已通过验证的账号从列表移除后，不能继续由旧状态让会话保持已登录；会话恢复时也必须恢复该验证标志。相关回归测试见 `tests/test_auth_session_lifecycle.py`。
 - 老版 UI 用模板字符串生成内联 `onclick` 时，不能把 `JSON.stringify()` 的双引号参数直接塞进双引号属性；应对参数字符串做属性转义，并用单引号包裹 `onclick` 属性，否则浏览器会把事件属性截断，表现为按钮没有事件触发器。
 
@@ -143,6 +146,9 @@
   - `python -m py_compile main.py`
   - `python -m pytest tests/test_auth_session_lifecycle.py tests/test_auth_login_ui_regressions.py -q`
   - `node --test tests/initial_data_failure_notice.test.mjs`
+- 管理员查看态（上帝模式）/会话保活改动运行：
+  - `python -m pytest tests/test_admin_view_session_keepalive.py tests/test_session_runtime_cleanup.py tests/test_auth_session_lifecycle.py tests/test_auth_login_ui_regressions.py -q`
+  - `node --test tests/initial_data_failure_notice.test.mjs tests/ui_mobile_session_regressions.test.mjs`
 - 提交前运行 `git diff --check`。Windows 下 LF/CRLF 提示不是失败，但真正的 whitespace error 不能忽略。
 - 提交前确认 `git diff --stat` 和 `git status --short`，只提交当前任务相关文件。
 
@@ -155,6 +161,7 @@
 - IP 和手机号缓存必须同时具备 TTL 与最大条目数；短信验证码必须定期删除过期项，并在新增和查询时执行边界清理。
 - 验证会话清理不能只看 `web_sessions` 是否为空，还必须验证 `AccountRefresh-*`、`MultiAccountMonitor` 线程已经退出，且重复登录清理后 `Api` 对象可被垃圾回收。
 - 内存诊断日志统一使用 `[内存诊断]` 前缀，至少记录 `web_sessions`、后台线程数、Playwright context 数、IP/手机号/短信缓存条目数和 Linux `max_rss_mb`；排查内存增长时优先比较 `cleanup_worker_interval` 与 `session_cleanup:*` 快照趋势。
+- `TokenManager` 是“每用户一个 token”，`verify_token()` 不校验 session_id：清理单个会话时不能只按 `browsing_activity` 判断用户是否还在使用。管理员查看态（上帝模式）和 `/auth/switch_session` 之后，管理员的实际活动会话在 `web_sessions` 里可能登记为别人的会话，`get_user_sessions(管理员)` 里也没有它，直接 `invalidate_token` 会删掉仍在使用的 token 文件，让管理员整个浏览态 401 掉线。失效判定依次为：该用户其他会话有新鲜浏览记录 → 命中管理员查看态保活窗口 → `TokenManager.get_token_last_activity()` 显示 token 最近仍在刷新；三者都不成立才允许删除 token。显式登出、强制登出、账号注销仍各自主动调用 `invalidate_token`，不受该判定影响。
 
 ## 访客Token与身份级背景绑定
 

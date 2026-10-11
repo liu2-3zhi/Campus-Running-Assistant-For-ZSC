@@ -1808,22 +1808,39 @@ def start_web_server(args_param):
                 auth_username
             ):
                 return _main().jsonify({"success": False, "message": "用户名格式无效"}), 401
+            god_mode_admin = ""
             if not _main()._verify_session_cookie_token(
                 session_id,
                 auth_username,
                 token,
             ):
-                return (
-                    _main().jsonify(
-                        {
-                            "success": False,
-                            "message": "认证令牌无效，请重新登录",
-                            "need_login": True,
-                        }
-                    ),
-                    401,
+                # 命名路由的管理员查看态兜底：管理员强制进入他人会话后，老版 UI
+                # 只有部分请求携带 X-Admin-Origin-Session-ID（上面的来源会话分支）。
+                # 未携带时按 cookie token 反查调用者身份，具备 view_all_sessions
+                # 就按查看态放行；否则 /api/check_overdue 这类命名路由会直接 401。
+                # 注意：能进入他人会话的不一定是超级管理员。
+                view_identity = _main().resolve_admin_view_identity(
+                    session_id,
+                    token,
+                    auth_username,
                 )
-            if getattr(api_instance, "is_guest", False):
+                if not view_identity:
+                    return (
+                        _main().jsonify(
+                            {
+                                "success": False,
+                                "message": "认证令牌无效，请重新登录",
+                                "need_login": True,
+                            }
+                        ),
+                        401,
+                    )
+                god_mode_admin = view_identity["username"]
+                if not _main()._is_safe_auth_username(god_mode_admin):
+                    return _main().jsonify({"success": False, "message": "用户名格式无效"}), 401
+                # 业务身份切换为已验证的查看者；业务 API 仍作用在目标会话实例上。
+                auth_username = god_mode_admin
+            if not god_mode_admin and getattr(api_instance, "is_guest", False):
                 return _main().jsonify({"success": False, "message": "游客无权访问此功能"}), 403
 
             # 账号注销等待期到期后执行惰性删除
@@ -1835,6 +1852,14 @@ def start_web_server(args_param):
                     and int(cancellation_status.get("execute_at", 0) or 0) <= int(time.time())
                 ):
                     _main().auth_system.delete_user(auth_username)
+                    # 账号已注销：token 必须显式吊销，不能依赖会话清理里的
+                    # "token 仍在活动使用中"判定。
+                    try:
+                        _main().token_manager.invalidate_token(auth_username)
+                    except Exception as token_error:
+                        logging.warning(
+                            f"[账号注销] 吊销 token 失败: {token_error}"
+                        )
                     _main().cleanup_session(
                         session_id,
                         reason="account_cancelled",
@@ -1890,21 +1915,36 @@ def start_web_server(args_param):
             if not _main()._is_safe_auth_username(auth_username):
                 return _main().jsonify({"success": False, "message": "用户名格式无效"}), 401
             token = _main().request.cookies.get("auth_token")
+            god_mode_admin = ""
             if not _main()._verify_session_cookie_token(
                 session_id,
                 auth_username,
                 token,
             ):
-                return (
-                    _main().jsonify(
-                        {
-                            "success": False,
-                            "message": "认证令牌无效，请重新登录",
-                            "need_login": True,
-                        }
-                    ),
-                    401,
+                # 与 login_required 一致：管理员查看态下按 cookie token 反查调用者
+                # 身份，具备 view_all_sessions 就放行；再用其真实用户组过管理员组
+                # 检查（查看他人会话的不一定是超级管理员）。
+                view_identity = _main().resolve_admin_view_identity(
+                    session_id,
+                    token,
+                    auth_username,
                 )
+                if not view_identity:
+                    return (
+                        _main().jsonify(
+                            {
+                                "success": False,
+                                "message": "认证令牌无效，请重新登录",
+                                "need_login": True,
+                            }
+                        ),
+                        401,
+                    )
+                god_mode_admin = view_identity["username"]
+                if not _main()._is_safe_auth_username(god_mode_admin):
+                    return _main().jsonify({"success": False, "message": "用户名格式无效"}), 401
+                auth_username = god_mode_admin
+                auth_group = str(view_identity.get("group") or "user")
 
             # 2. 验证管理员权限 (检查权限组)
             ADMIN_GROUPS = ["admin", "super_admin"]
@@ -12883,6 +12923,7 @@ def start_web_server(args_param):
             _main().request.headers.get(_main().ADMIN_ORIGIN_SESSION_HEADER, "")
         )
         admin_origin_context = None
+        admin_view_identity = None
         request_token = _main().request.cookies.get("auth_token")
 
         def _make_auth_optional_api_instance(context_reason):
@@ -12943,9 +12984,14 @@ def start_web_server(args_param):
                                 username, session_id, token
                             )
 
-                            # 如果Token验证失败，检查是否是超级管理员在访问其他用户的会话
+                            # Token 校验失败时，逐个尝试管理员查看态兜底。
+                            # 注意不能用 reason 当门槛：被查看用户的 token 文件缺失
+                            # 或过期时 reason 是 no_token_file / token_expired，
+                            # 这时查看者自己的 token 仍然是有效的，直接 401 会让
+                            # 正在查看他人会话的管理员掉线。两个兜底各自都会重新
+                            # 校验查看者凭证，放宽门槛不会降低安全性。
                             validated_user = username  # 默认验证的是会话拥有者
-                            if not is_valid and reason == "token_mismatch":
+                            if not is_valid:
                                 admin_origin_context = (
                                     _main().resolve_admin_origin_session_context(
                                         session_id,
@@ -12962,28 +13008,27 @@ def start_web_server(args_param):
                                         f"{validated_user} 访问用户 {username} 的会话"
                                     )
 
-                            if not is_valid and reason == "token_mismatch":
+                            if not is_valid:
                                 try:
-                                    # 获取超级管理员用户名
-                                    super_admin = _main().auth_system.config.get(
-                                        "Admin", "super_admin", fallback="admin"
-                                    )
-
-                                    # 如果当前会话用户不是超管，尝试用超管身份验证Token
-                                    if username != super_admin:
-                                        is_admin_valid, admin_reason = (
-                                            _main().token_manager.verify_token(
-                                                super_admin, session_id, token
-                                            )
+                                    # 按 cookie token 反查调用者身份：只要具备
+                                    # view_all_sessions（默认 admin / super_admin）
+                                    # 就允许查看他人会话，不要求是超级管理员。
+                                    admin_view_identity = (
+                                        _main().resolve_admin_view_identity(
+                                            session_id,
+                                            token,
+                                            username,
                                         )
-                                        if is_admin_valid:
-                                            is_valid = True
-                                            validated_user = super_admin
-                                            logging.info(
-                                                f"[API鉴权] 上帝模式：允许管理员 {super_admin} 访问用户 {username} 的会话"
-                                            )
+                                    )
+                                    if admin_view_identity:
+                                        is_valid = True
+                                        validated_user = admin_view_identity["username"]
+                                        logging.info(
+                                            "[API鉴权] 管理员查看态：允许 "
+                                            f"{validated_user} 访问用户 {username} 的会话"
+                                        )
                                 except Exception as e:
-                                    logging.error(f"[API鉴权] 上帝模式检查出错: {e}")
+                                    logging.error(f"[API鉴权] 管理员查看态检查出错: {e}")
 
                             if not is_valid:
                                 if reason == "token_expired":
@@ -13210,10 +13255,15 @@ def start_web_server(args_param):
 
             if method in permission_required_methods:
                 required_permission = permission_required_methods[method]
+                # 查看态下必须按"实际调用者"检查权限，而不是被查看会话的持有者。
                 permission_username = (
                     admin_origin_context["username"]
                     if admin_origin_context
-                    else getattr(api_instance, "auth_username", None)
+                    else (
+                        admin_view_identity["username"]
+                        if admin_view_identity
+                        else getattr(api_instance, "auth_username", None)
+                    )
                 )
                 if permission_username:
                     if not _main().auth_system.check_permission(

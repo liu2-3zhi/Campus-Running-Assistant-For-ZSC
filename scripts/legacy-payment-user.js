@@ -2079,13 +2079,19 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null, options = {}
       "调用 /api/check_overdue 接口，账号数量:",
       requestedAccountCount,
     );
+    const overdueCheckHeaders = {
+      "Content-Type": "application/json",
+      // 使用全局 sessionUUID 进行会话认证
+      "X-Session-ID": sessionUUID,
+    };
+    // 管理员查看态（上帝模式）：必须带上来源会话，后端才能按管理员身份校验。
+    // 缺少该请求头时目标会话 owner 与管理员 cookie token 不匹配，接口会直接 401。
+    if (typeof addAdminViewOriginSessionHeader === "function") {
+      addAdminViewOriginSessionHeader(overdueCheckHeaders, sessionUUID);
+    }
     const response = await fetch("/api/check_overdue", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // 使用全局 sessionUUID 进行会话认证
-        "X-Session-ID": sessionUUID,
-      },
+      headers: overdueCheckHeaders,
       body: JSON.stringify(requestBody),
     });
 

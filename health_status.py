@@ -554,6 +554,7 @@ def _build_health_comment_fields(is_admin=False):
                 "multi_monitor_threads": "多账号监控线程数",
                 "playwright_contexts": "Playwright 浏览器上下文数",
                 "web_sessions": "内存中的网页会话数",
+                "admin_view_origins": "处于管理员查看态保活的来源会话数",
                 "ip_cache": "IP 位置缓存条数",
                 "phone_cache": "手机号位置缓存条数",
                 "sms_codes": "短信验证码条数",

@@ -21,6 +21,16 @@ class TokenManager:
         logging.info(f"TokenManager: 初始化令牌管理器，目录: {tokens_dir}")
         self.tokens_dir = tokens_dir
         self.lock = threading.Lock()
+        # token 值 -> 用户名 的反查索引。
+        # token 是"每用户一个"，业务层拿到 cookie 里的 token 时无法直接知道
+        # 它属于哪个用户；管理员查看/切换到他人会话的场景必须知道调用者是谁
+        # 才能按权限放行。索引在 create_token 时写入，缺失时按目录扫描兜底。
+        self._token_owner_index = {}
+        self._token_owner_index_lock = threading.Lock()
+        self._token_owner_index_scanned_at = 0.0
+        # 反查失败时的全目录扫描最小间隔与文件数上限，避免被未知 token 打爆。
+        self._token_owner_scan_min_interval = 5.0
+        self._token_owner_scan_limit = 2000
         self.guest_store = _main().GuestTokenStore(os.path.join(tokens_dir, "guests"))
         if not os.path.exists(tokens_dir):
             os.makedirs(tokens_dir)
@@ -29,6 +39,80 @@ class TokenManager:
             logging.debug(f"TokenManager: 令牌目录已存在: {tokens_dir}")
         logging.info("TokenManager: 初始化完成")
         logging.info("=" * 80)
+
+    def _remember_token_owner(self, username, token):
+        """记录 token 的持有者，供 resolve_username_by_token 使用。"""
+        token_value = str(token or "").strip()
+        if not token_value:
+            return
+        with self._token_owner_index_lock:
+            self._token_owner_index[token_value] = username
+
+    def _forget_token_owner(self, username):
+        """移除该用户名下所有 token 反查记录（令牌已失效）。"""
+        with self._token_owner_index_lock:
+            stale_tokens = [
+                token_value
+                for token_value, owner in self._token_owner_index.items()
+                if owner == username
+            ]
+            for token_value in stale_tokens:
+                self._token_owner_index.pop(token_value, None)
+
+    def _scan_token_owners(self):
+        """扫描令牌目录重建反查索引（服务重启后的旧 token 兜底）。"""
+        scanned = {}
+        try:
+            filenames = os.listdir(self.tokens_dir)
+        except Exception as error:
+            logging.warning(f"扫描令牌目录失败: {error}")
+            return scanned
+
+        for filename in filenames:
+            if not filename.endswith(".json"):
+                # 跳过 guests 子目录等非用户令牌文件
+                continue
+            if len(scanned) >= self._token_owner_scan_limit:
+                logging.warning("令牌反查扫描达到上限，剩余令牌本次跳过")
+                break
+            token_file = os.path.join(self.tokens_dir, filename)
+            try:
+                with open(token_file, "r", encoding="utf-8") as f:
+                    token_data = json.load(f)
+            except Exception:
+                continue
+            token_value = str(token_data.get("token") or "").strip()
+            if token_value:
+                scanned[token_value] = filename[: -len(".json")]
+        return scanned
+
+    def resolve_username_by_token(self, token):
+        """按 token 值反查持有它的用户名。
+
+        命中索引时是 O(1)；未命中时（例如服务重启后由旧 token 发起的请求）
+        做一次受限的全目录扫描，并在扫描间隔内不再重复扫描。
+        找不到、参数非法或扫描被限流时返回空字符串。
+        """
+        token_value = str(token or "").strip()
+        if not token_value:
+            return ""
+
+        with self._token_owner_index_lock:
+            owner = self._token_owner_index.get(token_value)
+            if owner:
+                return owner
+            now = time.time()
+            if (
+                now - self._token_owner_index_scanned_at
+                < self._token_owner_scan_min_interval
+            ):
+                return ""
+            self._token_owner_index_scanned_at = now
+
+        scanned = self._scan_token_owners()
+        with self._token_owner_index_lock:
+            self._token_owner_index.update(scanned)
+            return self._token_owner_index.get(token_value, "")
 
     def _get_token_file_path(self, username):
         """获取用户的token文件路径"""
@@ -63,6 +147,7 @@ class TokenManager:
             with open(token_file, "w", encoding="utf-8") as f:
                 json.dump(token_data, f, indent=2, ensure_ascii=False)
 
+        self._remember_token_owner(username, token)
         logging.info(f"为用户 {username} 创建新令牌完成")
         return token
 
@@ -175,6 +260,31 @@ class TokenManager:
                     logging.info(f"令牌已失效: {username}")
                 except Exception as e:
                     logging.error(f"删除令牌文件时出错: {e}")
+
+        self._forget_token_owner(username)
+
+    def get_token_last_activity(self, username):
+        """返回该用户 token 的最后活动时间戳。
+
+        取消某个会话时，需要先确认这个"每用户一个"的 token 是否仍被其他
+        页面使用（例如管理员查看/切换到他人会话后，活动会话在 web_sessions
+        里登记为别人的会话，browsing_activity 判断不到）。读取失败、文件
+        不存在或字段缺失时返回 0，表示无法证明 token 仍在使用。
+        """
+        token_file = self._get_token_file_path(username)
+
+        try:
+            with self.lock:
+                if not os.path.exists(token_file):
+                    return 0
+                with open(token_file, "r", encoding="utf-8") as f:
+                    token_data = json.load(f)
+            return float(token_data.get("last_activity", 0) or 0)
+        except json.JSONDecodeError:
+            return 0
+        except Exception as e:
+            logging.warning(f"读取令牌活动时间失败: {e}")
+            return 0
 
     def get_active_sessions(self, username):
         """获取用户所有有效的会话"""

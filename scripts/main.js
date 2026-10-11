@@ -3421,6 +3421,10 @@ async function callPythonAPI_raw(path, method = "POST", data = null) {
     headers["X-Session-ID"] = sessionUUID;
   }
 
+  // 管理员查看态（上帝模式）：每个 API 请求都要带上来源会话，
+  // 否则后端无法识别查看态，来源会话也收不到"仍在使用"的续期信号。
+  addAdminViewOriginSessionHeader(headers, sessionUUID);
+
   const options = {
     method: method,
     headers: headers,

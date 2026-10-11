@@ -242,6 +242,14 @@ payment_verify_probes_lock = _NoopLock()
 # 这些对象会在启动流程中被重新初始化；这里提供兜底，避免在初始化前访问时报 NameError。
 browsing_activity = {}
 browsing_activity_lock = _NoopLock()
+# 管理员查看态（上帝模式）来源会话保活表：origin_session_id -> 最近一次已验证的查看请求时间。
+# 管理员强制进入他人会话后，自身会话不再收到 API 流量；没有这份记录时，
+# 会话不活跃监控会回收来源会话并吊销该用户的 token 文件，查看态随即整体 401 掉线。
+admin_view_origin_activity = {}
+admin_view_origin_activity_lock = _NoopLock()
+# 来源会话保活窗口（秒）。窗口内没有新的查看请求（例如浏览器已关闭）时，
+# 来源会话重新回到普通的不活跃回收逻辑，避免会话永久驻留。
+ADMIN_VIEW_ORIGIN_KEEPALIVE_SECONDS = 1800
 CDN_FILES = {}
 js_cache_storage = {}
 js_cache_lock = _NoopLock()
@@ -3774,6 +3782,10 @@ def initialize_global_variables():
     global browsing_activity, browsing_activity_lock
     browsing_activity = {}
     browsing_activity_lock = threading.Lock()
+
+    global admin_view_origin_activity, admin_view_origin_activity_lock
+    admin_view_origin_activity = {}
+    admin_view_origin_activity_lock = threading.Lock()
 
     # 全局变量：缓存服务器的公网IP地址（IPv4 和 IPv6）
     # 用于 is_allowed_ip() 函数中判断请求是否来自服务器本身
@@ -7761,11 +7773,139 @@ def resolve_admin_origin_session_context(
         )
         return None
 
+    # 查看态请求是来源会话仍被使用的唯一证据：必须在这里续期，
+    # 否则来源会话会在不活跃超时后被回收并连带吊销该用户的 token，
+    # 管理员查看态随即整体 401 掉线。
+    touch_admin_view_origin_session(origin_session_id)
+
     return {
         "session_id": origin_session_id,
         "username": origin_username,
         "group": origin_group,
         "api_instance": origin_api,
+    }
+
+
+def resolve_admin_view_identity(session_id, token, session_owner_username=""):
+    """解析“管理员查看态”调用者的真实身份（不要求是超级管理员）。
+
+    背景:
+        能进入他人会话的不一定是超级管理员：老版 UI 的查看态（上帝模式）和
+        Vue 版 /auth/switch_session 都只要求 view_all_sessions（默认 admin /
+        super_admin 组都具备）。命名路由（例如 /api/check_overdue）和通用
+        /api/<path:method> 此前只给“超级管理员 token”兜底，非超级管理员的
+        管理员进入他人会话后这些接口会直接 401，前端表现为掉线。
+
+    判定（与来源会话校验保持一致，按权限放行）:
+        - 请求会话有效、token 非空，且 token 持有者不是被查看会话的持有者；
+        - token 能在令牌目录中反查到持有者，并通过该持有者的有效期校验；
+        - 持有者具备 view_all_sessions 权限；超级管理员保留兜底。
+
+    返回:
+        dict | None: {"username", "group", "session_id"}；校验失败返回 None。
+    """
+    normalized_session_id = normalize_session_uuid(session_id)
+    normalized_token = str(token or "").strip()
+    if not normalized_session_id or not normalized_token:
+        return None
+
+    session_owner = str(session_owner_username or "").strip()
+    auth_system_instance = globals().get("auth_system")
+    token_manager_instance = globals().get("token_manager")
+    if auth_system_instance is None or token_manager_instance is None:
+        return None
+
+    reverse_lookup = getattr(
+        token_manager_instance, "resolve_username_by_token", None
+    )
+    if not callable(reverse_lookup):
+        return None
+
+    try:
+        token_owner = reverse_lookup(normalized_token)
+    except Exception as error:
+        logging.warning("[管理员查看] 反查 token 持有者失败: %s", error)
+        return None
+
+    # 只接受明确的用户名字符串，避免异常返回值被当成有效身份。
+    if not isinstance(token_owner, str):
+        return None
+    token_owner = token_owner.strip()
+    if not token_owner or token_owner == session_owner:
+        return None
+
+    try:
+        verification = token_manager_instance.verify_token(
+            token_owner,
+            normalized_session_id,
+            normalized_token,
+        )
+    except Exception as error:
+        logging.warning("[管理员查看] 校验 token 持有者失败: %s", error)
+        return None
+
+    if isinstance(verification, tuple):
+        is_valid = bool(verification) and verification[0] is True
+    else:
+        is_valid = verification is True
+    if not is_valid:
+        return None
+
+    super_admin = ""
+    try:
+        super_admin = str(
+            auth_system_instance.config.get(
+                "Admin", "super_admin", fallback="admin"
+            )
+            or ""
+        ).strip()
+    except Exception:
+        super_admin = ""
+
+    try:
+        has_permission = (
+            auth_system_instance.check_permission(
+                token_owner, "view_all_sessions"
+            )
+            is True
+        )
+    except Exception as error:
+        logging.warning("[管理员查看] 校验查看权限失败: %s", error)
+        return None
+
+    if not has_permission:
+        if not super_admin or token_owner != super_admin:
+            logging.warning(
+                "[管理员查看] 用户 %s 缺少 view_all_sessions 权限，拒绝查看态访问",
+                token_owner,
+            )
+            return None
+        logging.info(
+            "[管理员查看] 超级管理员 %s 走保留兜底（未显式持有 view_all_sessions）",
+            token_owner,
+        )
+
+    group = ""
+    try:
+        get_group = getattr(auth_system_instance, "get_user_group", None)
+        if callable(get_group):
+            group = str(get_group(token_owner) or "").strip()
+    except Exception as error:
+        logging.debug("[管理员查看] 读取用户组失败: %s", error)
+    if not group:
+        group = "super_admin" if token_owner == super_admin else "user"
+
+    logging.info(
+        "[管理员查看] 允许 %s(%s) 以查看态访问用户 %s 的会话 %s",
+        token_owner,
+        group,
+        session_owner or "(未知)",
+        normalized_session_id[:8],
+    )
+    return {
+        "username": token_owner,
+        "group": group,
+        "session_id": normalized_session_id,
     }
 
 
@@ -8719,6 +8859,138 @@ def update_session_activity(session_id):
         logging.debug(f"[会话活跃] 更新会话 {session_id} 的活跃时间")
 
 
+def touch_admin_view_origin_session(origin_session_id):
+    """记录管理员查看态来源会话仍在被使用，并同步其会话/浏览活跃度。
+
+    背景:
+        管理员用老版 UI 强制进入他人会话后不会再调用 /auth/switch_session，
+        自身会话的 API 流量全部转移到目标会话。如果不在这里同步活跃度:
+          1. 会话不活跃监控会在 session_inactivity_timeout 后回收来源会话；
+          2. 回收时因为"用户没有其他浏览行为"，还会删除该用户的 token 文件；
+        两步叠加后管理员查看态的所有请求都会 401，前端表现为掉线。
+
+    这里同时更新三处状态:
+        - admin_view_origin_activity: 保活窗口记录，供会话监控识别查看态；
+        - session_activity: 不活跃监控与内存上限淘汰都按它排序；
+        - browsing_activity: 清理该用户其他会话时据此跳过 token 失效。
+
+    保活属于尽力而为的辅助状态，任何异常都不能影响本次鉴权结果。
+    """
+    session_id = normalize_session_uuid(origin_session_id)
+    if not session_id:
+        return
+
+    try:
+        now = time.time()
+        with admin_view_origin_activity_lock:
+            admin_view_origin_activity[session_id] = now
+
+        update_session_activity(session_id)
+
+        with browsing_activity_lock:
+            browsing_activity[session_id] = now
+
+        logging.debug(
+            "[管理员查看] 已续期来源会话: session=%s",
+            session_id[:8],
+        )
+    except Exception as error:
+        logging.warning(
+            "[管理员查看] 续期来源会话活跃状态失败（不影响本次鉴权）: "
+            "session=%s, error=%s",
+            session_id[:8],
+            error,
+        )
+
+
+def is_admin_view_origin_session_active(session_id, now_ts=None, ttl=None):
+    """判断来源会话是否仍在管理员查看态保活窗口内。"""
+    session_id = normalize_session_uuid(session_id)
+    if not session_id:
+        return False
+
+    now_value = time.time() if now_ts is None else float(now_ts)
+    window = (
+        ADMIN_VIEW_ORIGIN_KEEPALIVE_SECONDS if ttl is None else float(ttl)
+    )
+    with admin_view_origin_activity_lock:
+        last_touch = admin_view_origin_activity.get(session_id, 0)
+    if not last_touch:
+        return False
+    return (now_value - last_touch) <= window
+
+
+def is_admin_view_origin_owner_active(session_id, owner_username, timeout_seconds):
+    """来源会话的持有者是否仍在通过其他会话使用应用。
+
+    查看态页面完全空闲 30 分钟后保活窗口会失效，此时如果查看者仍在发请求
+    （例如 Vue 版 /auth/switch_session 切过去之后，请求只带目标会话，不携带
+    来源会话头），来源会话会被不活跃监控回收并连带吊销查看者的 token。
+    这里用"查看者的 token 最近仍被刷新"作为仍在使用的证据：只要查看者还在
+    任何页面活动，来源会话就不回收；完全空闲时仍回到普通回收逻辑。
+    """
+    session_id = normalize_session_uuid(session_id)
+    owner = str(owner_username or "").strip()
+    if not session_id or not owner:
+        return False
+
+    with admin_view_origin_activity_lock:
+        if session_id not in admin_view_origin_activity:
+            return False
+
+    return _is_user_token_in_active_use(owner, timeout_seconds)
+
+
+def clear_admin_view_origin_session(session_id):
+    """清理来源会话保活记录（会话被显式销毁或回收时调用）。"""
+    session_id = normalize_session_uuid(session_id)
+    if not session_id:
+        return
+    with admin_view_origin_activity_lock:
+        admin_view_origin_activity.pop(session_id, None)
+
+
+def _is_user_token_in_active_use(username, timeout_seconds):
+    """判断该用户的 token 是否仍在被使用（最近刷新过）。
+
+    TokenManager 是"每用户一个 token"。取消其中一个会话时如果直接删除
+    token，会连带吊销该用户仍在使用的其他页面：
+
+        - 管理员查看态（上帝模式）下，管理员自身会话不再收到请求，
+          browsing_activity 里没有它的记录；
+        - /auth/switch_session 切到他人会话后，活动会话在 web_sessions 里
+          登记为别人的会话，get_user_sessions(管理员) 里也没有它。
+
+    上面两种情况下 token 文件仍会被每个请求刷新（通用 API 会
+    refresh_token），因此以 token 的最近活动时间作为"仍在使用"的判据。
+    读取失败或时间戳非法时返回 False，保持原来的失效逻辑。
+    """
+    token_manager_instance = globals().get("token_manager")
+    if token_manager_instance is None:
+        return False
+
+    getter = getattr(token_manager_instance, "get_token_last_activity", None)
+    if not callable(getter):
+        return False
+
+    try:
+        last_activity = float(getter(username) or 0)
+    except Exception:
+        return False
+
+    if last_activity <= 0:
+        return False
+
+    try:
+        window = float(timeout_seconds)
+    except Exception:
+        window = 0
+    if window <= 0:
+        return False
+
+    return (time.time() - last_activity) < window
+
+
 def _cleanup_chrome_context_for_session(session_id):
     if not session_id:
         return
@@ -8902,6 +9174,9 @@ def _collect_runtime_memory_diagnostics():
         "web_sessions": _safe_runtime_collection_size(
             "web_sessions", "web_sessions_lock"
         ),
+        "admin_view_origins": _safe_runtime_collection_size(
+            "admin_view_origin_activity", "admin_view_origin_activity_lock"
+        ),
         "ip_cache": _safe_runtime_collection_size("ip_location_cache", "ip_cache_lock"),
         "phone_cache": _safe_runtime_collection_size(
             "phone_location_cache", "phone_cache_lock"
@@ -8917,11 +9192,13 @@ def _log_runtime_memory_diagnostics(context):
 
     logging.info(
         "[内存诊断] 快照: context=%s, web_sessions=%d, "
+        "admin_view_origins=%d, "
         "account_refresh_threads=%d, multi_monitor_threads=%d, "
         "process_threads=%d, playwright_contexts=%s, ip_cache=%d, "
         "phone_cache=%d, sms_codes=%d, rss_mb=%s, max_rss_mb=%s",
         context,
         diagnostics["web_sessions"],
+        diagnostics["admin_view_origins"],
         diagnostics["account_refresh_threads"],
         diagnostics["multi_monitor_threads"],
         diagnostics["active_threads"],
@@ -8984,8 +9261,9 @@ def cleanup_inactive_session(session_id, reason="manual"):
             username = api_instance.auth_username
             runtime_username = username
             is_browsing = False
+            is_token_in_use = False
+            timeout = 300
             try:
-                timeout = 300
                 if os.path.exists(CONFIG_FILE):
                     cfg = _read_config_ini(CONFIG_FILE)
                     if cfg:
@@ -9008,6 +9286,28 @@ def cleanup_inactive_session(session_id, reason="manual"):
             except Exception as e:
                 logging.error(f"检查浏览状态失败: {e}", exc_info=True)
 
+            if not is_browsing:
+                # 管理员查看态（上帝模式）或 /auth/switch_session 之后，
+                # 管理员的活动会话在 web_sessions 里可能登记为别人的会话，
+                # 上面的 browsing_activity 判断不到。此时如果 token 仍在被
+                # 刷新（有请求在用它鉴权），删除 token 会让管理员的整个
+                # 浏览态 401 掉线，所以这里再看一次 token 的最近活动时间。
+                # 这一步必须独立于上面的浏览状态检查：否则检查浏览状态时
+                # 的任何异常都会让 token 被误删。
+                try:
+                    is_token_in_use = _is_user_token_in_active_use(
+                        username, timeout
+                    )
+                except Exception as e:
+                    logging.error(f"检查 token 活动状态失败: {e}", exc_info=True)
+                    is_token_in_use = False
+                if is_token_in_use:
+                    logging.info(
+                        "[会话清理] 用户 %s 的 token 仍在活动使用中，跳过 token 失效: session=%s",
+                        username,
+                        session_id,
+                    )
+
             try:
                 auth_system.unlink_session_from_user(username, session_id)
             except Exception as auth_error:
@@ -9020,7 +9320,7 @@ def cleanup_inactive_session(session_id, reason="manual"):
                     exc_info=True,
                 )
 
-            if not is_browsing:
+            if not is_browsing and not is_token_in_use:
                 try:
                     token_manager.invalidate_token(username, session_id)
                     logging.info(
@@ -9037,7 +9337,7 @@ def cleanup_inactive_session(session_id, reason="manual"):
                         token_error,
                         exc_info=True,
                     )
-            else:
+            elif is_browsing:
                 logging.info(
                     "[会话清理] 用户 %s 仍在其他页面浏览，跳过 token 失效: session=%s",
                     username,
@@ -9063,6 +9363,8 @@ def cleanup_inactive_session(session_id, reason="manual"):
 
         _cleanup_chrome_context_for_session(session_id)
         _release_map_key_runtime_session(session_id, runtime_username)
+        # 会话已销毁，来源会话保活记录同步失效，避免残留记录让这个 UUID 一直不被回收。
+        clear_admin_view_origin_session(session_id)
         session_hash = hashlib.sha256(session_id.encode()).hexdigest()
         session_file = os.path.join(
             SESSION_STORAGE_DIR, f"{session_hash}.json")
@@ -9190,6 +9492,31 @@ def monitor_session_inactivity():
                     if auto_attendance:
                         has_background_activity = True
                         logging.debug(f"[会话监控] {session_id} 单账号自动签到开启中")
+
+                # 管理员查看态来源会话：管理员正在用这个会话查看他人会话，
+                # 它本身收不到普通 API 流量，但绝不能按不活跃回收，
+                # 否则回收会连带吊销管理员的 token，查看态整体 401 掉线。
+                if not has_background_activity and is_admin_view_origin_session_active(
+                    session_id, current_time
+                ):
+                    has_background_activity = True
+                    logging.debug(
+                        f"[会话监控] {session_id} 处于管理员查看态保活窗口，更新活跃时间"
+                    )
+                if (
+                    not has_background_activity
+                    and is_admin_view_origin_owner_active(
+                        session_id,
+                        getattr(api_instance, "auth_username", None),
+                        inactivity_timeout,
+                    )
+                ):
+                    # 保活窗口过期（查看态页面长时间没有携带来源会话头的请求），
+                    # 但查看者仍在其他会话发请求：同样不能回收来源会话。
+                    has_background_activity = True
+                    logging.debug(
+                        f"[会话监控] {session_id} 的查看者仍在使用中，更新活跃时间"
+                    )
 
                 # --- 结果处理 ---
                 if has_background_activity:
