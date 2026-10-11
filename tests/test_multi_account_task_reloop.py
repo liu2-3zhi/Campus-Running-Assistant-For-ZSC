@@ -269,7 +269,12 @@ class TestWorkerReloopBehavior(unittest.TestCase):
         self.api._update_multi_global_buttons = mock.Mock()
 
         def fake_run_task(
-            acc, run_data, task_index, task_name_short, attempted_count=1
+            acc,
+            run_data,
+            task_index,
+            task_name_short,
+            attempted_count=1,
+            planned_total=None,
         ):
             self.executed.append(run_data.errand_id)
             # 任务完成后服务端状态推进
@@ -370,7 +375,12 @@ class TestWorkerReloopBehavior(unittest.TestCase):
 
     def test_aborted_task_stops_scheduling(self):
         def abort_task(
-            acc, run_data, task_index, task_name_short, attempted_count=1
+            acc,
+            run_data,
+            task_index,
+            task_name_short,
+            attempted_count=1,
+            planned_total=None,
         ):
             self.executed.append(run_data.errand_id)
             return "aborted"
@@ -404,8 +414,69 @@ class TestWorkerReloopBehavior(unittest.TestCase):
             len(self.executed),
             "每个被调度的任务都要先进入'正在执行'状态",
         )
-        self.assertIn("正在执行: task-e1", running_updates)
-        self.assertIn("正在执行: task-e2", running_updates)
+        for name in ("task-e1", "task-e2"):
+            self.assertTrue(
+                any(name in text for text in running_updates),
+                f"状态文案必须带上任务名 {name}: {running_updates}",
+            )
+
+    def test_running_status_includes_planned_sequence(self):
+        """计划执行多个任务时，状态栏显示"正在执行 i/n: 任务名"。"""
+        self._phase_tasks = [
+            [("e1", 0), ("e2", 0), ("e3", 0)],
+            [("e1", 1), ("e2", 0), ("e3", 0)],
+            [("e1", 1), ("e2", 1), ("e3", 0)],
+            [("e1", 1), ("e2", 1), ("e3", 1)],
+        ]
+        self.phase = 0
+        self._apply_phase()
+
+        self.api._multi_account_worker(self.acc, 0, True)
+
+        running_updates = [
+            call.kwargs.get("status_text")
+            for call in self.api._update_account_status_js.call_args_list
+            if str(call.kwargs.get("status_text") or "").startswith("正在执行")
+        ]
+
+        self.assertEqual(self.executed, ["e1", "e2", "e3"])
+        self.assertEqual(running_updates[0], "正在执行 1/3: task-e1")
+        self.assertEqual(running_updates[1], "正在执行 2/3: task-e2")
+        self.assertEqual(running_updates[2], "正在执行 3/3: task-e3")
+
+    def test_running_progress_text_uses_planned_total(self):
+        """进度文案的分母用计划任务数，而不是恒等于当前序号。"""
+        self._phase_tasks = [
+            [("e1", 0), ("e2", 0)],
+            [("e1", 1), ("e2", 0)],
+            [("e1", 1), ("e2", 1)],
+        ]
+        self.phase = 0
+        self._apply_phase()
+
+        self.api._multi_account_worker(self.acc, 0, True)
+
+        progress_texts = [
+            call.kwargs.get("progress_text")
+            for call in self.api._update_account_status_js.call_args_list
+            if call.kwargs.get("progress_text")
+        ]
+
+        self.assertTrue(
+            any(text.startswith("运行 1/2:") for text in progress_texts),
+            progress_texts,
+        )
+
+    def test_status_update_works_without_socketio(self):
+        """没有 socketio 时也必须更新内存状态：轮询接口读的就是它。"""
+        self.acc.status_text = "延迟 0s"
+
+        with mock.patch.object(main_module, "socketio", None, create=True):
+            main_module.Api._update_account_status_js(
+                self.api, self.acc, status_text="正在执行: x"
+            )
+
+        self.assertEqual(self.acc.status_text, "正在执行: x")
 
     def test_task_start_clears_stale_delay_status(self):
         """启动延迟结束后不得把"延迟 0s"留在状态栏。"""

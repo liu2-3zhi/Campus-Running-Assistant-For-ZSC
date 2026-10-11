@@ -8469,14 +8469,12 @@ class Api:
         progress_text: str | None = None,
         progress_extra: str | None = None,
     ):
-        """一个辅助函数，用于向前端发送状态更新"""
-        session_id = getattr(self, "_web_session_id", None)
-        if not session_id or not _main().socketio:
-            logging.debug(
-                f"跳过账号状态更新（_update_account_status_js），账号: {acc.username}，原因: 缺少会话ID或socketio未初始化"
-            )
-            return
+        """一个辅助函数，用于向前端发送状态更新
 
+        内存字段（status_text/progress_* 等）必须无条件更新：多账号列表的轮询
+        接口 multi_get_all_accounts_status 读的就是这些字段，socket 只是推送
+        通道；缺少 socketio 或会话 ID 时若直接返回，状态栏会一直停在旧文案。
+        """
         update_data = {}
         if status_text is not None:
             acc.status_text = status_text
@@ -8497,7 +8495,8 @@ class Api:
             acc.progress_extra = progress_extra
             update_data["progress_extra"] = progress_extra
 
-        if update_data:
+        session_id = getattr(self, "_web_session_id", None)
+        if update_data and session_id and _main().socketio:
             try:
                 _main().socketio.emit(
                     "multi_status_update",
@@ -8508,6 +8507,10 @@ class Api:
             except Exception as e:
                 logging.error(
                     f"SocketIO emit 'multi_status_update' failed: {e}")
+        elif update_data:
+            logging.debug(
+                f"仅更新内存状态（缺少会话ID或socketio未初始化），账号: {acc.username}"
+            )
 
         self._update_multi_global_buttons()
 
@@ -8873,6 +8876,7 @@ class Api:
         task_index: int,
         task_name_short: str,
         attempted_count: int = 1,
+        planned_total: int | None = None,
     ) -> str:
         """
         执行单个多账号任务的完整流程（详情 → 规划 → 提交 → 确认）。
@@ -8885,6 +8889,8 @@ class Api:
             attempted_count: 本次运行累计已尝试的任务数量。抽出方法后它不再
                 能直接读取调用方的 attempted_task_keys 集合，必须显式传入，
                 否则进度文案会抛 NameError（曾因此导致 worker 整体崩溃）。
+            planned_total: 本次运行预计要执行的任务数，仅用于 "运行 i/n" 文案的
+                分母；缺省或小于当前序号时退化为已尝试数量。
 
         返回值:
             "success"  —— 服务器已确认完成
@@ -8896,6 +8902,12 @@ class Api:
             int(task_index),
             int(attempted_count or 0),
         )
+        try:
+            total_tasks = max(task_index, int(planned_total or 0))
+        except Exception:
+            total_tasks = task_index
+        if total_tasks <= 0:
+            total_tasks = task_index
         details_resp = acc.api_client.get_run_details(
             run_data.errand_id, acc.user_data.id, run_data.errand_schedule
         )
@@ -9243,7 +9255,7 @@ class Api:
                     self._update_account_status_js(
                         acc,
                         progress_pct=pct,
-                        progress_text=f"运行 {task_index}/{attempted_count}: {task_name_short} · {pct}%",
+                        progress_text=f"运行 {task_index}/{total_tasks}: {task_name_short} · {pct}%",
                         progress_extra=f"{processed_points}/{total_points} 点",
                     )
                 except Exception:
@@ -9314,7 +9326,7 @@ class Api:
                     acc,
                     status_text="任务已完成",
                     progress_pct=100,
-                    progress_text=f"运行 {task_index}/{attempted_count}: {task_name_short} · 100%",
+                    progress_text=f"运行 {task_index}/{total_tasks}: {task_name_short} · 100%",
                     progress_extra="",
                 )
             else:
@@ -9544,6 +9556,10 @@ class Api:
             aborted = False
             # 第一个任务前不等待；只有"已确认还有下一个可执行任务"时才进入任务间隔等待
             has_completed_any = False
+            # 本次运行的"计划任务数"：取自最新任务统计里的可执行数量，随时可能因为
+            # 运行期间新发布任务而变大（不会变小），只作为 "正在执行 i/n" 的分母。
+            # 运行前无法知道确切总数，这里给的是用户列表里看到的"可执行 N 个"口径。
+            planned_total = 0
 
             while True:
                 # ---- 中止检查 ----
@@ -9583,6 +9599,17 @@ class Api:
                     f"[{acc.username}] 本轮候选任务（时间状态 active）: {active_task_count}"
                 )
                 self._log_multi_task_summary(acc, prefix="任务统计")
+
+                # 计划任务数只增不减：可执行数量会因运行期间新发布任务而变大，
+                # 同时保证分母不小于已尝试序号（否则会出现 "2/1" 这种文案）。
+                try:
+                    planned_total = max(
+                        planned_total,
+                        int((getattr(acc, "summary", None) or {}).get("executable") or 0),
+                        len(attempted_task_keys),
+                    )
+                except Exception:  # nosec B110 - 统计失败不影响执行
+                    planned_total = max(planned_total, len(attempted_task_keys))
 
                 # ---- 第二步：从最新列表中挑出下一个可执行任务 ----
                 run_data = self._select_next_multi_task(
@@ -9657,16 +9684,28 @@ class Api:
                 # 任务真正开始执行：把状态从"延迟/等待/排队"切换到正在执行的任务。
                 # 否则状态栏会一直停留在启动延迟时的旧文案（例如"延迟 0s"），
                 # 管理员查看他人会话时看到的也是同一个状态字段。
-                running_status_text = (
-                    f"正在执行: {run_data.run_name}"
+                task_name_for_status = (
+                    run_data.run_name
                     if len(run_data.run_name) <= 24
-                    else f"正在执行: {run_data.run_name[:24]}..."
+                    else f"{run_data.run_name[:24]}..."
+                )
+                # 分母不能小于当前序号（计划数是在挑任务之前统计的）。
+                effective_total = max(task_index, planned_total)
+                if effective_total > 1:
+                    running_status_text = (
+                        f"正在执行 {task_index}/{effective_total}: "
+                        f"{task_name_for_status}"
+                    )
+                else:
+                    running_status_text = f"正在执行: {task_name_for_status}"
+                running_progress_text = (
+                    f"运行 {task_index}/{effective_total}: {task_name_short}"
                 )
                 self._update_account_status_js(
                     acc,
                     status_text=running_status_text,
                     progress_pct=0,
-                    progress_text=f"运行 {task_index}/{task_index}: {task_name_short}",
+                    progress_text=running_progress_text,
                     progress_extra="",
                 )
 
@@ -9676,6 +9715,7 @@ class Api:
                     task_index,
                     task_name_short,
                     attempted_count=task_index,
+                    planned_total=effective_total,
                 )
                 task_outcomes[id(run_data)] = outcome
                 if outcome == "aborted":
