@@ -32,7 +32,9 @@ const tabs = [
 const validTabKeys = tabs.map(t => t.key)
 // ── Execute tab ──
 const ignoreCompleted = ref(false)
-const autoGenAll = ref(false)
+// 「自动生成路径」默认勾选：没有现成路线时直接启动会无路径可跑。
+// 与 legacy 界面（index.html 的 auto-gen-all-check / mobile-auto-gen-all-check）保持一致。
+const autoGenAll = ref(true)
 
 const showAutoGenModal = ref(false)
 const autoGenConfig = reactive({
