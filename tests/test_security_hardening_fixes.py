@@ -125,6 +125,17 @@ class TestSecurityRouteWiring(unittest.TestCase):
         self.assertIn("_normalize_payment_jump_url", route_source)
         self.assertIn("_encode_inline_script_json(jump_url)", route_source)
 
+    def test_payment_notify_does_not_treat_missing_jump_as_sync_return(self):
+        source = read_backend_source()
+        route_start = source.index('@app.route("/api/payment/yipay_notify"')
+        route_end = source.index('@app.route("/api/frontend-config")', route_start)
+        route_source = source[route_start:route_end]
+
+        self.assertIn('raw_jump = str(params.get("jump", "") or "").strip()', route_source)
+        self.assertIn("if raw_jump", route_source)
+        self.assertIn('else ""', route_source)
+        self.assertIn('{"Content-Type": "text/plain; charset=utf-8"}', route_source)
+
     def test_frontend_config_loader_does_not_create_active_session_from_referer(self):
         source = read_backend_source()
         route_start = source.index('@app.route("/api/frontend_config.js")')

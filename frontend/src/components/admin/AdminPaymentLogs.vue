@@ -38,14 +38,41 @@ const totalPages = computed(() =>
 const ACTION_CONFIG = {
   create_order: { label: '创建订单', cls: 'bg-blue-100 text-blue-700' },
   query_order: { label: '查询订单', cls: 'bg-purple-100 text-purple-700' },
-  payment_success: { label: '支付成功', cls: 'bg-emerald-100 text-emerald-700' },
+  create_order_failed: { label: '创建失败', cls: 'bg-red-100 text-red-700' },
   payment_success_notify: { label: '支付成功通知', cls: 'bg-emerald-100 text-emerald-700' },
+  payment_success: { label: '支付成功', cls: 'bg-emerald-100 text-emerald-700' },
   payment_notify: { label: '支付通知', cls: 'bg-teal-100 text-teal-700' },
   payment_fail: { label: '支付失败', cls: 'bg-red-100 text-red-700' },
-  create_order_failed: { label: '创建失败', cls: 'bg-red-100 text-red-700' },
-  config_update: { label: '配置更新', cls: 'bg-amber-100 text-amber-700' },
   refund: { label: '退款操作', cls: 'bg-orange-100 text-orange-700' },
+  refund_failed: { label: '退款失败', cls: 'bg-red-100 text-red-700' },
+  fetch_orders_from_platform: { label: '从平台拉取订单', cls: 'bg-sky-100 text-sky-700' },
+  sync_order_from_platform: { label: '从平台同步订单', cls: 'bg-sky-100 text-sky-700' },
+  query_order_by_tradeno: { label: '按订单号查询', cls: 'bg-purple-100 text-purple-700' },
+  order_status_updated: { label: '订单状态更新', cls: 'bg-cyan-100 text-cyan-700' },
+  create_order_from_notify: { label: '根据通知补建订单', cls: 'bg-blue-100 text-blue-700' },
+  query_platform_order_failed: { label: '平台订单查询失败', cls: 'bg-red-100 text-red-700' },
+  payment_notify_no_public_key: { label: '支付通知未配置公钥', cls: 'bg-amber-100 text-amber-700' },
+  payment_notify_signature_failed: { label: '支付通知验签失败', cls: 'bg-red-100 text-red-700' },
+  payment_notify_order_not_found: { label: '支付通知订单不存在', cls: 'bg-red-100 text-red-700' },
+  payment_duplicate_notify: { label: '重复支付通知', cls: 'bg-amber-100 text-amber-700' },
+  create_overdue_order: { label: '创建欠费订单', cls: 'bg-orange-100 text-orange-700' },
+  overdue_payment_completed: { label: '欠费支付完成', cls: 'bg-emerald-100 text-emerald-700' },
+  overdue_payment_error: { label: '欠费支付处理失败', cls: 'bg-red-100 text-red-700' },
+  create_billing_order: { label: '创建账单订单', cls: 'bg-blue-100 text-blue-700' },
+  billing_payment_completed: { label: '账单支付完成', cls: 'bg-emerald-100 text-emerald-700' },
+  query_billing_order_active: { label: '主动查询账单订单', cls: 'bg-purple-100 text-purple-700' },
+  query_billing_order_local: { label: '本地查询账单订单', cls: 'bg-purple-100 text-purple-700' },
+  admin_update_payment_config: { label: '更新支付配置', cls: 'bg-amber-100 text-amber-700' },
+  admin_update_pricing_config: { label: '更新价格配置', cls: 'bg-amber-100 text-amber-700' },
+  admin_update_yipay_config: { label: '更新易支付配置', cls: 'bg-amber-100 text-amber-700' },
+  admin_clear_overdue: { label: '调整欠费次数', cls: 'bg-amber-100 text-amber-700' },
+  config_update: { label: '配置更新', cls: 'bg-amber-100 text-amber-700' },
 }
+
+const ACTION_FILTER_OPTIONS = Object.entries(ACTION_CONFIG).map(([value, config]) => ({
+  value,
+  label: config.label,
+}))
 
 function actionInfo(action) {
   return ACTION_CONFIG[action] || { label: action || '未知操作', cls: 'bg-slate-100 text-slate-600' }
@@ -53,16 +80,25 @@ function actionInfo(action) {
 
 // 状态 -> 中文与徽章样式
 function statusInfo(status) {
+  const normalized = String(status || '').trim()
+  if (!normalized) return null
   const map = {
     success: { label: '成功', cls: 'bg-emerald-100 text-emerald-700' },
     completed: { label: '成功', cls: 'bg-emerald-100 text-emerald-700' },
     paid: { label: '已支付', cls: 'bg-emerald-100 text-emerald-700' },
     pending: { label: '处理中', cls: 'bg-amber-100 text-amber-700' },
+    processing: { label: '处理中', cls: 'bg-amber-100 text-amber-700' },
     failed: { label: '失败', cls: 'bg-red-100 text-red-700' },
     fail: { label: '失败', cls: 'bg-red-100 text-red-700' },
+    error: { label: '失败', cls: 'bg-red-100 text-red-700' },
+    refunded_partial: { label: '部分退款', cls: 'bg-orange-100 text-orange-700' },
+    refunded_full: { label: '全额退款', cls: 'bg-orange-100 text-orange-700' },
+    frozen: { label: '已冻结', cls: 'bg-slate-100 text-slate-600' },
+    preauth: { label: '预授权', cls: 'bg-blue-100 text-blue-700' },
+    timeout: { label: '支付超时', cls: 'bg-red-100 text-red-700' },
     closed: { label: '已关闭', cls: 'bg-slate-100 text-slate-600' },
   }
-  return map[status] || null
+  return map[normalized] || { label: normalized, cls: 'bg-slate-100 text-slate-600' }
 }
 
 function formatTime(log) {
@@ -207,12 +243,9 @@ onMounted(() => fetchLogs(1))
           <label class="block text-sm text-[var(--ink-secondary)] mb-1">操作类型</label>
           <select v-model="filterAction" class="select-field w-full text-sm">
             <option value="">全部操作</option>
-            <option value="create_order">创建订单</option>
-            <option value="query_order">查询订单</option>
-            <option value="payment_success">支付成功</option>
-            <option value="create_order_failed">创建失败</option>
-            <option value="payment_notify">支付通知</option>
-            <option value="refund">退款操作</option>
+            <option v-for="option in ACTION_FILTER_OPTIONS" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
           </select>
         </div>
         <div>
@@ -327,6 +360,10 @@ onMounted(() => fetchLogs(1))
           <div class="flex gap-2">
             <span class="text-[var(--ink-secondary)] shrink-0">操作类型:</span>
             <span class="text-[var(--ink)]">{{ actionInfo(detailData.action).label }}</span>
+          </div>
+          <div class="flex gap-2">
+            <span class="text-[var(--ink-secondary)] shrink-0">状态:</span>
+            <span class="text-[var(--ink)]">{{ statusInfo(detailData.status)?.label || detailData.status || '-' }}</span>
           </div>
           <div class="flex gap-2">
             <span class="text-[var(--ink-secondary)] shrink-0">用户:</span>

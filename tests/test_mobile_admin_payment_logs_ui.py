@@ -60,6 +60,59 @@ class TestMobileAdminPaymentLogsUi(unittest.TestCase):
             'request.args.get("action_type", request.args.get("action", "")).strip()',
             source,
         )
+
+    def test_legacy_payment_logs_translate_backend_actions_and_statuses(self):
+        source = SCRIPT_PATH.read_text(encoding="utf-8")
+        expected_actions = {
+            "create_order": "创建订单",
+            "query_order": "查询订单",
+            "create_order_failed": "创建失败",
+            "payment_success_notify": "支付成功通知",
+            "refund": "退款操作",
+            "refund_failed": "退款失败",
+            "fetch_orders_from_platform": "从平台拉取订单",
+            "sync_order_from_platform": "从平台同步订单",
+            "query_order_by_tradeno": "按订单号查询",
+            "order_status_updated": "订单状态更新",
+            "create_order_from_notify": "根据通知补建订单",
+            "query_platform_order_failed": "平台订单查询失败",
+            "payment_notify_no_public_key": "支付通知未配置公钥",
+            "payment_notify_signature_failed": "支付通知验签失败",
+            "payment_notify_order_not_found": "支付通知订单不存在",
+            "payment_duplicate_notify": "重复支付通知",
+            "create_overdue_order": "创建欠费订单",
+            "overdue_payment_completed": "欠费支付完成",
+            "overdue_payment_error": "欠费支付处理失败",
+            "create_billing_order": "创建账单订单",
+            "billing_payment_completed": "账单支付完成",
+            "query_billing_order_active": "主动查询账单订单",
+            "query_billing_order_local": "本地查询账单订单",
+            "admin_update_payment_config": "更新支付配置",
+            "admin_update_pricing_config": "更新价格配置",
+            "admin_update_yipay_config": "更新易支付配置",
+            "admin_clear_overdue": "调整欠费次数",
+        }
+        for action, label in expected_actions.items():
+            self.assertIn(f'{action}: "{label}"', source)
+        vue_source = (PROJECT_ROOT / "frontend" / "src" / "components" / "admin" / "AdminPaymentLogs.vue").read_text(
+            encoding="utf-8"
+        )
+        for action, label in expected_actions.items():
+            self.assertIn(f"{action}: {{ label: '{label}'", vue_source)
+        for status, label in {
+            "success": "成功",
+            "processing": "处理中",
+            "refunded_partial": "部分退款",
+            "timeout": "支付超时",
+        }.items():
+            self.assertIn(f'{status}: "{label}"', source)
+
+    def test_payment_log_filters_keep_raw_action_values(self):
+        index_source = INDEX_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            '<option value="fetch_orders_from_platform">从平台拉取订单</option>',
+            index_source,
+        )
     def test_admin_billing_logs_panel_has_search_and_pagination_hooks(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + PAYMENT_SCRIPT_PATH.read_text(
             encoding="utf-8"

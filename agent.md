@@ -214,3 +214,10 @@
 - 根因：最终确认的真实原因。
 - 正确做法：以后应该怎么写、怎么验证。
 - 相关测试：能防止回归的测试文件或命令。
+
+### 支付回调与支付日志
+
+- 症状：易支付异步通知 URL 未携带 `jump` 时被误判为同步返回，返回 HTML，平台无法收到 `success`。
+- 根因：空 `jump` 经 URL 归一化后变成 `/`，提前返回跳转页，跳过验签和通知处理。
+- 正确做法：只有非空 `jump` 才进入同步跳转；异步通知继续验签和处理，成功时返回纯文本 `success`。支付日志的 action/status 中文只用于两套 UI 展示，筛选请求和完整 JSON 保留原始值。
+- 相关测试：`tests/test_security_hardening_fixes.py`、`tests/test_mobile_admin_payment_logs_ui.py`、`tests/vue_admin_interactions.test.mjs`。

@@ -143,6 +143,17 @@ test('personal payment history uses the user endpoint and displays supplied deta
   assert.equal(requests.length, 1, 'personal details must not request an admin-only endpoint')
 })
 
+test('payment log labels cover platform actions and statuses without changing raw values', () => {
+  const run = setup('AdminPaymentLogs')
+  assert.equal(run("actionInfo('fetch_orders_from_platform').label"), '从平台拉取订单')
+  assert.equal(run("actionInfo('admin_clear_overdue').label"), '调整欠费次数')
+  assert.equal(run("actionInfo('unknown_action').label"), 'unknown_action')
+  assert.equal(run("statusInfo('processing').label"), '处理中')
+  assert.equal(run("statusInfo('refunded_partial').label"), '部分退款')
+  assert.equal(run("statusInfo('timeout').label"), '支付超时')
+  assert.equal(run("statusInfo('provider_custom_status').label"), 'provider_custom_status')
+})
+
 test('audit-authorized payment history can explicitly request all users', async () => {
   const requests = []
   const run = setup('AdminPaymentLogs', {

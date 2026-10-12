@@ -10737,9 +10737,14 @@ def start_web_server(args_param):
             # ========== 检查是否有jump参数（支付完成后跳转）==========
             # jump参数：支付完成后的跳转地址
             # 如果存在jump参数，说明这是用户支付完成后的同步返回，需要跳转到指定页面
-            jump_url = _main()._normalize_payment_jump_url(
-                params.get("jump", ""),
-                _main().request.host_url,
+            raw_jump = str(params.get("jump", "") or "").strip()
+            jump_url = (
+                _main()._normalize_payment_jump_url(
+                    raw_jump,
+                    _main().request.host_url,
+                )
+                if raw_jump
+                else ""
             )
             if jump_url:
                 # 存在jump参数，返回跳转页面
@@ -11617,7 +11622,11 @@ def start_web_server(args_param):
 
             # ========== 立即返回success，不等待异步处理完成 ==========
             # 这是本次修改的核心：确保易支付平台在超时时间内收到响应
-            return "success"
+            return _main().make_response(
+                "success",
+                200,
+                {"Content-Type": "text/plain; charset=utf-8"},
+            )
 
         except Exception as e:
             # 捕获主流程中的所有异常（签名验证前的异常）

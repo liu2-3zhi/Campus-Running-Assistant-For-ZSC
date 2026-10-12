@@ -1,4 +1,65 @@
 // Payment, order, billing, refund, and SMS log legacy UI extracted from main.js.
+const PAYMENT_LOG_ACTION_LABELS = Object.freeze({
+  create_order: "创建订单",
+  query_order: "查询订单",
+  create_order_failed: "创建失败",
+  payment_success_notify: "支付成功通知",
+  refund: "退款操作",
+  refund_failed: "退款失败",
+  fetch_orders_from_platform: "从平台拉取订单",
+  sync_order_from_platform: "从平台同步订单",
+  query_order_by_tradeno: "按订单号查询",
+  order_status_updated: "订单状态更新",
+  create_order_from_notify: "根据通知补建订单",
+  query_platform_order_failed: "平台订单查询失败",
+  payment_notify_no_public_key: "支付通知未配置公钥",
+  payment_notify_signature_failed: "支付通知验签失败",
+  payment_notify_order_not_found: "支付通知订单不存在",
+  payment_duplicate_notify: "重复支付通知",
+  create_overdue_order: "创建欠费订单",
+  overdue_payment_completed: "欠费支付完成",
+  overdue_payment_error: "欠费支付处理失败",
+  create_billing_order: "创建账单订单",
+  billing_payment_completed: "账单支付完成",
+  query_billing_order_active: "主动查询账单订单",
+  query_billing_order_local: "本地查询账单订单",
+  admin_update_payment_config: "更新支付配置",
+  admin_update_pricing_config: "更新价格配置",
+  admin_update_yipay_config: "更新易支付配置",
+  admin_clear_overdue: "调整欠费次数",
+  payment_success: "支付成功",
+  payment_notify: "支付通知",
+  payment_fail: "支付失败",
+  config_update: "配置更新",
+});
+
+const PAYMENT_LOG_STATUS_LABELS = Object.freeze({
+  success: "成功",
+  completed: "成功",
+  fail: "失败",
+  failed: "失败",
+  error: "失败",
+  pending: "处理中",
+  processing: "处理中",
+  paid: "已支付",
+  closed: "已关闭",
+  refunded_partial: "部分退款",
+  refunded_full: "全额退款",
+  frozen: "已冻结",
+  preauth: "预授权",
+  timeout: "支付超时",
+});
+
+function getPaymentLogActionLabel(action) {
+  const normalized = String(action || "").trim();
+  return PAYMENT_LOG_ACTION_LABELS[normalized] || normalized || "未知操作";
+}
+
+function getPaymentLogStatusLabel(status) {
+  const normalized = String(status || "").trim();
+  return PAYMENT_LOG_STATUS_LABELS[normalized] || normalized || "-";
+}
+
 function openSMSReplyLogsModal() {
   // 获取modal元素
   const modal = document.getElementById("sms-reply-logs-modal");
@@ -448,7 +509,7 @@ function loadPaymentLogs(page) {
             // 根据操作类型确定显示的标签样式
             // 不同的操作类型使用不同的颜色
             let actionBadgeClass = "bg-slate-100 text-slate-700"; // 默认样式
-            let actionText = log.action || "未知操作"; // 操作类型文本
+            let actionText = getPaymentLogActionLabel(log.action); // 操作类型文本
 
             // 根据不同的操作类型设置不同的样式
             if (log.action === "create_order") {
@@ -481,20 +542,20 @@ function loadPaymentLogs(page) {
             let statusHTML = "";
             if (log.status) {
               let statusClass = "text-slate-600";
-              let statusText = log.status;
+              let statusText = getPaymentLogStatusLabel(log.status);
 
               if (log.status === "success" || log.status === "completed") {
                 statusClass = "text-green-600";
-                statusText = "成功";
+                statusText = getPaymentLogStatusLabel(log.status);
               } else if (log.status === "failed" || log.status === "error") {
                 statusClass = "text-red-600";
-                statusText = "失败";
+                statusText = getPaymentLogStatusLabel(log.status);
               } else if (
                 log.status === "pending" ||
                 log.status === "processing"
               ) {
                 statusClass = "text-yellow-600";
-                statusText = "处理中";
+                statusText = getPaymentLogStatusLabel(log.status);
               }
 
               statusHTML = `<div class="text-xs ${statusClass}">状态: ${statusText}</div>`;
@@ -1307,7 +1368,7 @@ function loadAdminPaymentLogs(page) {
             // 根据操作类型确定显示的标签样式和文字
             // 不同的操作类型使用不同的颜色，便于用户快速识别
             let actionBadgeClass = "bg-slate-100 text-slate-700"; // 默认样式（灰色）
-            let actionText = log.action || "未知操作"; // 操作类型文本
+            let actionText = getPaymentLogActionLabel(log.action); // 操作类型文本
 
             // 根据不同的操作类型设置不同的颜色样式
             if (log.action === "create_order") {
@@ -1349,7 +1410,7 @@ function loadAdminPaymentLogs(page) {
             if (log.status) {
               // 初始化状态样式和文本
               let statusClass = "text-slate-600"; // 默认颜色（灰色）
-              let statusText = log.status; // 状态文本（原始值）
+              let statusText = getPaymentLogStatusLabel(log.status); // 状态显示文本，原始值仍保留在日志数据中
 
               // 根据不同的状态设置不同的颜色
               // 使用if-else if链式判断，提高代码可读性
@@ -1357,12 +1418,12 @@ function loadAdminPaymentLogs(page) {
                 // 成功状态：绿色
                 // 适用于支付成功、操作完成等场景
                 statusClass = "text-green-600";
-                statusText = "成功";
+                statusText = getPaymentLogStatusLabel(log.status);
               } else if (log.status === "failed" || log.status === "error") {
                 // 失败状态：红色
                 // 适用于支付失败、操作错误等场景
                 statusClass = "text-red-600";
-                statusText = "失败";
+                statusText = getPaymentLogStatusLabel(log.status);
               } else if (
                 log.status === "pending" ||
                 log.status === "processing"
@@ -1370,7 +1431,7 @@ function loadAdminPaymentLogs(page) {
                 // 处理中状态：黄色
                 // 适用于等待处理、正在处理等场景
                 statusClass = "text-yellow-600";
-                statusText = "处理中";
+                statusText = getPaymentLogStatusLabel(log.status);
               }
 
               // 生成状态HTML
@@ -2036,7 +2097,7 @@ async function showPaymentLogDetail(logId) {
       document.getElementById("mobile-log-detail-datetime").textContent =
         logDetail.datetime || "-";
       document.getElementById("mobile-log-detail-action").textContent =
-        logDetail.action || "-";
+        getPaymentLogActionLabel(logDetail.action);
       document.getElementById("mobile-log-detail-user-id").textContent =
         logDetail.user_id || "-";
       document.getElementById("mobile-log-detail-order-id").textContent =
@@ -2053,7 +2114,7 @@ async function showPaymentLogDetail(logId) {
       document.getElementById("log-detail-datetime").textContent =
         logDetail.datetime || "-";
       document.getElementById("log-detail-action").textContent =
-        logDetail.action || "-";
+        getPaymentLogActionLabel(logDetail.action);
       document.getElementById("log-detail-user-id").textContent =
         logDetail.user_id || "-";
       document.getElementById("log-detail-order-id").textContent =

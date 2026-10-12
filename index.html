@@ -8596,8 +8596,34 @@
                     <option value="">全部操作</option>
                     <option value="create_order">创建订单</option>
                     <option value="query_order">查询订单</option>
+                    <option value="create_order_failed">创建失败</option>
+                    <option value="payment_success_notify">支付成功通知</option>
                     <option value="payment_success">支付成功</option>
+                    <option value="payment_notify">支付通知</option>
                     <option value="payment_fail">支付失败</option>
+                    <option value="refund">退款操作</option>
+                    <option value="refund_failed">退款失败</option>
+                    <option value="fetch_orders_from_platform">从平台拉取订单</option>
+                    <option value="sync_order_from_platform">从平台同步订单</option>
+                    <option value="query_order_by_tradeno">按订单号查询</option>
+                    <option value="order_status_updated">订单状态更新</option>
+                    <option value="create_order_from_notify">根据通知补建订单</option>
+                    <option value="query_platform_order_failed">平台订单查询失败</option>
+                    <option value="payment_notify_no_public_key">支付通知未配置公钥</option>
+                    <option value="payment_notify_signature_failed">支付通知验签失败</option>
+                    <option value="payment_notify_order_not_found">支付通知订单不存在</option>
+                    <option value="payment_duplicate_notify">重复支付通知</option>
+                    <option value="create_overdue_order">创建欠费订单</option>
+                    <option value="overdue_payment_completed">欠费支付完成</option>
+                    <option value="overdue_payment_error">欠费支付处理失败</option>
+                    <option value="create_billing_order">创建账单订单</option>
+                    <option value="billing_payment_completed">账单支付完成</option>
+                    <option value="query_billing_order_active">主动查询账单订单</option>
+                    <option value="query_billing_order_local">本地查询账单订单</option>
+                    <option value="admin_update_payment_config">更新支付配置</option>
+                    <option value="admin_update_pricing_config">更新价格配置</option>
+                    <option value="admin_update_yipay_config">更新易支付配置</option>
+                    <option value="admin_clear_overdue">调整欠费次数</option>
                     <option value="config_update">配置更新</option>
                   </select>
                 </div>
@@ -17876,16 +17902,36 @@
                 <option value="">全部操作</option>
                 <!-- 创建订单：用户发起支付时创建订单的记录 -->
                 <option value="create_order">创建订单</option>
-                <!-- 查询订单：查询订单状态的记录 -->
                 <option value="query_order">查询订单</option>
-                <!-- 支付成功：订单支付成功的记录 -->
-                <option value="payment_success">支付成功</option>
-                <!-- 创建失败：创建订单失败的记录 -->
                 <option value="create_order_failed">创建失败</option>
-                <!-- 支付通知：支付平台回调通知的记录 -->
+                <option value="payment_success_notify">支付成功通知</option>
+                <option value="payment_success">支付成功</option>
                 <option value="payment_notify">支付通知</option>
-                <!-- 退款操作：订单退款的记录 -->
+                <option value="payment_fail">支付失败</option>
                 <option value="refund">退款操作</option>
+                <option value="refund_failed">退款失败</option>
+                <option value="fetch_orders_from_platform">从平台拉取订单</option>
+                <option value="sync_order_from_platform">从平台同步订单</option>
+                <option value="query_order_by_tradeno">按订单号查询</option>
+                <option value="order_status_updated">订单状态更新</option>
+                <option value="create_order_from_notify">根据通知补建订单</option>
+                <option value="query_platform_order_failed">平台订单查询失败</option>
+                <option value="payment_notify_no_public_key">支付通知未配置公钥</option>
+                <option value="payment_notify_signature_failed">支付通知验签失败</option>
+                <option value="payment_notify_order_not_found">支付通知订单不存在</option>
+                <option value="payment_duplicate_notify">重复支付通知</option>
+                <option value="create_overdue_order">创建欠费订单</option>
+                <option value="overdue_payment_completed">欠费支付完成</option>
+                <option value="overdue_payment_error">欠费支付处理失败</option>
+                <option value="create_billing_order">创建账单订单</option>
+                <option value="billing_payment_completed">账单支付完成</option>
+                <option value="query_billing_order_active">主动查询账单订单</option>
+                <option value="query_billing_order_local">本地查询账单订单</option>
+                <option value="admin_update_payment_config">更新支付配置</option>
+                <option value="admin_update_pricing_config">更新价格配置</option>
+                <option value="admin_update_yipay_config">更新易支付配置</option>
+                <option value="admin_clear_overdue">调整欠费次数</option>
+                <option value="config_update">配置更新</option>
               </select>
             </div>
 

@@ -1782,7 +1782,7 @@ function createPaymentLogCard(log) {
       break;
     default:
       actionConfig = {
-        text: log.action || "未知操作",
+        text: getPaymentLogActionLabel(log.action),
         bgClass: "bg-slate-50",
         borderClass: "border-slate-200",
         badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
@@ -1830,7 +1830,7 @@ function createPaymentLogCard(log) {
     log.amount !== undefined && log.amount !== null && log.amount !== ""
       ? `¥${parseFloat(log.amount).toFixed(2)}`
       : "-";
-  const statusText = log.status || "-";
+  const statusText = getPaymentLogStatusLabel(log.status);
   const detailButton = log.log_id
     ? `
             <button onclick="showPaymentLogDetail(${safeLogId})" class="w-full min-h-[44px] rounded-2xl px-4 py-3 text-sm font-medium text-white transition-colors ${actionConfig.buttonClass}">
