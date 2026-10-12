@@ -126,6 +126,7 @@
 - 导入账号的提示必须合并成**一个**弹窗，且汇总成功 / 跳过 / 失败**全部**结果（`【成功导入】`/`【已存在，未重复添加】`/`【缺少密码，已跳过】`/`【执行中，已跳过】`/【文件内重复行】/`【失败】`），为空的段落不渲染，名单同样不截断。弹窗必须等缺密码补全流程结束后才出现。**后端禁止再用 `self.window.evaluate_js("alert(...)")` 弹提示**：那会和前端弹窗形成两套提示，而且历史上只列前 20 个；缺密码提示的唯一出口是阶段 1。`multi_import_accounts` 的返回必须带 `imported_count`/`already_exists_count`/`skipped_count`/`failed`/`accounts_missing_password`/`accounts`，其中 `already_exists` **不得**计入 `imported_count`。`accounts_missing_password` 的键名与 `multi_load_accounts_from_config` 保持一致，便于前端复用同一套队列。相关回归测试见 `tests/test_multi_import_accounts_merged_summary.py`。
 - `_run_single_multi_account_task` 这类“抽出的大方法”里，所有被末尾 `return` 引用的结果标记必须在函数早期无条件初始化（例如 `task_succeeded = False`）。只在 `if submission_successful:` 的 if/else 里赋值，会让“提交失败”这条正常分支抛 `UnboundLocalError` 并让整个 worker 崩溃。判定标准是**真正驱动那条分支**，只断言源码里存在赋值语句抓不到。相关回归测试见 `tests/test_multi_account_submission_failure_path.py`。
 - 多账号收尾状态文案固定为“状态词 + (成功/总数)”（`全部完成 (3/3)`、`全部失败 (0/3)`、`部分成功 (1/3)，2个任务失败`、`无任务可执行`）。状态词必须原样保留，因为 `getMultiAccountStatusClass` 按这些词着色；前端匹配必须用 `includes` 而不是整串相等，否则带数量的文案会掉进默认色。相关回归测试见 `tests/test_multi_account_completion_status.py`。
+- `_multi_account_worker()` 在 `_select_next_multi_task()` 返回 `None` 且本轮尚未尝试任务时，必须在该分支显式写入“无任务可执行”；不要把此判断放到任务执行之后检查 `attempted_task_keys`，此时集合必非空且分支不可达，最终会被收尾逻辑显示成“待命”。
 - `_update_account_status_js()` 必须无条件更新账号对象上的 `status_text`/`progress_*` 字段，socket 推送只是附加通道：多账号列表的轮询接口 `multi_get_all_accounts_status` 读的就是这些字段，缺 `socketio` 或会话 ID 时直接 return 会让状态栏永远停在旧文案。
 
 ## 登录和会话提示规则

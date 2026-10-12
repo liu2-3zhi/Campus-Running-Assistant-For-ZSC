@@ -376,6 +376,23 @@ class TestWorkerReloopBehavior(unittest.TestCase):
             gap_logs, [], "没有下一个任务时不得等待（否则最后一个任务跑完还要白等）"
         )
 
+    def test_no_executable_tasks_sets_terminal_status(self):
+        """跳过已完成任务后没有可执行项时，不能把状态留在待命。"""
+        self._phase_tasks = [[("already-done", 1)]]
+        self.phase = 0
+        self._apply_phase()
+        self.acc.status_text = "待命"
+
+        def update_status(acc, status_text=None, **kwargs):
+            if status_text is not None:
+                acc.status_text = status_text
+
+        self.api._update_account_status_js = mock.Mock(side_effect=update_status)
+
+        self.api._multi_account_worker(self.acc, 0, True)
+
+        self.assertEqual(self.acc.status_text, "无任务可执行")
+
     def test_aborted_task_stops_scheduling(self):
         def abort_task(
             acc,

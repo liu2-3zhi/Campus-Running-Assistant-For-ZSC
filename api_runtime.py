@@ -9774,6 +9774,14 @@ class Api:
 
                 if run_data is None:
                     # 没有下一个可执行任务：直接结束，**不进入任务间隔等待**
+                    if not attempted_task_keys:
+                        acc.has_pending_tasks = False
+                        self._update_account_status_js(
+                            acc,
+                            status_text=_main()._build_multi_account_completion_status(
+                                0, 0
+                            ),
+                        )
                     break
 
                 # ---- 第三步：确认有新任务后才进入任务间隔等待 ----
@@ -9898,13 +9906,6 @@ class Api:
 
 
                 if not acc.stop_event.is_set():
-                    if not attempted_task_keys:
-                        # 一个任务都没跑：保持旧实现的"无任务可执行"语义，
-                        # 并刷新全局按钮状态（旧代码在提前 return 前会调用它）。
-                        self._update_account_status_js(acc, status_text="无任务可执行")
-                        self._update_multi_global_buttons()
-                        return
-
                     successful_tasks = sum(
                         1 for outcome in task_outcomes.values() if outcome == "success"
                     )
