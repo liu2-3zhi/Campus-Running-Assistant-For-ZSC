@@ -6141,50 +6141,6 @@ class Api:
             ),
         }
 
-    def get_theme_styles(self, background_target=None):
-        """获取主题样式列表和当前主题配置"""
-        current_theme_style = getattr(self, "global_params", {}).get("theme_style", "default")
-        target_list = []
-        if background_target == "mobile":
-            target_list = ["mobile"]
-        elif background_target == "pc":
-            target_list = ["pc"]
-        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        cache_dir = os.path.join(base_dir, _main().RANDOM_BACKGROUND_IMAGE_DIR)
-        return {
-            "success": True,
-            "theme_styles": _main().auth_system.get_available_theme_styles(),
-            "theme_config": _main().auth_system.get_theme_config(
-                current_theme_style,
-                target_list or None,
-                session_uuid=session_uuid,
-                cache_dir=cache_dir,
-            ),
-        }
-
-    def get_public_theme_styles(self, style_id="default", background_target=None):
-        """获取公开主题样式列表和指定主题配置（无需登录）"""
-        current_theme_style = str(style_id or "default").strip() or "default"
-        target_list = []
-        if background_target == "mobile":
-            target_list = ["mobile"]
-        elif background_target == "pc":
-            target_list = ["pc"]
-        session_uuid = str(getattr(self, "_web_session_id", "") or "").strip()
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        cache_dir = os.path.join(base_dir, _main().RANDOM_BACKGROUND_IMAGE_DIR)
-        return {
-            "success": True,
-            "theme_styles": _main().auth_system.get_available_theme_styles(),
-            "theme_config": _main().auth_system.get_theme_config(
-                current_theme_style,
-                target_list or None,
-                session_uuid=session_uuid,
-                cache_dir=cache_dir,
-            ),
-        }
-
     def mark_theme_background_consumed(
         self,
         target="pc",

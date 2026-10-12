@@ -221,3 +221,10 @@
 - 根因：空 `jump` 经 URL 归一化后变成 `/`，提前返回跳转页，跳过验签和通知处理。
 - 正确做法：只有非空 `jump` 才进入同步跳转；异步通知继续验签和处理，成功时返回纯文本 `success`。支付日志的 action/status 中文只用于两套 UI 展示，筛选请求和完整 JSON 保留原始值。
 - 相关测试：`tests/test_security_hardening_fixes.py`、`tests/test_mobile_admin_payment_logs_ui.py`、`tests/vue_admin_interactions.test.mjs`。
+
+### 主题背景与登录同步
+
+- 症状：认证 Cookie 失效但 UUID 仍有效时登录页背景为空，点击登录还会重复消耗随机背景。
+- 根因：公开主题读取路径被重复方法定义覆盖，未应用 UUID 对应 Bundle；登录响应的 `theme_background` 未接管前端状态，后续同步再次进入背景消耗流程。
+- 正确做法：公开 GET 只读取已有身份/访客绑定；登录和 2FA 响应统一返回并应用 Bundle，空背景不覆盖当前值，绑定完成后跳过重复消耗。
+- 相关测试：`tests/test_identity_bundle_runtime.py`、`tests/theme_background_sync.test.mjs`。

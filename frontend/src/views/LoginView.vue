@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { callAPI, callRawAPI } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
+import { useThemeStore } from '@/stores/theme'
 import AuthPanel from '@/components/login/AuthPanel.vue'
 import SessionPicker from '@/components/login/SessionPicker.vue'
 import SessionLogin from '@/components/login/SessionLogin.vue'
@@ -20,6 +21,7 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 const app = useAppStore()
+const theme = useThemeStore()
 
 const importFileInput = ref(null)
 
@@ -28,6 +30,20 @@ const viewMode = ref('loading')
 const errorMsg = ref('')
 const sessionData = ref({})
 const frontendConfig = ref({})
+const backgroundPreview = ref(null)
+
+function applyThemeBackground(assignment) {
+  if (theme.setBackgroundAssignment(assignment)) {
+    backgroundPreview.value = assignment
+  }
+}
+
+function desktopBackgroundStyle() {
+  const imageUrl = theme.backgroundAssignment?.pc?.image_url
+  return imageUrl
+    ? { background: `url("${imageUrl}") center / cover no-repeat fixed` }
+    : undefined
+}
 
 // --- Inline session management (school-login right column) ---
 const inlineSessions = ref([])
@@ -166,6 +182,7 @@ async function checkUUID(uuid) {
 
 // --- System login success → show session picker ---
 async function onAuthSuccess(data) {
+  applyThemeBackground(data?.theme_background)
   if (data.session_id) await replaceSessionUrl(data.session_id)
   if (data.is_guest) {
     viewMode.value = 'school-login'
@@ -278,6 +295,15 @@ function formatSessionDate(timestamp) {
 onMounted(async () => {
   callRawAPI('/api/frontend-config', 'GET').then(data => { frontendConfig.value = data }).catch(() => {})
 
+  try {
+    const bootstrapUuid = props.uuid || auth.sessionUUID || ''
+    const endpoint = bootstrapUuid
+      ? `/api/site/bootstrap?uuid=${encodeURIComponent(bootstrapUuid)}`
+      : '/api/site/bootstrap'
+    const bootstrap = await callRawAPI(endpoint, 'GET')
+    applyThemeBackground(bootstrap?.theme_background)
+  } catch (_) {}
+
   if (props.uuid) {
     await checkUUID(props.uuid)
     app.isLoading = false
@@ -310,6 +336,7 @@ onMounted(async () => {
       v-else-if="viewMode === 'auth'"
       id="auth-login-container"
       class="flex h-screen w-screen items-center justify-center p-0 md:p-4"
+      :style="desktopBackgroundStyle()"
     >
       <button
         v-if="frontendConfig.show_newbie_help || app.isMobile"
@@ -347,7 +374,7 @@ onMounted(async () => {
           </h2>
           <p class="text-sm text-slate-500">请登录或注册以继续使用</p>
         </div>
-        <AuthPanel :frontend-config="frontendConfig" @login-success="onAuthSuccess" />
+        <AuthPanel :frontend-config="frontendConfig" :background-preview="backgroundPreview" @login-success="onAuthSuccess" />
         <div
           id="auth-beian-footer"
           class="mt-6 flex flex-col items-center justify-center gap-2 border-t border-slate-200 pt-4 text-xs text-slate-400"

@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import vm from 'node:vm';
 
 function extractFunctionSource(source, functionName) {
   const signature = `function ${functionName}`;
   const start = source.indexOf(signature);
   assert.notEqual(start, -1, `${functionName} should exist in scripts/main.js`);
 
-  const bodyStart = source.indexOf('{', start);
+  const bodyStart = source.indexOf(') {', start) + 2;
   assert.notEqual(bodyStart, -1, `${functionName} should have a body`);
 
   let depth = 0;
@@ -84,6 +85,91 @@ function loadFunctions(functionNames) {
   const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
   return Function(`${functionSources.join('\n\n')} return { ${functionNames.join(', ')} };`)();
 }
+
+function loadBackgroundRuntime(overrides = {}) {
+  const elements = Object.fromEntries(['auth-login-container', 'mobile-content'].map(id => [id, {
+    style: { background: `url("/theme-assets/${id}.jpg")`, backgroundImage: '' },
+  }]));
+  const context = vm.createContext({
+    currentThemeConfig: { global_environment_variables: {} },
+    currentThemeBackgroundAssignment: null,
+    sessionBindEnsured: { pc: false, mobile: false },
+    preLoginBackgroundSnapshot: { pc: '', mobile: '' },
+    themeBackgroundRequestCache: new Set(),
+    themeBackgroundConsumeDebounceTimer: null,
+    pendingThemeBackgroundFeedback: null,
+    themeBackgroundLoginSyncInFlight: false,
+    authLoginInProgress: false,
+    sessionUUID: null,
+    initialConsumeCompleted: false,
+    currentThemeBackgroundTarget: null,
+    currentThemeBackgroundImageUrl: '',
+    themeBackgroundAuthStateResolved: false,
+    themeBackgroundAuthenticatedSession: false,
+    window: { getComputedStyle: () => ({ backgroundImage: '' }) },
+    document: { getElementById: id => elements[id] || null },
+    clearTimeout: () => {},
+    scheduleThemeBackgroundConsumed: () => {},
+    ...overrides,
+  });
+  const source = readFileSync(resolve('scripts/main.js'), 'utf8');
+  const names = ['extractThemeBackgroundImageUrl', 'getRenderedThemeBackgroundImageUrlByTarget',
+    'shouldSkipThemeBackgroundVisualRewrite', 'shouldSkipThemeBackgroundConsumeDuringLogin',
+    'applyThemeLoginContainerStyle', 'getThemeBackgroundRequestCacheKey', 'mergeThemeBackgroundConfig', 'applyThemeGlobalEnvironmentVariables'];
+  vm.runInContext(names.map(name => extractFunctionSource(source, name)).join('\n'), context);
+  return { context, elements, source };
+}
+
+test('empty public backgrounds preserve both rendered backgrounds and current state', () => {
+  const previous = { auth_login_container_background: 'url("/theme-assets/pc.jpg")',
+    mobile_auth_login_content_background: 'url("/theme-assets/mb.jpg")' };
+  const { context, elements } = loadBackgroundRuntime({ currentThemeConfig: { global_environment_variables: previous } });
+  context.applyThemeGlobalEnvironmentVariables({ global_environment_variables: {
+    auth_login_container_background: '', mobile_auth_login_content_background: '',
+  } });
+  assert.equal(context.currentThemeConfig.global_environment_variables.auth_login_container_background, previous.auth_login_container_background);
+  assert.equal(context.currentThemeConfig.global_environment_variables.mobile_auth_login_content_background, previous.mobile_auth_login_content_background);
+  assert.notEqual(elements['auth-login-container'].style.background, '');
+  assert.notEqual(elements['mobile-content'].style.background, '');
+});
+
+test('same image skips actual desktop and mobile style writes, new image still applies', () => {
+  const { context, elements } = loadBackgroundRuntime();
+  let writes = 0;
+  for (const element of Object.values(elements)) {
+    let value = element.style.background;
+    Object.defineProperty(element.style, 'background', { get: () => value, set: next => { writes++; value = next; } });
+  }
+  context.applyThemeLoginContainerStyle({ global_environment_variables: {
+    auth_login_container_background: elements['auth-login-container'].style.background,
+    mobile_auth_login_content_background: elements['mobile-content'].style.background,
+  } });
+  assert.equal(writes, 0);
+  context.applyThemeLoginContainerStyle({ global_environment_variables: {
+    auth_login_container_background: 'url("/theme-assets/new.jpg")',
+    mobile_auth_login_content_background: 'url("/theme-assets/new-mobile.jpg")',
+  } });
+  assert.equal(writes, 2);
+});
+
+test('login request defers consume even before an active business UUID exists', () => {
+  const { context } = loadBackgroundRuntime({ authLoginInProgress: true, themeBackgroundLoginSyncInFlight: true });
+  assert.equal(context.shouldSkipThemeBackgroundConsumeDuringLogin('pc', '/theme-assets/pc.jpg'), true);
+  assert.equal(context.shouldSkipThemeBackgroundConsumeDuringLogin('mobile', '/theme-assets/mb.jpg'), true);
+});
+
+test('login bundle completes PC/mobile binding without consume or random fetching', () => {
+  const { context, source } = loadBackgroundRuntime();
+  vm.runInContext(extractFunctionSource(source, 'applyThemeBackgroundAssignment'), context);
+  const assignment = { bundle_id: 'bound', pc: { image_url: '/theme-assets/pc.jpg' }, mobile: { image_url: '/theme-assets/mb.jpg' } };
+  context.applyThemeBackgroundAssignment(assignment, { bound: true });
+  assert.equal(context.currentThemeBackgroundAssignment.bundle_id, 'bound');
+  assert.equal(context.sessionBindEnsured.pc, true);
+  assert.equal(context.sessionBindEnsured.mobile, true);
+  assert.equal(context.initialConsumeCompleted, true);
+  assert.match(context.currentThemeConfig.global_environment_variables.auth_login_container_background, /pc.jpg/);
+  assert.match(context.currentThemeConfig.global_environment_variables.mobile_auth_login_content_background, /mb.jpg/);
+});
 
 function extractThemeBackgroundImageUrl(backgroundValue) {
   const normalizedValue = typeof backgroundValue === 'string' ? backgroundValue : '';
