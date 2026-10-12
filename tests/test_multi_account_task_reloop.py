@@ -393,6 +393,74 @@ class TestWorkerReloopBehavior(unittest.TestCase):
 
         self.assertEqual(self.acc.status_text, "无任务可执行")
 
+    def test_task_fetch_failure_preserves_last_successful_snapshot(self):
+        """接口失败时不能把上次成功获取的任务误清空。"""
+        api = object.__new__(main_module.Api)
+        api.multi_run_only_incomplete = True
+        api._get_task_time_state = mock.Mock(return_value="active")
+        acc = _FakeAccount([_make_run("cached")])
+        acc.user_data.id = "school-id"
+        acc.api_client = mock.Mock()
+        acc.api_client.get_run_list.side_effect = [
+            {
+                "success": True,
+                "data": {
+                    "errandList": [
+                        {"errandId": f"partial-{index}", "isExecute": 0}
+                        for index in range(10)
+                    ]
+                },
+            },
+            {"success": False},
+        ]
+        acc.summary = {"total": 1, "executable": 1}
+        previous_tasks = acc.all_run_data
+        previous_summary = dict(acc.summary)
+
+        result = api._multi_fetch_and_summarize_tasks(acc)
+
+        self.assertFalse(result)
+        self.assertIs(acc.all_run_data, previous_tasks)
+        self.assertEqual(acc.summary, previous_summary)
+        self.assertEqual(acc.api_client.get_run_list.call_count, 2)
+
+    def test_successful_empty_task_list_replaces_snapshot(self):
+        """成功返回空列表才代表确认没有任务。"""
+        api = object.__new__(main_module.Api)
+        api.multi_run_only_incomplete = True
+        api._get_task_time_state = mock.Mock(return_value="active")
+        acc = _FakeAccount([_make_run("cached")])
+        acc.user_data.id = "school-id"
+        acc.api_client = mock.Mock()
+        acc.api_client.get_run_list.return_value = {
+            "success": True,
+            "data": {"errandList": []},
+        }
+
+        result = api._multi_fetch_and_summarize_tasks(acc)
+
+        self.assertTrue(result)
+        self.assertEqual(acc.all_run_data, [])
+        self.assertEqual(acc.summary["total"], 0)
+        self.assertEqual(acc.summary["executable"], 0)
+        self.assertFalse(acc.has_pending_tasks)
+
+    def test_task_fetch_failure_does_not_report_no_tasks(self):
+        """本轮任务接口失败时应保留错误状态，不得落成无任务终态。"""
+        self._phase_tasks = [[("already-done", 1)]]
+        self.phase = 0
+        self._apply_phase()
+        self.api._multi_fetch_and_summarize_tasks = mock.Mock(return_value=False)
+
+        self.api._multi_account_worker(self.acc, 0, True)
+
+        status_texts = [
+            call.kwargs.get("status_text")
+            for call in self.api._update_account_status_js.call_args_list
+        ]
+        self.assertIn("刷新失败: 获取任务列表失败", status_texts)
+        self.assertNotIn("无任务可执行", status_texts)
+
     def test_aborted_task_stops_scheduling(self):
         def abort_task(
             acc,

@@ -7535,7 +7535,14 @@ class Api:
                     acc, name=acc.user_data.name, status_text="获取数据..."
                 )
 
-            self._multi_fetch_and_summarize_tasks(acc)
+            tasks_refreshed = self._multi_fetch_and_summarize_tasks(acc)
+            if tasks_refreshed is False:
+                acc.log("获取任务列表失败，保留上次成功获取的任务状态。")
+                if not preserve_now:
+                    self._update_account_status_js(
+                        acc, status_text="刷新失败: 获取任务列表失败"
+                    )
+                return
 
             # 顺带回收所有超时的自动签到记录（与当前账号是否登录无关），
             # 确保"刷新一次"也能清理那些已不在会话中的账号记录。
@@ -8789,18 +8796,18 @@ class Api:
 
     def _multi_fetch_and_summarize_tasks(self, acc: _main().AccountSession):
         """(辅助函数) 为单个账号获取任务列表并计算统计信息（按任务ID去重）"""
-        acc.all_run_data = []
+        fetched_run_data = []
         seen_keys: set[str] = set()
         offset = 0
         dup_count = 0
 
         while True:
             if acc.stop_event.is_set():
-                return
+                return None
             resp = acc.api_client.get_run_list(acc.user_data.id, offset)
             if not resp or not resp.get("success"):
                 acc.log("获取任务列表失败。")
-                break
+                return False
 
             tasks = resp.get("data", {}).get("errandList", [])
             if not tasks:
@@ -8835,7 +8842,7 @@ class Api:
                 run.errand_schedule = es
                 run.start_time = st
                 run.end_time = et
-                acc.all_run_data.append(run)
+                fetched_run_data.append(run)
 
                 logging.info(
                     f"[{acc.username}] Parsed task {eid!r}: raw_isExecute={td.get('isExecute')!r} -> status={run.status}"
@@ -8850,7 +8857,7 @@ class Api:
                 f"[{acc.username}] Task de-dup: {dup_count} duplicates skipped (by errandId)."
             )
 
-        total = len(acc.all_run_data)
+        total = len(fetched_run_data)
         completed = 0
         expired = 0
         executable = 0
@@ -8859,7 +8866,7 @@ class Api:
         now = datetime.datetime.now()
         ignore_time = acc.params.get("ignore_task_time", True)
 
-        for r in acc.all_run_data:
+        for r in fetched_run_data:
             if r.status == 1:
                 completed += 1
                 if self.multi_run_only_incomplete:
@@ -8895,7 +8902,9 @@ class Api:
             }
         )
 
+        acc.all_run_data = fetched_run_data
         acc.has_pending_tasks = executable > 0
+        return True
 
     @staticmethod
     def _format_multi_task_summary(acc: _main().AccountSession) -> str:
@@ -9707,6 +9716,7 @@ class Api:
             successful_tasks = 0
             failed_tasks = 0
             aborted = False
+            task_fetch_failed = False
             # 第一个任务前不等待；只有"已确认还有下一个可执行任务"时才进入任务间隔等待
             has_completed_any = False
             # 本次运行的"计划任务数"：取自最新任务统计里的可执行数量，随时可能因为
@@ -9733,7 +9743,14 @@ class Api:
                 # ---- 第一步：重新拉取任务列表 ----
                 # 每次都基于最新服务端状态决策，因此任务体内部的
                 # _multi_fetch_and_summarize_tasks() 之后无需再次拉取。
-                self._multi_fetch_and_summarize_tasks(acc)
+                tasks_refreshed = self._multi_fetch_and_summarize_tasks(acc)
+                if tasks_refreshed is False:
+                    task_fetch_failed = True
+                    acc.log("获取任务列表失败，本次执行停止并保留上次成功状态。")
+                    self._update_account_status_js(
+                        acc, status_text="刷新失败: 获取任务列表失败"
+                    )
+                    break
 
                 ignore_time = acc.params.get("ignore_task_time", True)
                 acc.log(
@@ -9904,7 +9921,7 @@ class Api:
                 has_completed_any = True
 
 
-                if not acc.stop_event.is_set():
+                if not acc.stop_event.is_set() and not task_fetch_failed:
                     successful_tasks = sum(
                         1 for outcome in task_outcomes.values() if outcome == "success"
                     )

@@ -127,6 +127,7 @@
 - `_run_single_multi_account_task` 这类“抽出的大方法”里，所有被末尾 `return` 引用的结果标记必须在函数早期无条件初始化（例如 `task_succeeded = False`）。只在 `if submission_successful:` 的 if/else 里赋值，会让“提交失败”这条正常分支抛 `UnboundLocalError` 并让整个 worker 崩溃。判定标准是**真正驱动那条分支**，只断言源码里存在赋值语句抓不到。相关回归测试见 `tests/test_multi_account_submission_failure_path.py`。
 - 多账号收尾状态文案固定为“状态词 + (成功/总数)”（`全部完成 (3/3)`、`全部失败 (0/3)`、`部分成功 (1/3)，2个任务失败`、`无任务可执行`）。状态词必须原样保留，因为 `getMultiAccountStatusClass` 按这些词着色；前端匹配必须用 `includes` 而不是整串相等，否则带数量的文案会掉进默认色。相关回归测试见 `tests/test_multi_account_completion_status.py`。
 - `_multi_account_worker()` 在 `_select_next_multi_task()` 返回 `None` 且本轮尚未尝试任务时，必须在该分支显式写入“无任务可执行”；不要把此判断放到任务执行之后检查 `attempted_task_keys`，此时集合必非空且分支不可达，最终会被收尾逻辑显示成“待命”。
+- `_multi_fetch_and_summarize_tasks()` 只能在整轮任务列表成功拉取后替换 `all_run_data` 和 `summary`；接口失败要返回失败信号并保留上次成功快照，worker 应显示刷新失败而非误报“无任务可执行”。返回成功的空列表才代表确定无任务。相关回归测试见 `tests/test_multi_account_task_reloop.py`。
 - `_update_account_status_js()` 必须无条件更新账号对象上的 `status_text`/`progress_*` 字段，socket 推送只是附加通道：多账号列表的轮询接口 `multi_get_all_accounts_status` 读的就是这些字段，缺 `socketio` 或会话 ID 时直接 return 会让状态栏永远停在旧文案。
 
 ## 登录和会话提示规则
