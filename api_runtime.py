@@ -8393,7 +8393,6 @@ class Api:
             self.log(f"账号 {username} 正在执行其它操作。")
             return {"success": False, "message": "该账号正在运行或刷新，请稍后重试"}
         self.log(f"已启动账号: {username}")
-        self._update_account_status_js(acc, status_text="排队等待...")
         self._update_multi_global_buttons()
         return {"success": True}
 

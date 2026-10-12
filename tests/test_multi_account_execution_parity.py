@@ -325,6 +325,30 @@ class TestMultiAccountExecutionParity(unittest.TestCase):
 
         self.assertTrue(result["success"])
 
+    def test_single_start_does_not_overwrite_worker_terminal_status(self):
+        api = self._new_api()
+        acc = SimpleNamespace(username="student-a", status_text="待命")
+        api.accounts = {"student-a": acc}
+        api.multi_run_stop_flag = threading.Event()
+        api._is_multi_account_execution_active = lambda _acc: False
+        api._payment_required_for_overdue_gate = lambda: False
+        api.log = lambda _message: None
+
+        def start_worker(_acc, _delay, _run_only_incomplete):
+            _acc.status_text = "无任务可执行"
+            return True
+
+        api._start_multi_account_worker = start_worker
+        api._update_account_status_js = lambda target, status_text=None, **kwargs: setattr(
+            target, "status_text", status_text
+        ) if status_text is not None else None
+        api._update_multi_global_buttons = lambda: None
+
+        result = api.multi_start_single_account("student-a")
+
+        self.assertTrue(result["success"])
+        self.assertEqual(acc.status_text, "无任务可执行")
+
 
 if __name__ == "__main__":
     unittest.main()
