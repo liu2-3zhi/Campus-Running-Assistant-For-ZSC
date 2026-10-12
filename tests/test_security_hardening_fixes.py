@@ -110,6 +110,18 @@ class TestSecurityRouteWiring(unittest.TestCase):
             route_source,
         )
 
+    def test_2fa_login_carries_and_returns_theme_background(self):
+        source = read_backend_source()
+        route_start = source.index('@app.route("/auth/2fa/verify_login"')
+        route_end = source.index(
+            '@app.route("/auth/admin/create_user"', route_start
+        )
+        route_source = source[route_start:route_end]
+
+        self.assertIn('data.get("background_preview")', route_source)
+        self.assertIn('_bind_login_bundle_for_user', route_source)
+        self.assertIn('"theme_background"', route_source)
+
     def test_generic_api_route_checks_allowlist(self):
         source = read_backend_source()
         route_start = source.index('@app.route("/api/<path:method>"')

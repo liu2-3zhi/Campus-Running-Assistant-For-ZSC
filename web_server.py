@@ -4035,6 +4035,7 @@ def start_web_server(args_param):
         challenge_token = str(
             data.get("challenge") or data.get("two_fa_challenge") or ""
         ).strip()
+        background_preview = data.get("background_preview") or {}
 
         if not auth_username:
             return _main().jsonify({"success": False, "message": "缺少用户名"}), 400
@@ -4116,6 +4117,15 @@ def start_web_server(args_param):
 
         logging.info(f"用户 {auth_username} 通过2FA验证登录成功")
 
+        login_background = None
+        if not is_guest and auth_username:
+            login_background = _main()._bind_login_bundle_for_user(
+                username=auth_username,
+                preview_bundle_id=str(background_preview.get("bundle_id") or ""),
+                source="login_2fa",
+                replace_existing=True,
+            )
+
         response_data = {
             "success": True,
             "message": "2FA验证成功",
@@ -4123,6 +4133,11 @@ def start_web_server(args_param):
             "auth_session_id": session_id,
             "is_guest": is_guest,
             "token": token,
+            "theme_background": (
+                _main()._bundle_to_public_payload(login_background)
+                if login_background
+                else None
+            ),
         }
         response = _main().jsonify(response_data)
         if token:
@@ -9002,7 +9017,10 @@ def start_web_server(args_param):
     @app.route("/api/site/bootstrap", methods=["GET"])
     def site_identity_bootstrap():
         try:
-            return _main().jsonify(_main()._build_site_bootstrap_response())
+            requested_uuid = _main().request.args.get("uuid", "")
+            return _main().jsonify(
+                _main()._build_site_bootstrap_response(requested_uuid)
+            )
         except Exception as e:
             logging.error("站点身份初始化失败: %s", e, exc_info=True)
             return _main().jsonify({"success": False, "message": "站点初始化失败"}), 500

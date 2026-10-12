@@ -11,6 +11,36 @@ export const useThemeStore = defineStore('theme', () => {
   const themeConfig = ref(null)
   const availableStyles = ref([])
   const backgroundImage = ref('')
+  const backgroundAssignment = ref(null)
+
+  function backgroundValue(url, mobile = false) {
+    if (!url) return ''
+    const alpha = mobile ? '0.12' : '0.10'
+    return `linear-gradient(rgba(255,255,255,${alpha}), rgba(255,255,255,${alpha})), url("${url}") center / cover no-repeat${mobile ? '' : ' fixed'}`
+  }
+
+  function setBackgroundAssignment(assignment, bound = false) {
+    const next = assignment && typeof assignment === 'object' ? assignment : null
+    const pc = String(next?.pc?.image_url || '').trim()
+    const mobile = String(next?.mobile?.image_url || '').trim()
+    if (!pc && !mobile) return false
+    const previous = backgroundAssignment.value || {}
+    const merged = {
+      ...previous,
+      ...next,
+      pc: { ...(previous.pc || {}), ...(next.pc || {}) },
+      mobile: { ...(previous.mobile || {}), ...(next.mobile || {}) },
+    }
+    if (!pc && previous.pc?.image_url) merged.pc.image_url = previous.pc.image_url
+    if (!mobile && previous.mobile?.image_url) merged.mobile.image_url = previous.mobile.image_url
+    backgroundAssignment.value = merged
+    backgroundImage.value = merged.pc?.image_url || merged.mobile?.image_url || ''
+    const desktop = document.getElementById('auth-login-container')
+    if (desktop && merged.pc?.image_url) desktop.style.background = backgroundValue(merged.pc.image_url)
+    const mobileContent = document.getElementById('mobile-content')
+    if (mobileContent && merged.mobile?.image_url) mobileContent.style.background = backgroundValue(merged.mobile.image_url, true)
+    return true
+  }
 
   function toggleDark() {
     isDark.value = !isDark.value
@@ -34,9 +64,10 @@ export const useThemeStore = defineStore('theme', () => {
   async function loadThemeStyles() {
     try {
       const data = await callAPI('get_theme_styles')
-      if (data?.styles) {
-        availableStyles.value = data.styles
+      if (data?.theme_styles) {
+        availableStyles.value = data.theme_styles
       }
+      setBackgroundAssignment(data?.theme_background)
     } catch (_) {}
   }
 
@@ -78,7 +109,7 @@ export const useThemeStore = defineStore('theme', () => {
   }
 
   function setBackgroundImage(url) {
-    backgroundImage.value = url
+    if (url) backgroundImage.value = url
   }
 
   function initFromStorage() {
@@ -94,8 +125,8 @@ export const useThemeStore = defineStore('theme', () => {
   }
 
   return {
-    isDark, currentStyle, themeConfig, availableStyles, backgroundImage,
+    isDark, currentStyle, themeConfig, availableStyles, backgroundImage, backgroundAssignment,
     toggleDark, setDark, applyDarkMode,
-    loadThemeStyles, setStyle, setBackgroundImage, initFromStorage,
+    loadThemeStyles, setStyle, setBackgroundImage, setBackgroundAssignment, initFromStorage,
   }
 })

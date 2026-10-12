@@ -4619,11 +4619,17 @@ def _bind_login_bundle_for_user(
     source,
     replace_existing,
 ):
+    identity_key = _identity_key_for_username(username)
+    existing = background_state_store.get_identity_bundle(identity_key)
     bundle = (
         background_state_store.get_bundle(preview_bundle_id)
         if preview_bundle_id
         else None
     )
+    # A login without a preview is not a request to rotate the user's image.
+    # Reuse the persisted identity bundle before consulting the random cache.
+    if not bundle and existing:
+        return existing
     if not bundle:
         bundle = background_state_store.create_bundle(
             pc_url=_pick_available_background_image("pc"),
@@ -4631,8 +4637,6 @@ def _bind_login_bundle_for_user(
             source=source,
             consume=True,
         )
-    identity_key = _identity_key_for_username(username)
-    existing = background_state_store.get_identity_bundle(identity_key)
     if existing and existing.get("bundle_id") == bundle.get("bundle_id"):
         return existing
     if existing and not replace_existing:
@@ -4653,11 +4657,14 @@ def _bind_guest_bundle_for_session(
     source,
     replace_existing,
 ):
+    existing = background_state_store.get_guest_session_bundle(session_id)
     bundle = (
         background_state_store.get_bundle(preview_bundle_id)
         if preview_bundle_id
         else None
     )
+    if not bundle and existing:
+        return existing
     if not bundle:
         bundle = background_state_store.create_bundle(
             pc_url=_pick_available_background_image("pc"),
@@ -4665,7 +4672,6 @@ def _bind_guest_bundle_for_session(
             source=source,
             consume=True,
         )
-    existing = background_state_store.get_guest_session_bundle(session_id)
     if existing and existing.get("bundle_id") == bundle.get("bundle_id"):
         return existing
     if existing and not replace_existing:
@@ -4804,14 +4810,36 @@ def _list_selectable_sessions_for_identity(identity):
     return sessions
 
 
-def _build_site_bootstrap_response():
+def _build_site_bootstrap_response(session_id=""):
     identity = _resolve_request_identity()
     sessions = _list_selectable_sessions_for_identity(identity)
     bundle = _resolve_identity_background_for_request_identity(identity)
+    bundle_source = (
+        "identity_binding"
+        if identity.get("principal_type") == "user"
+        else "guest_binding"
+    )
+    # A stale auth cookie must not hide a still-valid UUID's persisted
+    # background binding. Reading this state is intentionally read-only.
+    requested_session_id = normalize_session_uuid(session_id)
+    if not bundle and requested_session_id:
+        state = load_session_state(requested_session_id)
+        if isinstance(state, dict):
+            username = str(state.get("auth_username") or "")
+            is_guest = bool(state.get("is_guest") or username == "guest")
+            bundle = (
+                background_state_store.get_guest_session_bundle(requested_session_id)
+                if is_guest
+                else background_state_store.get_identity_bundle(
+                    _identity_key_for_username(username)
+                )
+            )
+            if bundle:
+                bundle_source = "guest_binding" if is_guest else "identity_binding"
     theme_background = (
         {
             **_bundle_to_public_payload(bundle),
-            "source": "identity_binding" if identity.get("principal_type") == "user" else "guest_binding",
+            "source": bundle_source,
         }
         if bundle
         else _create_preview_bundle_payload()

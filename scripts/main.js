@@ -3782,7 +3782,7 @@ function safeResizeAndFitView() {
 
 
 function applyThemeGlobalEnvironmentVariables(themeConfig, options = {}) {
-  const config = themeConfig && typeof themeConfig === "object" ? themeConfig : {};
+  const config = mergeThemeBackgroundConfig(currentThemeConfig, themeConfig);
   const env =
     config.global_environment_variables &&
     typeof config.global_environment_variables === "object"
@@ -3810,6 +3810,24 @@ function applyThemeGlobalEnvironmentVariables(themeConfig, options = {}) {
   scheduleThemeBackgroundConsumed();
 }
 
+function mergeThemeBackgroundConfig(previousConfig, nextConfig) {
+  const previous = previousConfig && typeof previousConfig === "object" ? previousConfig : {};
+  const next = nextConfig && typeof nextConfig === "object" ? nextConfig : {};
+  const previousEnv = previous.global_environment_variables && typeof previous.global_environment_variables === "object"
+    ? previous.global_environment_variables
+    : {};
+  const nextEnv = next.global_environment_variables && typeof next.global_environment_variables === "object"
+    ? next.global_environment_variables
+    : {};
+  const mergedEnv = { ...nextEnv };
+  ["auth_login_container_background", "mobile_auth_login_content_background"].forEach((key) => {
+    if (!String(mergedEnv[key] || "").trim() && String(previousEnv[key] || "").trim()) {
+      mergedEnv[key] = previousEnv[key];
+    }
+  });
+  return { ...previous, ...next, global_environment_variables: mergedEnv };
+}
+
 let currentThemeBackgroundTarget = null;
 let currentThemeBackgroundImageUrl = "";
 let themeBackgroundLoginSyncInFlight = false;
@@ -3833,6 +3851,33 @@ if (typeof window !== "undefined") {
     themeBackgroundInitialLoadSettled = true;
     scheduleThemeBackgroundConsumed();
   });
+}
+
+function applyThemeBackgroundAssignment(assignment, options = {}) {
+  if (!assignment || typeof assignment !== "object") return false;
+  const pcUrl = String(assignment.pc?.image_url || "").trim();
+  const mobileUrl = String(assignment.mobile?.image_url || "").trim();
+  if (!pcUrl && !mobileUrl) return false;
+  currentThemeBackgroundAssignment = assignment;
+  const env = {
+    ...(currentThemeConfig?.global_environment_variables || {}),
+  };
+  if (pcUrl) {
+    env.auth_login_container_background = `linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10)), url("${pcUrl}") center / cover no-repeat fixed`;
+  }
+  if (mobileUrl) {
+    env.mobile_auth_login_content_background = `linear-gradient(rgba(255,255,255,0.12), rgba(255,255,255,0.12)), url("${mobileUrl}") center / cover no-repeat`;
+  }
+  currentThemeConfig = { ...(currentThemeConfig || {}), global_environment_variables: env };
+  if (options.bound === true) {
+    if (pcUrl) sessionBindEnsured.pc = true;
+    if (mobileUrl) sessionBindEnsured.mobile = true;
+    initialConsumeCompleted = true;
+    preLoginBackgroundSnapshot.pc = "";
+    preLoginBackgroundSnapshot.mobile = "";
+  }
+  applyThemeLoginContainerStyle(currentThemeConfig, { skipVisualRewrite: true });
+  return true;
 }
 
 function getCurrentThemeBackgroundTarget() {
@@ -4279,10 +4324,6 @@ function setupPcThemeBackgroundContextMenu() {
 setupPcThemeBackgroundContextMenu();
 
 function shouldSkipThemeBackgroundVisualRewrite(target, nextBackgroundValue, options = {}) {
-  if (options.skipVisualRewrite !== true) {
-    return false;
-  }
-
   const normalizedTarget = target === "mobile" ? "mobile" : "pc";
   const renderedImageUrl = getRenderedThemeBackgroundImageUrlByTarget(normalizedTarget);
   const incomingImageUrl = extractThemeBackgroundImageUrl(nextBackgroundValue || "");
@@ -4291,17 +4332,7 @@ function shouldSkipThemeBackgroundVisualRewrite(target, nextBackgroundValue, opt
 }
 
 function shouldSkipThemeBackgroundConsumeDuringLogin(target, imageUrl) {
-  if (!themeBackgroundLoginSyncInFlight || !sessionUUID) {
-    return false;
-  }
-
-  const normalizedTarget = target === "mobile" ? "mobile" : "pc";
-  if (sessionBindEnsured[normalizedTarget]) {
-    return true;
-  }
-
-  const renderedImageUrl = getRenderedThemeBackgroundImageUrlByTarget(normalizedTarget);
-  return !!(renderedImageUrl && imageUrl && renderedImageUrl === imageUrl);
+  return themeBackgroundLoginSyncInFlight || authLoginInProgress;
 }
 
 function applyThemeLoginContainerStyle(themeConfig, options = {}) {
@@ -4327,7 +4358,7 @@ function applyThemeLoginContainerStyle(themeConfig, options = {}) {
   const panelBorder = env.auth_login_panel_border || "";
 
   if (desktopContainer) {
-    if (!shouldSkipThemeBackgroundVisualRewrite("pc", desktopBackground, options)) {
+    if (desktopBackground && !shouldSkipThemeBackgroundVisualRewrite("pc", desktopBackground, options)) {
       desktopContainer.style.background = desktopBackground;
     }
   }
@@ -4338,7 +4369,7 @@ function applyThemeLoginContainerStyle(themeConfig, options = {}) {
     desktopPanel.style.borderColor = panelBorder;
   }
 
-  if (mobileContent) {
+  if (mobileContent && mobileContentBackground && !shouldSkipThemeBackgroundVisualRewrite("mobile", mobileContentBackground, options)) {
     mobileContent.style.background = mobileContentBackground;
     mobileContent.style.backgroundSize = mobileContentBackground ? "cover" : "";
     mobileContent.style.backgroundPosition = mobileContentBackground ? "center" : "";
@@ -4659,14 +4690,18 @@ async function ensureThemeStylesLoaded(force = false, options = {}) {
 
     if (result && result.success && Array.isArray(result.theme_styles)) {
       availableThemeStyles = result.theme_styles;
-      if (result.theme_background && typeof result.theme_background === "object") {
-        currentThemeBackgroundAssignment = result.theme_background;
-      }
       if (result.theme_config && typeof result.theme_config === "object") {
-        currentThemeConfig = result.theme_config;
+        currentThemeConfig = typeof mergeThemeBackgroundConfig === "function"
+          ? mergeThemeBackgroundConfig(currentThemeConfig, result.theme_config)
+          : result.theme_config;
         if (applyThemeConfig) {
           applyThemeGlobalEnvironmentVariables(currentThemeConfig);
         }
+      }
+      if (typeof applyThemeBackgroundAssignment === "function") {
+        applyThemeBackgroundAssignment(result.theme_background, {
+          bound: result.theme_background?.source !== "anonymous_preview",
+        });
       }
       return availableThemeStyles;
     }
@@ -4735,7 +4770,8 @@ async function saveThemePreference(theme) {
   }
 }
 
-async function syncThemeFromServer(themeFromResponse = null, themeStyleFromResponse = null) {
+async function syncThemeFromServer(themeFromResponse = null, themeStyleFromResponse = null, backgroundAssignment = null) {
+  applyThemeBackgroundAssignment(backgroundAssignment, { bound: true });
   themeBackgroundAuthStateResolved = true;
   themeBackgroundAuthenticatedSession = !!sessionUUID;
   const responseTheme =
@@ -4751,7 +4787,8 @@ async function syncThemeFromServer(themeFromResponse = null, themeStyleFromRespo
     const fallbackTheme = responseTheme || getCachedThemePreference();
     const fallbackThemeStyle = responseThemeStyle || getCachedThemeStyle();
     applyTheme(fallbackTheme);
-    setThemeStyle(fallbackThemeStyle, false);
+    setThemeStyle(fallbackThemeStyle, false, !themeBackgroundLoginSyncInFlight);
+    applyThemeGlobalEnvironmentVariables(currentThemeConfig);
     return { theme: fallbackTheme, theme_style: fallbackThemeStyle };
   }
 
@@ -4791,7 +4828,7 @@ async function syncThemeFromServer(themeFromResponse = null, themeStyleFromRespo
   const finalThemeStyle = serverThemeStyle || getCachedThemeStyle();
 
   applyTheme(finalTheme);
-  if (responseThemeStyle) {
+  if (responseThemeStyle || themeBackgroundLoginSyncInFlight) {
     setThemeStyle(finalThemeStyle, false, false);
   } else {
     setThemeStyle(finalThemeStyle, false);
@@ -6295,6 +6332,7 @@ async function handleAuthLogin(isMobile_use = false) {
     return;
   }
   authLoginInProgress = true;
+  themeBackgroundLoginSyncInFlight = true;
   authRequestGeneration += 1;
   const authRequestSessionUUID = getAuthRequestSessionUUID();
   setButtonLoading("auth-login-btn", true, "登录中...");
@@ -6361,7 +6399,7 @@ async function handleAuthLogin(isMobile_use = false) {
       authRequestGeneration += 1;
 
       themeBackgroundLoginSyncInFlight = true;
-      await syncThemeFromServer(result.theme, result.theme_style);
+      await syncThemeFromServer(result.theme, result.theme_style, result.theme_background);
 
       let successMessage = "登录成功！";
 
@@ -6783,6 +6821,7 @@ async function handle2FAVerify() {
   }
 
   authLoginInProgress = true;
+  themeBackgroundLoginSyncInFlight = true;
   authRequestGeneration += 1;
   setButtonLoading("auth-2fa-verify-btn", true, "验证中...");
 
@@ -6798,6 +6837,7 @@ async function handle2FAVerify() {
         auth_username: window.temp2FAUsername,
         challenge: window.temp2FAChallenge,
         code: code,
+        background_preview: getBackgroundPreviewPayload(),
       }),
     });
 
@@ -6828,6 +6868,7 @@ async function handle2FAVerify() {
       }
       authRequestGeneration += 1;
 
+      await syncThemeFromServer(result.theme, result.theme_style, result.theme_background);
       showButtonSuccess("auth-2fa-verify-btn", "验证成功", 800);
       showAuthSuccess("2FA验证成功！");
       $("mobile-auth-login-container").classList.add("hidden");
@@ -6880,6 +6921,7 @@ async function handle2FAVerify() {
       text: "网络错误，请检查连接后重试",
     });
   } finally {
+    themeBackgroundLoginSyncInFlight = false;
     authLoginInProgress = false;
   }
 }
@@ -7205,13 +7247,17 @@ function buildQuickLoginSessionViewModel(payload) {
 
 async function loadSiteIdentityBootstrap() {
   try {
-    const response = await fetch("/api/site/bootstrap", {
+    const bootstrapUuid = resolveThemeRequestSessionUUID();
+    const endpoint = bootstrapUuid
+      ? `/api/site/bootstrap?uuid=${encodeURIComponent(bootstrapUuid)}`
+      : "/api/site/bootstrap";
+    const response = await fetch(endpoint, {
       credentials: "include",
       headers: { "Content-Type": "application/json" },
     });
     const result = await response.json();
     if (!response.ok || !result.success) return result;
-    currentThemeBackgroundAssignment = result.theme_background || null;
+    applyThemeBackgroundAssignment(result.theme_background, { bound: result.theme_background?.source !== "anonymous_preview" });
     if (result.identity?.quick_login_available) {
       const confirmation = await Swal.fire({
         icon: "question",

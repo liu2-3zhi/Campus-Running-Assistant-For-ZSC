@@ -6,7 +6,10 @@ import TabPanel from '@/components/common/TabPanel.vue'
 import Swal from 'sweetalert2'
 
 const emit = defineEmits(['login-success'])
-const props = defineProps({ frontendConfig: { type: Object, default: () => ({}) } })
+const props = defineProps({
+  frontendConfig: { type: Object, default: () => ({}) },
+  backgroundPreview: { type: Object, default: null },
+})
 const auth = useAuthStore()
 
 // --- State ---
@@ -266,7 +269,6 @@ const anonSessionId = crypto.randomUUID()
 // Guest login config
 const guestLoginEnabled = ref(false)
 const guestCapacityAvailable = ref(true)
-const backgroundPreview = ref(window.currentThemeBackgroundAssignment || null)
 
 // Available runs hint for registration
 const availableRunsText = ref('')
@@ -636,6 +638,7 @@ async function handleLogin() {
         payload.auth_password = loginForm.password
       }
     }
+    payload.background_preview = props.backgroundPreview
 
     const sessionId = auth.getAuthenticatedSessionHeaderValue()
     const headers = { 'Content-Type': 'application/json' }
@@ -705,7 +708,7 @@ async function handleGuestLogin() {
       },
       credentials: 'include',
       body: JSON.stringify({
-        background_preview: backgroundPreview.value,
+        background_preview: props.backgroundPreview,
       }),
     })
     const data = await response.json()
@@ -827,6 +830,7 @@ async function handle2FAVerify() {
         auth_username: twoFAUsername.value || pending2FAData.value?.auth_username || '',
         challenge: pending2FAData.value?.two_fa_challenge || '',
         code: twoFACode.value,
+        background_preview: props.backgroundPreview,
       }),
     })
     const data = await res.json()
