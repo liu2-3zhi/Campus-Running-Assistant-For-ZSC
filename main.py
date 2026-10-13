@@ -3346,6 +3346,34 @@ def _is_safe_auth_username(value):
     return bool(USERNAME_PATTERN and USERNAME_PATTERN.fullmatch(normalized))
 
 
+# 学校账号（学号）格式：纯 ASCII 数字，至少 4 位。
+# 导入、手动添加、管理端写入、配置保存都必须经过这个校验，避免把名单里的
+# “序号/姓名”列当成学号和密码写进 school_accounts（真实事故：1.ini..21.ini、
+# 序号.ini 与两条 password=姓名 的 JSON 记录）。
+SCHOOL_USERNAME_MIN_DIGITS = 4
+SCHOOL_USERNAME_PATTERN = re.compile(r"^[0-9]{%d,}$" % SCHOOL_USERNAME_MIN_DIGITS)
+
+
+def is_valid_school_username(value):
+    """学号必须是纯数字且至少 4 位。"""
+    normalized = str(value or "").strip()
+    return bool(normalized) and bool(
+        SCHOOL_USERNAME_PATTERN.fullmatch(normalized)
+    )
+
+
+# 密码不能包含中文：学校密码只可能是数字/字母/符号；真实事故里名单的
+# “姓名”列被当成密码写进了配置（password=朱燕姿 之类）。
+SCHOOL_PASSWORD_CJK_PATTERN = re.compile(
+    r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]"
+)
+
+
+def is_valid_school_password(value):
+    """密码不得包含中文字符（空密码允许，走缺密码补全流程）。"""
+    return not bool(SCHOOL_PASSWORD_CJK_PATTERN.search(str(value or "")))
+
+
 def _auth_username_storage_key(username):
     normalized = str(username or "").strip()
     if _is_safe_auth_username(normalized):

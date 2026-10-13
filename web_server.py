@@ -5495,6 +5495,26 @@ def start_web_server(args_param):
                     ),
                     400,
                 )
+            if not _main().is_valid_school_username(school_username):
+                return (
+                    _main().jsonify(
+                        {
+                            "success": False,
+                            "message": "学号必须是至少4位数字（纯数字）",
+                        }
+                    ),
+                    400,
+                )
+            if not _main().is_valid_school_password(password):
+                return (
+                    _main().jsonify(
+                        {
+                            "success": False,
+                            "message": "密码不能包含中文",
+                        }
+                    ),
+                    400,
+                )
             # 如果前端未提供UA（为空），则自动生成一个随机UA
             if (not ua) or (ua.strip() == "") or (ua.lower() == "null") or (ua.lower() == "undefined"):
                 ua = _main().ApiClient.generate_random_ua()
@@ -5793,6 +5813,26 @@ def start_web_server(args_param):
                         {
                             "success": False,
                             "message": "缺少必填字段：auth_username, school_username, password",
+                        }
+                    ),
+                    400,
+                )
+            if not _main().is_valid_school_username(school_username):
+                return (
+                    _main().jsonify(
+                        {
+                            "success": False,
+                            "message": "学号必须是至少4位数字（纯数字）",
+                        }
+                    ),
+                    400,
+                )
+            if not _main().is_valid_school_password(password):
+                return (
+                    _main().jsonify(
+                        {
+                            "success": False,
+                            "message": "密码不能包含中文",
                         }
                     ),
                     400,

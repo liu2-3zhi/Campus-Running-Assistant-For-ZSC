@@ -71,14 +71,14 @@ class _ImportTestBase(unittest.TestCase):
 
 class TestImportSummary(_ImportTestBase):
     def test_mixed_file_counts_each_bucket(self):
-        api = self._make_api(existing=("existing1",))
+        api = self._make_api(existing=("10001",))
         result = api.multi_import_accounts(
             "t.csv",
             self._csv_b64(
                 [
-                    "newA,pwA,tagA",   # 新增
-                    "existing1,pw1,",  # 已存在
-                    "missA,",          # 缺密码
+                    "10002,pwA,tagA",  # 新增
+                    "10001,pw1,",      # 已存在
+                    "10003,",          # 缺密码
                 ]
             ),
         )
@@ -91,11 +91,11 @@ class TestImportSummary(_ImportTestBase):
 
     def test_already_exists_is_not_counted_as_imported(self):
         """核心回归：已存在的账号旧代码会被算作"成功导入"。"""
-        api = self._make_api(existing=("e1", "e2", "e3"))
+        api = self._make_api(existing=("20001", "20002", "20003"))
         result = api.multi_import_accounts(
             "t.csv",
             self._csv_b64(
-                ["e1,pw", "e2,pw", "e3,pw"],
+                ["20001,pw", "20002,pw", "20003,pw"],
             ),
         )
 
@@ -106,7 +106,7 @@ class TestImportSummary(_ImportTestBase):
         api = self._make_api()
         result = api.multi_import_accounts(
             "t.csv",
-            self._csv_b64(["dup,pw", "dup,pw", "dup,pw"]),
+            self._csv_b64(["30001,pw", "30001,pw", "30001,pw"]),
         )
 
         self.assertEqual(result["imported_count"], 1)
@@ -116,7 +116,9 @@ class TestImportSummary(_ImportTestBase):
     def test_frontend_fields_present(self):
         """缺了这些字段前端就永远显示 0。"""
         api = self._make_api()
-        result = api.multi_import_accounts("t.csv", self._csv_b64(["a,pw"]))
+        result = api.multi_import_accounts(
+            "t.csv", self._csv_b64(["40001,pw"])
+        )
 
         for key in (
             "success",
@@ -131,7 +133,9 @@ class TestImportSummary(_ImportTestBase):
 
     def test_unsupported_format_rejected(self):
         api = self._make_api()
-        result = api.multi_import_accounts("t.txt", self._csv_b64(["a,pw"]))
+        result = api.multi_import_accounts(
+            "t.txt", self._csv_b64(["40001,pw"])
+        )
 
         self.assertFalse(result["success"])
         self.assertIn("不支持的导入格式", result["message"])
@@ -142,7 +146,7 @@ class TestMissingPasswordListIsNotTruncated(_ImportTestBase):
 
     def test_thirty_missing_accounts_all_returned(self):
         api = self._make_api()
-        rows = [f"miss{i:03d}," for i in range(30)]
+        rows = [f"50{i:03d}," for i in range(30)]
 
         result = api.multi_import_accounts("t.csv", self._csv_b64(rows))
 
@@ -154,14 +158,14 @@ class TestMissingPasswordListIsNotTruncated(_ImportTestBase):
         )
         self.assertEqual(
             [item["username"] for item in result["accounts_missing_password"]],
-            [f"miss{i:03d}" for i in range(30)],
+            [f"50{i:03d}" for i in range(30)],
             "清单顺序或内容不完整",
         )
 
     def test_two_hundred_missing_accounts_all_returned(self):
         """旧代码 [:20] 截断的边界之外也要完整返回。"""
         api = self._make_api()
-        rows = [f"bulk{i:03d}," for i in range(200)]
+        rows = [f"60{i:03d}," for i in range(200)]
 
         result = api.multi_import_accounts("t.csv", self._csv_b64(rows))
 
@@ -171,13 +175,13 @@ class TestMissingPasswordListIsNotTruncated(_ImportTestBase):
     def test_missing_entries_carry_username_and_tag(self):
         api = self._make_api()
         result = api.multi_import_accounts(
-            "t.csv", self._csv_b64(["missA,,A组", "missB,,"])
+            "t.csv", self._csv_b64(["70001,,A组", "70002,,"])
         )
 
         by_name = {i["username"]: i for i in result["accounts_missing_password"]}
         self.assertEqual(len(by_name), 2)
-        self.assertEqual(by_name["missA"]["tag"], "A组")
-        self.assertIsNone(by_name["missB"]["tag"])
+        self.assertEqual(by_name["70001"]["tag"], "A组")
+        self.assertIsNone(by_name["70002"]["tag"])
 
 
 class TestNoBackendAlert(_ImportTestBase):
@@ -188,7 +192,7 @@ class TestNoBackendAlert(_ImportTestBase):
         api.window = mock.Mock()
 
         api.multi_import_accounts(
-            "t.csv", self._csv_b64(["a,pw", "missA,"])
+            "t.csv", self._csv_b64(["90001,pw", "90002,"])
         )
 
         api.window.evaluate_js.assert_not_called()
@@ -218,11 +222,13 @@ class TestImportRunsAlongsideRunningAccount(_ImportTestBase):
             }
         )
 
-        result = api.multi_import_accounts("t.csv", self._csv_b64(["busy,pw"]))
+        result = api.multi_import_accounts(
+            "t.csv", self._csv_b64(["80001,pw"])
+        )
 
         self.assertEqual(result["imported_count"], 0)
         self.assertEqual(result["skipped_running_count"], 1)
-        self.assertEqual(result["skipped_running"], ["busy"])
+        self.assertEqual(result["skipped_running"], ["80001"])
         self.assertIn("执行中跳过", result["message"])
 
 

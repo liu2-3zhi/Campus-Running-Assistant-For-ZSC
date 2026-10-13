@@ -114,14 +114,14 @@ class TestMultiAccountGenderPayload(unittest.TestCase):
             }
 
             backup_path = api._persist_school_account_backup(
-                "student-a",
+                "2024050101059",
                 {"name": "Alice"},
                 {"sexValue": "女"},
                 source="test",
             )
 
             self.assertEqual(
-                str(Path(temp_dir) / "student-a_backup.json"),
+                str(Path(temp_dir) / "2024050101059_backup.json"),
                 backup_path,
             )
             backup_data = json.loads(

@@ -18502,6 +18502,16 @@ function showImportResultModal(result, fileName) {
     "text-amber-700",
   );
   pushSection("【文件内重复行】", result.duplicate_in_file, "text-slate-500");
+  pushSection(
+    "【学号格式不对，已跳过】",
+    result.invalid_username,
+    "text-red-700",
+  );
+  pushSection(
+    "【密码包含中文，已跳过】",
+    result.invalid_password,
+    "text-red-700",
+  );
   pushSection("【失败】", result.failed_names, "text-red-700");
 
   const subtitleEl = $("import-result-subtitle");

@@ -88,6 +88,191 @@ def _detour_dedupe_points(points):
     return deduped
 
 
+# ===================== 多账号导入：表头识别与列推断 =====================
+# 导入文件既可能是系统模板（标题行 + 序号/账号/密码/标记），也可能是用户自己
+# 导出的表格（账号/密码/标记），甚至完全没有表头。列位置不固定，因此：
+#   1. 先在第 1~N 行里找表头，按表头名称定位账号/密码/标记列（序号列忽略）；
+#   2. 找不到表头就按数据内容推断“学号列”（最左且大多为 ≥4 位纯数字的列）；
+#   3. 推断不出才退化为“第 1 列账号、第 2 列密码、第 3 列标记”。
+# 绝不允许再出现把“序号/姓名”当成“账号/密码”的导入（真实事故：
+# 1.ini..21.ini、序号.ini 与 password=姓名 的 JSON 记录）。
+_IMPORT_ACCOUNT_HEADER_ALIASES = (
+    "账号",
+    "帐号",
+    "用户名",
+    "用户",
+    "学号",
+    "学生学号",
+    "username",
+    "user",
+    "account",
+    "studentid",
+    "studentnum",
+    "student_id",
+    "student_num",
+)
+_IMPORT_PASSWORD_HEADER_ALIASES = (
+    "密码",
+    "初始密码",
+    "登录密码",
+    "password",
+    "passwd",
+    "pwd",
+    "pass",
+)
+_IMPORT_TAG_HEADER_ALIASES = (
+    "标记",
+    "标签",
+    "备注",
+    "tag",
+    "label",
+    "note",
+)
+_IMPORT_HEADER_SCAN_ROWS = 10
+_IMPORT_COLUMN_SAMPLE_ROWS = 30
+_IMPORT_ACCOUNT_COLUMN_MIN_SCORE = 0.6
+_IMPORT_ACCOUNT_COLUMN_MIN_UNIQUE_RATIO = 0.5
+_IMPORT_TEMPLATE_FREE_ROWS = 100
+# 下载模板优先直接返回仓库里的真实模板文件；该文件缺失时才按同版式生成。
+_IMPORT_TEMPLATE_RELATIVE_PATH = os.path.join(
+    "tests", "fixtures", "school_accounts_template.xlsx"
+)
+
+
+def _normalize_import_cell(value):
+    # Excel 里以数字形式存储的学号可能被读成浮点（如 2024050101059.0），
+    # 必须先还原成整数字符串，否则会被误判成非法学号。
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value if value is not None else "").strip()
+
+
+def _import_header_cell_key(cell):
+    return (
+        _normalize_import_cell(cell)
+        .lower()
+        .replace(" ", "")
+        .replace("\u3000", "")
+    )
+
+
+def _import_header_matches(cell, aliases):
+    normalized = _import_header_cell_key(cell)
+    if not normalized:
+        return False
+    return any(normalized == alias or alias in normalized for alias in aliases)
+
+
+def _detect_import_header(rows):
+    """找表头行，返回 (数据起始下标, 账号列, 密码列, 标记列)；无表头返回 None。
+
+    采用“匹配度打分”而不是“第一行命中就算表头”：模板第 1 行往往只是
+    标题（如“莲峰账号导入表”本身就含“账号”二字），按行取最高分可以让
+    真正的 `序号/账号/密码/标记` 表头胜出，标题行不会被当成表头。
+    """
+
+    def _score_header_row(row):
+        score = 0
+        account_col = None
+        password_col = None
+        tag_col = None
+        for col, cell in enumerate(row):
+            normalized = _import_header_cell_key(cell)
+            if not normalized:
+                continue
+            if account_col is None and normalized in _IMPORT_ACCOUNT_HEADER_ALIASES:
+                account_col = col
+                score += 3
+                continue
+            if (
+                password_col is None
+                and normalized in _IMPORT_PASSWORD_HEADER_ALIASES
+            ):
+                password_col = col
+                score += 2
+                continue
+            if tag_col is None and normalized in _IMPORT_TAG_HEADER_ALIASES:
+                tag_col = col
+                score += 2
+                continue
+            if account_col is None and _import_header_matches(
+                cell, _IMPORT_ACCOUNT_HEADER_ALIASES
+            ):
+                account_col = col
+                score += 1
+                continue
+            if password_col is None and _import_header_matches(
+                cell, _IMPORT_PASSWORD_HEADER_ALIASES
+            ):
+                password_col = col
+                score += 1
+                continue
+            if tag_col is None and _import_header_matches(
+                cell, _IMPORT_TAG_HEADER_ALIASES
+            ):
+                tag_col = col
+                score += 1
+        return score, account_col, password_col, tag_col
+
+    best = None
+    for row_index, row in enumerate(rows[:_IMPORT_HEADER_SCAN_ROWS]):
+        if not row:
+            continue
+        score, account_col, password_col, tag_col = _score_header_row(row)
+        # 至少要命中两种表头信息（或一个精确账号表头），且必须定位到账号列。
+        if account_col is None or score < 2:
+            continue
+        if best is None or score > best[0]:
+            best = (score, row_index, account_col, password_col, tag_col)
+
+    if best is None:
+        return None
+
+    _, row_index, account_col, password_col, tag_col = best
+    row = rows[row_index]
+    if password_col is None and account_col + 1 < len(row):
+        password_col = account_col + 1
+    if (
+        tag_col is None
+        and password_col is not None
+        and password_col + 1 < len(row)
+    ):
+        tag_col = password_col + 1
+    return row_index + 1, account_col, password_col, tag_col
+
+
+def _infer_import_columns(rows):
+    """无表头时推断列位置：账号列取最左、且大多数值为 ≥4 位纯数字的列。"""
+    sample = [row for row in rows[:_IMPORT_COLUMN_SAMPLE_ROWS] if row]
+    if not sample:
+        return 0, 1, 2
+
+    width = max(len(row) for row in sample)
+    for col_index in range(width):
+        values = [
+            _normalize_import_cell(row[col_index])
+            for row in sample
+            if col_index < len(row) and _normalize_import_cell(row[col_index])
+        ]
+        if not values:
+            continue
+        matches = sum(
+            1 for value in values if _main().is_valid_school_username(value)
+        )
+        if not matches:
+            continue
+        score = matches / len(values)
+        # 全部取值都是合法学号时允许重复（例如文件内重复行），否则要求
+        # 账号列大体唯一，避免把重复出现的班级编号列误判成学号列。
+        unique_ratio = len(set(values)) / len(values)
+        if score >= _IMPORT_ACCOUNT_COLUMN_MIN_SCORE and (
+            matches == len(values)
+            or unique_ratio >= _IMPORT_ACCOUNT_COLUMN_MIN_UNIQUE_RATIO
+        ):
+            return col_index, col_index + 1, col_index + 2
+    return 0, 1, 2
+
+
 class Api:
     """此类的方法会暴露给WebView前端的JavaScript调用"""
 
@@ -669,6 +854,14 @@ class Api:
         """
         将学校账号的统计数据保存到 INI 文件（合并模式）。
         """
+        if not _main().is_valid_school_username(school_username):
+            logging.warning(
+                "[统计数据] 拒绝为非法学号写入统计 INI: %r"
+                "（学号必须是至少4位纯数字）",
+                school_username,
+            )
+            return False
+
         # 获取该学校账号对应的 INI 文件路径 (使用 self.user_dir，即 school_accounts)
         ini_file = os.path.join(self.user_dir, f"{school_username}.ini")
 
@@ -731,6 +924,14 @@ class Api:
         返回:
             bool: 保存成功返回 True，失败返回 False
         """
+        if not _main().is_valid_school_username(school_username):
+            logging.warning(
+                "[密码备份] 拒绝为非法学号写入 INI: %r"
+                "（学号必须是至少4位纯数字）",
+                school_username,
+            )
+            return False
+
         # 获取该学校账号对应的 INI 文件路径
         ini_file = os.path.join(self.user_dir, f"{school_username}.ini")
 
@@ -811,6 +1012,27 @@ class Api:
             logging.debug(f"用户 {auth_username} 的 JSON 文件不存在，初始化为空字典")
             data = {}
 
+        if not isinstance(data, dict):
+            logging.warning(
+                "用户 %s 的 school_accounts 不是字典格式，已忽略", auth_username
+            )
+            data = {}
+        invalid_keys = [
+            key
+            for key in list(data)
+            if not _main().is_valid_school_username(key)
+        ]
+        for key in invalid_keys:
+            data.pop(key, None)
+        if invalid_keys:
+            logging.warning(
+                "用户 %s 的 school_accounts 已忽略 %d 个非法学号"
+                "（学号必须是至少4位纯数字）: %s",
+                auth_username,
+                len(invalid_keys),
+                invalid_keys[:20],
+            )
+
         try:
 
             # 步骤2：处理并标准化每个账号的数据格式
@@ -879,6 +1101,10 @@ class Api:
 
                             # 合并 other 中的账号
                             for school_username, account_info in (other or {}).items():
+                                if not _main().is_valid_school_username(
+                                    school_username
+                                ):
+                                    continue
                                 # 标准化为字典格式以便检查 password
                                 if isinstance(account_info, dict):
                                     pwd = account_info.get('password', '')
@@ -920,6 +1146,11 @@ class Api:
 
                             # 从文件名提取学校账号用户名（去掉 .ini 后缀）
                             school_username = fname[:-4]
+
+                            if not _main().is_valid_school_username(
+                                school_username
+                            ):
+                                continue
 
                             # 如果已存在于 aggregated 中，跳过以避免覆盖
                             if school_username in aggregated:
@@ -1015,9 +1246,15 @@ class Api:
             # 步骤1：创建一个新的字典用于保存到 JSON
             # 这个字典只包含密码和 UA 信息，不包含统计数据
             json_data = {}
+            invalid_usernames = []
 
             # 步骤2：遍历所有账号，分离统计数据和账号信息
             for school_username, account_info in accounts_dict.items():
+                # 非法学号（如名单里的“序号/1..21”）不写回 JSON/INI，
+                # 直接丢弃，防止坏数据在每次保存时被续命。
+                if not _main().is_valid_school_username(school_username):
+                    invalid_usernames.append(school_username)
+                    continue
                 # 如果账号信息是字典格式（新格式）
                 if isinstance(account_info, dict):
                     # 提取统计数据（如果存在）
@@ -1042,6 +1279,14 @@ class Api:
                     # 如果是旧格式（字符串密码），直接保存
                     # 旧格式不包含统计数据，所以不需要特殊处理
                     json_data[school_username] = account_info
+
+            if invalid_usernames:
+                logging.warning(
+                    "[账号保存] 用户 %s 的账号列表中有 %d 个非法学号已丢弃: %s",
+                    auth_username,
+                    len(invalid_usernames),
+                    invalid_usernames[:20],
+                )
 
             # 步骤3：将处理后的数据（只包含密码和 UA）保存到 JSON 文件
             with open(file_path, "w", encoding="utf-8") as f:
@@ -1217,6 +1462,8 @@ class Api:
 
                         # 标准化格式：兼容旧版 INI 和新版 JSON
                         for sch_user, account_info in data.items():
+                            if not _main().is_valid_school_username(sch_user):
+                                continue
                             if isinstance(account_info, dict):
                                 # 新格式：直接使用
                                 accounts[sch_user] = account_info
@@ -1578,6 +1825,14 @@ class Api:
         logging.debug(
             f"Saving config: username={username!r}, password provided: {password is not None}, ua provided: {ua is not None}"
         )
+
+        if not _main().is_valid_school_username(username):
+            logging.warning(
+                "[配置] 拒绝保存非法学号的 INI 配置: %r"
+                "（学号必须是至少4位纯数字）",
+                username,
+            )
+            return False
 
         user_ini_path = os.path.join(self.user_dir, f"{username}.ini")
 
@@ -2746,6 +3001,13 @@ class Api:
         username = str(username or "").strip()
         if not username:
             logging.warning("[%s] 备份 user_info 失败：无法确定用户名(学号)", source)
+            return None
+        if not _main().is_valid_school_username(username):
+            logging.warning(
+                "[%s] 备份 user_info 失败：学号必须是至少4位纯数字: %r",
+                source,
+                username,
+            )
             return None
 
         try:
@@ -6876,6 +7138,10 @@ class Api:
 
                     # 标准化数据格式：兼容旧版 INI 和新版 JSON
                     for school_username, account_info in data.items():
+                        if not _main().is_valid_school_username(
+                            school_username
+                        ):
+                            continue
                         if isinstance(account_info, dict):
                             # 新格式：直接使用，并加载统计数据
                             stats = self._load_school_account_stats_from_ini(
@@ -6969,6 +7235,20 @@ class Api:
                 f"[安全] multi_add_account: username包含非法字符: {username}")
             return {"success": False, "error": "用户名包含非法字符"}
 
+        # 学号必须是纯数字且至少 4 位：防止把名单里的“序号/姓名”列当成账号
+        # 和密码写进 school_accounts（真实事故：1.ini..21.ini、序号.ini 与
+        # 两条 password=姓名 的 JSON 记录）。
+        if not _main().is_valid_school_username(username):
+            logging.error(
+                f"[安全] multi_add_account: 学号必须是至少4位纯数字: {username!r}"
+            )
+            return {
+                "success": False,
+                "reason": "invalid_username",
+                "message": "学号必须是至少4位数字（纯数字）",
+                "username": username,
+            }
+
         # [安全修复] 验证password类型和长度
         if password is not None:
             if not isinstance(password, str):
@@ -6978,6 +7258,16 @@ class Api:
                 logging.error(
                     f"[安全] multi_add_account: password过长(>{_main().MAX_PASSWORD_LENGTH})")
                 return {"success": False, "error": "密码过长"}
+            if not _main().is_valid_school_password(password):
+                logging.error(
+                    f"[安全] multi_add_account: 密码不能包含中文，学号: {username!r}"
+                )
+                return {
+                    "success": False,
+                    "reason": "invalid_password",
+                    "message": "密码不能包含中文",
+                    "username": username,
+                }
 
         # [安全修复] 验证tag类型和长度
         if tag is not None:
@@ -7732,21 +8022,61 @@ class Api:
         response["success"] = True
         return response
 
+    def _build_import_template_bytes(self) -> bytes:
+        """按“莲峰账号导入表”版式生成模板（真实模板文件缺失时的兜底）。"""
+        wb = _main().openpyxl.Workbook()
+        sh = wb.active
+        sh.title = "模板"
+
+        sh.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+        sh.cell(row=1, column=1, value="莲峰账号导入表")
+
+        for column, header in enumerate(
+            ("序号", "账号", "密码", "标记"), start=1
+        ):
+            sh.cell(row=2, column=column, value=header)
+
+        # 预编排行只方便人工填写；空行导入时会被自动忽略。
+        for row_index in range(1, _IMPORT_TEMPLATE_FREE_ROWS + 1):
+            sh.cell(row=row_index + 2, column=1, value=row_index)
+
+        for column, width in (("A", 6), ("B", 22), ("C", 18), ("D", 14)):
+            sh.column_dimensions[column].width = width
+
+        output = io.BytesIO()
+        wb.save(output)
+        return output.getvalue()
+
     def multi_download_import_template(self):
-        """下载导入模板（账号、密码、标记），支持 Web模式直接返回文件内容"""
+        """下载导入模板：直接返回仓库真实模板文件，缺失时才按同版式生成。
+
+        真实模板：`tests/fixtures/school_accounts_template.xlsx`
+        （第 1 行合并标题“莲峰账号导入表”，第 2 行表头 `序号/账号/密码/标记`，
+        序号列只用于人工对行、导入时忽略）。
+        """
         try:
-            headers = ["账号", "密码", "标记"]
+            template_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                _IMPORT_TEMPLATE_RELATIVE_PATH,
+            )
+            file_bytes = None
+            if os.path.exists(template_path):
+                try:
+                    with open(template_path, "rb") as template_file:
+                        file_bytes = template_file.read()
+                except Exception as read_error:
+                    logging.warning(
+                        "读取导入模板文件失败，将使用内置版式生成: %s",
+                        read_error,
+                    )
+            if not file_bytes:
+                logging.warning(
+                    "导入模板文件不存在或为空，使用内置版式生成: %s",
+                    template_path,
+                )
+                file_bytes = self._build_import_template_bytes()
 
-            wb = _main().openpyxl.Workbook()
-            sh = wb.active
-            sh.title = "模板"
-            sh.append(headers)
-
-            output = io.BytesIO()
-            wb.save(output)
-            output.seek(0)
-
-            file_content = base64.b64encode(output.read()).decode("utf-8")
+            file_content = base64.b64encode(file_bytes).decode("utf-8")
             filename = f"账号导入模板_{datetime.datetime.now().strftime('%Y%m%d')}.xlsx"
 
             self.log(f"模板已生成：{filename}")
@@ -7764,6 +8094,18 @@ class Api:
 
     def multi_import_accounts(self, filename, base64_content):
         """从文件导入账号密码，支持 .xlsx/.xls/.csv（仅Web模式，从内存流处理）
+
+        兼容三类常见表格：
+        1. 系统模板（如“莲峰账号导入表”）：第 1 行标题、第 2 行表头
+           `序号/账号/密码/标记`，序号列只用于人工对行，导入时忽略；
+        2. 自定义表头：账号列支持 账号/用户名/学号 等别名，密码列支持
+           密码/初始密码/password 等别名，标记列支持 标记/标签/备注；
+        3. 完全没有表头：按数据内容推断“学号列”（最左且大多数值为
+           ≥4 位纯数字的列），其后一列是密码、再一列是标记；推断不出时才
+           退化为第 1/2/3 列。
+
+        学号必须是纯数字且至少 4 位，否则该行计入“非法学号”并跳过，绝不
+        允许把“序号/姓名”名单直接当成账号文件导入。
 
         Args:
             filename: 文件名（从前端传入）
@@ -7791,6 +8133,8 @@ class Api:
             "duplicate_in_file": [],
             "skipped_running": [],
             "failed": [],
+            "invalid_username": [],
+            "invalid_password": [],
             "total_rows": 0,
         }
         seen_usernames: set[str] = set()
@@ -7806,6 +8150,12 @@ class Api:
                 state["duplicate_in_file"].append(username)
                 return
             seen_usernames.add(username)
+
+            # 学号格式校验必须在写入任何账号之前：1/序号/姓名 这类值
+            # 绝不能进入 multi_add_account。
+            if not _main().is_valid_school_username(username):
+                state["invalid_username"].append(username)
+                return
 
             tag = str(raw_tag).strip() if raw_tag else None
             password = str(raw_password or "").strip()
@@ -7825,6 +8175,11 @@ class Api:
                 )
                 return
 
+            # 密码不能包含中文：名单的“姓名”列是最典型的坏密码。
+            if not _main().is_valid_school_password(password):
+                state["invalid_password"].append(username)
+                return
+
             result = self.multi_add_account(
                 username, password, tag=tag, only_if_missing=True
             )
@@ -7833,18 +8188,25 @@ class Api:
             elif isinstance(result, dict) and result.get("success"):
                 state["added"].append(username)
             else:
-                # 账号正在执行任务（reason=account_running）等其它失败：
-                # 单独归一类，避免被误报成"已存在"或"导入成功"
+                # 账号正在执行任务（reason=account_running）、学号格式非法
+                # （reason=invalid_username）等失败原因分别归类，避免被误报成
+                # "已存在"或"导入成功"。
                 reason = (
                     result.get("reason")
                     if isinstance(result, dict)
                     else None
                 )
-                state["skipped_running" if reason else "failed"].append(
-                    username
-                )
+                if reason == "invalid_username":
+                    state["invalid_username"].append(username)
+                elif reason == "invalid_password":
+                    state["invalid_password"].append(username)
+                elif reason:
+                    state["skipped_running"].append(username)
+                else:
+                    state["failed"].append(username)
 
-        try:
+        def _parse_raw_rows():
+            """把上传文件解析成二维表，供列识别与逐行处理复用。"""
             if ext == ".xlsx":
                 try:
                     wb = _main().openpyxl.load_workbook(
@@ -7862,54 +8224,69 @@ class Api:
                     )
 
                 sh = wb.active
-                for row in sh.iter_rows(min_row=2, values_only=True):
-                    if not row or len(row) < 1:
-                        continue
-                    handle_row(
-                        row[0],
-                        row[1] if len(row) > 1 else "",
-                        row[2] if len(row) > 2 else None,
-                    )
+                return [list(row) for row in sh.iter_rows(values_only=True)]
 
-            elif ext == ".xls":
+            if ext == ".xls":
                 file_stream.seek(0)
-                book = _main().xlrd.open_workbook(file_contents=file_stream.read())
+                book = _main().xlrd.open_workbook(
+                    file_contents=file_stream.read()
+                )
                 sh = book.sheet_by_index(0)
-                for r in range(1, sh.nrows):
-                    handle_row(
-                        sh.cell_value(r, 0),
-                        sh.cell_value(r, 1) if sh.ncols >= 2 else "",
-                        sh.cell_value(r, 2) if sh.ncols >= 3 else None,
-                    )
+                return [
+                    [sh.cell_value(r, c) for c in range(sh.ncols)]
+                    for r in range(sh.nrows)
+                ]
 
-            elif ext == ".csv":
+            if ext == ".csv":
                 file_stream.seek(0)
                 text_stream = io.TextIOWrapper(
                     file_stream, encoding="utf-8-sig", newline=""
                 )
-                reader = csv.reader(text_stream)
+                text = text_stream.read()
+                if not text.strip():
+                    return []
+                delimiter = ","
+                try:
+                    delimiter = csv.Sniffer().sniff(
+                        text[:4096], delimiters=",;\t"
+                    ).delimiter
+                except Exception:  # nosec B110 - Sniffer 失败时退回逗号
+                    delimiter = ","
+                return list(csv.reader(io.StringIO(text), delimiter=delimiter))
 
-                first_row = True
-                for row in reader:
-                    if not row or len(row) < 1:
-                        continue
-                    if first_row and str(row[0]).strip() in (
-                        "账号",
-                        "用户名",
-                        "username",
-                        "user",
-                    ):
-                        first_row = False
-                        continue
-                    first_row = False
-                    handle_row(
-                        row[0],
-                        row[1] if len(row) > 1 else "",
-                        row[2] if len(row) > 2 else None,
-                    )
+            return None
 
-            else:
+        try:
+            raw_rows = _parse_raw_rows()
+            if raw_rows is None:
                 return {"success": False, "message": f"不支持的导入格式: {ext}"}
+
+            rows = [
+                [_normalize_import_cell(cell) for cell in row]
+                for row in raw_rows
+            ]
+            # 全空行直接丢弃：模板里预填的序号行不会进入统计。
+            rows = [row for row in rows if any(row)]
+
+            header = _detect_import_header(rows)
+            if header is not None:
+                start_index, account_col, password_col, tag_col = header
+                data_rows = rows[start_index:]
+            else:
+                account_col, password_col, tag_col = _infer_import_columns(rows)
+                data_rows = rows
+
+            def _cell(row, column):
+                if column is None or column < 0 or column >= len(row):
+                    return ""
+                return row[column]
+
+            for row in data_rows:
+                handle_row(
+                    _cell(row, account_col),
+                    _cell(row, password_col),
+                    _cell(row, tag_col) or None,
+                )
 
             summary = self._build_import_summary(state)
             # 前端靠 accounts 刷新多账号列表；旧实现返回的是
@@ -7923,6 +8300,7 @@ class Api:
                 f"新增 {summary['imported_count']}，"
                 f"已存在 {summary['already_exists_count']}，"
                 f"缺密码 {summary['skipped_count']}，"
+                f"非法学号 {summary['invalid_username_count']}，"
                 f"文件内重复 {summary['duplicate_in_file_count']}"
             )
             return summary
@@ -7946,6 +8324,8 @@ class Api:
         duplicated = list(state.get("duplicate_in_file") or [])
         running = list(state.get("skipped_running") or [])
         failed_other = list(state.get("failed") or [])
+        invalid = list(state.get("invalid_username") or [])
+        invalid_password = list(state.get("invalid_password") or [])
 
         failed = [{"username": u, "reason": "already_exists"} for u in already]
         failed += [
@@ -7955,6 +8335,13 @@ class Api:
         failed += [
             {"username": u, "reason": "account_running"} for u in running
         ]
+        failed += [
+            {"username": u, "reason": "invalid_username"} for u in invalid
+        ]
+        failed += [
+            {"username": u, "reason": "invalid_password"}
+            for u in invalid_password
+        ]
         failed += [{"username": u, "reason": "failed"} for u in failed_other]
 
         message = (
@@ -7962,6 +8349,10 @@ class Api:
             f"已存在跳过 {len(already)} 个，"
             f"缺密码跳过 {len(skipped)} 个"
         )
+        if invalid:
+            message += f"，学号格式不对跳过 {len(invalid)} 个"
+        if invalid_password:
+            message += f"，密码包含中文跳过 {len(invalid_password)} 个"
         if running:
             message += f"，执行中跳过 {len(running)} 个"
         if failed_other:
@@ -7979,6 +8370,8 @@ class Api:
             "duplicate_in_file_count": len(duplicated),
             "skipped_running_count": len(running),
             "failed_count": len(failed_other),
+            "invalid_username_count": len(invalid),
+            "invalid_password_count": len(invalid_password),
             "added": added,
             "already_exists": already,
             # 键名与 multi_load_accounts_from_config 保持一致，
@@ -7986,6 +8379,8 @@ class Api:
             "accounts_missing_password": skipped,
             "duplicate_in_file": duplicated,
             "skipped_running": running,
+            "invalid_username": invalid,
+            "invalid_password": invalid_password,
             "failed_names": failed_other,
             "failed": failed,
         }

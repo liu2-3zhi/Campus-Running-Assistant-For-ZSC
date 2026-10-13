@@ -428,6 +428,8 @@ async function importExcel() {
       ]
       if (result?.duplicate_in_file_count) parts.push(`文件内重复 ${result.duplicate_in_file_count}`)
       if (result?.skipped_running_count) parts.push(`执行中跳过 ${result.skipped_running_count}`)
+      if (result?.invalid_username_count) parts.push(`学号格式不对 ${result.invalid_username_count}`)
+      if (result?.invalid_password_count) parts.push(`密码含中文 ${result.invalid_password_count}`)
       appStore.addLog(`Excel 导入完成（${parts.join('，')}）: ${file.name}`, 'INFO', 'Multi')
       if (result?.skipped_count) {
         appStore.addLog(
