@@ -9570,6 +9570,45 @@ def cleanup_inactive_session(session_id, reason="manual"):
         )
 
 
+def _multi_account_has_running_worker(api_instance) -> bool:
+    """多账号会话里是否还有账号 worker 正在跑任务。
+
+    多账号的“开始前等待 / 任务间等待”都发生在账号 worker 线程内部，worker
+    存活即代表该账号的任务流程（含两种等待）仍在进行，不能按空闲回收。
+
+    监控不依赖 multi_run_stop_flag：该标志现在会在最后一个 worker 退出后
+    复位（api_runtime._mark_multi_account_run_stopped_if_idle），但直接读
+    账号 worker 状态可以避免任何标志维护失误让空闲会话再次被永久保活。
+    也不能改用 has_pending_tasks：它只表示“还有可执行任务”，账号没在跑
+    时同样为真。
+    """
+    accounts = getattr(api_instance, "accounts", None)
+    if not accounts:
+        return False
+    for acc in list(accounts.values()):
+        worker = getattr(acc, "worker_thread", None)
+        if worker is not None and worker.is_alive():
+            return True
+    return False
+
+
+def _session_has_running_background_task(session_id) -> bool:
+    """会话级后台任务（background_task_manager）是否仍在执行。"""
+    manager = globals().get("background_task_manager")
+    if manager is None:
+        return False
+    try:
+        state = manager.get_task_status(session_id)
+    except Exception:
+        logging.warning(
+            "[会话监控] 读取后台任务状态失败: session=%s",
+            session_id,
+            exc_info=True,
+        )
+        return False
+    return bool(state) and str(state.get("status", "")).strip() == "running"
+
+
 def monitor_session_inactivity():
     """
     监控会话不活跃状态并清理
@@ -9611,29 +9650,35 @@ def monitor_session_inactivity():
                     last_activity = session_activity[session_id]
 
                 has_background_activity = False
-                if (
+                is_multi = getattr(
+                    api_instance, "is_multi_account_mode", False)
+
+                if is_multi:
+                    # 多账号模式直接按“账号 worker 是否还在跑”判断：
+                    # multi_run_stop_flag 已经会在最后一个 worker 退出后复位，
+                    # 但监控不依赖该标志，避免标志维护失误让空闲会话无法回收。
+                    if _multi_account_has_running_worker(
+                        api_instance
+                    ) or _session_has_running_background_task(session_id):
+                        has_background_activity = True
+                        logging.debug(
+                            f"[会话监控] {session_id} 多账号任务执行中")
+                elif (
                     hasattr(api_instance, "stop_run_flag")
                     and not api_instance.stop_run_flag.is_set()
                 ):
                     has_background_activity = True
                     logging.debug(f"[会话监控] {session_id} 单账号跑步任务执行中")
-                if (
-                    hasattr(api_instance, "multi_run_stop_flag")
-                    and not api_instance.multi_run_stop_flag.is_set()
-                ):
-                    has_background_activity = True
-                    logging.debug(f"[会话监控] {session_id} 多账号跑步任务执行中")
-                is_multi = getattr(
-                    api_instance, "is_multi_account_mode", False)
 
                 # 检查是否有启用自动签到的账号（从JSON配置读取）
                 if is_multi:
-                    accounts = getattr(api_instance, "accounts", {})
+                    accounts = getattr(api_instance, "accounts", None) or {}
                     # 多账号模式下，检查是否有任何账号启用了自动签到
                     auto_attendance_count = 0
                     for username, acc in accounts.items():
-                        if acc.user_data and acc.user_data.username:
-                            if _is_auto_attendance_enabled(acc.user_data.username):
+                        acc_user_data = getattr(acc, "user_data", None)
+                        if acc_user_data and acc_user_data.username:
+                            if _is_auto_attendance_enabled(acc_user_data.username):
                                 auto_attendance_count += 1
 
                     logging.debug(

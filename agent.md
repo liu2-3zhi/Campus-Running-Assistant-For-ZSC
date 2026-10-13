@@ -177,6 +177,8 @@
 - 每个 `Api` 会话实例必须拥有独立的会话停止事件；`AccountRefresh-*` 和多账号监控线程启动时必须捕获该事件对象，不能在 worker 内创建无法从外部触发的局部停止事件。
 - `cleanup_inactive_session()`、24 小时清理、用户主动登出、用户删除会话、管理员强制销毁、账号注销六条路径必须统一调用会话销毁逻辑；禁止只执行 `del web_sessions[session_id]`。
 - 会话销毁顺序固定为：设置停止事件，停止账号和多账号任务，等待刷新线程退出，关闭 `api_client.session`，关闭该 session 的 Playwright context，释放地图运行时密钥，最后删除活动时间和会话文件锁。
+- 会话不活跃监控对多账号会话的“任务执行中”判定必须看账号 worker 线程是否存活（`AccountSession.worker_thread`），不能依赖 `multi_run_stop_flag`：即使该标志已按下一条契约复位，监控也只认“真实还在跑的账号 worker”，避免标志维护失误再次把空闲的多账号会话永久保活。`开始前等待`（启动延迟）和`任务间等待`都发生在 worker 线程内部，worker 存活即代表该账号的任务流程（含两种等待）仍在进行；也不能用 `has_pending_tasks` 判定：它只表示“还有可执行任务”，账号没在跑时同样可能为真。账号 worker 全部结束后会话必须回到普通空闲回收；会话级后台任务（`background_task_manager` 状态为 `running`）仍在执行、或任一账号启用了自动签到（常驻刷新线程）时仍须保活。相关回归测试见 `tests/test_multi_account_session_idle_cleanup.py`。
+- `multi_run_stop_flag` 必须真实反映“是否还有多账号任务在跑”：启动账号 worker 时清空，最后一个账号 worker 退出后经 `_mark_multi_account_run_stopped_if_idle()` 恢复置位；启动尝试一个账号都没跑起来（`worker.start()` 失败、`multi_start_all_accounts` 无可启动账号）时同样要恢复置位，不能只在“全部停止”时置位，否则自然跑完的会话会被不活跃监控永久当成“多账号任务执行中”。相关回归测试见 `tests/test_multi_run_stop_flag_lifecycle.py`。
 - Playwright 上下文必须按 `session_id` 主动关闭；不能只依赖 24 小时全局清理或 Playwright 工作线程最终退出。
 - IP 和手机号缓存必须同时具备 TTL 与最大条目数；短信验证码必须定期删除过期项，并在新增和查询时执行边界清理。
 - 验证会话清理不能只看 `web_sessions` 是否为空，还必须验证 `AccountRefresh-*`、`MultiAccountMonitor` 线程已经退出，且重复登录清理后 `Api` 对象可被垃圾回收。

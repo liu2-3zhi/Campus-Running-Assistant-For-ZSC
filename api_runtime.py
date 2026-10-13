@@ -8236,6 +8236,33 @@ class Api:
         finally:
             self._release_single_school_account_execution(execution_token)
 
+    def _mark_multi_account_run_stopped_if_idle(self):
+        """没有账号 worker 在运行时，把 multi_run_stop_flag 恢复为“已停止”。
+
+        multi_run_stop_flag 的语义是“当前没有多账号任务在跑，或已请求停止”：
+        启动流程会先清空它；只要还有账号 worker 存活就保持清空，最后一个
+        worker 退出后必须重新置位。旧实现只在“全部停止”时置位，账号 worker
+        自然跑完后标志一直保持清空，空闲的多账号会话会被会话不活跃监控永久
+        当成“多账号任务执行中”，无法按不活跃超时回收。
+        """
+        multi_stop_flag = getattr(self, "multi_run_stop_flag", None)
+        if multi_stop_flag is None:
+            return
+
+        execution_lock = getattr(self, "multi_execution_lock", None)
+        if execution_lock is None:
+            multi_stop_flag.set()
+            return
+
+        with execution_lock:
+            if getattr(self, "multi_active_executions", set()):
+                return
+            for acc in list((getattr(self, "accounts", None) or {}).values()):
+                worker = getattr(acc, "worker_thread", None)
+                if worker is not None and worker.is_alive():
+                    return
+            multi_stop_flag.set()
+
     def _finish_multi_account_worker(
         self,
         acc: _main().AccountSession,
@@ -8259,6 +8286,9 @@ class Api:
                 operation_lock.release()
             except RuntimeError:
                 pass
+        # 最后一个账号 worker 退出后把全局标志恢复为“已停止”，否则自然跑完的
+        # 空闲会话会被会话不活跃监控永久当成“多账号任务执行中”。
+        self._mark_multi_account_run_stopped_if_idle()
 
     def _start_multi_account_worker(
         self,
@@ -8343,6 +8373,8 @@ class Api:
                     operation_lock.release()
                 except RuntimeError:
                     pass
+                # 已经清空“已停止”标志却一个 worker 都没跑起来：必须补回置位。
+                self._mark_multi_account_run_stopped_if_idle()
                 raise
             return True
 
@@ -8564,7 +8596,9 @@ class Api:
         )
 
         if started_threads == 0:
-
+            # 清空“已停止”标志后一个账号都没真正启动：若当前也没有账号在跑，
+            # 必须把标志补回去，否则空闲会话会被会话不活跃监控永久保活。
+            self._mark_multi_account_run_stopped_if_idle()
             self.log("当前没有可启动的账号任务。")
             return {"success": False, "message": "当前没有可启动的账号任务。"}
 
