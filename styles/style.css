@@ -685,6 +685,11 @@ body {
   border-left: 4px solid var(--base-color-600);
 }
 
+#history-list > div.selected {
+  background: rgba(139, 92, 246, 0.14);
+  border-left: 4px solid #8b5cf6;
+}
+
 #map-container.drawing .amap-marker,
 #map-container.drawing .amap-text,
 #map-container.drawing .amap-overlay-text,

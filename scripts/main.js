@@ -3526,6 +3526,7 @@ let providerRunnerMarkers = {};
 
 let currentTasks = [];
 let selectedTaskIndex = -1;
+let selectedHistoryTrid = null;
 let currentUserData = {};
 let currentRunData = {};
 let polylines = {
@@ -20632,6 +20633,7 @@ async function onConfirmAutoGenerate() {
   }
 }
 async function loadHistory(index) {
+  selectedHistoryTrid = null;
   $("history-placeholder").textContent = "正在加载...";
   $("history-list").innerHTML = "";
   const result = await callPythonAPI("get_task_history", index);
@@ -20642,13 +20644,26 @@ async function loadHistory(index) {
       item.className =
         "grid grid-cols-3 gap-2 text-xs p-2 border-b border-slate-100 cursor-pointer hover:bg-white/70 rounded";
       item.innerHTML = `<span class="text-slate-600">${rec.time}</span><span class="font-semibold text-emerald-700">${rec.len}</span><span class="font-semibold text-sky-700">${rec.used_time}</span>`;
-      item.addEventListener("click", () => showHistoricalTrack(rec.trid));
+      item.addEventListener("click", () => {
+        $("history-list")
+          .querySelectorAll(".selected")
+          .forEach((selectedItem) => selectedItem.classList.remove("selected"));
+        item.classList.add("selected");
+        selectedHistoryTrid = rec.trid;
+        showHistoricalTrack(rec.trid);
+      });
       $("history-list").appendChild(item);
     });
   } else {
     $("history-placeholder").textContent = "无历史记录或加载失败";
     $("history-placeholder").classList.remove("hidden");
   }
+}
+
+function clearHistoricalTrack() {
+  const hasHistoricalTrack = selectedHistoryTrid !== null || polylines.history;
+  selectedHistoryTrid = null;
+  if (hasHistoricalTrack) drawOnMap();
 }
 
 async function showHistoricalTrack(trid) {
@@ -21225,6 +21240,7 @@ function showTab(tabName, element) {
     );
     if (b) b.classList.remove("active");
   });
+  if (tabName !== "history") clearHistoricalTrack();
   $(`${tabName}-tab`).classList.remove("hidden");
   if (element) element.classList.add("active");
   if (tabName === "attendance") {
