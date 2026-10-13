@@ -605,12 +605,25 @@ class Api:
 
     def set_multi_run_only_incomplete(self, flag: bool):
         """
-        设置多账号模式下“仅执行未完成”的全局开关，并立即刷新全局按钮。
+        设置多账号模式下“仅执行未完成”的全局开关。
+
+        切换后必须立刻用已缓存的任务列表重算每个账号的统计
+        （total/completed/not_started/executable/expired），否则列表里的任务
+        状态文本会停留在旧规则的结果上（真实缺陷：勾选/取消勾选后
+        「可跑 / 过期 / 未开始」这些数字不变）。
         """
         try:
             self.multi_run_only_incomplete = bool(flag)
+            for acc in list(getattr(self, "accounts", {}).values()):
+                self._refresh_multi_account_summary_for_mode(acc)
             self._update_multi_global_buttons()
-            return {"success": True}
+            return {
+                "success": True,
+                "run_only_incomplete": self.multi_run_only_incomplete,
+                "accounts": self.multi_get_all_accounts_status().get(
+                    "accounts", []
+                ),
+            }
         except Exception as e:
             return {"success": False, "message": str(e)}
 
@@ -8849,7 +8862,14 @@ class Api:
                     while acc.worker_thread and acc.worker_thread.is_alive():
                         time.sleep(0.2)
                     acc.worker_thread = None
-                    self._update_account_status_js(acc, status_text="待命")
+                    # 停止请求已发出：保留 worker 收尾写入的“已停止”，
+                    # 不能被“待命”覆盖（真实缺陷：停止后列表显示待命）。
+                    if acc.stop_event.is_set():
+                        self._update_account_status_js(acc, status_text="已停止")
+                    elif not self._should_preserve_status(
+                        acc.status_text, new_status="待命"
+                    ):
+                        self._update_account_status_js(acc, status_text="待命")
                     self._update_multi_global_buttons()
                 except Exception:
                     logging.debug(
@@ -9223,6 +9243,104 @@ class Api:
             except Exception:
                 pass
 
+    def _summarize_multi_account_run_data(
+        self,
+        acc: _main().AccountSession,
+        run_data_list=None,
+        multi_run_only_incomplete=None,
+    ) -> dict:
+        """按“仅执行未完成”开关统计任务（worker / 列表 / 开关切换共用口径）。
+
+        - 勾选（True）：已完成任务只计入 completed，不再计入可跑/过期/未开始；
+        - 不勾选（False）：已完成任务仍按时间状态参与可跑/过期/未开始统计，
+          即完成过的任务只要还在时间窗口内就可以重跑。
+        """
+        if run_data_list is None:
+            run_data_list = getattr(acc, "all_run_data", None) or []
+        if multi_run_only_incomplete is None:
+            multi_run_only_incomplete = self.multi_run_only_incomplete
+
+        total = len(run_data_list)
+        completed = 0
+        expired = 0
+        executable = 0
+        not_started = 0
+
+        now = datetime.datetime.now()
+        ignore_time = acc.params.get("ignore_task_time", True)
+
+        for run in run_data_list:
+            if getattr(run, "status", 0) == 1:
+                completed += 1
+                if multi_run_only_incomplete:
+                    continue
+
+            time_state = self._get_task_time_state(run, ignore_time, now)
+            if time_state == "expired":
+                expired += 1
+                continue
+            if time_state == "not_started":
+                not_started += 1
+                continue
+
+            executable += 1
+
+        return {
+            "total": total,
+            "completed": completed,
+            "pending": total - completed,
+            "not_started": not_started,
+            "executable": executable,
+            "expired": expired,
+            # 未过期任务数量 = 总数 - 已过期
+            "unexpired_count": max(0, total - expired),
+            # 未过期且未完成的任务数量 = 总数 - 已过期 - 已完成
+            "unexpired_incomplete_count": max(0, total - expired - completed),
+        }
+
+    def _refresh_multi_account_summary_for_mode(self, acc) -> None:
+        """按当前“仅执行未完成”开关，用缓存任务重算 summary 与状态文案。"""
+        run_data = getattr(acc, "all_run_data", None) or []
+        had_snapshot = bool(run_data)
+        summary = self._summarize_multi_account_run_data(acc, run_data)
+        acc.summary.update(summary)
+
+        status_text = str(getattr(acc, "status_text", "") or "")
+
+        # 运行中的账号由 worker 维护进度文案，这里只刷新统计数字。
+        if self._is_multi_account_execution_active(acc):
+            self._update_account_status_js(acc, summary=acc.summary)
+            return
+
+        # 还没拉取过任务列表的账号，不要凭空把状态写成“无任务可执行”。
+        is_task_count_status = (
+            status_text.endswith("个任务可执行")
+            or status_text in ("无任务可执行", "无可执行任务")
+        )
+        if not had_snapshot and not is_task_count_status:
+            self._update_account_status_js(acc, summary=acc.summary)
+            return
+
+        # 已停止/已中止/已取消与错误态保持原样，切换开关不能覆盖终态文案。
+        if any(
+            keyword in status_text
+            for keyword in ("已停止", "已中止", "已取消", "失败", "出错")
+        ):
+            self._update_account_status_js(acc, summary=acc.summary)
+            return
+
+        final_status = (
+            f"有 {summary['executable']} 个任务可执行"
+            if summary["executable"] > 0
+            else "无任务可执行"
+        )
+        if self._should_preserve_status(status_text, new_status=final_status):
+            self._update_account_status_js(acc, summary=acc.summary)
+            return
+        self._update_account_status_js(
+            acc, status_text=final_status, summary=acc.summary
+        )
+
     def _multi_fetch_and_summarize_tasks(self, acc: _main().AccountSession):
         """(辅助函数) 为单个账号获取任务列表并计算统计信息（按任务ID去重）"""
         fetched_run_data = []
@@ -9286,53 +9404,10 @@ class Api:
                 f"[{acc.username}] Task de-dup: {dup_count} duplicates skipped (by errandId)."
             )
 
-        total = len(fetched_run_data)
-        completed = 0
-        expired = 0
-        executable = 0
-        not_started = 0
-
-        now = datetime.datetime.now()
-        ignore_time = acc.params.get("ignore_task_time", True)
-
-        for r in fetched_run_data:
-            if r.status == 1:
-                completed += 1
-                if self.multi_run_only_incomplete:
-                    continue
-
-            time_state = self._get_task_time_state(r, ignore_time, now)
-            if time_state == "expired":
-                expired += 1
-                continue
-            if time_state == "not_started":
-                not_started += 1
-                continue
-
-            executable += 1
-
-        # 计算两个额外指标
-        # 1. 未过期任务数量 = 总数 - 已过期
-        unexpired_count = max(0, total - expired)
-        # 2. 未过期且未完成的任务数量 = 总数 - 已过期 - 已完成
-        unexpired_incomplete_count = max(0, total - expired - completed)
-
-        acc.summary.update(
-            {
-                "total": total,
-                "completed": completed,
-                "pending": total - completed,
-                "not_started": not_started,
-                "executable": executable,
-                "expired": expired,
-                # 新增返回值
-                "unexpired_count": unexpired_count,
-                "unexpired_incomplete_count": unexpired_incomplete_count,
-            }
-        )
-
         acc.all_run_data = fetched_run_data
-        acc.has_pending_tasks = executable > 0
+        summary = self._summarize_multi_account_run_data(acc, fetched_run_data)
+        acc.summary.update(summary)
+        acc.has_pending_tasks = summary["executable"] > 0
         return True
 
     @staticmethod

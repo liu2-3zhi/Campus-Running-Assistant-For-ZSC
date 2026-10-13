@@ -17304,10 +17304,17 @@ async function switchToMultiMode() {
     // 3. 同步配置到后端 (不需要等待刷新，直接使用缓存更新状态)
     try {
       console.log(`[设置同步] 正在同步 '仅执行未完成' 设置: ${isChecked}`);
-      // 仅同步设置，不触发全量刷新，前端状态 updateAllAccountsStatusText 已基于缓存处理
-      callPythonAPI("set_multi_run_only_incomplete", isChecked).catch((e) =>
-        console.error("同步设置后台失败", e),
+      const result = await callPythonAPI(
+        "set_multi_run_only_incomplete",
+        isChecked,
       );
+      // 后端已用缓存任务按新开关重算 summary/status_text；立即重渲染，
+      // 否则「可跑 / 过期 / 未开始」这些数字会停留在旧规则的结果上。
+      if (result && Array.isArray(result.accounts)) {
+        renderMultiAccountList(result.accounts);
+      } else {
+        updateAllAccountsStatusText();
+      }
     } catch (err) {
       console.error("[设置同步] 同步失败:", err);
     }

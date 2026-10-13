@@ -562,7 +562,12 @@ function syncAutoRefreshWithSocket(connected) {
 // --- Sync runOnlyIncomplete to backend (task 10) ---
 async function syncRunOnlyIncomplete() {
   try {
-    await checkedAPI('set_multi_run_only_incomplete', { flag: delaySettings.runOnlyIncomplete })
+    const result = await checkedAPI('set_multi_run_only_incomplete', { flag: delaySettings.runOnlyIncomplete })
+    // 后端已按新开关重算每个账号的 summary/status_text，立即套用，
+    // 否则「可跑 / 过期 / 未开始」等统计数字会停留在旧规则结果上。
+    if (Array.isArray(result?.accounts)) {
+      appStore.multiAccounts = result.accounts
+    }
   } catch (_) {}
 }
 
