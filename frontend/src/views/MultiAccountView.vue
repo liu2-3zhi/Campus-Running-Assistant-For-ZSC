@@ -12,7 +12,7 @@ import MapContainer from '@/components/map/MapContainer.vue'
 import NotificationsPanel from '@/components/main/NotificationsPanel.vue'
 import AppModal from '@/components/common/AppModal.vue'
 import AdminPanel from '@/components/admin/AdminPanel.vue'
-import { checkOverdueBeforeStart } from '@/composables/usePayment'
+import { checkOverdueBeforeStart, consumeOverdueForceOverride } from '@/composables/usePayment'
 import { paramDefs, paramGroups } from '@/utils/legacyParams'
 
 const router = useRouter()
@@ -170,12 +170,15 @@ async function startAll() {
       },
     )
     if (!canStart) return
+    const overdueOverride = consumeOverdueForceOverride()
     await checkedAPI('multi_start_all_accounts', {
       min_delay: delaySettings.minDelay,
       max_delay: delaySettings.maxDelay,
       use_delay: delaySettings.useDelay,
       run_only_incomplete: delaySettings.runOnlyIncomplete,
       skip_overdue: skipOverdue,
+      bypass_overdue: overdueOverride.bypass_overdue,
+      waive_charge: overdueOverride.waive_charge,
     })
     appStore.addLog('已发送全部启动指令', 'INFO', 'Multi')
   } catch (e) {
@@ -196,12 +199,18 @@ async function startSelected() {
   if (selectedCount.value === 0) return
   try {
     if (!(await checkOverdueBeforeStart([...selectedIds.value]))) return
+    const overdueOverride = consumeOverdueForceOverride()
     for (const username of selectedIds.value) {
       if (delaySettings.useDelay && delaySettings.maxDelay >= delaySettings.minDelay) {
         const delay = Math.random() * (delaySettings.maxDelay - delaySettings.minDelay) + delaySettings.minDelay
         await new Promise(resolve => setTimeout(resolve, delay * 10))
       }
-      await checkedAPI('multi_start_single_account', { username, run_only_incomplete: delaySettings.runOnlyIncomplete })
+      await checkedAPI('multi_start_single_account', {
+        username,
+        run_only_incomplete: delaySettings.runOnlyIncomplete,
+        bypass_overdue: overdueOverride.bypass_overdue,
+        waive_charge: overdueOverride.waive_charge,
+      })
     }
     appStore.addLog(`已启动 ${selectedCount.value} 个选中账号`, 'INFO', 'Multi')
   } catch (e) {
@@ -231,9 +240,12 @@ async function refreshAccount(account) {
 async function startAccount(account) {
   try {
     if (!(await checkOverdueBeforeStart([getAccountName(account)]))) return
+    const overdueOverride = consumeOverdueForceOverride()
     await checkedAPI('multi_start_single_account', {
       username: getAccountName(account),
       run_only_incomplete: delaySettings.runOnlyIncomplete,
+      bypass_overdue: overdueOverride.bypass_overdue,
+      waive_charge: overdueOverride.waive_charge,
     })
     appStore.addLog(`已启动 ${getAccountName(account)}`, 'INFO', 'Multi')
   } catch (e) {

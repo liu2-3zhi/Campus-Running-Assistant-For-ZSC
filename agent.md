@@ -157,6 +157,14 @@
 - 会话列表中的多账号登录状态不能直接读取 `Api.login_success` 或 `AccountSession.login_success`；必须基于当前 `accounts` 列表实时判断，只要仍存在任意 `is_first_login_verified=True` 的账号才显示已登录。已通过验证的账号从列表移除后，不能继续由旧状态让会话保持已登录；会话恢复时也必须恢复该验证标志。相关回归测试见 `tests/test_auth_session_lifecycle.py`。
 - 老版 UI 用模板字符串生成内联 `onclick` 时，不能把 `JSON.stringify()` 的双引号参数直接塞进双引号属性；应对参数字符串做属性转义，并用单引号包裹 `onclick` 属性，否则浏览器会把事件属性截断，表现为按钮没有事件触发器。
 
+## 欠费拦截与绕过欠费权限
+
+- 新增权限 `bypass_overdue`（默认仅 `admin`/`super_admin` 为 True，`guest`/`user` 为 False）：既要写进 `main._create_permissions_json()` 的四个权限组模板，也要写进 `auth_system.BUILTIN_PERMISSION_DEFAULTS`，让已存在的 `permissions.json` 在启动时**只回填缺失键、不覆盖已有值**。管理员可以在用户管理里把它单独授予普通用户，因此“有欠费权限的用户不一定是管理员”，服务端一律用 `auth_system.check_permission(user, "bypass_overdue")` 判定，不能用权限组代替。
+- `/api/check_overdue` 必须返回 `can_bypass_overdue`（是否有权限）、`is_admin`（是否管理员/超管，决定警告弹窗是否出现“此次不计费”）、`available_runs`（当前可用执行次数，-1 表示无限）。欠费弹窗在 `can_bypass_overdue` 为真时显示 `强制执行` 按钮；点击后若 `available_runs != -1 且 <= 0`，弹出“执行次数不足”警告：普通用户只看到“继续执行”（仍会生成欠费账单），管理员额外看到“此次不计费”。
+- 所有启动入口都必须同时支持 `bypass_overdue`（强制执行意图）与 `waive_charge`（本次不计费）：`start_single_run`、`start_all_runs`、`multi_start_single_account`、`multi_start_all_accounts`、`/api/background_task/start` + `BackgroundTaskManager.start_background_task`。欠费闸门只有在“本次请求强制执行 **且** 用户确有 `bypass_overdue` 权限”时才放行；`waive_charge` 只有在管理员/超级管理员时才生效。多账号“全部开始”在强制放行时不得再把欠费账号从启动列表里剔除（跳过逻辑只服务于 `skip_overdue`）。
+- 强制执行照常结算：`_deduct_available_runs_or_increment_overdue()` 优先级不变（先扣系统账号 `available_runs`，不足则给学校账号 `overdue_count + 1` 并生成账单），次数不足同样生成账单；只有 `Api.waive_charge_active` 为 True（管理员选择“此次不计费”）时跳过扣减与账单生成。该标志是一次执行期的会话状态：各启动入口每次都会按本次参数重设，`stop_run`/`multi_stop_all_accounts`/会话销毁会清零。
+- 前端（legacy `legacy-payment-user.js` + `main.js` + `legacy-multi-accounts.js`、Vue `usePayment.js` + `MultiAccountView.vue` + `ControlTabs.vue` + `MobileControlPanel.vue`）必须把用户在弹窗里的决策通过 `_consumeOverdueForceOverride()` / `consumeOverdueForceOverride()` 传给上述启动入口；不得只在本地改状态而不带参数，否则后端闸门会继续拦截。相关回归测试见 `tests/test_bypass_overdue_permission.py`。
+
 ## 验证清单
 
 - 本次验证码刷新按钮需求先落在旧版 UI：桌面/移动端登录、注册和短信验证弹窗的外层刷新按钮仅服务于本地验证码，必须在 `setCaptchaDisplayBehaviorMode()` 中统一隐藏，切回本地时恢复；后台刷新配置和历史记录不受影响。后续修改同一验证码功能时，应继续核对两套 UI 的行为一致性，并一并修复发现的 Vue 问题。回归测试：`node --test tests/legacy_captcha_refresh_visibility.test.mjs`。

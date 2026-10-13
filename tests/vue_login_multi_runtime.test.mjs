@@ -31,6 +31,7 @@ function setupComponent(path, overrides = {}, props = {}) {
     isWebSocketConnected: () => false,
     onWebSocketStatus: listener => { listener(false); return () => {} },
     checkOverdueBeforeStart: async () => true, paramDefs, paramGroups,
+    consumeOverdueForceOverride: () => ({ bypass_overdue: false, waive_charge: false }),
     Swal: { fire: async () => ({ isConfirmed: true }) },
     ...overrides,
   }
@@ -119,6 +120,8 @@ test('Vue start-all forwards skip-overdue decisions to the backend', async () =>
 
   const startAll = ctx.calls.find(call => call[0] === 'multi_start_all_accounts')
   assert.equal(startAll[1].skip_overdue, true)
+  assert.equal(startAll[1].bypass_overdue, false)
+  assert.equal(startAll[1].waive_charge, false)
 })
 
 test('Vue overdue modal offers skip when a partial set can start', () => {
@@ -127,9 +130,10 @@ test('Vue overdue modal offers skip when a partial set can start', () => {
     'utf8',
   )
 
-  assert.match(source, /showDenyButton:\s*allowSkip/)
+  assert.match(source, /showDenyButton:\s*allowSkip \|\| allowForce/)
   assert.match(source, /跳过欠费账号并开始/)
-  assert.match(source, /if \(result\.isDenied\) return 'skip'/)
+  assert.match(source, /强制执行/)
+  assert.match(source, /if \(result\.isDenied\) return allowForce \? 'force' : 'skip'/)
 })
 
 test('backend business failures do not produce success logs or clear manual input', async () => {

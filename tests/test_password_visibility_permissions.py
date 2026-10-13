@@ -117,6 +117,10 @@ class TestBuiltinPermissionBackfill(unittest.TestCase):
         self.assertTrue(
             groups["super_admin"]["permissions"]["view_school_account_passwords"]
         )
+        self.assertFalse(groups["guest"]["permissions"]["bypass_overdue"])
+        self.assertFalse(groups["user"]["permissions"]["bypass_overdue"])
+        self.assertTrue(groups["admin"]["permissions"]["bypass_overdue"])
+        self.assertTrue(groups["super_admin"]["permissions"]["bypass_overdue"])
         system._save_permissions.assert_called_once()
 
     def test_existing_value_is_never_overwritten(self):
@@ -125,7 +129,10 @@ class TestBuiltinPermissionBackfill(unittest.TestCase):
             "permission_groups": {
                 "user": {
                     "is_system": True,
-                    "permissions": {"view_school_account_passwords": True},
+                    "permissions": {
+                        "view_school_account_passwords": True,
+                        "bypass_overdue": True,
+                    },
                 }
             },
             "user_groups": {},
@@ -139,6 +146,12 @@ class TestBuiltinPermissionBackfill(unittest.TestCase):
                 "view_school_account_passwords"
             ],
             "已存在的用户自定义取值不得被回填覆盖",
+        )
+        self.assertTrue(
+            system.permissions["permission_groups"]["user"]["permissions"][
+                "bypass_overdue"
+            ],
+            "已存在的 bypass_overdue 取值不得被回填覆盖",
         )
         system._save_permissions.assert_not_called()
 

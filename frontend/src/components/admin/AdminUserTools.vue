@@ -36,6 +36,7 @@ const permissionLabels = {
   force_logout_users: '强制用户登出', manage_system: '修改系统配置',
   create_permission_groups: '创建权限组', delete_permission_groups: '删除权限组', modify_permission_groups: '修改权限组',
   auto_fill_password: '查看所有学校账号密码', import_offline: '导入离线文件', export_data: '导出数据',
+  bypass_overdue: '绕过欠费强制执行',
   import_data: '导入数据', backup_data: '备份数据', modify_params: '修改参数',
   manage_own_sessions: '管理自己的会话', manage_user_sessions: '管理用户会话', view_session_details: '查看会话详情',
   view_captcha_history: '查看图形化验证码历史', god_mode: '查看所有会话',

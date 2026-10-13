@@ -99,7 +99,11 @@ test('overdue modal offers skip only when some accounts can still start', () => 
     'clearOverduePlaceholder',
   )
 
-  assert.match(modalSource, /showDenyButton:\s*allowSkip/)
+  assert.match(modalSource, /showDenyButton:\s*allowSkip \|\| allowForce/)
   assert.match(modalSource, /跳过欠费账号并开始/)
-  assert.match(modalSource, /if \(result\.isDenied\) return "skip"/)
+  assert.match(modalSource, /强制执行/)
+  assert.match(
+    modalSource,
+    /if \(result\.isDenied\) return allowForce \? "force" : "skip"/,
+  )
 })

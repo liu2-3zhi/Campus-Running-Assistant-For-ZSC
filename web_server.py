@@ -13075,6 +13075,8 @@ def start_web_server(args_param):
         data = _main().request.get_json() or {}
         task_indices = data.get("task_indices", [])
         auto_generate = data.get("auto_generate", False)
+        bypass_overdue = bool(data.get("bypass_overdue"))
+        waive_charge = bool(data.get("waive_charge"))
 
         if not task_indices:
             return _main().jsonify({"success": False, "message": "未指定任务"}), 400
@@ -13146,7 +13148,10 @@ def start_web_server(args_param):
                     target_usernames
                 )
 
-                if overdue_accounts:
+                if overdue_accounts and not (
+                    bypass_overdue
+                    and api_instance._user_can_bypass_overdue()
+                ):
                     return _main().jsonify(
                         {
                             "success": False,
@@ -13161,7 +13166,12 @@ def start_web_server(args_param):
             )
 
         result = background_task_manager.start_background_task(
-            session_id, api_instance, task_indices, auto_generate
+            session_id,
+            api_instance,
+            task_indices,
+            auto_generate,
+            bypass_overdue=bypass_overdue,
+            waive_charge=waive_charge,
         )
         return _main().jsonify(result)
 
@@ -24295,6 +24305,28 @@ def start_web_server(args_param):
                 require_payment = config.getboolean(
                     "Payment_Settings", "require_payment", fallback=True)
 
+            # 权限与可用次数：前端据此决定是否显示“强制执行/此次不计费”。
+            auth_username_for_perms = _main().g.user
+            try:
+                can_bypass_overdue = bool(
+                    _main().auth_system.check_permission(
+                        auth_username_for_perms, "bypass_overdue"
+                    )
+                )
+                is_admin = _main().auth_system.get_user_group(
+                    auth_username_for_perms
+                ) in ["admin", "super_admin"]
+                available_runs = _main().auth_system.get_available_runs(
+                    auth_username_for_perms
+                )
+            except Exception as perm_error:
+                logging.warning(
+                    "[欠费检查] 读取权限/可用次数失败: %s", perm_error
+                )
+                can_bypass_overdue = False
+                is_admin = False
+                available_runs = 0
+
             # 未开启付费时，直接返回无欠费状态
             if not require_payment:
                 # 免费模式下，不存在欠费概念，直接返回无欠费
@@ -24302,7 +24334,10 @@ def start_web_server(args_param):
                     "success": True,
                     "has_overdue": False,
                     "message": "当前系统运行在免费模式，所有用户均可无限次使用",
-                    "overdue_accounts": []
+                    "overdue_accounts": [],
+                    "can_bypass_overdue": can_bypass_overdue,
+                    "is_admin": is_admin,
+                    "available_runs": available_runs,
                 })
 
             # ========== 步骤2：检查学校账号欠费情况 ==========
@@ -24389,7 +24424,10 @@ def start_web_server(args_param):
                 return _main().jsonify({
                     "success": True,
                     "has_overdue": False,
-                    "overdue_accounts": []
+                    "overdue_accounts": [],
+                    "can_bypass_overdue": can_bypass_overdue,
+                    "is_admin": is_admin,
+                    "available_runs": available_runs,
                 })
 
             # 存储欠费账号的列表
@@ -24445,7 +24483,10 @@ def start_web_server(args_param):
             return _main().jsonify({
                 "success": True,
                 "has_overdue": len(overdue_accounts) > 0,  # 是否存在欠费
-                "overdue_accounts": overdue_accounts
+                "overdue_accounts": overdue_accounts,
+                "can_bypass_overdue": can_bypass_overdue,
+                "is_admin": is_admin,
+                "available_runs": available_runs,
             })
 
         except Exception as e:

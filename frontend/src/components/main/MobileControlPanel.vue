@@ -2,7 +2,7 @@
 import { computed, ref, reactive } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { callAPI, callRawAPI } from '@/services/api'
-import { checkOverdueBeforeStartByCurrentMode } from '@/composables/usePayment'
+import { checkOverdueBeforeStartByCurrentMode, consumeOverdueForceOverride } from '@/composables/usePayment'
 
 import AppModal from '@/components/common/AppModal.vue'
 import { applyPathResult, clearTaskPath } from './taskData'
@@ -77,9 +77,11 @@ async function startTask() {
   try {
     const allowed = await checkOverdueBeforeStartByCurrentMode()
     if (!allowed) return
+    const overdueOverride = consumeOverdueForceOverride()
     const result = await callRawAPI('/api/background_task/start', 'POST', {
       task_indices: [app.selectedTaskIndex],
       auto_generate: true,
+      ...overdueOverride,
     })
     if (!result?.success) throw new Error(result?.message || '启动失败')
     if (result.success) {

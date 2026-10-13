@@ -599,6 +599,7 @@ async function openMultiAccountExpandedView() {
           } else if (action === "start") {
             const canStart = await checkOverdueBeforeStart(username);
             if (canStart) {
+              const overdueOverride = _consumeOverdueForceOverride();
               const runOnly =
                 document.getElementById(
                   "multi-run-only-incomplete-check",
@@ -607,6 +608,8 @@ async function openMultiAccountExpandedView() {
                 "multi_start_single_account",
                 username,
                 runOnly,
+                overdueOverride.bypass_overdue,
+                overdueOverride.waive_charge,
               );
               if (!result?.success) {
                 showModalAlert(result?.message || "启动失败", "错误");
@@ -789,6 +792,7 @@ function renderMultiAccountList(accounts) {
             // 欠费检查未通过，直接返回不启动任务
             return;
           }
+          const overdueOverride = _consumeOverdueForceOverride();
           // ========== 欠费检查结束 ==========
 
           const checkboxId = isMobile
@@ -799,6 +803,8 @@ function renderMultiAccountList(accounts) {
             "multi_start_single_account",
             username,
             runOnly,
+            overdueOverride.bypass_overdue,
+            overdueOverride.waive_charge,
           );
           if (!result || !result.success) {
             Swal.fire({
@@ -1034,6 +1040,8 @@ async function multi_startSelected() {
     // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
     return;
   }
+  // 无论启动多少个账号，本次“强制执行/不计费”决策只消费一次。
+  const overdueOverride = _consumeOverdueForceOverride();
   // ========== 欠费检查结束 ==========
 
   const use_delay = $("multi-use-delay-check")?.checked ?? true;
@@ -1054,6 +1062,8 @@ async function multi_startSelected() {
         "multi_start_single_account",
         u,
         run_only_incomplete,
+        overdueOverride.bypass_overdue,
+        overdueOverride.waive_charge,
       );
 
       // 检查是否是欠费错误

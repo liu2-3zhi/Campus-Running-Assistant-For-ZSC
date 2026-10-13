@@ -3,7 +3,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useMapStore } from '@/stores/map'
 import { callAPI, callRawAPI } from '@/services/api'
-import { checkOverdueBeforeStartByCurrentMode } from '@/composables/usePayment'
+import { checkOverdueBeforeStartByCurrentMode, consumeOverdueForceOverride } from '@/composables/usePayment'
 import TabPanel from '@/components/common/TabPanel.vue'
 import LogPanel from '@/components/main/LogPanel.vue'
 import AppModal from '@/components/common/AppModal.vue'
@@ -45,16 +45,19 @@ const autoGenConfig = reactive({
 
 async function startRun() {
   // 前置：欠费检查（复刻 original，欠费则弹支付并阻止开始）
+  let overdueOverride = { bypass_overdue: false, waive_charge: false }
   try {
     const allowed = await checkOverdueBeforeStartByCurrentMode()
     if (!allowed) return
+    overdueOverride = consumeOverdueForceOverride()
   } catch (_) {
     // 容错：检查异常不阻塞正常用户
   }
   try {
     const result = await callRawAPI('/api/background_task/start', 'POST', {
       task_indices: [app.selectedTaskIndex],
-      auto_generate: autoGenAll.value
+      auto_generate: autoGenAll.value,
+      ...overdueOverride,
     })
     if (result && result.success !== false) {
       app.isRunning = true
@@ -69,16 +72,19 @@ async function startRun() {
 
 async function startAll() {
   // 前置：欠费检查（复刻 original，欠费则弹支付并阻止开始）
+  let overdueOverride = { bypass_overdue: false, waive_charge: false }
   try {
     const allowed = await checkOverdueBeforeStartByCurrentMode()
     if (!allowed) return
+    overdueOverride = consumeOverdueForceOverride()
   } catch (_) {
     // 容错：检查异常不阻塞正常用户
   }
   try {
     const result = await callAPI('start_all_runs', {
       ignore_completed: ignoreCompleted.value,
-      auto_generate: autoGenAll.value
+      auto_generate: autoGenAll.value,
+      ...overdueOverride,
     })
     if (result && result.success !== false) {
       app.isRunning = true

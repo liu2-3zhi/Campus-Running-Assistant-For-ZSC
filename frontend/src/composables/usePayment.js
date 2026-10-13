@@ -437,6 +437,24 @@ export async function isPaymentRequiredForOverdueCheck() {
 }
 
 /**
+ * “强制执行 / 此次不计费”决策：欠费弹窗写入，各启动入口在调用后端前消费。
+ */
+let overdueForceOverride = { bypass_overdue: false, waive_charge: false }
+
+function setOverdueForceOverride(waiveCharge) {
+  overdueForceOverride = {
+    bypass_overdue: true,
+    waive_charge: waiveCharge === true,
+  }
+}
+
+export function consumeOverdueForceOverride() {
+  const options = { ...overdueForceOverride }
+  overdueForceOverride = { bypass_overdue: false, waive_charge: false }
+  return options
+}
+
+/**
  * 欠费检查（§4.1）
  * @param {null|string|string[]} schoolUsernameOrList
  * @returns {Promise<boolean>} true=允许继续；false=有欠费已弹窗，阻止开始
@@ -468,10 +486,46 @@ export async function checkOverdueBeforeStart(schoolUsernameOrList = null, optio
         overdueAccounts.length < requestedAccountCount
       const action = await showOverduePaymentModal(overdueAccounts, {
         allowSkip,
+        allowForce: result.can_bypass_overdue === true,
+        isAdmin: result.is_admin === true,
+        availableRuns: result.available_runs,
       })
       if (action === 'skip') {
         if (typeof options.onSkip === 'function') {
           options.onSkip(overdueAccounts)
+        }
+        return true
+      }
+      if (action === 'force') {
+        // 点“强制执行”后校验可用执行次数：不足则弹警告；
+        // 管理员可以在警告里选择“此次不计费”，跳过扣减与账单生成。
+        const availableRuns = Number(result.available_runs)
+        const isAdmin = result.is_admin === true
+        const runsExhausted =
+          Number.isFinite(availableRuns) &&
+          availableRuns !== -1 &&
+          availableRuns <= 0
+        if (runsExhausted) {
+          const warning = await Swal.fire({
+            icon: 'warning',
+            title: '执行次数不足',
+            text: '强制执行将继续执行任务，并会为本次执行生成欠费账单。',
+            confirmButtonText: '继续执行',
+            confirmButtonColor: '#ef4444',
+            showCancelButton: isAdmin,
+            cancelButtonText: '此次不计费',
+            cancelButtonColor: '#10b981',
+            allowOutsideClick: false,
+          })
+          if (warning.isConfirmed) {
+            setOverdueForceOverride(false)
+          } else if (warning.isDismissed && String(warning.dismiss || '') === 'cancel') {
+            setOverdueForceOverride(true)
+          } else {
+            return false
+          }
+        } else {
+          setOverdueForceOverride(false)
         }
         return true
       }
@@ -562,6 +616,8 @@ export async function fetchBillingList(schoolUsername = '') {
 export async function showOverduePaymentModal(overdueAccounts, options = {}) {
   const Swal = getSwal()
   const allowSkip = options.allowSkip === true
+  // 有 bypass_overdue 权限时额外提供“强制执行”按钮。
+  const allowForce = options.allowForce === true
   if (!Swal) return 'cancel'
 
   Swal.fire({ title: '正在获取欠费账单', allowOutsideClick: false, didOpen: () => Swal.showLoading() })
@@ -592,11 +648,12 @@ export async function showOverduePaymentModal(overdueAccounts, options = {}) {
       text: '未找到对应的待支付账单记录，请联系管理员确认。',
       icon: 'info',
       confirmButtonText: '确定',
-      showDenyButton: allowSkip,
-      denyButtonText: '跳过欠费账号并开始',
-      denyButtonColor: '#f59e0b',
+      showDenyButton: allowSkip || allowForce,
+      denyButtonText: allowForce ? '强制执行' : '跳过欠费账号并开始',
+      denyButtonColor: allowForce ? '#ef4444' : '#f59e0b',
     })
-    return emptyResult.isDenied ? 'skip' : 'cancel'
+    if (emptyResult.isDenied) return allowForce ? 'force' : 'skip'
+    return 'cancel'
   }
 
   const totalAmount = pendingBills
@@ -722,12 +779,12 @@ export async function showOverduePaymentModal(overdueAccounts, options = {}) {
     cancelButtonText: '取消',
     confirmButtonColor: '#3b82f6',
     cancelButtonColor: '#94a3b8',
-    showDenyButton: allowSkip,
-    denyButtonText: '跳过欠费账号并开始',
-    denyButtonColor: '#f59e0b',
+    showDenyButton: allowSkip || allowForce,
+    denyButtonText: allowForce ? '强制执行' : '跳过欠费账号并开始',
+    denyButtonColor: allowForce ? '#ef4444' : '#f59e0b',
     width: modalWidth,
   })
-  if (result.isDenied) return 'skip'
+  if (result.isDenied) return allowForce ? 'force' : 'skip'
   if (!result.isConfirmed) return 'cancel'
 
   const selectedBills = []

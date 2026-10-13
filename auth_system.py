@@ -33,6 +33,14 @@ BUILTIN_PERMISSION_DEFAULTS = {
         "admin": True,
         "super_admin": True,
     },
+    # 绕过欠费（强制执行）：默认仅管理员/超级管理员拥有；
+    # 可以通过用户管理为普通用户单独授予。
+    "bypass_overdue": {
+        "guest": False,
+        "user": False,
+        "admin": True,
+        "super_admin": True,
+    },
 }
 
 
@@ -1784,6 +1792,21 @@ class AuthSystem:
                 msg = f"已设置最大会话数量为：{max_sessions}个，超出时将自动清理最旧的会话"
 
             return {"success": True, "message": msg}
+
+    def get_available_runs(self, auth_username):
+        """读取用户的可用执行次数；-1 表示无限，读取失败按 0 处理。"""
+        try:
+            user_file = self.get_user_file_path(auth_username)
+            if not os.path.exists(user_file):
+                return 0
+            with open(user_file, "r", encoding="utf-8") as f:
+                user_data = json.load(f)
+            return int(user_data.get("available_runs", 0))
+        except Exception as e:
+            logging.warning(
+                "读取用户 %s 的可用执行次数失败: %s", auth_username, e
+            )
+            return 0
 
     def update_available_runs(self, auth_username, available_runs):
         """

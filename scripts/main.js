@@ -8283,6 +8283,7 @@ const permissionTranslations = {
 
   auto_fill_password: "查看所有学校账号密码",
   view_school_account_passwords: "查看本账号学校账号密码",
+  bypass_overdue: "绕过欠费强制执行",
   import_offline: "导入离线文件",
   export_data: "导出数据",
   import_data: "导入数据",
@@ -18707,6 +18708,7 @@ async function multi_startAll() {
   if (!canStart) {
     return;
   }
+  const overdueOverride = _consumeOverdueForceOverride();
 
   const use_delay = $("multi-use-delay-check").checked;
   const min_delay = parseInt($("multi-min-delay-input").value) || 0;
@@ -18720,6 +18722,8 @@ async function multi_startAll() {
     use_delay,
     run_only_incomplete,
     skipOverdue,
+    overdueOverride.bypass_overdue,
+    overdueOverride.waive_charge,
   );
 
   // 检查是否是欠费错误
@@ -19667,6 +19671,7 @@ async function toggleRun() {
       // 欠费检查未通过，直接返回不启动任务
       return;
     }
+    const overdueOverride = _consumeOverdueForceOverride();
     // ========== 欠费检查结束 ==========
 
     const autoGen = $("auto-gen-all-check").checked;
@@ -19690,6 +19695,7 @@ async function toggleRun() {
         task_indices: [selectedTaskIndex],
         auto_generate: autoGen,
         school_username: currentSchoolUsername || undefined,
+        ...overdueOverride,
       },
     );
 
@@ -19756,6 +19762,7 @@ async function toggleAllRuns() {
       // 欠费检查未通过，直接返回不启动任务
       return;
     }
+    const overdueOverride = _consumeOverdueForceOverride();
     // ========== 欠费检查结束 ==========
 
     const ignoreCompleted = $("run-completed-check").checked;
@@ -19801,6 +19808,7 @@ async function toggleAllRuns() {
           !multiUsernames.length && currentSchoolUsername
             ? currentSchoolUsername
             : undefined,
+        ...overdueOverride,
       },
     );
     if (!result.success && result.error_code === "OVERDUE_PAYMENT") {
@@ -22902,6 +22910,7 @@ async function mobileStartTask() {
       // 用户有欠费且未完成缴费，阻止任务启动
       return;
     }
+    const overdueOverride = _consumeOverdueForceOverride();
     // ========== 欠费检查结束 ==========
 
     // ========== 检查后端是否已有任务在运行 ==========
@@ -22939,6 +22948,7 @@ async function mobileStartTask() {
       {
         task_indices: [selectedTaskIndex],
         auto_generate: true,
+        ...overdueOverride,
       },
     );
     if (result && result.success) {
@@ -23430,6 +23440,7 @@ async function mobileStartAllAccounts() {
     if (!canStart) {
       return;
     }
+    const overdueOverride = _consumeOverdueForceOverride();
 
     // ========== 步骤3：读取启动配置 ==========
     const randomDelayCheck = document.getElementById(
@@ -23454,6 +23465,8 @@ async function mobileStartAllAccounts() {
       use_delay,
       run_only_incomplete,
       skipOverdue,
+      overdueOverride.bypass_overdue,
+      overdueOverride.waive_charge,
     );
 
     // ========== 步骤5：处理返回结果 ==========

@@ -82,10 +82,11 @@ test('mobile start preserves the legacy automatic route generation behavior', as
     callAPI: async () => ({ success: true }),
     callRawAPI: async (...args) => { calls.push(args); return { success: true } },
     checkOverdueBeforeStartByCurrentMode: async () => true,
+    consumeOverdueForceOverride: () => ({ bypass_overdue: false, waive_charge: false }),
     AppModal: {}, ...taskData,
   })
   await panel.startTask()
-  assert.deepEqual(calls[0], ['/api/background_task/start', 'POST', { task_indices: [0], auto_generate: true }])
+  assert.deepEqual(calls[0], ['/api/background_task/start', 'POST', { task_indices: [0], auto_generate: true, bypass_overdue: false, waive_charge: false }])
   assert.equal(app.isRunning, true)
 })
 

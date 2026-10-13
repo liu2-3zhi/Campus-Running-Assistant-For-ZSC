@@ -457,6 +457,9 @@ class Api:
         self._load_tasks_lock = threading.RLock()
         self._load_tasks_inflight = False
         self.multi_run_only_incomplete = True
+        # 管理员在欠费警告弹窗选择“此次不计费”后置 True：
+        # 本次执行跳过可用次数扣减与账单生成，直到停止/下一次启动重置。
+        self.waive_charge_active = False
 
     def _get_session_stop_event(self):
         stop_event = getattr(self, "_session_stop_event", None)
@@ -482,6 +485,7 @@ class Api:
             event = getattr(self, event_name, None)
             if event is not None:
                 event.set()
+        self.waive_charge_active = False
 
         accounts = list(getattr(self, "accounts", {}).values())
         for account in accounts:
@@ -1624,6 +1628,12 @@ class Api:
             if getattr(self, "is_offline_mode", False):
                 logging.info(
                     f"[付费控制] 离线测试模式，跳过次数扣除与欠费记录。"
+                    f"(认证用户: {auth_username}, 学校账号: {school_username})"
+                )
+                return
+            if getattr(self, "waive_charge_active", False):
+                logging.info(
+                    "[付费控制] 管理员选择“此次不计费”，跳过次数扣减与账单生成。"
                     f"(认证用户: {auth_username}, 学校账号: {school_username})"
                 )
                 return
@@ -3478,6 +3488,52 @@ class Api:
             )
             return True
 
+    def _current_auth_group(self):
+        """当前登录用户所属权限组（无认证会话时按 guest 处理）。"""
+        user = getattr(self, "auth_username", None)
+        if not user:
+            return "guest"
+        try:
+            if _main().auth_system:
+                return _main().auth_system.get_user_group(user) or "guest"
+        except Exception as e:
+            logging.warning("[欠费检查] 获取用户权限组失败: %s", e)
+        return "guest"
+
+    def _user_can_bypass_overdue(self, auth_username=None):
+        """是否拥有“绕过欠费”权限（bypass_overdue）。
+
+        该权限默认仅管理员/超级管理员拥有，但可以通过用户管理单独授予普通
+        用户；因此这里必须查权限而不是只看权限组。服务端始终以真实登录用户
+        为准确认，前端传入的 bypass_overdue 只是“用户点了强制执行”的意图。
+        """
+        user = str(
+            auth_username or getattr(self, "auth_username", "") or ""
+        ).strip()
+        if not user or user == "guest":
+            return False
+        try:
+            if not _main().auth_system:
+                return False
+            return bool(
+                _main().auth_system.check_permission(user, "bypass_overdue")
+            )
+        except Exception as e:
+            logging.warning("[欠费检查] 校验 bypass_overdue 权限失败: %s", e)
+            return False
+
+    def _resolve_waive_charge(self, waive_requested):
+        """“此次不计费”只允许管理员/超级管理员使用（服务端硬校验）。"""
+        if not waive_requested:
+            return False
+        return self._current_auth_group() in ("admin", "super_admin")
+
+    def _overdue_bypass_allowed(self, bypass_overdue_requested):
+        """欠费闸门是否放行：必须同时具备权限与本次强制执行意图。"""
+        if not bypass_overdue_requested:
+            return False
+        return self._user_can_bypass_overdue()
+
     def _get_task_info_text(self, run: _main().RunData) -> str:
         """根据任务状态生成一个简短的信息文本（增强：多格式时间解析、稳健回退）"""
         if run.status == 1:
@@ -3969,8 +4025,14 @@ class Api:
                 f"离开打卡点 {run_data.target_sequence}（索引{run_data.target_sequence-1}）区域"
             )
 
-    def start_single_run(self):
-        """开始执行单个任务"""
+    def start_single_run(
+        self, bypass_overdue: bool = False, waive_charge: bool = False
+    ):
+        """开始执行单个任务
+
+        bypass_overdue: 存在欠费时是否按“强制执行”继续（需有 bypass_overdue 权限）
+        waive_charge:   本次执行是否不计费（仅管理员/超级管理员生效）
+        """
         logging.info("API调用: start_single_run - 开始执行单个任务")
 
         # ============================================================
@@ -3996,7 +4058,9 @@ class Api:
 
             # 如果存在欠费（overdue_count > 0），拒绝启动任务
             # 这是关键的安全检查点，防止欠费用户继续使用服务
-            if overdue_count > 0:
+            if overdue_count > 0 and not self._overdue_bypass_allowed(
+                bypass_overdue
+            ):
                 logging.warning(
                     f"[欠费检查] 账号 {school_username} 存在欠费 ({overdue_count} 次)，拒绝启动单个任务"
                 )
@@ -4012,6 +4076,9 @@ class Api:
                         }
                     ]
                 }
+
+        # 本次执行的计费豁免状态（仅管理员可用；不请求豁免时重置为 False）。
+        self.waive_charge_active = self._resolve_waive_charge(waive_charge)
 
         # 通过欠费检查后，原子占用单账号执行槽
         with self.single_execution_lock:
@@ -4067,6 +4134,8 @@ class Api:
         self.log("正在停止任务...")
         logging.info("已收到停止运行任务的信号")
         self.stop_run_flag.set()
+        # 停止后清掉“此次不计费”状态，下一次启动必须重新明确申请豁免。
+        self.waive_charge_active = False
         return {"success": True}
 
     def get_run_status(self):
@@ -5870,7 +5939,13 @@ class Api:
         result["notices"] = notices
         return result
 
-    def start_all_runs(self, ignore_completed, auto_generate):
+    def start_all_runs(
+        self,
+        ignore_completed,
+        auto_generate,
+        bypass_overdue: bool = False,
+        waive_charge: bool = False,
+    ):
         """开始执行所有符合条件的任务"""
         logging.info(
             f"API CALL: start_all_runs (ignore_completed={ignore_completed}, auto_generate={auto_generate})"
@@ -5899,7 +5974,9 @@ class Api:
 
             # 如果存在欠费（overdue_count > 0），拒绝启动所有任务
             # 这是关键的安全检查点，防止欠费用户批量启动任务继续使用服务
-            if overdue_count > 0:
+            if overdue_count > 0 and not self._overdue_bypass_allowed(
+                bypass_overdue
+            ):
                 logging.warning(
                     f"[欠费检查] 账号 {school_username} 存在欠费 ({overdue_count} 次)，拒绝启动所有任务"
                 )
@@ -5915,6 +5992,9 @@ class Api:
                         }
                     ]
                 }
+
+        # 本次执行的计费豁免状态（仅管理员可用；不请求豁免时重置为 False）。
+        self.waive_charge_active = self._resolve_waive_charge(waive_charge)
 
         # 通过欠费检查后，继续执行原有的任务启动逻辑
         if not self.stop_run_flag.is_set():
@@ -8786,7 +8866,13 @@ class Api:
                 raise
             return True
 
-    def multi_start_single_account(self, username, run_only_incomplete: bool = True):
+    def multi_start_single_account(
+        self,
+        username,
+        run_only_incomplete: bool = True,
+        bypass_overdue: bool = False,
+        waive_charge: bool = False,
+    ):
         """
         启动指定账号的任务执行线程。
 
@@ -8797,6 +8883,8 @@ class Api:
         参数：
             username: 学校账号用户名
             run_only_incomplete: 是否只运行未完成的任务
+            bypass_overdue: 存在欠费时是否按“强制执行”继续（需有 bypass_overdue 权限）
+            waive_charge:   本次执行是否不计费（仅管理员/超级管理员生效）
 
         返回：
             包含 success 和 message 的字典
@@ -8812,7 +8900,9 @@ class Api:
             overdue_count = _main()._count_pending_bills_for_school(username)
 
             # 如果存在欠费，拒绝启动任务
-            if overdue_count > 0:
+            if overdue_count > 0 and not self._overdue_bypass_allowed(
+                bypass_overdue
+            ):
                 self.log(f"[欠费检查] 账号 {username} 存在欠费 ({overdue_count} 次)，拒绝启动任务")
                 return {
                     "success": False,
@@ -8825,6 +8915,9 @@ class Api:
                         }
                     ]
                 }
+
+        # 本次执行的计费豁免状态（仅管理员可用；不请求豁免时重置为 False）。
+        self.waive_charge_active = self._resolve_waive_charge(waive_charge)
 
         acc = self.accounts[username]
         if self._is_multi_account_execution_active(acc):
@@ -8891,6 +8984,8 @@ class Api:
         use_delay,
         run_only_incomplete,
         skip_overdue=False,
+        bypass_overdue: bool = False,
+        waive_charge: bool = False,
     ):
         """
         一键启动所有账号的任务
@@ -8905,6 +9000,8 @@ class Api:
              use_delay: 是否使用延迟
              run_only_incomplete: 是否只运行未完成的任务
              skip_overdue: 是否跳过欠费账号并启动其余账号
+             bypass_overdue: 存在欠费时是否按“强制执行”继续（需有 bypass_overdue 权限）
+             waive_charge:   本次执行是否不计费（仅管理员/超级管理员生效）
 
         返回：
             包含 success 和 message 的字典
@@ -8935,8 +9032,10 @@ class Api:
         else:
             self.log("[欠费检查] 当前为免费模式，跳过欠费拦截。")
 
-        # 如果发现任何账号有欠费，拒绝启动所有任务
-        if overdue_accounts_list and not skip_overdue:
+        # 如果发现任何账号有欠费，拒绝启动所有任务（拿到授权并点了强制执行
+        # 的用户放行，且不再跳过欠费账号）。
+        force_allowed = self._overdue_bypass_allowed(bypass_overdue)
+        if overdue_accounts_list and not skip_overdue and not force_allowed:
             self.log(
                 f"[欠费检查] 发现 {len(overdue_accounts_list)} 个账号存在欠费，拒绝启动任务"
             )
@@ -8947,11 +9046,15 @@ class Api:
                 "overdue_accounts": overdue_accounts_list
             }
 
-        skipped_overdue_usernames = {
-            item["school_username"]
-            for item in overdue_accounts_list
-            if item.get("school_username")
-        }
+        skipped_overdue_usernames = (
+            set()
+            if force_allowed
+            else {
+                item["school_username"]
+                for item in overdue_accounts_list
+                if item.get("school_username")
+            }
+        )
         account_list = [
             acc
             for acc in self.accounts.values()
@@ -8969,6 +9072,9 @@ class Api:
                 f"[欠费检查] 已跳过 {len(skipped_overdue_usernames)} 个欠费账号，"
                 "继续启动其余账号。"
             )
+
+        # 本次执行的计费豁免状态（仅管理员可用；不请求豁免时重置为 False）。
+        self.waive_charge_active = self._resolve_waive_charge(waive_charge)
 
         # 步骤3：检查是否所有账号都已在运行
         total_accounts = len(self.accounts)
@@ -9029,6 +9135,8 @@ class Api:
     def multi_stop_all_accounts(self):
         """停止所有账号的运行"""
         logging.info("API调用: multi_stop_all_accounts - 停止所有多账号任务的运行")
+        # 停止后清掉“此次不计费”状态，下一次启动必须重新明确申请豁免。
+        self.waive_charge_active = False
         if not self.accounts:
             self.log("当前无账号，无需停止。")
             self.multi_run_stop_flag.set()

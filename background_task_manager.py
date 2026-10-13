@@ -107,7 +107,13 @@ class BackgroundTaskManager:
             return None
 
     def start_background_task(
-        self, session_id, api_instance, task_indices, auto_generate=False
+        self,
+        session_id,
+        api_instance,
+        task_indices,
+        auto_generate=False,
+        bypass_overdue=False,
+        waive_charge=False,
     ):
         """
         启动后台任务执行
@@ -121,6 +127,8 @@ class BackgroundTaskManager:
             api_instance: API实例，包含用户信息
             task_indices: 要执行的任务索引列表
             auto_generate: 是否自动生成路径
+            bypass_overdue: 存在欠费时是否按“强制执行”继续（需有 bypass_overdue 权限）
+            waive_charge:   本次执行是否不计费（仅管理员/超级管理员生效）
 
         返回：
             包含 success 和 message 的字典
@@ -167,7 +175,10 @@ class BackgroundTaskManager:
                 target_school_usernames
             )
 
-            if overdue_accounts_list:
+            if overdue_accounts_list and not (
+                bypass_overdue
+                and api_instance._user_can_bypass_overdue()
+            ):
                 logging.warning(
                     f"[欠费检查] 用户 {auth_username} 有 {len(overdue_accounts_list)} 个账号存在欠费，拒绝启动任务"
                 )
@@ -177,6 +188,11 @@ class BackgroundTaskManager:
                     "error_code": "OVERDUE_PAYMENT",
                     "overdue_accounts": overdue_accounts_list,
                 }
+
+        # 本次执行的计费豁免状态（仅管理员可用；不请求豁免时重置为 False）。
+        api_instance.waive_charge_active = api_instance._resolve_waive_charge(
+            waive_charge
+        )
 
         # 步骤2：启动任务（没有欠费问题）
         with self.lock:
