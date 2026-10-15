@@ -369,6 +369,26 @@ async function addFromConfig() {
 }
 
 async function addAllFromConfig() {
+  const confirmed = await window.Swal?.fire({
+    title: '确认添加全部配置用户',
+    text: '将把配置中的所有用户添加到多账号列表，是否继续？',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: '继续',
+    cancelButtonText: '取消',
+  })
+  if (!confirmed?.isConfirmed) return
+
+  const confirmedAgain = await window.Swal?.fire({
+    title: '再次确认批量添加',
+    text: '请再次确认：即将批量添加全部配置用户，并可能需要补充缺失密码。',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: '确认添加全部',
+    cancelButtonText: '取消',
+  })
+  if (!confirmedAgain?.isConfirmed) return
+
   try {
     const result = await callRawAPI('/api/multi_load_accounts_from_config', 'POST', {})
     if (result?.success === false) throw new Error(result.message || '添加全部失败')

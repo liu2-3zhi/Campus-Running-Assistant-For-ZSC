@@ -17480,6 +17480,18 @@ async function exitMultiMode() {
 async function multi_loadAllFromConfig() {
   // const result = await callPythonAPI("multi_load_accounts_from_config");
 
+  const confirmed = await jsShowConfirm(
+    "确认添加全部配置用户",
+    "将把配置中的所有用户添加到多账号列表，是否继续？",
+  );
+  if (!confirmed) return;
+
+  const confirmedAgain = await jsShowConfirm(
+    "再次确认批量添加",
+    "请再次确认：即将批量添加全部配置用户，并可能需要补充缺失密码。",
+  );
+  if (!confirmedAgain) return;
+
   const result = await callPythonAPI_raw(
     "/api/multi_load_accounts_from_config",
     "POST",
