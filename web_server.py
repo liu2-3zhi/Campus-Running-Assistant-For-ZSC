@@ -5608,6 +5608,40 @@ def start_web_server(args_param):
             with open(backup_filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
+            # 备份文件中的 userInfo 可能没有 text_password，或保存的是旧密码。
+            # 管理员详情应与学校账号管理保持一致，优先使用当前配置中的密码。
+            if isinstance(data, dict):
+                try:
+                    current_accounts = (
+                        _main().g.api_instance._load_user_school_accounts(
+                            _main().g.user
+                        )
+                        or {}
+                    )
+                    account_data = current_accounts.get(school_username)
+                    account_found = school_username in current_accounts
+                    if isinstance(account_data, str):
+                        current_password = account_data
+                    elif isinstance(account_data, dict):
+                        current_password = account_data.get("password") or ""
+                    else:
+                        current_password = ""
+
+                    if account_found:
+                        user_info = data.get("userInfo")
+                        user_info = (
+                            dict(user_info) if isinstance(user_info, dict) else {}
+                        )
+                        user_info["text_password"] = current_password
+                        data["userInfo"] = user_info
+                except Exception as password_error:
+                    # 密码回填失败不影响其它备份详情的展示。
+                    logging.warning(
+                        "[管理员备份详情] 读取当前账号密码失败 %s: %s",
+                        school_username,
+                        password_error,
+                    )
+
             return _main().jsonify({
                 "success": True,
                 "data": data,
