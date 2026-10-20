@@ -9,6 +9,7 @@ import LogPanel from '@/components/main/LogPanel.vue'
 import AppModal from '@/components/common/AppModal.vue'
 import { taskPoints, applyPathResult, clearTaskPath } from './taskData'
 import { paramDefs, paramGroups } from '@/utils/legacyParams'
+import { formatNotificationTime } from '@/utils/format'
 
 // openTab：允许父组件（移动端侧边栏导航）指定要打开的 Tab
 const props = defineProps({
@@ -693,8 +694,8 @@ onMounted(() => {
                 <div v-if="t.content || t.message" class="text-xs text-[var(--ink-muted)] mt-0.5 line-clamp-2">
                   {{ t.content || t.message }}
                 </div>
-                <div v-if="t.time || t.date || t.created_at" class="text-[10px] text-[var(--ink-muted)] mt-1">
-                  {{ t.time || t.date || t.created_at }}
+                <div v-if="t.createtime != null || t.time || t.date || t.created_at" class="text-[10px] text-[var(--ink-muted)] mt-1">
+                  {{ formatNotificationTime(t.createtime ?? t.time ?? t.date ?? t.created_at) }}
                 </div>
               </div>
             </div>

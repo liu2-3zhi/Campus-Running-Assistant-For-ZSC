@@ -21888,6 +21888,25 @@ async function refreshNotificationsUI(
     isRefreshingNotifications = false;
   }
 }
+function formatNotificationTime(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "-";
+  const numeric = Number(text);
+  const date = new Date(
+    Number.isFinite(numeric)
+      ? Math.abs(numeric) < 1e12
+        ? numeric * 1000
+        : numeric
+      : text,
+  );
+  if (Number.isNaN(date.getTime())) return text;
+  const pad = (part) => String(part).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
+}
+
 function renderNotificationBatch(notices, container) {
   if (!notices || notices.length === 0) return;
 
@@ -21980,7 +21999,7 @@ function renderNotificationBatch(notices, container) {
             <div class="flex items-center gap-2">
               ${readButtonHtml}
               ${attendanceHtml}
-              <span class="text-xs text-slate-500 flex-shrink-0">${n.createtime}</span>
+              <span class="text-xs text-slate-500 flex-shrink-0">${escapeHtml(formatNotificationTime(n.createtime))}</span>
             </div>
           </div>
           <p class="text-sm text-slate-600 mt-1 ${isReadClass}">${n.content}</p>
@@ -22109,7 +22128,7 @@ function onNotificationsUpdated(result) {
           <div class="flex justify-between items-center mt-1">
             <span class="text-xs text-slate-500">${n.content}</span>
             <div class="flex items-center gap-2 flex-shrink-0">
-              <span class="text-xs text-slate-400">${n.createtime}</span>
+              <span class="text-xs text-slate-400">${escapeHtml(formatNotificationTime(n.createtime))}</span>
               ${buttonHtml}
             </div>
           </div>
@@ -22608,7 +22627,7 @@ function updateMobileNotificationUI() {
               notice.title,
             )}</span>
             <span class="text-xs text-slate-400">${escapeHtml(
-              notice.createtime,
+              formatNotificationTime(notice.createtime),
             )}</span>
           </div>
           <p class="text-xs text-slate-600">${escapeHtml(notice.content)}</p>
@@ -22671,7 +22690,7 @@ function updateMobileNotificationUI() {
               notice.content,
             )}</span>
             <span class="text-xs text-slate-400 ml-2">${escapeHtml(
-              notice.createtime,
+              formatNotificationTime(notice.createtime),
             )}</span>
           </div>
         </div>
@@ -22774,7 +22793,7 @@ function syncMobileAttendanceList() {
       </div>
       <span class="text-xs ${statusClass} ml-2 flex-shrink-0">${statusText}</span>
     </div>
-    <div class="text-xs text-slate-400">${n.createtime}</div>
+    <div class="text-xs text-slate-400">${escapeHtml(formatNotificationTime(n.createtime))}</div>
     ${buttonHtml}
   `;
     mobileAttList.appendChild(item);

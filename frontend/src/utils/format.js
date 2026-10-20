@@ -28,6 +28,25 @@ export function formatPace(minPerKm) {
   return `${m}'${String(s).padStart(2, '0')}"`
 }
 
+export function formatNotificationTime(value) {
+  const text = String(value ?? '').trim()
+  if (!text) return '-'
+  const numeric = Number(text)
+  const date = new Date(
+    Number.isFinite(numeric)
+      ? Math.abs(numeric) < 1e12
+        ? numeric * 1000
+        : numeric
+      : text,
+  )
+  if (Number.isNaN(date.getTime())) return text
+  const pad = (part) => String(part).padStart(2, '0')
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  )
+}
+
 export function formatDateTime(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
