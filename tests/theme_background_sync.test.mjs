@@ -6,8 +6,11 @@ import vm from 'node:vm';
 
 function extractFunctionSource(source, functionName) {
   const signature = `function ${functionName}`;
-  const start = source.indexOf(signature);
-  assert.notEqual(start, -1, `${functionName} should exist in scripts/main.js`);
+  const functionStart = source.indexOf(signature);
+  assert.notEqual(functionStart, -1, `${functionName} should exist in scripts/main.js`);
+  const start = source.slice(functionStart - 6, functionStart) === 'async '
+    ? functionStart - 6
+    : functionStart;
 
   const bodyStart = source.indexOf(') {', start) + 2;
   assert.notEqual(bodyStart, -1, `${functionName} should have a body`);
@@ -169,6 +172,97 @@ test('login bundle completes PC/mobile binding without consume or random fetchin
   assert.equal(context.initialConsumeCompleted, true);
   assert.match(context.currentThemeConfig.global_environment_variables.auth_login_container_background, /pc.jpg/);
   assert.match(context.currentThemeConfig.global_environment_variables.mobile_auth_login_content_background, /mb.jpg/);
+});
+
+test('anonymous consume response cannot replace the preview image that login will bind', async () => {
+  const previewUrl = '/theme-assets/preview.jpg';
+  const { context, source } = loadBackgroundRuntime({
+    themeBackgroundInitialLoadSettled: true,
+    themeBackgroundFeedbackInFlight: false,
+    activeThemeBackgroundFeedback: null,
+    initialLoadBackgroundCandidateByTarget: { pc: previewUrl, mobile: '' },
+    anonConsumedBackgroundByTarget: { pc: '', mobile: '' },
+    getThemeBackgroundFeedbackMode: () => 'public',
+    fetch: async () => ({ ok: true, json: async () => ({ success: true, theme_config: {
+      global_environment_variables: { auth_login_container_background: 'url("/theme-assets/next.jpg")' },
+    } }) }),
+    logMessage_Warning: () => {},
+  });
+  vm.runInContext(extractFunctionSource(source, 'applyThemeBackgroundAssignment'), context);
+  vm.runInContext(extractFunctionSource(source, 'notifyThemeBackgroundConsumed'), context);
+  vm.runInContext(extractFunctionSource(source, 'getBackgroundPreviewPayload'), context);
+  context.applyThemeBackgroundAssignment({
+    bundle_id: 'preview', source: 'anonymous_preview', pc: { image_url: previewUrl }, mobile: {},
+  });
+
+  await context.notifyThemeBackgroundConsumed('pc', previewUrl);
+
+  assert.equal(context.getRenderedThemeBackgroundImageUrlByTarget('pc'), previewUrl);
+  assert.equal(context.getBackgroundPreviewPayload().pc.image_url, previewUrl);
+});
+
+test('late anonymous consume response cannot replace an authenticated background', async () => {
+  const previewUrl = '/theme-assets/preview.jpg';
+  let finishRequest;
+  const response = new Promise(resolve => { finishRequest = resolve; });
+  const { context, source } = loadBackgroundRuntime({
+    themeBackgroundInitialLoadSettled: true,
+    themeBackgroundFeedbackInFlight: false,
+    activeThemeBackgroundFeedback: null,
+    initialLoadBackgroundCandidateByTarget: { pc: previewUrl, mobile: '' },
+    anonConsumedBackgroundByTarget: { pc: '', mobile: '' },
+    getThemeBackgroundFeedbackMode: () => 'public',
+    fetch: () => response,
+    logMessage_Warning: () => {},
+  });
+  vm.runInContext(extractFunctionSource(source, 'applyThemeBackgroundAssignment'), context);
+  vm.runInContext(extractFunctionSource(source, 'notifyThemeBackgroundConsumed'), context);
+  context.applyThemeBackgroundAssignment({
+    bundle_id: 'preview', source: 'anonymous_preview', pc: { image_url: previewUrl }, mobile: {},
+  });
+  const consume = context.notifyThemeBackgroundConsumed('pc', previewUrl);
+  context.applyThemeBackgroundAssignment({
+    bundle_id: 'bound', pc: { image_url: '/theme-assets/bound.jpg' }, mobile: {},
+  }, { bound: true });
+  finishRequest({ ok: true, json: async () => ({ success: true, theme_config: {
+    global_environment_variables: { auth_login_container_background: 'url("/theme-assets/next.jpg")' },
+  } }) });
+
+  await consume;
+
+  assert.equal(context.getRenderedThemeBackgroundImageUrlByTarget('pc'), '/theme-assets/bound.jpg');
+});
+
+test('public theme config loaded after bootstrap keeps the preview bundle image', () => {
+  const previewUrl = '/theme-assets/preview.jpg';
+  const { context, source } = loadBackgroundRuntime();
+  vm.runInContext(extractFunctionSource(source, 'applyThemeBackgroundAssignment'), context);
+  context.applyThemeBackgroundAssignment({
+    bundle_id: 'preview', source: 'anonymous_preview', pc: { image_url: previewUrl }, mobile: {},
+  });
+
+  const merged = context.mergeThemeBackgroundConfig(context.currentThemeConfig, {
+    global_environment_variables: { auth_login_container_background: 'url("/theme-assets/next.jpg")' },
+  });
+
+  assert.equal(context.getRenderedThemeBackgroundImageUrlByTarget('pc'), previewUrl);
+  assert.match(merged.global_environment_variables.auth_login_container_background, /preview\.jpg/);
+});
+
+test('switching to a non-default theme uses that theme background', () => {
+  const { context, source } = loadBackgroundRuntime();
+  vm.runInContext(extractFunctionSource(source, 'applyThemeBackgroundAssignment'), context);
+  context.applyThemeBackgroundAssignment({
+    bundle_id: 'preview', source: 'anonymous_preview',
+    pc: { image_url: '/theme-assets/preview.jpg' }, mobile: {},
+  });
+
+  const merged = context.mergeThemeBackgroundConfig(context.currentThemeConfig, {
+    basic_information: { id: 'retro' },
+    global_environment_variables: { auth_login_container_background: 'url("/static/retro.jpg")' },
+  });
+
+  assert.equal(merged.global_environment_variables.auth_login_container_background, 'url("/static/retro.jpg")');
 });
 
 function extractThemeBackgroundImageUrl(backgroundValue) {

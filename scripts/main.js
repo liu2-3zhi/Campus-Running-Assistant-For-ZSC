@@ -3826,6 +3826,20 @@ function mergeThemeBackgroundConfig(previousConfig, nextConfig) {
       mergedEnv[key] = previousEnv[key];
     }
   });
+  const nextStyleId = String(next.basic_information?.id || previous.basic_information?.id || "default").trim();
+  if (nextStyleId === "default") {
+    for (const [target, key] of [
+      ["pc", "auth_login_container_background"],
+      ["mobile", "mobile_auth_login_content_background"],
+    ]) {
+      const assignedUrl = String(currentThemeBackgroundAssignment?.[target]?.image_url || "").trim();
+      if (!assignedUrl) continue;
+      const previousBackground = String(previousEnv[key] || "");
+      mergedEnv[key] = extractThemeBackgroundImageUrl(previousBackground) === assignedUrl
+        ? previousBackground
+        : `url("${assignedUrl}") center / cover no-repeat${target === "pc" ? " fixed" : ""}`;
+    }
+  }
   return { ...previous, ...next, global_environment_variables: mergedEnv };
 }
 
@@ -4131,7 +4145,7 @@ async function notifyThemeBackgroundConsumed(target, imageUrlOverride = null) {
         anonConsumedBackgroundByTarget[normalizedTarget] = imageUrl;
         initialLoadBackgroundCandidateByTarget[normalizedTarget] = imageUrl;
       }
-      if (result.theme_config && typeof result.theme_config === "object") {
+      if (isLoggedIn && result.theme_config && typeof result.theme_config === "object") {
         currentThemeConfig = result.theme_config;
         applyThemeLoginContainerStyle(currentThemeConfig, {
           skipVisualRewrite: themeBackgroundLoginSyncInFlight,
