@@ -8,9 +8,17 @@ import os
 import secrets
 import threading
 import time
+from urllib.parse import unquote, urlsplit
 
 
 from main_runtime import _main
+from theme_background_legacy import _protected_legacy_background_urls
+from theme_background_state import (
+    BackgroundStateStore,
+    background_files_locked,
+    background_files_log,
+    is_background_image_file,
+)
 
 
 class TokenManager:
@@ -634,15 +642,16 @@ def _apply_refund_transition(order_data, refund_amount):
 
 
 
+@background_files_locked
 def _cleanup_random_background_index(cache_dir):
-    index_data = _main()._load_random_background_index(cache_dir)
+    index_data = _main()._load_random_background_index(cache_dir, strict=True)
     files = index_data.get("files", {}) if isinstance(index_data, dict) else {}
     if not files:
         return
     existing_files = {
         file_name
         for file_name in os.listdir(cache_dir)
-        if os.path.isfile(os.path.join(cache_dir, file_name)) and file_name != "index.json"
+        if is_background_image_file(cache_dir, file_name)
     }
     cleaned_files = {
         file_name: entry
@@ -654,11 +663,12 @@ def _cleanup_random_background_index(cache_dir):
         _main()._save_random_background_index(cache_dir, index_data)
 
 
+@background_files_locked
 def _allow_random_background_feedback(cache_dir, client_ip, target):
     normalized_ip = str(client_ip or "-").strip() or "-"
     normalized_target = "mobile" if str(target or "").strip().lower() == "mobile" else "pc"
     feedback_key = f"{normalized_ip}:{normalized_target}"
-    index_data = _main()._load_random_background_index(cache_dir)
+    index_data = _main()._load_random_background_index(cache_dir, strict=True)
     feedback = index_data.setdefault("feedback", {})
     now = time.time()
     last_feedback_at = float(feedback.get(feedback_key) or 0)
@@ -673,7 +683,6 @@ def _allow_random_background_feedback(cache_dir, client_ip, target):
 
 
 def _cleanup_random_background_cache(cache_dir, max_cache_size_bytes=None):
-    _cleanup_random_background_index(cache_dir)
     if max_cache_size_bytes is None:
         try:
             config = (
@@ -687,41 +696,53 @@ def _cleanup_random_background_cache(cache_dir, max_cache_size_bytes=None):
         except Exception as e:
             logging.warning(f"[主题背景] 读取背景缓存上限失败，使用默认值 1024MB: {e}")
             max_cache_size_bytes = 1024 * 1024 * 1024
-    if max_cache_size_bytes == 0:
+    if max_cache_size_bytes <= 0:
         return
 
     try:
-        cache_files = []
-        total_size = 0
-        for file_name in os.listdir(cache_dir):
-            file_path = os.path.join(cache_dir, file_name)
-            if file_name == "index.json":
-                continue
-            if not os.path.isfile(file_path):
-                continue
+        _cleanup_random_background_cache_locked(cache_dir, max_cache_size_bytes)
+    except Exception as e:
+        background_files_log(logging.WARNING, f"[主题背景] 无法确认背景绑定状态，跳过缓存清理: {e}")
 
-            try:
-                stat = os.stat(file_path)
-            except OSError as e:
-                logging.warning(f"[主题背景] 读取缓存文件信息失败 {file_path}: {e}")
-                continue
 
-            total_size += stat.st_size
+@background_files_locked
+def _cleanup_random_background_cache_locked(cache_dir, max_cache_size_bytes):
+    if not os.path.isdir(cache_dir):
+        return
+    store = BackgroundStateStore(cache_dir)
+    state = store.load(strict=True)
+    index_data = _main()._load_random_background_index(cache_dir, strict=True)
+    protected_urls = store.protected_urls(state) | _protected_legacy_background_urls(index_data)
+    protected_names = set()
+    prefix = "/theme-assets/random_background_image/"
+    for image_url in protected_urls:
+        path = unquote(urlsplit(image_url).path)
+        if path.startswith(prefix):
+            file_name = path[len(prefix):]
+            if os.path.basename(file_name) == file_name:
+                protected_names.add(os.path.normcase(file_name))
+    cache_files = []
+    total_size = 0
+    for file_name in os.listdir(cache_dir):
+        if not is_background_image_file(cache_dir, file_name):
+            continue
+        file_path = os.path.join(cache_dir, file_name)
+        stat = os.stat(file_path, follow_symlinks=False)
+        total_size += stat.st_size
+        if os.path.normcase(file_name) not in protected_names:
             cache_files.append((file_path, stat.st_mtime, stat.st_size))
 
+    cache_files.sort(key=lambda item: item[1])
+    for file_path, _, file_size in cache_files:
         if total_size <= max_cache_size_bytes:
-            return
+            break
+        try:
+            os.remove(file_path)
+            total_size -= file_size
+            background_files_log(logging.INFO, f"[主题背景] 缓存目录超过上限，已删除最早缓存文件: {file_path}")
+        except OSError as e:
+            background_files_log(logging.WARNING, f"[主题背景] 删除旧缓存文件失败 {file_path}: {e}")
 
-        cache_files.sort(key=lambda item: item[1])
-        for file_path, _, file_size in cache_files:
-            if total_size <= max_cache_size_bytes:
-                break
-
-            try:
-                os.remove(file_path)
-                total_size -= file_size
-                logging.info(f"[主题背景] 缓存目录超过上限，已删除最早缓存文件: {file_path}")
-            except OSError as e:
-                logging.warning(f"[主题背景] 删除旧缓存文件失败 {file_path}: {e}")
-    except Exception as e:
-        logging.warning(f"[主题背景] 清理背景缓存目录失败: {e}")
+    _cleanup_random_background_index(cache_dir)
+    if total_size > max_cache_size_bytes:
+        background_files_log(logging.WARNING, "[主题背景] 受保护的背景缓存超过容量上限，保留正在使用的图片")

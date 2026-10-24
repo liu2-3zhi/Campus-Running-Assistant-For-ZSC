@@ -14,6 +14,7 @@ from flask import jsonify, make_response, request, send_from_directory
 
 from payment_crypto import RsaSigner
 from config_adapter import JsonConfigAdapter
+from log_archiving import ArchiveManager, move_no_replace
 from auto_attendance_config import (
     _disable_auto_attendance,
     _enable_auto_attendance,
@@ -171,7 +172,10 @@ from theme_background_cache import (
 
 from guest_token_store import GuestTokenStore
 from theme_background_state import (
+    BACKGROUND_FILES_LOCK,
     BackgroundStateStore,
+    background_files_log,
+    background_files_locked,
     empty_state as _empty_background_state,
 )
 from theme_background_legacy import (
@@ -194,6 +198,8 @@ from theme_background_legacy import (
 _import_failures = []
 _log_buffer = []
 _logging_exception_hooks_installed = False
+_logging_configured = False
+_logging_archive_manager = None
 _SINGLE_INSTANCE_LOCK_HANDLE = None
 
 # 运行时在 main() 中从 product_name_generator.py 导入。
@@ -3948,6 +3954,7 @@ class CustomLogHandler(logging.FileHandler):
         encoding="utf-8",
         max_bytes=10 * 1024 * 1024,
         backup_count=None,
+        archive_manager=None,
     ):
         """
         初始化自定义日志处理器。
@@ -3966,6 +3973,13 @@ class CustomLogHandler(logging.FileHandler):
         self.rollover_failure_count = 0
         self.rollover_retry_at = 0.0
         super().__init__(filename, mode, encoding)
+        self.archive_manager = archive_manager or ArchiveManager(
+            os.path.dirname(self.baseFilename),
+            os.path.join(os.path.dirname(self.baseFilename), "archive"),
+        )
+        self.archive_failure_count = 0
+        self.archive_retry_at = 0.0
+        self._last_backup_index = max((index for index, _ in self._list_backup_files()), default=0)
 
     def _resolve_backup_prefix(self):
         """历史文件的前缀：由处理器自己的文件名推导。
@@ -3984,7 +3998,7 @@ class CustomLogHandler(logging.FileHandler):
         log_dir = os.path.dirname(self.baseFilename)
         prefix = self._resolve_backup_prefix()
         pattern = re.compile(
-            rf"^{re.escape(prefix)}-(\d{{{self.BACKUP_INDEX_WIDTH},}})\.log$"
+            rf"^{re.escape(prefix)}-([0-9]+)\.log$"
         )
 
         found = []
@@ -3997,7 +4011,9 @@ class CustomLogHandler(logging.FileHandler):
             match = pattern.match(name)
             if not match:
                 continue
-            found.append((int(match.group(1)), os.path.join(log_dir, name)))
+            path = os.path.join(log_dir, name)
+            if int(match.group(1)) > 0 and os.path.isfile(path) and not os.path.islink(path):
+                found.append((int(match.group(1)), path))
 
         found.sort(key=lambda item: item[0])
         return found
@@ -4006,36 +4022,40 @@ class CustomLogHandler(logging.FileHandler):
         """返回本次轮转应写入的历史文件路径（最大编号 +1）。"""
         log_dir = os.path.dirname(self.baseFilename)
         backups = self._list_backup_files()
-        next_index = backups[-1][0] + 1 if backups else 1
+        next_index = max(self._last_backup_index, backups[-1][0] if backups else 0) + 1
         return os.path.join(
             log_dir,
             f"{self._resolve_backup_prefix()}-{next_index:0{self.BACKUP_INDEX_WIDTH}d}.log",
         )
 
     def _prune_old_backups(self):
-        """超过保留上限时，从编号最小（最旧）的开始删除。"""
+        """归档超额历史；失败时保留原文，后续写入按独立退避重试。"""
+        if time.monotonic() < self.archive_retry_at:
+            return
         backups = self._list_backup_files()
         excess = len(backups) - self.backup_count
-        if excess <= 0:
+        if excess <= 0 and not self.archive_failure_count:
             return
-
-        for index, path in backups[:excess]:
-            try:
-                os.remove(path)
-                print(
-                    f"[日志轮转] 已删除最旧的历史日志: {os.path.basename(path)}"
-                )
-            except OSError as exc:
-                print(
-                    f"[日志轮转] 删除 {os.path.basename(path)} 失败: {exc}"
-                )
+        try:
+            success = self.archive_manager.archive_runtime([path for _, path in backups[:max(0, excess)]])
+        except Exception as exc:
+            print(f"[日志归档] 归档失败，保留原文: {exc}")
+            success = False
+        if success:
+            self.archive_failure_count = 0
+            self.archive_retry_at = 0.0
+        else:
+            self.archive_failure_count += 1
+            delay = min(60, 2 ** min(self.archive_failure_count, 6))
+            self.archive_retry_at = time.monotonic() + delay
+            print(f"[日志归档] 原文已保留，{delay} 秒后重试")
 
     def emit(self, record):
         """
         写入日志记录前检查文件大小。
         """
         try:
-
+            self._record_write_failed = False
             if self.stream and os.path.exists(self.baseFilename):
                 self.stream.flush()
                 if (
@@ -4045,9 +4065,17 @@ class CustomLogHandler(logging.FileHandler):
                     self.do_rollover()
 
             super().emit(record)
+            if not self._record_write_failed:
+                self._prune_old_backups()
 
         except Exception:
             self.handleError(record)
+
+    def handleError(self, record):
+        # FileHandler suppresses write/flush errors; do not archive until a
+        # later record has actually reached the reopened current file.
+        self._record_write_failed = True
+        super().handleError(record)
 
     def do_rollover(self):
         """
@@ -4060,12 +4088,8 @@ class CustomLogHandler(logging.FileHandler):
         try:
             target_path = self._next_backup_path()
 
-            # 正常情况下不会撞名；万一撞上（例如手工放了个同号文件），
-            # 先让开，避免 rename 覆盖掉已有日志。
-            if os.path.exists(target_path):
-                os.remove(target_path)
-
-            os.rename(self.baseFilename, target_path)
+            move_no_replace(self.baseFilename, target_path)
+            self._last_backup_index = int(os.path.basename(target_path).rsplit("-", 1)[1][:-4])
             print(
                 f"[日志轮转] {os.path.basename(self.baseFilename)} -> "
                 f"{os.path.basename(target_path)}"
@@ -4084,9 +4108,6 @@ class CustomLogHandler(logging.FileHandler):
             self.stream = self._open()
             return False
 
-        # 轮转成功后再裁剪，避免"删了旧的却没能建新的"
-        self._prune_old_backups()
-
         self.stream = self._open()
         self.rollover_failure_count = 0
         self.rollover_retry_at = 0.0
@@ -4094,129 +4115,37 @@ class CustomLogHandler(logging.FileHandler):
 
 
 def archive_old_logs():
-    """
-    归档旧的日志文件和随机背景缓存。
-    """
-
-    if not os.path.exists(archive_dir):
-        os.makedirs(archive_dir, exist_ok=True)
-        print(f"[日志归档] 创建归档目录: {archive_dir}")
-
-    files_to_archive = []
-    for filename in os.listdir(log_dir):
-        if filename == "zx-slm-tool.log" or (
-            filename.startswith("zx-slm-tool-") and filename.endswith(".log")
-        ):
-            log_path = os.path.join(log_dir, filename)
-            if os.path.isfile(log_path) and os.path.getsize(log_path) > 0:
-                files_to_archive.append((log_path, filename))
-
+    """仅在首次日志初始化前归档上次运行的文件；运行期间不可调用。"""
+    if _logging_configured or _logging_archive_manager is None:
+        return False
+    manager = _logging_archive_manager
+    logs_ok = manager.archive_startup_logs()
     background_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), RANDOM_BACKGROUND_IMAGE_DIR)
-    if os.path.isdir(background_dir):
-        for filename in os.listdir(background_dir):
-            file_path = os.path.join(background_dir, filename)
-            if os.path.isfile(file_path) and os.path.getsize(file_path) > 0:
-                files_to_archive.append(
-                    (file_path, f"{RANDOM_BACKGROUND_IMAGE_DIR}/{filename}")
-                )
-
-    if not files_to_archive:
-        print(f"[日志归档] 没有需要归档的日志文件")
-        return
-
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
-    archive_filename = f"{timestamp}.zip"
-    archive_path = os.path.join(archive_dir, archive_filename)
-
-    try:
-        with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-            for file_path, archive_name in files_to_archive:
-                zipf.write(file_path, archive_name)
-                print(f"[日志归档] 已压缩: {archive_name}")
-
-        for file_path, archive_name in files_to_archive:
-            os.remove(file_path)
-            print(f"[日志归档] 已删除原文件: {archive_name}")
-
-        print(f"[日志归档] 归档完成: {archive_path}")
-
-        gc.collect()
-
-    except Exception as e:
-        print(f"[日志归档] 归档失败: {e}")
-
-        traceback.print_exc()
+    with BACKGROUND_FILES_LOCK:
+        backgrounds_ok = manager.archive_startup_background(background_dir)
+        if backgrounds_ok or manager.background_reset_completed:
+            _BACKGROUND_SELECTION_STATE.clear()
+            try:
+                BackgroundStateStore(background_dir).save(_empty_background_state())
+                _save_random_background_index(background_dir, {})
+            except Exception as exc:
+                print(f"[背景归档] 初始化空背景状态失败: {exc}")
+                backgrounds_ok = False
+    return logs_ok and backgrounds_ok
 
 
 def cleanup_archive_directory(archive_dir, max_size_mb):
-    """
-    清理归档目录，确保不超过指定大小。
-
-    """
-    if max_size_mb <= 0:
-        return
-
-    if not os.path.exists(archive_dir):
-        return
-
-    try:
-        archive_files = []
-        total_size = 0
-
-        for filename in os.listdir(archive_dir):
-            if filename.endswith(".zip"):
-                file_path = os.path.join(archive_dir, filename)
-                if os.path.isfile(file_path):
-                    file_size = os.path.getsize(file_path)
-                    mtime = os.path.getmtime(file_path)
-                    archive_files.append(
-                        (file_path, filename, file_size, mtime))
-                    total_size += file_size
-
-        max_size_bytes = max_size_mb * 1024 * 1024
-        current_size_mb = total_size / (1024 * 1024)
-
-        if total_size <= max_size_bytes:
-            print(
-                f"[归档清理] 归档目录大小: {current_size_mb:.2f}MB / {max_size_mb}MB (无需清理)"
-            )
-            return
-
-        print(
-            f"[归档清理] 归档目录大小: {current_size_mb:.2f}MB 超过限制 {max_size_mb}MB，开始清理..."
-        )
-
-        archive_files.sort(key=lambda x: x[3])
-
-        deleted_count = 0
-        for file_path, filename, file_size, _ in archive_files:
-            if total_size <= max_size_bytes:
-                break
-
-            os.remove(file_path)
-            total_size -= file_size
-            deleted_count += 1
-            print(
-                f"[归档清理] 已删除: {filename} ({file_size / (1024 * 1024):.2f}MB)")
-
-        final_size_mb = total_size / (1024 * 1024)
-        print(
-            f"[归档清理] 清理完成，删除了 {deleted_count} 个文件，当前大小: {final_size_mb:.2f}MB"
-        )
-
-        if deleted_count > 0:
-            gc.collect()
-
-    except Exception as e:
-        print(f"[归档清理] 清理失败: {e}")
-
-        traceback.print_exc()
+    """保留兼容入口，统一由归档模块执行容量清理。"""
+    ArchiveManager(globals().get("log_dir", "logs"), archive_dir, max_size_mb).cleanup()
 
 
 def setup_logging():
     """
     配置详细的日志系统（带自定义轮转逻辑）。
     """
+    global _logging_configured, _logging_archive_manager
+    if _logging_configured:
+        return logging.getLogger()
     log_rotation_size_mb = 10
     log_backup_count = CustomLogHandler.MAX_BACKUP_COUNT
     archive_max_size_mb = 5120
@@ -4254,6 +4183,10 @@ def setup_logging():
         os.makedirs(log_dir, exist_ok=True)
         print(f"[日志系统] 创建日志目录: {log_dir}")
 
+    background_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), RANDOM_BACKGROUND_IMAGE_DIR)
+    _logging_archive_manager = ArchiveManager(
+        log_dir, archive_dir, archive_max_size_mb, background_dir=background_dir
+    )
     archive_old_logs()
 
     cleanup_archive_directory(archive_dir, archive_max_size_mb)
@@ -4286,6 +4219,7 @@ def setup_logging():
         encoding="utf-8",
         max_bytes=max_bytes,
         backup_count=log_backup_count,
+        archive_manager=_logging_archive_manager,
     )
     file_handler.setLevel(logging.DEBUG)
 
@@ -4305,6 +4239,7 @@ def setup_logging():
         encoding="utf-8",
         max_bytes=max_bytes,
         backup_count=log_backup_count,
+        archive_manager=_logging_archive_manager,
     )
 
     warning_file_handler.setLevel(logging.WARNING)
@@ -4325,6 +4260,7 @@ def setup_logging():
         encoding="utf-8",
         max_bytes=max_bytes,
         backup_count=log_backup_count,
+        archive_manager=_logging_archive_manager,
     )
 
     error_file_handler.setLevel(logging.ERROR)
@@ -4352,6 +4288,7 @@ def setup_logging():
         # 即使失败也不应阻止程序启动，只是可能会有潜在崩溃风险
         print(f"[日志系统] 警告: 替换日志锁失败: {e}")
 
+    _logging_configured = True
     global _log_buffer
     if _log_buffer:
         for level_str, msg in _log_buffer:
@@ -4370,7 +4307,7 @@ def setup_logging():
     logging.info(f"日志级别: DEBUG (所有级别)")
     logging.info(f"日志轮转: 单文件最大{log_rotation_size_mb}MB")
     logging.info(
-        f"日志轮转: 最多保留 {log_backup_count} 个历史文件"
+        f"日志轮转: 保留最近 {log_backup_count} 个历史原文，较早日志归档成功后删除"
         f"（zx-slm-tool-01.log 最旧，编号越大越新）"
     )
     logging.info(
@@ -4589,6 +4526,7 @@ def _identity_key_for_username(username):
 
 
 def _bundle_to_public_payload(bundle):
+    bundle = bundle or {}
     return {
         "bundle_id": bundle.get("bundle_id", ""),
         "revision": bundle.get("revision", 0),
@@ -4603,6 +4541,13 @@ def _bundle_to_public_payload(bundle):
     }
 
 
+def _background_bundle_has_images(bundle):
+    return bool(bundle and (
+        str(bundle.get("pc_image_url") or "").strip()
+        or str(bundle.get("mobile_image_url") or "").strip()
+    ))
+
+
 def _pick_available_background_image(target):
     normalized_target = "mobile" if target == "mobile" else "pc"
     if "auth_system" not in globals() or auth_system is None:
@@ -4611,13 +4556,19 @@ def _pick_available_background_image(target):
     return str(images.get(normalized_target) or "")
 
 
+@background_files_locked
 def _create_preview_bundle_payload():
+    pc_url = _pick_available_background_image("pc")
+    mobile_url = _pick_available_background_image("mobile")
+    if not pc_url and not mobile_url:
+        return {**_bundle_to_public_payload(None), "state": "preview", "source": "anonymous_preview"}
     bundle = background_state_store.create_bundle(
-        pc_url=_pick_available_background_image("pc"),
-        mobile_url=_pick_available_background_image("mobile"),
+        pc_url=pc_url,
+        mobile_url=mobile_url,
         source="anonymous_preview",
         consume=False,
     )
+    bundle = background_state_store.get_bundle(bundle["bundle_id"])
     return {
         **_bundle_to_public_payload(bundle),
         "state": bundle.get("state", "preview"),
@@ -4638,9 +4589,10 @@ def _consume_bundle_assignments(bundle):
             try:
                 _mark_random_background_file_expired(cache_dir, image_url, expired=True)
             except Exception:
-                logging.debug("标记背景图为已消耗失败: %s", image_url, exc_info=True)
+                background_files_log(logging.DEBUG, "标记背景图为已消耗失败: %s", image_url, exc_info=True)
 
 
+@background_files_locked
 def _bind_login_bundle_for_user(
     username,
     preview_bundle_id,
@@ -4649,19 +4601,27 @@ def _bind_login_bundle_for_user(
 ):
     identity_key = _identity_key_for_username(username)
     existing = background_state_store.get_identity_bundle(identity_key)
+    if not _background_bundle_has_images(existing):
+        existing = None
     bundle = (
         background_state_store.get_bundle(preview_bundle_id)
         if preview_bundle_id
         else None
     )
+    if not _background_bundle_has_images(bundle):
+        bundle = None
     # A login without a preview is not a request to rotate the user's image.
     # Reuse the persisted identity bundle before consulting the random cache.
     if not bundle and existing:
         return existing
     if not bundle:
+        pc_url = _pick_available_background_image("pc")
+        mobile_url = _pick_available_background_image("mobile")
+        if not pc_url and not mobile_url:
+            return {}
         bundle = background_state_store.create_bundle(
-            pc_url=_pick_available_background_image("pc"),
-            mobile_url=_pick_available_background_image("mobile"),
+            pc_url=pc_url,
+            mobile_url=mobile_url,
             source=source,
             consume=True,
         )
@@ -4674,11 +4634,13 @@ def _bind_login_bundle_for_user(
         bundle["bundle_id"],
         source,
     )
-    _consume_bundle_assignments(bundle)
+    resolved = background_state_store.get_identity_bundle(identity_key)
+    _consume_bundle_assignments(resolved)
     auth_system._refresh_default_theme_background_cache_async(["pc", "mb"])
-    return background_state_store.get_identity_bundle(identity_key)
+    return resolved
 
 
+@background_files_locked
 def _bind_guest_bundle_for_session(
     session_id,
     preview_bundle_id,
@@ -4686,17 +4648,25 @@ def _bind_guest_bundle_for_session(
     replace_existing,
 ):
     existing = background_state_store.get_guest_session_bundle(session_id)
+    if not _background_bundle_has_images(existing):
+        existing = None
     bundle = (
         background_state_store.get_bundle(preview_bundle_id)
         if preview_bundle_id
         else None
     )
+    if not _background_bundle_has_images(bundle):
+        bundle = None
     if not bundle and existing:
         return existing
     if not bundle:
+        pc_url = _pick_available_background_image("pc")
+        mobile_url = _pick_available_background_image("mobile")
+        if not pc_url and not mobile_url:
+            return {}
         bundle = background_state_store.create_bundle(
-            pc_url=_pick_available_background_image("pc"),
-            mobile_url=_pick_available_background_image("mobile"),
+            pc_url=pc_url,
+            mobile_url=mobile_url,
             source=source,
             consume=True,
         )
@@ -4709,15 +4679,16 @@ def _bind_guest_bundle_for_session(
         bundle["bundle_id"],
         source,
     )
-    _consume_bundle_assignments(bundle)
+    resolved = background_state_store.get_guest_session_bundle(session_id)
+    _consume_bundle_assignments(resolved)
     auth_system._refresh_default_theme_background_cache_async(["pc", "mb"])
-    return background_state_store.get_guest_session_bundle(session_id)
+    return resolved
 
 
 def _resolve_user_theme_background(username):
     identity_key = _identity_key_for_username(username)
     bundle = background_state_store.get_identity_bundle(identity_key)
-    if not bundle:
+    if not _background_bundle_has_images(bundle):
         bundle = _bind_login_bundle_for_user(
             username=username,
             preview_bundle_id="",
@@ -4730,7 +4701,7 @@ def _resolve_user_theme_background(username):
 def _resolve_uuid_theme_background(session_id, username, is_guest):
     if is_guest:
         bundle = background_state_store.get_guest_session_bundle(session_id)
-        if not bundle:
+        if not _background_bundle_has_images(bundle):
             bundle = _bind_guest_bundle_for_session(
                 session_id=session_id,
                 preview_bundle_id="",

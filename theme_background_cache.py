@@ -5,9 +5,29 @@ import logging
 import mimetypes
 import os
 import threading
+import uuid
 
 
 from main_runtime import _main
+from theme_background_state import (
+    BACKGROUND_IMAGE_EXTENSIONS,
+    background_files_locked,
+    is_background_image_file,
+)
+
+
+@background_files_locked
+def _available_background_cache_count(cache_dir, image_type):
+    return sum(
+        is_background_image_file(cache_dir, file_name, image_type)
+        for file_name in os.listdir(cache_dir)
+    )
+
+
+@background_files_locked
+def _initialize_random_background_index(cache_dir):
+    index_data = _main()._load_random_background_index(cache_dir, strict=True)
+    _main()._save_random_background_index(cache_dir, index_data)
 
 
 def _ensure_random_background_cache_count(
@@ -22,15 +42,7 @@ def _ensure_random_background_cache_count(
         logging.info(f"[主题背景] 目标缓存数量为 0，跳过 {image_type} 背景缓存检查")
         return
 
-    available_count = len(
-        [
-            file_name
-            for file_name in os.listdir(cache_dir)
-            if os.path.isfile(os.path.join(cache_dir, file_name))
-            and file_name != "index.json"
-            and file_name.startswith(f"{image_type}_")
-        ]
-    )
+    available_count = _available_background_cache_count(cache_dir, image_type)
     missing_count = max(target_count - available_count, 0)
     logging.info(f"[主题背景] {image_type} 背景缓存缺失 {missing_count} 张")
     if missing_count == 0:
@@ -76,8 +88,7 @@ def _start_default_theme_background_cache_warmup():
             cache_dir = os.path.join(base_dir, _main().RANDOM_BACKGROUND_IMAGE_DIR)
             os.makedirs(cache_dir, exist_ok=True)
 
-            index_data = _main()._load_random_background_index(cache_dir)
-            _main()._save_random_background_index(cache_dir, index_data)
+            _initialize_random_background_index(cache_dir)
 
             for image_type in ("pc", "mb"):
                 _main()._ensure_random_background_cache_count(
@@ -105,6 +116,8 @@ def _start_default_theme_background_cache_warmup():
 
 
 def _fetch_random_background_image(cache_dir, api_key, image_type):
+    if image_type not in ("pc", "mb"):
+        raise ValueError("unsupported background image type")
     url = f"https://uapis.cn/api/v1/random/image?category=acg&type={image_type}"
     headers = {"Authorization": f"Bearer {api_key}"}
     max_retries = 3
@@ -118,22 +131,11 @@ def _fetch_random_background_image(cache_dir, api_key, image_type):
                 extension = mimetypes.guess_extension(content_type) or ".jpg"
                 if extension == ".jpe":
                     extension = ".jpg"
-                timestamp = datetime.datetime.now().strftime(
-                    "%Y-%m-%d-%H-%M-%S-%f"
-                )[:-3]
-                file_name = f"{image_type}_{timestamp}{extension}"
-                file_path = os.path.join(cache_dir, file_name)
-                with open(file_path, "wb") as file:
-                    file.write(response.content)
-
-                _main()._mark_random_background_file_state(
-                    cache_dir,
-                    file_name,
-                    image_type=image_type,
-                    expired=False,
-                    created_at=datetime.datetime.now().isoformat(timespec="seconds"),
-                    last_used_at=None,
-                    expired_at=None,
+                if extension not in BACKGROUND_IMAGE_EXTENSIONS:
+                    extension = ".jpg"
+                content = response.content
+                file_name = _publish_random_background_image(
+                    cache_dir, image_type, extension, content
                 )
                 _main()._cleanup_random_background_cache(cache_dir)
                 return _main()._build_theme_background_image_url(
@@ -155,6 +157,32 @@ def _fetch_random_background_image(cache_dir, api_key, image_type):
             )
 
     return ""
+
+
+@background_files_locked
+def _publish_random_background_image(cache_dir, image_type, extension, content):
+    os.makedirs(cache_dir, exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S-%f")
+    file_name = f"{image_type}_{timestamp}_{uuid.uuid4().hex}{extension}"
+    file_path = os.path.join(cache_dir, file_name)
+    temp_path = f"{file_path}.{uuid.uuid4().hex}.tmp"
+    try:
+        with open(temp_path, "xb") as image:
+            image.write(content)
+        os.replace(temp_path, file_path)
+        _main()._mark_random_background_file_state(
+            cache_dir,
+            file_name,
+            image_type=image_type,
+            expired=False,
+            created_at=datetime.datetime.now().isoformat(timespec="seconds"),
+            last_used_at=None,
+            expired_at=None,
+        )
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+    return file_name
 
 
 def _build_theme_background_image_url(relative_path):

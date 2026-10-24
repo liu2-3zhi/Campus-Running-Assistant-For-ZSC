@@ -24,6 +24,7 @@ import warnings
 
 
 from main_runtime import _main
+from theme_background_state import background_files_locked
 
 
 # ===================== 折返路径规划：路段缓存 =====================
@@ -6504,6 +6505,24 @@ class Api:
         candidate_image_url="",
     ):
         normalized_target = _main()._normalize_theme_background_target(target)
+        result = self._mark_theme_background_consumed_transaction(
+            normalized_target,
+            image_url,
+            login_context,
+            candidate_image_url,
+        )
+        image_type = "mb" if normalized_target == "mobile" else "pc"
+        self._refresh_default_theme_background_cache_async([image_type])
+        return result
+
+    @background_files_locked
+    def _mark_theme_background_consumed_transaction(
+        self,
+        normalized_target,
+        image_url,
+        login_context,
+        candidate_image_url,
+    ):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         cache_dir = os.path.join(base_dir, _main().RANDOM_BACKGROUND_IMAGE_DIR)
         os.makedirs(cache_dir, exist_ok=True)
@@ -6540,13 +6559,19 @@ class Api:
             else str(next_env.get("auth_login_container_background") or "")
         )
         extracted_next_image_url = _main()._extract_background_image_url_from_value(next_image_url)
+        if extracted_next_image_url and not selected_image_url:
+            decision = _main()._resolve_theme_background_binding_decision(
+                cache_dir=cache_dir,
+                session_uuid=session_uuid,
+                target=normalized_target,
+                current_image_url=extracted_next_image_url,
+                ttl_seconds=1800,
+            )
+            selected_image_url = str(decision.get("selected_image_url") or "").strip()
         if extracted_next_image_url:
             _main()._mark_random_background_file_expired(cache_dir, extracted_next_image_url, expired=True)
         if selected_image_url and selected_image_url != extracted_next_image_url:
             _main()._reset_random_background_file_expired(cache_dir, selected_image_url)
-
-        image_type = "mb" if normalized_target == "mobile" else "pc"
-        self._refresh_default_theme_background_cache_async([image_type])
 
         return {
             "success": True,

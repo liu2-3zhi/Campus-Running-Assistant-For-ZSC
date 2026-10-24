@@ -1,14 +1,69 @@
 from __future__ import annotations
 
 import datetime
+import functools
 import json
+import logging
 import os
+import sys
 import threading
 import uuid
 
 
 STATE_FILE_NAME = "background_state.json"
 PREVIEW_TTL_SECONDS = 600
+BACKGROUND_FILES_LOCK = threading.RLock()
+BACKGROUND_IMAGE_EXTENSIONS = frozenset({
+    ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".tif", ".tiff",
+})
+_BACKGROUND_LOG_STATE = threading.local()
+
+
+def background_files_log(level, message, *args, **kwargs):
+    pending = getattr(_BACKGROUND_LOG_STATE, "pending", None)
+    if pending is not None:
+        if kwargs.get("exc_info") is True:
+            kwargs["exc_info"] = sys.exc_info()
+        pending.append((level, message, args, kwargs))
+    else:
+        logging.log(level, message, *args, **kwargs)
+
+
+def background_files_locked(function):
+    @functools.wraps(function)
+    def locked(*args, **kwargs):
+        pending = None
+        try:
+            with BACKGROUND_FILES_LOCK:
+                outermost = not hasattr(_BACKGROUND_LOG_STATE, "pending")
+                if outermost:
+                    _BACKGROUND_LOG_STATE.pending = []
+                try:
+                    return function(*args, **kwargs)
+                finally:
+                    if outermost:
+                        pending = _BACKGROUND_LOG_STATE.pending
+                        del _BACKGROUND_LOG_STATE.pending
+        finally:
+            # Logging handlers can perform maintenance; never enter them while
+            # holding the background transaction lock.
+            if pending is not None:
+                for level, message, log_args, log_kwargs in pending:
+                    logging.log(level, message, *log_args, **log_kwargs)
+
+    return locked
+
+
+def is_background_image_file(cache_dir, file_name, image_type=None):
+    if not isinstance(file_name, str) or os.path.basename(file_name) != file_name:
+        return False
+    prefix = file_name.partition("_")[0]
+    if prefix not in ("pc", "mb") or (image_type is not None and prefix != image_type):
+        return False
+    if os.path.splitext(file_name)[1].lower() not in BACKGROUND_IMAGE_EXTENSIONS:
+        return False
+    path = os.path.join(cache_dir, file_name)
+    return not os.path.islink(path) and os.path.isfile(path)
 
 
 def empty_state() -> dict:
@@ -28,24 +83,57 @@ class BackgroundStateStore:
         self.cache_dir = os.path.abspath(cache_dir)
         os.makedirs(self.cache_dir, exist_ok=True)
         self.path = os.path.join(self.cache_dir, STATE_FILE_NAME)
-        self.lock = threading.RLock()
+        self.lock = BACKGROUND_FILES_LOCK
 
-    def load(self) -> dict:
+    def load(self, strict: bool = False) -> dict:
         with self.lock:
-            if not os.path.exists(self.path):
+            if not os.path.lexists(self.path):
                 return empty_state()
+            if os.path.islink(self.path):
+                raise ValueError("background state must be a regular file")
             with open(self.path, "r", encoding="utf-8") as fp:
                 state = json.load(fp)
+            if strict:
+                self.validate_state(state)
             for key, value in empty_state().items():
                 state.setdefault(key, value)
             return state
 
+    @staticmethod
+    def validate_state(state: dict) -> None:
+        if not isinstance(state, dict) or state.get("schema_version") != 2:
+            raise ValueError("invalid background state schema")
+        if type(state.get("next_revision")) is not int or state["next_revision"] < 1:
+            raise ValueError("invalid background state revision")
+        for section in ("assignments", "bundles", "identity_bindings", "guest_bindings", "auth_claims"):
+            if not isinstance(state.get(section), dict):
+                raise ValueError(f"invalid background state section: {section}")
+        assignments = state["assignments"]
+        for assignment in assignments.values():
+            if not isinstance(assignment, dict) or not isinstance(assignment.get("image_url"), str):
+                raise ValueError("invalid background image assignment")
+        for bundle in state["bundles"].values():
+            if not isinstance(bundle, dict):
+                raise ValueError("invalid background bundle")
+            for target in ("pc_assignment_id", "mobile_assignment_id"):
+                assignment_id = bundle.get(target)
+                if not isinstance(assignment_id, str) or assignment_id not in assignments:
+                    raise ValueError("background bundle assignment is missing")
+        for section in ("identity_bindings", "guest_bindings", "auth_claims"):
+            for binding in state[section].values():
+                if not isinstance(binding, dict) or binding.get("bundle_id") not in state["bundles"]:
+                    raise ValueError("background binding bundle is missing")
+
     def save(self, state: dict) -> None:
         with self.lock:
-            temp_path = f"{self.path}.{os.getpid()}.tmp"
-            with open(temp_path, "w", encoding="utf-8") as fp:
-                json.dump(state, fp, indent=2, ensure_ascii=False)
-            os.replace(temp_path, self.path)
+            temp_path = f"{self.path}.{uuid.uuid4().hex}.tmp"
+            try:
+                with open(temp_path, "x", encoding="utf-8") as fp:
+                    json.dump(state, fp, indent=2, ensure_ascii=False)
+                os.replace(temp_path, self.path)
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
 
     @staticmethod
     def _now() -> str:
@@ -194,6 +282,7 @@ class BackgroundStateStore:
 
     @staticmethod
     def protected_urls(state: dict) -> set[str]:
+        BackgroundStateStore.validate_state(state)
         protected: set[str] = set()
         assignments = state.get("assignments", {})
         for bundle in state.get("bundles", {}).values():

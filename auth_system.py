@@ -15,6 +15,11 @@ import uuid
 
 
 from main_runtime import _main
+from theme_background_state import (
+    background_files_locked,
+    background_files_log,
+    is_background_image_file,
+)
 
 
 # 学校账号密码可见级别（高 → 低）
@@ -394,16 +399,14 @@ class AuthSystem:
             logging.warning(f"[主题背景] 读取背景缓存上限失败，使用默认值 1024MB: {e}")
             return 1024 * 1024 * 1024
 
+    @background_files_locked
     def _get_cached_random_background_image_urls(self, cache_dir, image_type, limit=5):
         try:
             _main()._cleanup_random_background_index(cache_dir)
             candidates = []
-            prefix = f"{image_type}_"
             for file_name in os.listdir(cache_dir):
                 file_path = os.path.join(cache_dir, file_name)
-                if file_name == "index.json":
-                    continue
-                if not os.path.isfile(file_path) or not file_name.startswith(prefix):
+                if not is_background_image_file(cache_dir, file_name, image_type):
                     continue
                 entry, normalized_name = _main()._get_random_background_index_entry(cache_dir, file_name)
                 if not normalized_name or (entry and entry.get("expired")):
@@ -435,9 +438,10 @@ class AuthSystem:
                 )
             return urls
         except Exception as e:
-            logging.warning(f"[主题背景] 读取 {image_type} 背景缓存失败: {e}")
+            background_files_log(logging.WARNING, f"[主题背景] 读取 {image_type} 背景缓存失败: {e}")
             return []
 
+    @background_files_locked
     def _get_cached_random_background_image_url(self, cache_dir, image_type, random_pick=False):
         cached_urls = self._get_cached_random_background_image_urls(cache_dir, image_type, limit=0)
         if not cached_urls:
@@ -454,12 +458,14 @@ class AuthSystem:
     def _peek_cached_random_background_image_url(self, cache_dir, image_type):
         return self._get_cached_random_background_image_url(cache_dir, image_type, random_pick=True)
 
+    @background_files_locked
     def _consume_cached_random_background_image_url(self, cache_dir, image_type):
         selected_url = self._get_cached_random_background_image_url(cache_dir, image_type, random_pick=True)
         if selected_url:
             _main()._mark_random_background_file_expired(cache_dir, selected_url, expired=True)
         return selected_url
 
+    @background_files_locked
     def _consume_default_theme_background_images(self, targets=None):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         cache_dir = os.path.join(base_dir, _main().RANDOM_BACKGROUND_IMAGE_DIR)
@@ -484,6 +490,7 @@ class AuthSystem:
         self._refresh_default_theme_background_cache_async(refresh_image_types)
         return background_image_urls
 
+    @background_files_locked
     def _peek_default_theme_background_images(self, targets=None):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         cache_dir = os.path.join(base_dir, _main().RANDOM_BACKGROUND_IMAGE_DIR)
@@ -589,6 +596,7 @@ class AuthSystem:
 
         threading.Thread(target=_worker, daemon=True).start()
 
+    @background_files_locked
     def _resolve_default_theme_background_images(self, targets=None, session_uuid="", cache_dir=None):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         effective_cache_dir = cache_dir or os.path.join(base_dir, _main().RANDOM_BACKGROUND_IMAGE_DIR)

@@ -82,7 +82,7 @@ class TestLogRotationResilience(unittest.TestCase):
             )
             try:
                 with contextlib.redirect_stdout(io.StringIO()), patch(
-                    "main.os.rename",
+                    "main.move_no_replace",
                     side_effect=PermissionError("locked"),
                 ) as rename_mock:
                     handler.emit(record)

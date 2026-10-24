@@ -3136,11 +3136,7 @@ def start_web_server(args_param):
                 "token": token,
                 "kicked_sessions_count": len(kicked_sessions),
                 "account_cancellation": _cancellation_status,
-                "theme_background": (
-                    _main()._bundle_to_public_payload(login_background)
-                    if login_background
-                    else None
-                ),
+                "theme_background": _main()._bundle_to_public_payload(login_background),
             }
             if cleanup_message:
                 response_data["cleanup_message"] = cleanup_message
@@ -4133,11 +4129,7 @@ def start_web_server(args_param):
             "auth_session_id": session_id,
             "is_guest": is_guest,
             "token": token,
-            "theme_background": (
-                _main()._bundle_to_public_payload(login_background)
-                if login_background
-                else None
-            ),
+            "theme_background": _main()._bundle_to_public_payload(login_background),
         }
         response = _main().jsonify(response_data)
         if token:

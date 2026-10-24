@@ -5,19 +5,28 @@ import json
 import logging
 import os
 import re
+import uuid
+
+from theme_background_state import background_files_locked, background_files_log
 
 
 RANDOM_BACKGROUND_IMAGE_DIR = "random_background_image"
+_parse_background_timestamp = datetime.datetime.fromisoformat
 
 
-def _load_random_background_index(cache_dir):
+@background_files_locked
+def _load_random_background_index(cache_dir, strict=False):
     index_path = os.path.join(cache_dir, "index.json")
     default_index = {"files": {}, "feedback": {}, "session_bindings": {}}
     try:
-        if not os.path.exists(index_path):
+        if not os.path.lexists(index_path):
             return default_index
+        if os.path.islink(index_path):
+            raise ValueError("background index must be a regular file")
         with open(index_path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if strict:
+            _protected_legacy_background_urls(data)
         if not isinstance(data, dict):
             return default_index
         files = data.get("files") if isinstance(data.get("files"), dict) else {}
@@ -33,10 +42,38 @@ def _load_random_background_index(cache_dir):
             "session_bindings": session_bindings,
         }
     except Exception as e:
-        logging.warning(f"[主题背景] 读取背景索引失败 {index_path}: {e}")
+        if strict:
+            raise
+        background_files_log(logging.WARNING, f"[主题背景] 读取背景索引失败 {index_path}: {e}")
         return default_index
 
 
+def _protected_legacy_background_urls(index_data):
+    if not isinstance(index_data, dict):
+        raise ValueError("invalid background index")
+    for key in ("files", "feedback", "session_bindings"):
+        if key in index_data and not isinstance(index_data[key], dict):
+            raise ValueError(f"invalid background index section: {key}")
+    for entry in index_data.get("files", {}).values():
+        if not isinstance(entry, dict):
+            raise ValueError("invalid background index file entry")
+    protected = set()
+    now = datetime.datetime.now(datetime.timezone.utc)
+    for session_entry in index_data.get("session_bindings", {}).values():
+        if not isinstance(session_entry, dict):
+            raise ValueError("invalid legacy background session")
+        for binding in session_entry.values():
+            if not isinstance(binding, dict) or not isinstance(binding.get("image_url"), str):
+                raise ValueError("invalid legacy background binding")
+            expires_at = _parse_background_timestamp(str(binding.get("expires_at") or ""))
+            if expires_at.utcoffset() is None:
+                raise ValueError("legacy background expiry must include a timezone")
+            if expires_at > now and binding["image_url"]:
+                protected.add(binding["image_url"])
+    return protected
+
+
+@background_files_locked
 def _save_random_background_index(cache_dir, index_data):
     index_path = os.path.join(cache_dir, "index.json")
     safe_index = {
@@ -46,9 +83,9 @@ def _save_random_background_index(cache_dir, index_data):
             index_data.get("session_bindings", {}) if isinstance(index_data, dict) else {}
         ),
     }
-    temp_index_path = f"{index_path}.tmp"
+    temp_index_path = f"{index_path}.{uuid.uuid4().hex}.tmp"
     try:
-        with open(temp_index_path, "w", encoding="utf-8") as f:
+        with open(temp_index_path, "x", encoding="utf-8") as f:
             json.dump(safe_index, f, indent=2, ensure_ascii=False)
         os.replace(temp_index_path, index_path)
     except Exception as e:
@@ -57,7 +94,7 @@ def _save_random_background_index(cache_dir, index_data):
                 os.remove(temp_index_path)
         except OSError:
             pass
-        logging.warning(f"[主题背景] 保存背景索引失败 {index_path}: {e}")
+        background_files_log(logging.WARNING, f"[主题背景] 保存背景索引失败 {index_path}: {e}")
 
 
 def _normalize_theme_background_target(target):
@@ -73,6 +110,7 @@ def _normalize_theme_background_session_uuid(session_uuid):
     return normalized
 
 
+@background_files_locked
 def _set_session_theme_background_binding(
     cache_dir,
     session_uuid,
@@ -86,7 +124,7 @@ def _set_session_theme_background_binding(
         return None
 
     normalized_target = _normalize_theme_background_target(target)
-    index_data = _load_random_background_index(cache_dir)
+    index_data = _load_random_background_index(cache_dir, strict=True)
     session_bindings = index_data.setdefault("session_bindings", {})
     session_entry = session_bindings.get(normalized_session_uuid)
     if not isinstance(session_entry, dict):
@@ -107,13 +145,14 @@ def _set_session_theme_background_binding(
     return binding_entry
 
 
+@background_files_locked
 def _get_session_theme_background_binding(cache_dir, session_uuid, target):
     normalized_session_uuid = _normalize_theme_background_session_uuid(session_uuid)
     if not normalized_session_uuid:
         return None
 
     normalized_target = _normalize_theme_background_target(target)
-    index_data = _load_random_background_index(cache_dir)
+    index_data = _load_random_background_index(cache_dir, strict=True)
     session_bindings = index_data.get("session_bindings")
     if not isinstance(session_bindings, dict):
         return None
@@ -128,7 +167,9 @@ def _get_session_theme_background_binding(cache_dir, session_uuid, target):
 
     expires_at_raw = binding_entry.get("expires_at")
     try:
-        expires_at = datetime.datetime.fromisoformat(str(expires_at_raw or ""))
+        expires_at = _parse_background_timestamp(str(expires_at_raw or ""))
+        if expires_at.utcoffset() is None:
+            return None
     except Exception:
         return None
 
@@ -142,6 +183,7 @@ def _get_session_theme_background_binding(cache_dir, session_uuid, target):
     return binding_entry
 
 
+@background_files_locked
 def _resolve_theme_background_binding_decision(
     cache_dir,
     session_uuid,
@@ -203,6 +245,7 @@ def _resolve_theme_background_binding_decision(
     return {"action": "noop", "selected_image_url": ""}
 
 
+@background_files_locked
 def _resolve_bound_theme_background_images(cache_dir, session_uuid, targets=None):
     normalized_session_uuid = _normalize_theme_background_session_uuid(session_uuid)
     if not normalized_session_uuid:
@@ -239,11 +282,12 @@ def _parse_random_background_file_name(file_name):
     return normalized_name, image_type
 
 
+@background_files_locked
 def _get_random_background_index_entry(cache_dir, file_name):
     normalized_name, image_type = _parse_random_background_file_name(file_name)
     if not normalized_name:
         return None, ""
-    index_data = _load_random_background_index(cache_dir)
+    index_data = _load_random_background_index(cache_dir, strict=True)
     files = index_data.setdefault("files", {})
     entry = files.get(normalized_name) if isinstance(files.get(normalized_name), dict) else None
     changed = False
@@ -262,11 +306,12 @@ def _get_random_background_index_entry(cache_dir, file_name):
     return entry, normalized_name
 
 
+@background_files_locked
 def _mark_random_background_file_state(cache_dir, file_name, **fields):
     normalized_name, image_type = _parse_random_background_file_name(file_name)
     if not normalized_name:
         return
-    index_data = _load_random_background_index(cache_dir)
+    index_data = _load_random_background_index(cache_dir, strict=True)
     files = index_data.setdefault("files", {})
     entry = files.get(normalized_name) if isinstance(files.get(normalized_name), dict) else {}
     entry.update(fields)
