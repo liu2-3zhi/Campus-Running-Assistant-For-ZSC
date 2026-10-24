@@ -4155,9 +4155,8 @@ def setup_logging():
 
     try:
         if os.path.exists(CONFIG_JSON_FILE):
-            config = configparser.ConfigParser(strict=False)
             config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
-            if "Logging" in config:
+            if config.has_section("Logging"):
                 log_rotation_size_mb = config.getint(
                     "Logging", "log_rotation_size_mb", fallback=10
                 )

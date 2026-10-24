@@ -1,4 +1,3 @@
-import configparser
 import contextlib
 import io
 import json
@@ -178,21 +177,22 @@ class TestLogArchivingIntegration(unittest.TestCase):
 class TestLoggingStartupArchive(unittest.TestCase):
     @contextlib.contextmanager
     def isolated_logging(self, root):
-        config = configparser.ConfigParser()
-        config["Logging"] = {"log_dir": str(root / "logs"), "archive_dir": str(root / "archives"),
-                             "archive_max_size_mb": "0", "log_rotation_size_mb": "10"}
-        root.joinpath("config.json").write_text("{}", encoding="utf-8")
+        config = {"Logging": {"log_dir": str(root / "logs"), "archive_dir": str(root / "archives"),
+                              "archive_max_size_mb": "0", "log_rotation_size_mb": "10"}}
+        root.joinpath("config.json").write_text(json.dumps(config), encoding="utf-8")
         logger = logging.getLogger()
         previous_handlers, previous_level = list(logger.handlers), logger.level
         with patch.object(main, "CONFIG_JSON_FILE", str(root / "config.json")), patch.object(
-            main, "_read_config_ini", return_value=config
-        ), patch.object(main, "RANDOM_BACKGROUND_IMAGE_DIR", str(root / "backgrounds")), patch.object(
+            main, "RANDOM_BACKGROUND_IMAGE_DIR", str(root / "backgrounds")
+        ), patch.object(
             main, "_logging_configured", False, create=True
         ), patch.object(main, "_logging_archive_manager", None, create=True), patch.object(
             main, "_log_buffer", []
         ), patch.object(main, "_BACKGROUND_SELECTION_STATE", {}), patch.object(
             main, "_install_global_exception_logging"
-        ), contextlib.redirect_stdout(io.StringIO()):
+        ), patch.object(main, "log_dir", None, create=True), patch.object(
+            main, "archive_dir", None, create=True
+        ), contextlib.chdir(root), contextlib.redirect_stdout(io.StringIO()):
             logger.handlers = []
             try:
                 yield
