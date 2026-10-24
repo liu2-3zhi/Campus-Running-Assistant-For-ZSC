@@ -23,6 +23,7 @@ class TestFrontendRouteProgressSegments(unittest.TestCase):
             cwd=PROJECT_ROOT,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
         if result.returncode != 0:
@@ -30,6 +31,7 @@ class TestFrontendRouteProgressSegments(unittest.TestCase):
                 "前端分段着色断言失败\n"
                 f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
             )
+        self.assertIn("全部分段着色用例通过", result.stdout)
 
     def test_progress_builder_is_used_by_both_draw_paths(self):
         """高德与其它供应商都必须走「按当前位置切开」的分段函数。"""

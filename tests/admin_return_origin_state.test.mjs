@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import vm from 'node:vm'
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const MAIN_SOURCE = readFileSync(
@@ -12,6 +13,8 @@ const MAIN_SOURCE = readFileSync(
 
 const ORIGIN_SESSION = '11111111-1111-4111-8111-111111111111'
 const CURRENT_SESSION = '22222222-2222-4222-8222-222222222222'
+const NEW_SESSION = '33333333-3333-4333-8333-333333333333'
+const AUTH_SESSION = '44444444-4444-4444-8444-444444444444'
 
 function extractSection(startMarker, endMarker) {
   const start = MAIN_SOURCE.indexOf(startMarker)
@@ -92,17 +95,101 @@ function buildReturnStateHarness({
     },
   }
 
-  const factory = new Function(
-    ...Object.keys(globals),
+  const context = vm.createContext(globals)
+  const api = vm.runInContext(
     `${resolverSection}
      ${returnStateSection}
-     return { checkAdminReturnState, clearAdminReturnOriginState,
+     ({ checkAdminReturnState, clearAdminReturnOriginState,
               getStoredAdminReturnOriginSession,
-              getAdminViewOriginSessionUUID, verifyAdminReturnOriginSession };`,
+              getAdminViewOriginSessionUUID, verifyAdminReturnOriginSession });`,
+    context,
   )
-  const api = factory(...Object.values(globals))
 
-  return { api, storage, overlay, fetchCalls, globals }
+  return { api, storage, overlay, fetchCalls, globals, context }
+}
+
+function buildSessionTransitionHarness(responses) {
+  const errors = []
+  const harness = buildReturnStateHarness({
+    fetchImpl: async url => {
+      const expected = responses.shift()
+      if (!expected) {
+        errors.push(`unexpected request: ${url}`)
+        return { ok: false, json: async () => ({ success: false }) }
+      }
+      const [expectedUrl, result] = expected
+      if (url !== expectedUrl) {
+        errors.push(`expected request ${expectedUrl}, got ${url}`)
+      }
+      return { ok: true, json: async () => result }
+    },
+  })
+  const elements = new Map()
+  const values = {
+    'auth-username': 'admin',
+    'auth-password': 'test-password',
+    'auth-login-captcha': 'test-captcha',
+  }
+  function getElement(id) {
+    if (!elements.has(id)) {
+      const classes = new Set(id === 'auth-sms-section' ? ['hidden'] : [])
+      elements.set(id, {
+        value: values[id] || '',
+        focus() {},
+        classList: {
+          add: name => classes.add(name),
+          remove: name => classes.delete(name),
+          contains: name => classes.has(name),
+        },
+      })
+    }
+    return elements.get(id)
+  }
+  const redirects = []
+  harness.overlay.hidden = false
+  Object.assign(harness.globals, {
+    $: getElement,
+    authLoginInProgress: false,
+    authRequestGeneration: 0,
+    themeBackgroundLoginSyncInFlight: false,
+    currentAuthUsername: '',
+    currentUserIsGuest: false,
+    currentSessionInfo: { maxSessions: -1, currentCount: 0 },
+    isMobileMode: false,
+    captchaIds_login: 'test-captcha-id',
+    captchaIds_mobile_login: 'test-mobile-captcha-id',
+    capturePreLoginBackgroundSnapshot() {},
+    getBackgroundPreviewPayload: () => ({}),
+    syncThemeFromServer: async () => {},
+    setButtonLoading() {},
+    showButtonSuccess() {},
+    showButtonError: (...args) => errors.push(args),
+    showAuthSuccess() {},
+    refreshCaptcha() {},
+    logMessage_Error: (...args) => errors.push(args),
+    setTimeout() {},
+    updateSessionCountDisplay() {},
+    updateAdminSessionCountDisplay() {},
+    updateAdminSessionCountDisplayInline() {},
+    generateUUID: () => NEW_SESSION,
+    jsShowConfirm: async () => true,
+    closeSessionPicker() {},
+    Swal: { fire: async () => ({}), close() {} },
+  })
+  harness.globals.window.location.replace = path => redirects.push({
+    path,
+    hasOrigin: harness.storage.has('admin_return_origin'),
+    overlayHidden: harness.overlay.hidden,
+  })
+  const handlers = vm.runInContext(
+    `${extractSection('function ensureAuthLoginSessionUUID() {', 'const AUTH_CONTEXT_API_METHODS =')}
+     ${extractSection('async function handleAuthLogin(isMobile_use = false) {', 'function handlePhoneNotRegisteredRedirect(')}
+     ${extractSection('async function handle2FAVerify() {', 'async function handleAuthRegister(')}
+     ${extractSection('async function createNewSessionFromPicker() {', 'async function deleteSessionFromPicker(')}
+     ({ handleAuthLogin, handle2FAVerify, createNewSessionFromPicker });`,
+    harness.context,
+  )
+  return { ...harness, handlers, elements, errors, redirects, responses }
 }
 
 test('stale admin return origin is cleared when the origin session is gone', async () => {
@@ -175,22 +262,65 @@ test('origin check is not repeated for the same page session', async () => {
   assert.equal(harness.fetchCalls.length, 1)
 })
 
-test('fresh login and new session clear the stored admin return origin', () => {
-  const clearCalls = MAIN_SOURCE.split('clearAdminReturnOriginState(').length - 1
+for (const [name, result, expectedSession] of [
+  ['business session', { session_id: NEW_SESSION, auth_session_id: AUTH_SESSION }, NEW_SESSION],
+  ['authentication session only', { auth_session_id: AUTH_SESSION }, null],
+]) {
+  test(`fresh login with ${name} clears the stored admin return origin`, async () => {
+    const harness = buildSessionTransitionHarness([
+      ['/auth/login', { success: true, ...result }],
+    ])
 
-  // 登录成功（含 2FA）、创建新会话、来源会话失效三处都必须清理记录。
-  assert.ok(clearCalls >= 6, `expected clear call sites, got ${clearCalls}`)
-  const loginSection = extractSection(
-    'async function handleAuthLogin(isMobile_use = false) {',
-    'themeBackgroundLoginSyncInFlight = true;',
-  )
-  assert.match(loginSection, /clearAdminReturnOriginState\(/)
-  assert.match(
-    MAIN_SOURCE,
-    /function clearAdminReturnOriginState\(reason = ""\)/,
-  )
-  assert.match(
-    MAIN_SOURCE,
-    /verifyAdminReturnOriginSession\(originSession, currentUUID\)/,
-  )
+    await harness.handlers.handleAuthLogin()
+
+    assert.deepEqual(harness.errors, [])
+    assert.equal(harness.responses.length, 0)
+    assert.equal(harness.globals.sessionUUID, expectedSession)
+    assert.equal(harness.globals.authSessionUUID, AUTH_SESSION)
+    assert.equal(harness.storage.has('admin_return_origin'), false)
+    assert.equal(harness.overlay.hidden, true)
+  })
+
+  test(`2FA login with ${name} clears the origin after verification`, async () => {
+    const harness = buildSessionTransitionHarness([
+      ['/auth/login', { success: true, requires_2fa: true, two_fa_challenge: 'test-challenge' }],
+      ['/auth/2fa/verify_login', { success: true, ...result }],
+    ])
+
+    await harness.handlers.handleAuthLogin()
+    assert.equal(harness.storage.get('admin_return_origin'), ORIGIN_SESSION)
+    assert.equal(harness.overlay.hidden, false)
+    assert.equal(harness.globals.window.temp2FAChallenge, 'test-challenge')
+
+    harness.elements.get('auth-2fa-code').value = '123456'
+    await harness.handlers.handle2FAVerify()
+
+    assert.deepEqual(harness.errors, [])
+    assert.equal(harness.responses.length, 0)
+    assert.equal(harness.globals.sessionUUID, expectedSession)
+    assert.equal(harness.globals.authSessionUUID, AUTH_SESSION)
+    assert.equal(harness.storage.has('admin_return_origin'), false)
+    assert.equal(harness.overlay.hidden, true)
+    assert.equal(harness.globals.window.temp2FAChallenge, undefined)
+  })
+}
+
+test('creating a new session clears the stored admin return origin before redirecting', async () => {
+  const harness = buildSessionTransitionHarness([
+    ['/auth/user/sessions', { success: true, max_sessions: -1, sessions: [] }],
+    ['/auth/user/create_session_persistence', { success: true, session_id: NEW_SESSION }],
+  ])
+
+  await harness.handlers.createNewSessionFromPicker()
+
+  assert.deepEqual(harness.errors, [])
+  assert.equal(harness.responses.length, 0)
+  assert.equal(harness.globals.sessionUUID, NEW_SESSION)
+  assert.equal(harness.storage.has('admin_return_origin'), false)
+  assert.equal(harness.overlay.hidden, true)
+  assert.deepEqual(harness.redirects, [{
+    path: `/uuid=${NEW_SESSION}`,
+    hasOrigin: false,
+    overlayHidden: true,
+  }])
 })

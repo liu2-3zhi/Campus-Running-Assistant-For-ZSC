@@ -759,6 +759,8 @@ function createRuntime(provider, options = {}) {
     'multi_removeRunnerMarker',
     'resolveRunnerTargetSequence',
     'addProviderMarker',
+    'rememberProviderRouteSegmentOverlays',
+    'forgetProviderRouteSegmentOverlays',
     'drawProviderRouteOnMap',
     'getSingleProviderMapContainerIds',
     'appendSingleMapOverlay',
@@ -775,6 +777,7 @@ function createRuntime(provider, options = {}) {
     'appendProviderRouteProgressSegment',
     'hasActiveRouteProgress',
     'buildProviderRouteProgressSegments',
+    'buildProviderRouteProgressSegmentsByProgress',
     'drawProviderTaskOnMap',
     'clearMapOverlays',
     'resetMapView',
@@ -853,6 +856,7 @@ function createRuntime(provider, options = {}) {
     let providerMapInstanceProviders = {};
     let providerMapEventsBound = {};
     let providerMapOverlays = {};
+    const providerRouteSegmentOverlays = {};
     let providerMapLastFitCoords = {};
     let providerRunnerMarkers = {};
     let pendingMapProviderRuntimeConfig = null;
@@ -868,6 +872,7 @@ function createRuntime(provider, options = {}) {
     let backgroundTaskStartTime = 0;
     let singleRunProgressVisualActive = false;
     let polylines = { recommended: [], draft: null, run: null, history: null };
+    let amapRouteProgressSegments = null;
     let markers = [];
     let runnerMarker = null;
     let drawingInfoMarker = null;
@@ -1861,6 +1866,71 @@ test('tencent checkpoint and route progress follow executed route index when seq
   assert.equal(routeLayer.options.styles.current.options.color, '#0284c7');
 });
 
+test('route progress advances past checkpoint boundaries and ends with a completed route', () => {
+  const cases = [
+    {
+      pointIndex: 2,
+      targetSequence: 0,
+      expected: [
+        { styleId: 'completed', longitudes: [113.375, 113.380] },
+        { styleId: 'current', longitudes: [113.380, 113.385, 113.390] },
+        { styleId: 'active', longitudes: [113.390, 113.395] },
+      ],
+    },
+    {
+      pointIndex: 4,
+      targetSequence: 1,
+      expected: [
+        { styleId: 'completed', longitudes: [113.375, 113.380, 113.385, 113.390] },
+        { styleId: 'current', longitudes: [113.390, 113.395] },
+      ],
+    },
+    {
+      pointIndex: 5,
+      targetSequence: 2,
+      expected: [
+        { styleId: 'completed', longitudes: [113.375, 113.380, 113.385, 113.390, 113.395] },
+      ],
+    },
+  ];
+
+  for (const { pointIndex, targetSequence, expected } of cases) {
+    const runtime = createRuntime('tencent');
+    assert.equal(runtime.initProviderMap('map-container', false), true);
+    const route = [
+      [113.375, 22.505],
+      [113.380, 22.510],
+      [113.385, 22.515],
+      [113.390, 22.520],
+      [113.395, 22.525],
+    ];
+    runtime.setCurrentRunData({
+      status: 0,
+      target_sequence: targetSequence + 1,
+      target_points: [[113.380, 22.510], [113.390, 22.520]],
+      run_coords: route,
+    });
+
+    const [lng, lat] = route[pointIndex - 1];
+    runtime.updateRunnerPosition(lng, lat, 100, targetSequence, 1000, false, pointIndex);
+
+    const routeLayer = runtime.getState().providerMapOverlays['map-container']
+      .find((overlay) => overlay.options?.id === 'provider-route-map-container');
+    assert.ok(routeLayer, `route should exist at point ${pointIndex}`);
+    assert.deepEqual(
+      routeLayer.options.geometries.map((geometry) => ({
+        styleId: geometry.styleId,
+        longitudes: geometry.paths.map((point) => point.lng),
+      })),
+      expected,
+      `segments should meet at point ${pointIndex} and cover the full route`,
+    );
+    const runner = runtime.getState().providerRunnerMarkers['map-container'];
+    assert.equal(runner.options.geometries[0].position.lng, lng);
+    assert.equal(runner.options.geometries[0].position.lat, lat);
+  }
+});
+
 test('generic provider task route colors completed segments from executed route index', () => {
   const runtime = createRuntime('baidu');
   assert.equal(runtime.initProviderMap('map-container', false), true);
@@ -2004,8 +2074,20 @@ test('stopping execution resets amap visuals without clearing realtime state', (
   assert.equal(runtime.getCurrentRunData().target_sequence, 2);
   assert.equal(runtime.getState().runnerMarker, null);
   const runPolylines = runtime.getState().polylines.run;
-  assert.equal(Array.isArray(runPolylines), false);
-  assert.equal(runPolylines.options.strokeColor, '#ef4444');
+  assert.ok(Array.isArray(runPolylines));
+  assert.equal(runPolylines.length, 1);
+  assert.equal(runPolylines[0].options.strokeColor, '#ef4444');
+  assert.deepEqual(
+    runPolylines[0].options.path.map((point) => [point.lng, point.lat]),
+    [
+      [113.375, 22.505],
+      [113.380, 22.510],
+      [113.385, 22.515],
+      [113.390, 22.520],
+      [113.400, 22.530],
+      [113.405, 22.535],
+    ],
+  );
   assert.ok(runtime.getState().markers.every((marker) => marker.options.content.includes('bg-emerald-600')));
   assert.equal(runtime.getState().singleRunProgressVisualActive, false);
 });

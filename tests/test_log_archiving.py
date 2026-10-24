@@ -2,6 +2,7 @@ import json
 import os
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -627,7 +628,18 @@ def test_symlink_sources_are_rejected(archive_environment):
     assert zip_paths(archives) == []
 
 
-def test_move_no_replace_preserves_existing_target(tmp_path):
+@pytest.fixture(params=("native", "hardlink"))
+def move_filesystem(request, monkeypatch):
+    assert log_archiving is not None, "The safe archive engine has not been implemented"
+    filesystem = SimpleNamespace(**vars(os))
+    if request.param == "hardlink":
+        # Select the fallback without changing pathlib's host platform.
+        filesystem.name = "posix"
+    monkeypatch.setattr(log_archiving, "os", filesystem)
+    return filesystem
+
+
+def test_move_no_replace_preserves_existing_target(tmp_path, move_filesystem):
     assert log_archiving is not None, "The safe archive engine has not been implemented"
     source, target = tmp_path / "source.log", tmp_path / "target.log"
     source.write_bytes(b"source")
@@ -638,7 +650,7 @@ def test_move_no_replace_preserves_existing_target(tmp_path):
     assert target.read_bytes() == b"existing"
 
 
-def test_move_no_replace_moves_without_losing_contents(tmp_path):
+def test_move_no_replace_moves_without_losing_contents(tmp_path, move_filesystem):
     assert log_archiving is not None, "The safe archive engine has not been implemented"
     source, target = tmp_path / "source.log", tmp_path / "target.log"
     source.write_bytes(b"source")
@@ -647,19 +659,34 @@ def test_move_no_replace_moves_without_losing_contents(tmp_path):
     assert target.read_bytes() == b"source"
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX hard-link fallback")
-def test_move_no_replace_rolls_back_if_source_unlink_fails(tmp_path, monkeypatch):
+def test_move_no_replace_preserves_source_if_publish_fails(tmp_path, move_filesystem, monkeypatch):
+    source, target = tmp_path / "source.log", tmp_path / "target.log"
+    source.write_bytes(b"source")
+
+    def fail_publish(*args, **kwargs):
+        raise PermissionError("destination locked")
+
+    operation = "rename" if move_filesystem.name == "nt" else "link"
+    monkeypatch.setattr(move_filesystem, operation, fail_publish)
+    with pytest.raises(PermissionError, match="destination locked"):
+        log_archiving.move_no_replace(source, target)
+    assert source.read_bytes() == b"source"
+    assert not target.exists()
+
+
+@pytest.mark.parametrize("move_filesystem", ["hardlink"], indirect=True)
+def test_move_no_replace_rolls_back_if_source_unlink_fails(tmp_path, monkeypatch, move_filesystem):
     assert log_archiving is not None, "The safe archive engine has not been implemented"
     source, target = tmp_path / "source.log", tmp_path / "target.log"
     source.write_bytes(b"source")
-    real_unlink = os.unlink
+    real_unlink = move_filesystem.unlink
 
     def fail_source(path, *args, **kwargs):
         if Path(path) == source:
             raise PermissionError("source locked")
         return real_unlink(path, *args, **kwargs)
 
-    monkeypatch.setattr(os, "unlink", fail_source)
+    monkeypatch.setattr(move_filesystem, "unlink", fail_source)
     with pytest.raises(OSError):
         log_archiving.move_no_replace(source, target)
     assert source.read_bytes() == b"source"

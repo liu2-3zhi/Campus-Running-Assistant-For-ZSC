@@ -8,6 +8,9 @@ import { paramDefs, paramGroups } from '../frontend/src/utils/legacyParams.js'
 const require = createRequire(new URL('../frontend/package.json', import.meta.url))
 const { parse, compileScript } = require('@vue/compiler-sfc')
 const vue = require('vue')
+const { defineStore, createPinia } = require('pinia')
+const themeSource = readFileSync(new URL('../frontend/src/stores/theme.js', import.meta.url), 'utf8')
+  .replace(/^import .*$/gm, '').replace('export const useThemeStore', 'const useThemeStore')
 
 function setupComponent(path, overrides = {}, props = {}) {
   const source = readFileSync(new URL(`../frontend/src/${path}`, import.meta.url), 'utf8')
@@ -35,6 +38,14 @@ function setupComponent(path, overrides = {}, props = {}) {
     Swal: { fire: async () => ({ isConfirmed: true }) },
     ...overrides,
   }
+  const useThemeStore = vm.runInNewContext(`${themeSource}\nuseThemeStore`, {
+    ...vue, defineStore,
+    callAPI: (...args) => dependencies.callAPI(...args),
+    useAuthStore: () => auth,
+    document: { getElementById: () => null },
+  })
+  const theme = useThemeStore(createPinia())
+  dependencies.useThemeStore ??= () => theme
   const code = script.replace(/^import\s+(.+?)\s+from\s+['"](.+?)['"];?\s*$/gm, (_, names, module) => {
     if (module.endsWith('.vue')) return `const ${names} = {}`
     if (!names.startsWith('{')) return `const ${names} = dependencies.${names}`
@@ -163,7 +174,17 @@ test('Vue account cards translate the backend Have_Tasks sentinel', () => {
 })
 
 test('offline task import reads JSON and preserves returned tasks before navigating', async () => {
+  const navigations = []
   const ctx = setupComponent('views/LoginView.vue', {
+    useRouter: () => ({
+      push(route) {
+        assert.equal(ctx.app.tasks[0].id, 'offline-task')
+        assert.equal(ctx.app.selectedTaskIndex, 0)
+        assert.equal(ctx.app.isLoading, false)
+        navigations.push(route)
+      },
+      replace() {},
+    }),
     callAPI: async (...args) => {
       assert.equal(args[0], 'import_task_data')
       assert.equal(args[1], '{"tasks":[]}')
@@ -172,4 +193,7 @@ test('offline task import reads JSON and preserves returned tasks before navigat
   }, { uuid: '' })
   await ctx.state.handleImportFile({ target: { files: [{ text: async () => '{"tasks":[]}' }] } })
   assert.equal(ctx.app.tasks[0].id, 'offline-task')
+  assert.equal(navigations.length, 1)
+  assert.equal(navigations[0].name, 'main')
+  assert.equal(navigations[0].params.uuid, 'session-id')
 })

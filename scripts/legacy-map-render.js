@@ -1068,10 +1068,21 @@ function buildProviderRouteProgressSegmentsByProgress(routeCoords, data) {
     1,
     Math.min(Number.isFinite(sequence) && sequence > 0 ? sequence : 1, targetPoints.length),
   );
-  const nextTargetPoint = targetPoints[nextTargetOrdinal - 1];
   let nextTargetIndex = -1;
-  if (nextTargetPoint) {
-    nextTargetIndex = findNearestProviderRouteIndex(route, nextTargetPoint, clampedRunner);
+  for (let ordinal = nextTargetOrdinal; ordinal <= targetPoints.length; ordinal += 1) {
+    const routeIndex = findNearestProviderRouteIndex(
+      route,
+      targetPoints[ordinal - 1],
+      clampedRunner,
+    );
+    if (routeIndex > clampedRunner) {
+      nextTargetIndex = routeIndex;
+      break;
+    }
+  }
+  // 恰好到达打卡点时继续寻找后续目标，最后一个打卡点之后仍需走到路线终点。
+  if (nextTargetIndex < 0 && targetPoints.length > 0) {
+    nextTargetIndex = route.length - 1;
   }
 
   // 1) 起点 -> 当前位置：全部已完成（已过打卡点 + 当前腿已跑部分）

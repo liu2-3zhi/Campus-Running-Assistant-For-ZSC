@@ -96,6 +96,7 @@
 - 执行路径必须保留所有原始 waypoint，包括中间检查点；如果供应商 path 里缺失这些点，要自动插入缺失点用于路径连续性和进度推断。
 - 进度颜色不能只依赖 `target_sequence` 或 `checked_targets_count`。执行进度可能滞后，应该从 `current_point_index` 或 `current_position` 对 `run_coords` 推断。
 - 已完成段用灰色，当前检查点用蓝色，未完成检查点用绿色，剩余路线用活动色；这套语义应对高德、腾讯、百度、天地图保持一致。
+- 按执行位置切分路线时，如果当前位置恰好到达序列指定的检查点，必须继续寻找严格位于当前位置之后的检查点；最后一个检查点之后仍以蓝色连接路线终点，到终点后只剩完整灰色段。不能因目标索引等于当前位置就丢掉当前段。回归见 `tests/map_provider_frontend_runtime.test.mjs`。
 
 ## 路线规划限流和重试规则
 
@@ -184,6 +185,8 @@
   - `node --test tests/initial_data_failure_notice.test.mjs tests/ui_mobile_session_regressions.test.mjs`
 - 提交前运行 `git diff --check`。Windows 下 LF/CRLF 提示不是失败，但真正的 whitespace error 不能忽略。
 - 提交前确认 `git diff --stat` 和 `git status --short`，只提交当前任务相关文件。
+- 前端运行时测试抽取真实函数时，同步装配新增的辅助函数、缓存状态与 Pinia store；登录清理测试应执行完整处理器并断言会话身份、存储和遮罩结果，不能截到函数内首次同名赋值就结束。变更内部折线容器表示时，保留颜色、完整路径等行为断言。回归见 `tests/admin_return_origin_state.test.mjs`、`tests/vue_login_multi_runtime.test.mjs`、`tests/map_provider_frontend_runtime.test.mjs`。
+- Python 调用输出中文的 Node 脚本时，`subprocess.run` 必须显式使用 UTF-8，并断言完成标记，避免 Windows 默认 GBK 解码在线程内失败却仍按子进程退出码判定通过。跨平台硬链接测试只替换待测模块自己的 `os` 命名空间，不修改全局 `os.name`，以免影响 `pathlib`；使用真实临时文件验证成功、重名、发布失败及删源回滚。回归见 `tests/test_map_route_progress_segments.py`、`tests/test_log_archiving.py`。
 
 ## 会话资源和全局缓存生命周期
 
