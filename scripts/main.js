@@ -2444,6 +2444,7 @@ let IS_OFFLINE = false;
 let authSessionUUID = null;
 let authRequestGeneration = 0;
 let authLoginInProgress = false;
+let authLogoutInProgress = false;
 
 function isUsableClientSessionUUID(value) {
   const normalized = String(value || "").trim();
@@ -2721,6 +2722,7 @@ function shouldSuppressSessionExpiredNotice(
 function clearLogoutElsewhereOverlay() {
   const overlay = document.getElementById("logout-elsewhere-overlay");
   if (overlay && overlay.parentNode) {
+    if (typeof overlay._clearCountdown === "function") overlay._clearCountdown();
     overlay.parentNode.removeChild(overlay);
   }
 }
@@ -2996,6 +2998,10 @@ async function callPythonAPI(method, ...args) {
       errorData = await response.json();
     } catch (parseError) {
       logMessage_Warning("[API调用] ✗ 无法解析错误响应体为 JSON:", parseError);
+    }
+
+    if (authLogoutInProgress && response.status === 401) {
+      throw new Error(errorData?.message || "退出登录中，会话已失效");
     }
 
     if (
@@ -7777,9 +7783,11 @@ if (typeof window !== "undefined") {
         );
         if (!confirmed) return;
 
+        authLogoutInProgress = true;
+        stopReminderChecker(true);
         try {
           if (isGuestSession) {
-            await fetch("/auth/logout", {
+            const response = await fetch("/auth/logout", {
               method: "POST",
               credentials: "include",
               headers: {
@@ -7787,34 +7795,20 @@ if (typeof window !== "undefined") {
                 "X-Session-ID": sessionUUID || "",
               },
             });
-            await Swal.fire({
-              icon: "success",
-              title: "访客会话已退出",
-              text: "当前访客会话及背景绑定已销毁。",
-              timer: 1500,
-              showConfirmButton: false,
-            });
-            window.location.href = buildLegacyUiPath("/");
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+              throw new Error(result.message || "访客会话退出失败");
+            }
+            showSessionMissingOverlay();
             return;
           }
-          await callPythonAPI_raw("/api/shutdown", "POST");
-          // 修正：使用 showModalAlert 替代未定义的 jsShowAlert，并将第二个参数改为中文标题
-          // showModalAlert("应用即将关闭...", "成功");
-          // setTimeout(() => {
-          //   window.close();
-          // }, 1000);
-          Swal.fire({
-            icon: "success",
-            title: "应用即将关闭",
-            text: "应用即将关闭...",
-          });
+          const result = await callPythonAPI_raw("/api/shutdown", "POST");
+          if (!result?.success) throw new Error(result?.message || "退出登录失败");
+          showSessionMissingOverlay();
         } catch (error) {
           console.error("[退出应用] 调用shutdown API失败:", error);
-          // 修正：使用 showModalAlert 替代未定义的 jsShowAlert，并将第二个参数改为中文标题以触发红色样式
-          // showModalAlert(
-          //   "退出应用失败: " + (error.message || "未知错误"),
-          //   "错误"
-          // );
+          authLogoutInProgress = false;
+          startReminderChecker(sessionUUID, true);
           Swal.fire({
             icon: "error",
             title: "未知错误",
@@ -15135,6 +15129,7 @@ function validateInput(input, type) {
 }
 let sessionValidityCheckInterval = null;
 function redirectToLoginAfterSessionExpiry() {
+  if (typeof stopReminderChecker === "function") stopReminderChecker();
   const legacyHomePath = buildLegacyUiPath("/");
   if (window.location.pathname === legacyHomePath) {
     return false;
@@ -15163,6 +15158,7 @@ async function checkSessionValidity() {
     const result = await response.json();
 
     if (result.success && result.uuid_type === "unknown") {
+      stopReminderChecker();
       logMessage_Warning("[会话检查] 会话不存在，UUID类型为unknown");
       if (sessionValidityCheckInterval) {
         clearInterval(sessionValidityCheckInterval);

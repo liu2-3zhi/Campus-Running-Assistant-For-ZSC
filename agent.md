@@ -24,6 +24,13 @@
 - 如果发现敏感信息已经进入 Git 历史，不要只改最新文件；需要先告知用户，清理历史、强制推送前确认范围，并提醒相关 Key 需要轮换。
 - 不要保留不必要的 AI 贡献者、协作者署名或生成痕迹；提交作者、commit trailer、文档署名应保持项目原有风格。
 
+## 本地图片验证码测试
+
+- 在已获准执行的本地登录回归测试中，从当前页面验证码 iframe 的 `/api/captcha/html/<captcha_id>` 地址取得本次 `captcha_id`，读取仓库下的 `logs/captchas/<captcha_id>.json`。不要从旧截图、旧 ID 或 `logs/captcha_history/` 猜答案；历史记录中的 `code` 已脱敏为空。
+- 将 JSON 作为结构化数据读取，确认文件存在、`id` 与页面当前 ID 一致、`code` 非空且当前 Unix 时间小于 `expires_at`，然后把 `code` 自动填入当前页面的验证码输入框并正常提交登录。PowerShell 可用 `Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json` 读取，`$path` 应由仓库相对路径和当前 ID 构造。
+- 本地图片验证码是一次性的，`verify_captcha()` 校验后会删除对应文件；过期或提交失败时刷新页面验证码，重新取得 ID 和文件。行为验证码不使用这个文件，仍按其服务端二验流程处理。
+- `logs/captchas/` 含有效验证码，按敏感临时文件处理；不要把实际 `code`、完整 JSON 或本机绝对路径写入对话、测试、文档、日志、提交或 PR，也不要暂存这些文件。本规则仅用于本地测试，不用于线上站点。
+
 ## 地图密钥下发与会话密钥生命周期
 
 - 前端只返回当前实际需要的地图供应商密钥；`map_providers` 只能包含脱敏元数据，密钥密文放在 `map_provider_key_bundle` 中，不能一次性下发所有供应商密钥，也不能暴露具体加密算法字段。

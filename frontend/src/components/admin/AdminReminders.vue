@@ -21,6 +21,7 @@ const form = ref({
   start_time: '',
   end_time: '',
   enabled: true,
+  allow_guest_view: false,
 })
 
 // 删除确认
@@ -85,7 +86,7 @@ async function loadReminders() {
 
 function openAddEditor() {
   editingId.value = ''
-  form.value = { title: '', message: '', start_time: '', end_time: '', enabled: true }
+  form.value = { title: '', message: '', start_time: '', end_time: '', enabled: true, allow_guest_view: false }
   showEditor.value = true
   clearAlerts()
 }
@@ -98,6 +99,7 @@ function openEditEditor(reminder) {
     start_time: reminder.start_time || '',
     end_time: reminder.end_time || '',
     enabled: reminder.enabled !== false,
+    allow_guest_view: reminder.allow_guest_view === true,
   }
   showEditor.value = true
   clearAlerts()
@@ -149,6 +151,7 @@ async function saveReminder() {
       start_time: startTime,
       end_time: endTime,
       enabled: form.value.enabled,
+      allow_guest_view: form.value.allow_guest_view === true,
     }
     let data
     if (editingId.value) {
@@ -337,6 +340,11 @@ onMounted(loadReminders)
         <span class="text-sm text-[var(--ink)]">✅ 启用此提醒（取消勾选则暂时禁用，不会删除数据）</span>
       </label>
 
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input v-model="form.allow_guest_view" type="checkbox" class="rounded border-[var(--border-color)] text-[var(--accent)] focus:ring-[var(--accent)]" />
+        <span class="text-sm text-[var(--ink)]">允许访客查看</span>
+      </label>
+
       <div class="flex justify-end gap-2">
         <button @click="closeEditor" class="btn btn-ghost">取消</button>
         <button @click="saveReminder" :disabled="saving" class="btn btn-primary">
@@ -376,7 +384,7 @@ onMounted(loadReminders)
         class="panel p-4 space-y-3"
       >
         <div class="flex items-start justify-between gap-3">
-          <div class="flex items-center gap-2 min-w-0">
+          <div class="flex flex-wrap items-center gap-2 min-w-0">
             <h3 class="text-base font-semibold text-[var(--ink)] truncate">{{ reminder.title }}</h3>
             <span
               class="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
@@ -385,6 +393,9 @@ onMounted(loadReminders)
                 : 'bg-[var(--ink-muted)]/10 text-[var(--ink-muted)]'"
             >
               {{ reminder.enabled ? '已启用' : '已禁用' }}
+            </span>
+            <span class="text-xs px-2 py-0.5 rounded-full flex-shrink-0 bg-[var(--accent)]/10 text-[var(--accent)]">
+              {{ reminder.allow_guest_view === true ? '访客可见' : '仅账号可见' }}
             </span>
           </div>
         </div>

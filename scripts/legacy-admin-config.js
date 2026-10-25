@@ -922,27 +922,6 @@ function escapeHtml(text) {
   div.textContent = text;
   return div.innerHTML;
 }
-// ============================================================================
-// 定时提醒检查器
-// ============================================================================
-function startReminderChecker() {
-  // 首次检查看提醒应在页面完全加载后执行，确保 Markdown 解析器等已就绪
-  const startChecks = () => {
-    try {
-      checkAndShowReminders();
-    } catch (e) {
-      console.error("[定时提醒] 首次检查失败", e);
-    }
-    setInterval(checkAndShowReminders, 60 * 1000);
-    console.log("[定时提醒] 定时检查已启动，每分钟检查一次");
-  };
-
-  if (document.readyState === "complete") {
-    startChecks();
-  } else {
-    window.addEventListener("load", startChecks, { once: true });
-  }
-}
 async function saveSystemConfig() {
   if (!ensureConfigLoaded("system", "系统")) {
     return;
@@ -1233,8 +1212,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const mobileSwitchToSms = document.getElementById("mobile-switch-to-sms");
     if (mobileSwitchToSms) mobileSwitchToSms.style.display = "none";
   }
-  console.log("[定时提醒] 正在启动定时提醒检查器...");
-  startReminderChecker();
 });
 // ==================== 移动端事件绑定 (Phase 4b) ====================
 document.addEventListener("DOMContentLoaded", function () {

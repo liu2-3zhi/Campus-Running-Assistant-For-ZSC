@@ -15179,6 +15179,7 @@ def start_web_server(args_param):
             start_time = data.get("start_time", "").strip()
             end_time = data.get("end_time", "").strip()
             enabled = data.get("enabled", True)
+            allow_guest_view = data.get("allow_guest_view", False)
             # ===== 数据验证 =====
             if not title:
                 return _main().jsonify({"success": False, "message": "提醒标题不能为空"})
@@ -15209,6 +15210,10 @@ def start_web_server(args_param):
                 )
             if not isinstance(enabled, bool):
                 enabled = bool(enabled)
+            if not isinstance(allow_guest_view, bool):
+                return _main().jsonify(
+                    {"success": False, "message": "允许访客查看必须是布尔值"}
+                ), 400
 
             # ===== 创建提醒对象 =====
 
@@ -15222,6 +15227,7 @@ def start_web_server(args_param):
                 "start_time": start_time,
                 "end_time": end_time,
                 "enabled": enabled,
+                "allow_guest_view": allow_guest_view,
                 "created_at": current_timestamp,
                 "updated_at": current_timestamp,
             }
@@ -15332,6 +15338,12 @@ def start_web_server(args_param):
 
                     if "enabled" in data:
                         reminder["enabled"] = bool(data["enabled"])
+                    if "allow_guest_view" in data:
+                        if not isinstance(data["allow_guest_view"], bool):
+                            return _main().jsonify(
+                                {"success": False, "message": "允许访客查看必须是布尔值"}
+                            ), 400
+                        reminder["allow_guest_view"] = data["allow_guest_view"]
                     reminder["updated_at"] = time.time()
 
                     break
@@ -15407,6 +15419,74 @@ def start_web_server(args_param):
         """
         检查当前时间是否有需要显示的提醒
         """
+        def unauthorized(message="未登录或会话无效"):
+            return _main().jsonify(
+                {"success": False, "message": message, "need_login": True}
+            ), 401
+
+        session_id = _main().normalize_session_uuid(
+            _main().request.headers.get("X-Session-ID", "")
+        )
+        token = _main().request.cookies.get("auth_token", "")
+        with web_sessions_lock:
+            api_instance = web_sessions.get(session_id) if session_id else None
+        if not api_instance or not getattr(api_instance, "is_authenticated", False) or not token:
+            return unauthorized()
+
+        auth_username = str(getattr(api_instance, "auth_username", "") or "")
+        if not auth_username:
+            return unauthorized()
+
+        origin_session_id = _main().normalize_session_uuid(
+            _main().request.headers.get(_main().ADMIN_ORIGIN_SESSION_HEADER, "")
+        )
+        admin_origin = _main().resolve_admin_origin_session_context(
+            session_id, origin_session_id, token
+        )
+        session_is_guest = bool(
+            getattr(api_instance, "is_guest", False) or auth_username == "guest"
+        )
+        viewer_is_guest = False
+        if not admin_origin:
+            if not session_is_guest and _main()._verify_session_cookie_token(
+                session_id, auth_username, token
+            ):
+                viewer_is_guest = False
+            else:
+                admin_view = _main().resolve_admin_view_identity(
+                    session_id, token, auth_username
+                )
+                if admin_view:
+                    viewer_is_guest = False
+                elif session_is_guest:
+                    try:
+                        # A live guest token is insufficient if its file-backed session expired.
+                        guest_record = _main()._load_guest_session_record(session_id)
+                        guest_config = _main()._get_guest_config(
+                            _main()._read_config_ini(_main().CONFIG_FILE)
+                            or _main()._get_default_config()
+                        )
+                        timeout = guest_config["guest_session_inactivity_timeout"]
+                        last_accessed = float((guest_record or {}).get("last_accessed", 0))
+                        session_expires_at = last_accessed + timeout
+                        guest_active = bool(
+                            guest_record and last_accessed > 0
+                            and time.time() <= session_expires_at
+                        )
+                        guest_store = getattr(_main().token_manager, "guest_store", None)
+                        guest_verification = (
+                            guest_store.verify(
+                                session_id, token, guest_active, session_expires_at
+                            ) if guest_store else {"valid": False}
+                        )
+                    except (OSError, ValueError, TypeError, KeyError):
+                        guest_verification = {"valid": False}
+                    if not guest_verification.get("valid") or not _main()._touch_guest_session(session_id):
+                        return unauthorized("认证令牌无效，请重新登录")
+                    viewer_is_guest = True
+                else:
+                    return unauthorized("认证令牌无效，请重新登录")
+
         try:
             # from datetime import datetime
 
@@ -15426,6 +15506,8 @@ def start_web_server(args_param):
             active_reminders = []
             for reminder in all_reminders:
                 if not reminder.get("enabled", False):
+                    continue
+                if viewer_is_guest and reminder.get("allow_guest_view") is not True:
                     continue
                 start_time = reminder.get("start_time", "")
                 end_time = reminder.get("end_time", "")

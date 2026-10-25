@@ -6848,6 +6848,11 @@ async function mobileRefreshReminders() {
                   ? "bg-green-100 text-green-700"
                   : "bg-slate-100 text-slate-600"
               }">${reminder.enabled ? "启用" : "禁用"}</span>
+              ${
+                reminder.allow_guest_view === true
+                  ? '<span class="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 whitespace-nowrap">访客可见</span>'
+                  : ""
+              }
             </div>
             <!-- 提醒内容（Markdown渲染） -->
             <div id="${messageContainerId}" class="text-xs text-slate-600 mb-2 mobile-reminder-markdown-content"></div>
@@ -7278,6 +7283,10 @@ async function openMobileReminderEditModal(reminderId = "") {
             <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
           </label>
         </div>
+        <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+          <label for="mobile-reminder-allow-guest-view-field" class="text-sm font-semibold text-slate-700">允许访客查看</label>
+          <input type="checkbox" id="mobile-reminder-allow-guest-view-field" class="w-5 h-5 accent-amber-500">
+        </div>
         <!-- 操作按钮 -->
         <div class="flex gap-3 pt-4 border-t border-slate-100">
           <button onclick="closeMobileReminderEditModal()" class="flex-1 py-3 px-4 border border-slate-300 rounded-xl text-sm text-slate-600 min-h-[48px]">取消</button>
@@ -7300,6 +7309,9 @@ async function openMobileReminderEditModal(reminderId = "") {
     "mobile-reminder-end-time-field",
   );
   const enabledField = document.getElementById("mobile-reminder-enabled-field");
+  const allowGuestViewField = document.getElementById(
+    "mobile-reminder-allow-guest-view-field",
+  );
 
   // 如果是编辑模式，加载现有数据
   if (reminderId) {
@@ -7319,6 +7331,8 @@ async function openMobileReminderEditModal(reminderId = "") {
           if (startTimeField) startTimeField.value = reminder.start_time;
           if (endTimeField) endTimeField.value = reminder.end_time;
           if (enabledField) enabledField.checked = reminder.enabled;
+          if (allowGuestViewField)
+            allowGuestViewField.checked = reminder.allow_guest_view === true;
         } else {
           showModalAlert("提醒不存在", "错误");
           return;
@@ -7338,6 +7352,7 @@ async function openMobileReminderEditModal(reminderId = "") {
     if (startTimeField) startTimeField.value = "";
     if (endTimeField) endTimeField.value = "";
     if (enabledField) enabledField.checked = true;
+    if (allowGuestViewField) allowGuestViewField.checked = false;
   }
 
   // 显示模态框
@@ -7407,6 +7422,9 @@ async function saveMobileReminder() {
     document.getElementById("mobile-reminder-end-time-field")?.value || "";
   const enabled =
     document.getElementById("mobile-reminder-enabled-field")?.checked || false;
+  const allowGuestView =
+    document.getElementById("mobile-reminder-allow-guest-view-field")?.checked ===
+    true;
 
   // 表单验证
   if (!title) {
@@ -7446,6 +7464,7 @@ async function saveMobileReminder() {
       start_time: startTime,
       end_time: endTime,
       enabled: enabled,
+      allow_guest_view: allowGuestView,
     };
     if (isUpdate) {
       requestData.id = id;

@@ -55,6 +55,9 @@ async function loadReminders() {
                 ? '<span class="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">启用</span>'
                 : '<span class="px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded">禁用</span>'
             }
+            ${reminder.allow_guest_view === true
+              ? '<span class="px-2 py-0.5 text-xs bg-sky-100 text-sky-700 rounded">访客可见</span>'
+              : ''}
           </div>
           <!-- 提醒内容（Markdown渲染） -->
           <div id="${messageContainerId}" class="text-sm text-slate-600 mb-3 pc-reminder-markdown-content"></div>
@@ -482,6 +485,7 @@ async function openReminderEditModal(reminderId = "") {
   const startTimeField = $("reminder-start-time-field");
   const endTimeField = $("reminder-end-time-field");
   const enabledField = $("reminder-enabled-field");
+  const allowGuestViewField = $("reminder-allow-guest-view-field");
   if (reminderId) {
     console.log("[定时提醒] 加载提醒数据，ID:", reminderId);
     title.textContent = "✏️ 编辑定时提醒";
@@ -494,6 +498,7 @@ async function openReminderEditModal(reminderId = "") {
       startTimeField.value = "00:00";
       endTimeField.value = "00:00";
       enabledField.checked = true;
+      allowGuestViewField.checked = false;
     } else {
       try {
         const response = await fetch("/api/reminders/list", {
@@ -525,6 +530,7 @@ async function openReminderEditModal(reminderId = "") {
             startTimeField.value = reminder.start_time;
             endTimeField.value = reminder.end_time;
             enabledField.checked = reminder.enabled;
+            allowGuestViewField.checked = reminder.allow_guest_view === true;
           } else {
             showModalAlert("提醒不存在", "错误");
             return;
@@ -544,6 +550,7 @@ async function openReminderEditModal(reminderId = "") {
     startTimeField.value = "";
     endTimeField.value = "";
     enabledField.checked = true;
+    allowGuestViewField.checked = false;
     try {
       if (
         typeof window.reminderEditor !== "undefined" &&
@@ -620,6 +627,7 @@ async function saveReminder() {
   const startTime = $("reminder-start-time-field").value;
   const endTime = $("reminder-end-time-field").value;
   const enabled = $("reminder-enabled-field").checked;
+  const allowGuestView = $("reminder-allow-guest-view-field").checked;
   if (!title) {
     showModalAlert("请输入提醒标题", "错误");
     return;
@@ -655,6 +663,7 @@ async function saveReminder() {
       start_time: startTime,
       end_time: endTime,
       enabled: enabled,
+      allow_guest_view: allowGuestView,
     };
     if (isUpdate) {
       requestData.id = id;
@@ -682,11 +691,13 @@ async function saveReminder() {
         const startF = $("reminder-start-time-field");
         const endF = $("reminder-end-time-field");
         const enabledF = $("reminder-enabled-field");
+        const allowGuestViewF = $("reminder-allow-guest-view-field");
         if (idF) idF.value = "";
         if (titleF) titleF.value = "";
         if (startF) startF.value = "";
         if (endF) endF.value = "";
         if (enabledF) enabledF.checked = true;
+        if (allowGuestViewF) allowGuestViewF.checked = false;
         if (
           typeof window.reminderEditor !== "undefined" &&
           window.reminderEditor
@@ -795,6 +806,127 @@ function formatTimestamp(timestamp) {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 let shownReminders = new Set();
+let reminderCheckerActive = false;
+let reminderCheckerSessionUUID = "";
+let reminderCheckerEpoch = 0;
+let reminderCheckInterval = null;
+let reminderRequests = new Set();
+let pendingReminderAlerts = [];
+let reminderDrainPromise = null;
+let reminderRenderMarkdown = null;
+let reminderQueueRetryTimer = null;
+
+function isSystemAuthLoginVisible() {
+  return ["auth-login-container", "mobile-auth-login-container"].some((id) => {
+    const element = document.getElementById(id);
+    return element && element.getClientRects().length > 0;
+  });
+}
+
+function isReminderCheckerCurrent(epoch, requestSessionUUID) {
+  return (
+    reminderCheckerActive &&
+    reminderCheckerEpoch === epoch &&
+    reminderCheckerSessionUUID === requestSessionUUID &&
+    sessionUUID === requestSessionUUID &&
+    !document.getElementById("logout-elsewhere-overlay") &&
+    !isSystemAuthLoginVisible()
+  );
+}
+
+function isOtherAlertVisible() {
+  if (!Swal.isVisible || !Swal.isVisible()) return false;
+  const popup = Swal.getPopup && Swal.getPopup();
+  return !popup || !popup.classList.contains("reminder-alert-popup");
+}
+
+function stopReminderChecker(preserveShown = false) {
+  reminderCheckerActive = false;
+  reminderCheckerSessionUUID = "";
+  reminderCheckerEpoch++;
+  if (reminderCheckInterval !== null) {
+    clearInterval(reminderCheckInterval);
+    reminderCheckInterval = null;
+  }
+  for (const controller of reminderRequests) controller.abort();
+  reminderRequests.clear();
+  pendingReminderAlerts = [];
+  if (!preserveShown) shownReminders.clear();
+  reminderDrainPromise = null;
+  if (reminderQueueRetryTimer !== null) {
+    clearTimeout(reminderQueueRetryTimer);
+    reminderQueueRetryTimer = null;
+  }
+  if (Swal.getPopup?.()?.classList.contains("reminder-alert-popup")) {
+    Swal.close();
+  }
+}
+
+function startReminderChecker(authenticatedSessionUUID = sessionUUID, preserveShown = false) {
+  if (!authenticatedSessionUUID || authenticatedSessionUUID !== sessionUUID) return;
+  if (reminderCheckerActive && reminderCheckerSessionUUID === authenticatedSessionUUID) return;
+  stopReminderChecker(preserveShown);
+  reminderCheckerActive = true;
+  reminderCheckerSessionUUID = authenticatedSessionUUID;
+  void checkAndShowReminders();
+  reminderCheckInterval = setInterval(checkAndShowReminders, 60 * 1000);
+}
+
+function scheduleReminderDrain() {
+  if (reminderQueueRetryTimer !== null) return;
+  reminderQueueRetryTimer = setTimeout(() => {
+    reminderQueueRetryTimer = null;
+    drainReminderQueue();
+  }, 1000);
+}
+
+function drainReminderQueue() {
+  if (reminderDrainPromise || pendingReminderAlerts.length === 0) return;
+  if (isOtherAlertVisible()) {
+    scheduleReminderDrain();
+    return;
+  }
+  const epoch = reminderCheckerEpoch;
+  const requestSessionUUID = reminderCheckerSessionUUID;
+  const job = (async () => {
+    try {
+      while (pendingReminderAlerts.length && isReminderCheckerCurrent(epoch, requestSessionUUID)) {
+        if (isOtherAlertVisible()) return;
+        const reminder = pendingReminderAlerts.shift();
+        const html = await reminderRenderMarkdown(reminder.message);
+        if (!isReminderCheckerCurrent(epoch, requestSessionUUID)) return;
+        if (isOtherAlertVisible()) {
+          pendingReminderAlerts.unshift(reminder);
+          scheduleReminderDrain();
+          return;
+        }
+        await Swal.fire({
+          title: reminder.displayTitle,
+          html,
+          icon: reminder.icon,
+          confirmButtonText: "知道了",
+          allowOutsideClick: true,
+          allowEscapeKey: true,
+          customClass: {
+            popup: "reminder-alert-popup",
+            title: "reminder-alert-title",
+            htmlContainer: "reminder-alert-content",
+          },
+        });
+      }
+    } catch (error) {
+      console.error("[定时提醒] 显示提醒失败:", error);
+    }
+  })();
+  reminderDrainPromise = job;
+  void job.finally(() => {
+    if (reminderDrainPromise !== job) return;
+    reminderDrainPromise = null;
+    if (pendingReminderAlerts.length && isReminderCheckerCurrent(epoch, requestSessionUUID)) {
+      drainReminderQueue();
+    }
+  });
+}
 /**
  * 检查并显示定时提醒
  *
@@ -810,57 +942,42 @@ let shownReminders = new Set();
  * - 解决方案：先收集所有新提醒，然后根据数量选择合适的显示方式
  */
 async function checkAndShowReminders() {
-  // 验证 sessionUUID 是否存在
-  // sessionUUID 是用户会话的唯一标识符，用于后端识别当前用户
-  if (!sessionUUID) {
-    // 尝试从 URL 中获取 UUID（用户进入系统时会生成）
-    sessionUUID = getUUIDFromURL();
-    if (!sessionUUID) {
-      // 如果仍然无法获取 UUID，记录错误并退出
-      // 这种情况通常发生在用户未正确登录或会话已过期
-      logMessage_Error("跳过提醒检查: sessionUUID 未定义");
-      return;
-    }
-  }
+  const epoch = reminderCheckerEpoch;
+  const requestSessionUUID = reminderCheckerSessionUUID;
+  if (!isReminderCheckerCurrent(epoch, requestSessionUUID)) return;
+  const controller = new AbortController();
+  reminderRequests.add(controller);
 
   try {
-    // 向后端 API 发起请求，检查是否有需要显示的提醒
+    const headers = { "X-Session-ID": requestSessionUUID };
+    if (typeof addAdminViewOriginSessionHeader === "function") {
+      addAdminViewOriginSessionHeader(headers, requestSessionUUID);
+    }
     const response = await fetch("/api/reminders/check", {
-      method: "GET", // 使用 GET 方法查询数据
-      headers: {
-        // 在请求头中携带 sessionUUID，让后端知道是哪个用户在查询
-        "X-Session-ID": sessionUUID,
-      },
+      method: "GET",
+      headers,
+      credentials: "include",
+      signal: controller.signal,
     });
-
-    // 解析后端返回的 JSON 数据
+    if (!isReminderCheckerCurrent(epoch, requestSessionUUID)) return;
+    if (response.status === 401) {
+      stopReminderChecker();
+      if (typeof showSessionMissingOverlay === "function") showSessionMissingOverlay();
+      return;
+    }
     const result = await response.json();
-
-    // 检查后端是否成功处理请求
+    if (!isReminderCheckerCurrent(epoch, requestSessionUUID)) return;
     if (!result.success) {
-      // 如果失败，记录错误信息并退出
       console.error("[定时提醒] 检查失败:", result.message);
       return;
     }
 
-    // 获取后端返回的提醒列表
-    // 如果后端没有返回 reminders 字段，使用空数组作为默认值
     const reminders = result.reminders || [];
-
-    // ==================== 核心修复逻辑开始 ====================
-
-    // 过滤出尚未显示过的新提醒
-    // shownReminders 是一个 Set 集合，用于记录已显示过的提醒 ID
-    // 这样可以避免同一个提醒被重复显示
     const newReminders = reminders.filter((r) => !shownReminders.has(r.id));
-
-    // 如果没有新提醒需要显示，直接返回，不做任何操作
     if (newReminders.length === 0) {
+      drainReminderQueue();
       return;
     }
-
-    // 将所有新提醒的 ID 添加到已显示集合中
-    // 这样下次检查时就不会再显示这些提醒了
     newReminders.forEach((r) => shownReminders.add(r.id));
 
     // 注入提醒弹窗专用样式，确保不同标题层级显示区别
@@ -1090,112 +1207,20 @@ async function checkAndShowReminders() {
     };
 
     // 根据新提醒的数量，选择不同的显示方式
-    if (newReminders.length === 1) {
-      // ==================== 单个提醒的处理 ====================
-      // 只有一个提醒时，使用原有的简洁显示方式
-
-      const reminder = newReminders[0];
-
-      let swalHtmlContent = await renderMarkdownToHtml(reminder.message);
-
-      console.log(
-        `[定时提醒] 准备显示单个提醒: ${reminder.title}, 内容： ${swalHtmlContent}`,
-      );
-
-      // 使用 SweetAlert2 显示提醒弹窗
-      Swal.fire({
-        title: reminder.title, // 提醒标题
-        // 使用 Markdown 渲染为 HTML（优先 marked/editormd），回退为换行处理
-        html: swalHtmlContent,
-        icon: "warning", // 使用信息图标
-        confirmButtonText: "知道了", // 确认按钮文字
-        allowOutsideClick: true, // 允许点击弹窗外部关闭
-        allowEscapeKey: true, // 允许按 ESC 键关闭
-        customClass: {
-          // 自定义样式类名，用于统一提醒弹窗的外观
-          popup: "reminder-alert-popup",
-          title: "reminder-alert-title",
-          htmlContainer: "reminder-alert-content",
-        },
-      });
-
-      // 在控制台记录日志，便于调试
-      console.log(`[定时提醒] 已显示提醒: ${reminder.title}`);
-    } else {
-      // ==================== 多个提醒的处理（核心修复） ====================
-      // 有多个提醒时，依次显示多个独立的弹窗，而不是合并到一个弹窗中
-      // 这样可以让用户更清楚地看到每一条提醒的完整信息
-
-      // 在控制台记录即将显示的提醒数量，便于调试
-      console.log(`[定时提醒] 准备依次显示 ${newReminders.length} 条提醒`);
-
-      // 使用立即执行的异步函数来处理多个弹窗的依次显示
-      // 必须使用 async/await 才能确保弹窗按顺序显示，避免同时弹出
-      (async () => {
-        // 遍历所有新提醒，为每个提醒显示一个独立的弹窗
-        for (let i = 0; i < newReminders.length; i++) {
-          // 获取当前索引对应的提醒对象
-          const reminder = newReminders[i];
-
-          // 显示当前提醒的独立弹窗
-          // 使用 await 等待用户关闭当前弹窗后，再显示下一个
-          const htmlContent = await renderMarkdownToHtml(reminder.message);
-          await Swal.fire({
-            // 标题：显示提醒的标题，并标注这是第几条提醒（例如：1/3）
-            // 这样用户可以知道还有多少提醒需要查看
-            title: `${reminder.title} (${i + 1}/${newReminders.length})`,
-
-            // 内容：使用 Markdown 渲染为 HTML（优先 marked/editormd），回退为换行处理
-            html: htmlContent,
-
-            // 图标：使用信息图标，表明这是一条通知性质的提醒
-            icon: "info",
-
-            // 确认按钮文字：使用友好的中文提示
-            confirmButtonText: "知道了",
-
-            // 允许用户点击弹窗外部区域来关闭弹窗
-            // 这样提供了更灵活的关闭方式
-            allowOutsideClick: true,
-
-            // 允许用户按 ESC 键关闭弹窗
-            // 这是用户习惯的快捷键操作
-            allowEscapeKey: true,
-
-            // 自定义样式类名，保持与单个提醒相同的外观
-            // 这样确保界面风格的一致性
-            customClass: {
-              popup: "reminder-alert-popup", // 弹窗容器的样式类
-              title: "reminder-alert-title", // 标题的样式类
-              htmlContainer: "reminder-alert-content", // 内容区域的样式类
-            },
-          });
-
-          // 在控制台记录已显示的提醒，便于调试和问题排查
-          console.log(
-            `[定时提醒] 已显示第 ${i + 1}/${newReminders.length} 条提醒: ${
-              reminder.title
-            }`,
-          );
-
-          // 如果不是最后一个提醒，添加一个延迟
-          // 这样可以避免用户关闭一个弹窗后，下一个弹窗立即出现造成的突兀感
-          if (i < newReminders.length - 1) {
-            // 使用 Promise 和 setTimeout 实现异步延迟
-            // 延迟时间设置为 700 毫秒（0.7 秒），既不会太快也不会太慢
-            await new Promise((resolve) => setTimeout(resolve, 700));
-          }
-        }
-
-        // 所有提醒显示完毕后，在控制台记录完成信息
-        console.log(`[定时提醒] 所有 ${newReminders.length} 条提醒已显示完毕`);
-      })();
-    }
-
-    // ==================== 核心修复逻辑结束 ====================
+    reminderRenderMarkdown = renderMarkdownToHtml;
+    pendingReminderAlerts.push(...newReminders.map((reminder, index) => ({
+      ...reminder,
+      displayTitle: newReminders.length === 1
+        ? reminder.title
+        : `${reminder.title} (${index + 1}/${newReminders.length})`,
+      icon: newReminders.length === 1 ? "warning" : "info",
+    })));
+    drainReminderQueue();
   } catch (error) {
-    // 捕获并记录任何网络请求或 JSON 解析过程中发生的错误
-    // 这样即使提醒功能出错，也不会影响应用的其他功能
-    console.error("[定时提醒] 检查提醒时发生错误:", error);
+    if (error.name !== "AbortError") {
+      console.error("[定时提醒] 检查提醒时发生错误:", error);
+    }
+  } finally {
+    reminderRequests.delete(controller);
   }
 }

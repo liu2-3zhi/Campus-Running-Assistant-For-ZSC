@@ -1,5 +1,71 @@
 // Legacy application initialization, websocket, and map interaction helpers.
 
+function showSessionMissingOverlay() {
+  if (typeof stopReminderChecker === "function") stopReminderChecker();
+  if (document.getElementById("logout-elsewhere-overlay")) return;
+
+  const overlay = document.createElement("div");
+  overlay.id = "logout-elsewhere-overlay";
+  overlay.style.cssText = `
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85);
+    z-index: 20002; display: flex; align-items: center; justify-content: center;
+  `;
+
+  const content = document.createElement("div");
+  content.style.cssText = `
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 40px; border-radius: 20px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    max-width: 500px; width: 90%; text-align: center; color: white;
+  `;
+  const icon = document.createElement("div");
+  icon.innerHTML = `
+    <svg style="width: 80px; height: 80px; margin: 0 auto 20px;" fill="currentColor" viewBox="0 0 20 20">
+      <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+    </svg>
+  `;
+  const title = document.createElement("h2");
+  title.textContent = "会话不存在";
+  title.style.cssText = "font-size: 24px; font-weight: bold; margin: 0 0 20px 0;";
+  const text = document.createElement("p");
+  text.textContent = "该会话已过期或不存在，请重新登录";
+  text.style.cssText = "font-size: 16px; line-height: 1.6; margin: 0 0 30px 0; opacity: 0.95; white-space: pre-wrap;";
+  const countdown = document.createElement("div");
+  countdown.style.cssText = "font-size: 24px; font-weight: bold; margin: 0 0 30px 0;";
+  const button = document.createElement("button");
+  button.textContent = "返回登录";
+  button.style.cssText = "background: white; color: #667eea; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.3s;";
+  button.onmouseover = () => {
+    button.style.transform = "scale(1.05)";
+    button.style.boxShadow = "0 5px 15px rgba(255, 255, 255, 0.3)";
+  };
+  button.onmouseout = () => {
+    button.style.transform = "scale(1)";
+    button.style.boxShadow = "none";
+  };
+
+  let remainingSeconds = 10;
+  countdown.textContent = `${remainingSeconds}秒后自动跳转`;
+  const goToLogin = () => {
+    clearInterval(countdownInterval);
+    window.location.replace(buildLegacyUiPath("/"));
+  };
+  const countdownInterval = setInterval(() => {
+    remainingSeconds--;
+    countdown.textContent = `${remainingSeconds}秒后自动跳转`;
+    if (remainingSeconds <= 0) goToLogin();
+  }, 1000);
+  overlay._clearCountdown = () => clearInterval(countdownInterval);
+  button.onclick = goToLogin;
+
+  content.appendChild(icon);
+  content.appendChild(title);
+  content.appendChild(text);
+  content.appendChild(countdown);
+  content.appendChild(button);
+  overlay.appendChild(content);
+  document.body.appendChild(overlay);
+}
+
 async function initializeApp() {
   if (window.__mapKeyRuntimeReady) {
     await window.__mapKeyRuntimeReady;
@@ -271,126 +337,7 @@ async function initializeApp() {
 
               if (authContainer) authContainer.classList.remove("hidden");
 
-              // 检查遮罩是否已存在，防止重复创建
-              if (document.getElementById("logout-elsewhere-overlay")) {
-                return;
-              }
-
-              const logoutOverlay = document.createElement("div");
-              logoutOverlay.id = "logout-elsewhere-overlay";
-              logoutOverlay.style.cssText = `
-                      position: fixed;
-                      top: 0;
-                      left: 0;
-                      width: 100%;
-                      height: 100%;
-                      background: rgba(0, 0, 0, 0.85);
-                      z-index: 20002; /* 修正：提升层级以覆盖移动端容器 */
-                      display: flex;
-                      align-items: center;
-                      justify-content: center;
-                    `;
-
-              const modalContent = document.createElement("div");
-              modalContent.style.cssText = `
-                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                      padding: 40px;
-                      border-radius: 20px;
-                      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-                      max-width: 500px;
-                      width: 90%;
-                      text-align: center;
-                      color: white;
-                    `;
-
-              const icon = document.createElement("div");
-              icon.innerHTML = `
-                      <svg style="width: 80px; height: 80px; margin: 0 auto 20px;" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-                      </svg>
-                    `;
-
-              const title = document.createElement("h2");
-              title.textContent = "会话不存在";
-              title.style.cssText = `
-                      font-size: 24px;
-                      font-weight: bold;
-                      margin: 0 0 20px 0;
-                    `;
-
-              const text = document.createElement("p");
-              text.textContent = "该会话已过期或不存在，请重新登录";
-              text.style.cssText = `
-                      font-size: 16px;
-                      line-height: 1.6;
-                      margin: 0 0 30px 0;
-                      opacity: 0.95;
-                      white-space: pre-wrap;
-                    `;
-
-              // ==================== 修改开始：添加倒计时元素 ====================
-              const countdown = document.createElement("div");
-              countdown.style.cssText = `
-                      font-size: 24px;
-                      font-weight: bold;
-                      margin: 0 0 30px 0;
-                    `;
-              // ==================== 修改结束 ====================
-
-              const button = document.createElement("button");
-              button.textContent = "返回登录";
-              button.style.cssText = `
-                      background: white;
-                      color: #667eea;
-                      border: none;
-                      padding: 12px 30px;
-                      border-radius: 25px;
-                      font-size: 16px;
-                      font-weight: bold;
-                      cursor: pointer;
-                      transition: all 0.3s;
-                    `;
-              button.onmouseover = () => {
-                button.style.transform = "scale(1.05)";
-                button.style.boxShadow = "0 5px 15px rgba(255, 255, 255, 0.3)";
-              };
-              button.onmouseout = () => {
-                button.style.transform = "scale(1)";
-                button.style.boxShadow = "none";
-              };
-
-              // ==================== 修改开始：倒计时逻辑与事件绑定 ====================
-              let remainingSeconds = 10; // 5秒倒计时
-              const updateCountdown = () => {
-                countdown.textContent = `${remainingSeconds}秒后自动跳转`;
-              };
-              updateCountdown();
-
-              const countdownInterval = setInterval(() => {
-                remainingSeconds--;
-                updateCountdown();
-
-                if (remainingSeconds <= 0) {
-                  clearInterval(countdownInterval);
-                  redirectToLoginAfterSessionExpiry();
-                }
-              }, 1000);
-
-              button.onclick = () => {
-                clearInterval(countdownInterval); // 点击时清除定时器
-                logMessage_Info("用户确认弹窗，正在跳转到登录页面...");
-                redirectToLoginAfterSessionExpiry();
-              };
-
-              modalContent.appendChild(icon);
-              modalContent.appendChild(title);
-              modalContent.appendChild(text);
-              modalContent.appendChild(countdown); // 添加倒计时元素到DOM
-              modalContent.appendChild(button);
-              logoutOverlay.appendChild(modalContent);
-              document.body.appendChild(logoutOverlay);
-              // ==================== 修改结束 ====================
-
+              showSessionMissingOverlay();
               return;
             } catch (e) {
               logMessage_Error("处理未知UUID失败:", e);
@@ -927,6 +874,7 @@ async function initializeApp() {
     $("confirm-amap-key-btn").addEventListener("click", onConfirmAmapKey);
     if (sessionUUID) {
       startSessionValidityCheck();
+      startReminderChecker(sessionUUID);
     }
     if (isMobileMode) {
       setTimeout(() => {
