@@ -149,6 +149,7 @@ async function initializeApp() {
             return;
           }
 
+          applyThemeBackgroundAssignment(result.theme_background, { bound: true });
           themeBackgroundAuthStateResolved = true;
           if (currentThemeConfig && typeof currentThemeConfig === "object") {
             applyThemeGlobalEnvironmentVariables(currentThemeConfig);

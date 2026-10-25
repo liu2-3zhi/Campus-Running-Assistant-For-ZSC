@@ -174,6 +174,38 @@ test('login bundle completes PC/mobile binding without consume or random fetchin
   assert.match(context.currentThemeConfig.global_environment_variables.mobile_auth_login_content_background, /mb.jpg/);
 });
 
+test('UUID reload keeps the bound image when a later default theme config has a random image', () => {
+  const boundUrl = '/theme-assets/bound.jpg';
+  const { context, elements, source } = loadBackgroundRuntime({
+    currentThemeConfig: {
+      basic_information: { id: 'default' },
+      global_environment_variables: { auth_login_container_background: `url("${boundUrl}")` },
+    },
+    result: {
+      uuid_type: 'system_account',
+      theme_background: { bundle_id: 'bound', pc: { image_url: boundUrl }, mobile: {} },
+    },
+  });
+  elements['auth-login-container'].style.background = `url("${boundUrl}")`;
+  vm.runInContext(extractFunctionSource(source, 'applyThemeBackgroundAssignment'), context);
+  const runtimeSource = readFileSync(resolve('scripts/legacy-app-runtime.js'), 'utf8');
+  const checkStart = runtimeSource.indexOf('fetch("/auth/check_uuid_type"');
+  const authStateStart = runtimeSource.indexOf('themeBackgroundAuthStateResolved = true;', checkStart);
+  const bindingStart = runtimeSource.indexOf('applyThemeBackgroundAssignment(result.theme_background', checkStart);
+  const bindingEnd = runtimeSource.indexOf('} catch (e) {', authStateStart);
+  assert.ok(checkStart >= 0 && bindingStart > checkStart && bindingStart < authStateStart && bindingEnd > authStateStart);
+
+  vm.runInContext(runtimeSource.slice(bindingStart, bindingEnd), context);
+  context.applyThemeGlobalEnvironmentVariables({
+    basic_information: { id: 'default' },
+    global_environment_variables: { auth_login_container_background: 'url("/theme-assets/random.jpg")' },
+  });
+
+  assert.equal(context.currentThemeBackgroundAssignment?.bundle_id, 'bound');
+  assert.equal(context.sessionBindEnsured.pc, true);
+  assert.equal(context.getRenderedThemeBackgroundImageUrlByTarget('pc'), boundUrl);
+});
+
 test('anonymous consume response cannot replace the preview image that login will bind', async () => {
   const previewUrl = '/theme-assets/preview.jpg';
   const { context, source } = loadBackgroundRuntime({
