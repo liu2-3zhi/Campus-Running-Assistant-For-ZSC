@@ -71,7 +71,7 @@ export function connectWebSocket() {
   socket.on('connect', () => {
     notifyConnectionState(true)
     console.info('[WS] 连接成功, SID:', socket.id)
-    socket.emit('join', { session_id: auth.sessionUUID })
+    socket.emit('join', { session_id: auth.sessionUUID, admin_origin_session_id: auth.getAdminOriginHeaderValue?.(auth.sessionUUID) || '' })
     startHeartbeat()
     import('@/services/api').then(({ callAPI }) => {
       callAPI('get_initial_data').then(data => {
@@ -102,7 +102,7 @@ export function connectWebSocket() {
   socket.on('log_message', (data) => {
     if (data?.msg) {
       const app = useAppStore()
-      app.addLog(data.msg, data.level || 'INFO', 'Backend')
+      app.addLog(data.msg, data.level || 'INFO', 'Backend', data.diagnostic_id || '')
     }
   })
 

@@ -23,7 +23,7 @@ class TestMultiAccountStartAllSkipOverdue(unittest.TestCase):
         }
         api.multi_run_stop_flag = threading.Event()
         api.multi_run_only_incomplete = True
-        api.log = lambda _message: None
+        api.log_and_notify_frontend = lambda _message: None
         return api
 
     def test_skip_overdue_excludes_overdue_accounts_from_batch_start(self):
@@ -89,10 +89,10 @@ class TestMultiAccountStartAllSkipOverdue(unittest.TestCase):
             username="student-running",
             summary={"total": 1, "expired": 0, "not_started": 0, "executable": 1},
             worker_thread=None,
-            log=lambda _message: None,
+            log_and_notify_frontend=lambda _message: None,
         )
-        api.accounts["student-ok"].log = lambda _message: None
-        api.accounts["student-overdue"].log = lambda _message: None
+        api.accounts["student-ok"].log_and_notify_frontend = lambda _message: None
+        api.accounts["student-overdue"].log_and_notify_frontend = lambda _message: None
 
         with patch.object(
             main,

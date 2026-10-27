@@ -70,7 +70,7 @@ class _ImportTestBase(unittest.TestCase):
         api = object.__new__(main_module.Api)
         api.accounts = {u: _FakeAccount(u) for u in existing}
         api.auth_username = "zhangzhi"
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
         api._load_user_school_accounts = mock.Mock(return_value={})
         api.multi_get_all_accounts_status = mock.Mock(
             return_value={"success": True, "accounts": []}
@@ -588,7 +588,7 @@ class SchoolAccountStorageValidationTests(unittest.TestCase):
         api = object.__new__(main_module.Api)
         api.user_dir = str(self.root)
         api.auth_username = "alice"
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
         return api
 
     def test_load_filters_invalid_usernames(self):

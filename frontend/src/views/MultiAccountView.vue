@@ -636,9 +636,11 @@ function logLevelColor(level) {
 }
 
 async function loadMapProviderConfig() {
+  const requestSession = authStore.sessionUUID
   try {
     const responseData = await callAPI('get_initial_data')
     const data = await hydrateMapProviderSecrets(responseData)
+    if (!viewMounted || requestSession !== authStore.sessionUUID) return
     const mapConfig = {}
     const providers = data?.map_providers || {}
     if (providers.amap?.js_key) mapConfig.amapKey = providers.amap.js_key
@@ -649,7 +651,7 @@ async function loadMapProviderConfig() {
     if (Object.keys(mapConfig).length > 0) mapStore.setConfig(mapConfig)
     if (data?.map_provider) mapStore.setProvider(data.map_provider)
   } catch (error) {
-    appStore.addLog(`加载地图配置失败: ${error.message || error}`, 'ERROR', 'Multi')
+    if (viewMounted && requestSession === authStore.sessionUUID) appStore.addLog(`加载地图配置失败: ${error.message || error}`, 'ERROR', 'Multi')
   }
 }
 

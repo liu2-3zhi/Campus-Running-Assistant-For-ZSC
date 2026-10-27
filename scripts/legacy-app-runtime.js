@@ -157,6 +157,7 @@ async function initializeApp() {
     ShowLoadingOverlay();
     if (match) {
       sessionUUID = match[1];
+      checkAdminReturnState();
 
       if (!isValidUUID(sessionUUID)) {
         hideLoadingOverlays();
@@ -459,7 +460,7 @@ async function initializeApp() {
     await syncThemeFromServer(initialData?.theme, initialData?.theme_style);
 
     currentUserIsGuest = initialData.is_guest || false;
-    currentAuthUsername = initialData.auth_username || null;
+    currentAuthUsername = getLegacyActorIdentity(initialData).auth_username || null;
     // updateMobileGuestVisibility();
     logMessage_Info(
       `initializeApp: currentUserIsGuest = ${currentUserIsGuest}, auth_username = ${currentAuthUsername}`,
@@ -998,7 +999,7 @@ function connectWebSocket() {
     syncUserListPollingBySocketState();
     syncMultiAccountAutoRefreshBySocketState();
     logMessage_Info("WebSocket 连接成功。SID:", socket.id);
-    socket.emit("join", { session_id: sessionUUID });
+    socket.emit("join", { session_id: sessionUUID, admin_origin_session_id: getAdminViewOriginSessionUUID(sessionUUID) });
     startWsHeartbeat();
     refreshUserList();
   });
@@ -1028,7 +1029,7 @@ function connectWebSocket() {
 
   socket.on("log_message", (data) => {
     if (data && data.msg) {
-      logMessage(data.msg, "INFO", "Backend");
+      displayRoutePlanningNotification(data);
     }
   });
   // ===============================================

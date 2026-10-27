@@ -49,7 +49,7 @@ router.beforeEach((to, from, next) => {
   const savedSession = sessionStorage.getItem('session_uuid')
 
   if (to.params?.uuid) {
-    auth.sessionUUID = String(to.params.uuid)
+    auth.syncViewedSession(String(to.params.uuid))
   }
 
   if (to.name === 'main-legacy' || to.name === 'multi-legacy') {
@@ -67,7 +67,7 @@ router.beforeEach((to, from, next) => {
 
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     if (savedSession) {
-      auth.sessionUUID = savedSession
+      if (!to.params?.uuid) auth.sessionUUID = savedSession
       auth.isAuthenticated = true
       next()
     } else {

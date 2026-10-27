@@ -189,6 +189,21 @@ test('switching sessions navigates only after a successful server response', asy
   assert.equal(requests[0].body.target_session_id, 'target-session')
 })
 
+test('administrator view navigation never calls the token-switch endpoint', async () => {
+  const navigated = []
+  const requests = []
+  const viewed = []
+  const run = setup('AdminSessions', {
+    useAuthStore: () => ({ permissions: { view_all_sessions: true }, beginAdminView: (id, owner) => { viewed.push([id, owner]); return true } }),
+    useRouter: () => ({ push: route => navigated.push(route) }),
+    callRawAPI: async url => { requests.push(url); return { success: true } },
+  })
+  await run("selectSession('target-c', 'user-c')")
+  assert.deepEqual(viewed, [['target-c', 'user-c']])
+  assert.deepEqual(requests, [])
+  assert.equal(navigated[0].params.uuid, 'target-c')
+})
+
 test('session creation preserves existing sessions when limit replacement is declined', async () => {
   const requests = []
   const run = setup('AdminSessions', {

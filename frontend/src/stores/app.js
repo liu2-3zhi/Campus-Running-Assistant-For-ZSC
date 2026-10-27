@@ -47,16 +47,35 @@ export const useAppStore = defineStore('app', () => {
     isMobile.value = window.innerWidth < 768
   }
 
-  function addLog(msg, level = 'INFO', source = 'System') {
+  function addLog(msg, level = 'INFO', source = 'System', diagnosticId = '') {
+    if (diagnosticId && logs.value.some(entry => entry.diagnostic_id === diagnosticId)) return
     const entry = {
       msg,
       level,
       source,
       time: new Date().toLocaleTimeString(),
+      ...(diagnosticId ? { diagnostic_id: diagnosticId } : {}),
     }
     logs.value.push(entry)
     if (logs.value.length > maxLogs) {
       logs.value = logs.value.slice(-maxLogs)
+    }
+  }
+
+  function addRoutePlanningFailures(failures) {
+    if (!Array.isArray(failures)) return
+    for (const failure of failures) {
+      if (!failure?.diagnostic_id || typeof failure.message !== 'string') continue
+      const existing = logs.value.find(entry => entry.diagnostic_id === failure.diagnostic_id)
+      if (existing?.route_detail) continue
+      const context = [failure.segment != null ? `路段：${failure.segment}` : '', failure.error_code != null && failure.error_code !== '' ? `错误码：${failure.error_code}` : ''].filter(Boolean).join('；')
+      const msg = `[${failure.provider || '地图服务'}] ${context ? context + '；' : ''}${failure.message}（诊断编号：${failure.diagnostic_id}）`
+      if (existing) {
+        Object.assign(existing, { msg, level: 'ERROR', source: 'Backend', route_detail: true })
+      } else {
+        addLog(msg, 'ERROR', 'Backend', failure.diagnostic_id)
+        logs.value[logs.value.length - 1].route_detail = true
+      }
     }
   }
 
@@ -173,7 +192,7 @@ export const useAppStore = defineStore('app', () => {
     users, multiAccounts, multiStatus, multiGlobalButtons, multiPositions,
     logs, notifications, unreadCount, verificationCodes,
     pythonParams, beianData,
-    detectMobile, addLog, clearLogs,
+    detectMobile, addLog, clearLogs, addRoutePlanningFailures,
     handleMultiStatusUpdate, handleAccountsUpdated,
     handleGlobalButtonsUpdate, handlePositionUpdate,
     handleTaskCompleted, handleRunStopped,

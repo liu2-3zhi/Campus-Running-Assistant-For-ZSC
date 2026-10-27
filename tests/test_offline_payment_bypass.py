@@ -24,7 +24,7 @@ def _make_runtime(offline=False):
     runtime = Api.__new__(Api)
     runtime.params = {}
     runtime.is_offline_mode = offline
-    runtime.log = lambda *args, **kwargs: None
+    runtime.log_and_notify_frontend = lambda *args, **kwargs: None
     return runtime
 
 

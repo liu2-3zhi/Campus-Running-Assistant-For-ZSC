@@ -78,11 +78,15 @@ async function loadSessions() {
   }
 }
 
-async function selectSession(sessionId) {
-  if (switching.value) return
+async function selectSession(sessionId, ownerUsername = '') {
+  if (switching.value || sessionId === auth.sessionUUID) return
   switching.value = true
   clearMessages()
   try {
+    if (auth.beginAdminView?.(sessionId, ownerUsername)) {
+      await router.push({ name: 'session', params: { uuid: sessionId } })
+      return
+    }
     const res = await callRawAPI('/auth/switch_session', 'POST', { target_session_id: sessionId })
     if (res.success === false) throw new Error(res.message || '切换会话失败')
     await router.push({ name: 'session', params: { uuid: sessionId } })
@@ -210,7 +214,7 @@ onMounted(loadSessions)
             <p v-if="godMode" class="text-xs text-slate-500">创建者: {{ sessionUser(session) === '--' ? '游客模式' : sessionUser(session) }}</p>
           </div>
           <div v-if="!isCurrentSession(session)" class="flex shrink-0 gap-2">
-            <button class="btn btn-ghost !px-2 !py-1 text-xs" :disabled="switching" @click="selectSession(session.session_id)">选择</button>
+            <button class="btn btn-ghost !px-2 !py-1 text-xs" :disabled="switching" @click="selectSession(session.session_id, session.auth_username || session.username || '')">选择</button>
             <button v-if="!godMode" class="btn btn-ghost !px-2 !py-1 !text-red-600 text-xs" @click="kickSession(session)">删除</button>
             <button v-else-if="canDestroySessions" class="btn btn-danger !px-2 !py-1 text-xs" @click="kickSession(session)">销毁</button>
           </div>

@@ -33,7 +33,7 @@ class _ImportTestBase(unittest.TestCase):
         api = object.__new__(main_module.Api)
         api.accounts = {u: _FakeAccount(u) for u in existing}
         api.auth_username = "zhangzhi"
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
         api._save_account_tag = mock.Mock()
         api._update_multi_global_buttons = mock.Mock()
         api._update_account_status_js = mock.Mock()

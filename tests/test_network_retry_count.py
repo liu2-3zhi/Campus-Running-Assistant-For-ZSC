@@ -16,7 +16,7 @@ class TestNetworkRetryCount(unittest.TestCase):
             "request timed out"
         )
         api_client.app = SimpleNamespace(
-            log=lambda _message: None,
+            log_and_notify_frontend=lambda _message: None,
             is_offline_mode=False,
         )
 
@@ -42,7 +42,7 @@ class TestNetworkRetryCount(unittest.TestCase):
         api_client.session.get.side_effect = fail_once
         api_client._execution_cancel_event = stop_event
         api_client.app = SimpleNamespace(
-            log=lambda _message: None,
+            log_and_notify_frontend=lambda _message: None,
             is_offline_mode=False,
         )
 
@@ -63,7 +63,7 @@ class TestNetworkRetryCount(unittest.TestCase):
         global_stop = threading.Event()
         global_stop.set()
         api_client.app = SimpleNamespace(
-            log=lambda _message: None,
+            log_and_notify_frontend=lambda _message: None,
             is_offline_mode=False,
             stop_event=stop_event,
             api_bridge=SimpleNamespace(multi_run_stop_flag=global_stop),

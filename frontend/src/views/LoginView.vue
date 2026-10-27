@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { callAPI, callRawAPI } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
@@ -31,6 +31,9 @@ const errorMsg = ref('')
 const sessionData = ref({})
 const frontendConfig = ref({})
 const backgroundPreview = ref(null)
+let uuidRequestId = 0
+let viewActive = true
+onUnmounted(() => { viewActive = false; uuidRequestId++ })
 
 function applyThemeBackground(assignment) {
   if (theme.setBackgroundAssignment(assignment)) {
@@ -110,6 +113,10 @@ async function selectInlineSession(session) {
   const sessionId = session?.session_id
   if (!sessionId || isCurrentInlineSession(session)) return
   try {
+    if (auth.beginAdminView?.(sessionId, session.auth_username || session.username || '')) {
+      await replaceSessionUrl(sessionId)
+      return
+    }
     const result = await callRawAPI('/auth/switch_session', 'POST', {
       target_session_id: sessionId,
     })
@@ -153,25 +160,44 @@ async function deleteInlineSession(session) {
 
 // --- UUID validation ---
 async function checkUUID(uuid) {
+  const requestId = ++uuidRequestId
   viewMode.value = 'loading'
   errorMsg.value = ''
   try {
     const data = await callRawAPI('/auth/check_uuid_type', 'POST', { uuid })
+    if (!viewActive || requestId !== uuidRequestId || (route.params.uuid && route.params.uuid !== uuid)) return
     if (isRestorableSessionUUIDResponse(data)) {
       auth.sessionUUID = uuid
       auth.isAuthenticated = true
       auth.loginInProgress = true
       sessionStorage.setItem('session_uuid', uuid)
+      if (auth.adminOriginSession) {
+        const initialData = await callAPI('get_initial_data')
+        if (!viewActive || requestId !== uuidRequestId || (route.params.uuid && route.params.uuid !== uuid) || auth.sessionUUID !== uuid) return
+        if (initialData?.success === false) throw new Error(initialData.message || '管理员来源验证失败')
+        auth.applyAuthInfo(initialData)
+      }
       sessionData.value = data
       viewMode.value = 'school-login'
       await loadInlineSessions()
     } else {
+      if (auth.adminOriginSession) {
+        errorMsg.value = '被查看会话已失效，请返回管理员会话'
+        viewMode.value = 'error'
+        return
+      }
       auth.sessionUUID = null
       auth.loginInProgress = false
       viewMode.value = 'auth'
       await router.replace('/')
     }
   } catch (e) {
+    if (!viewActive || requestId !== uuidRequestId || (route.params.uuid && route.params.uuid !== uuid)) return
+    if (auth.adminOriginSession) {
+      errorMsg.value = e.message || '被查看会话加载失败，请返回管理员会话'
+      viewMode.value = 'error'
+      return
+    }
     console.warn('UUID验证失败:', e)
     auth.sessionUUID = null
     auth.loginInProgress = false
@@ -182,6 +208,8 @@ async function checkUUID(uuid) {
 
 // --- System login success → show session picker ---
 async function onAuthSuccess(data) {
+  auth.clearAdminView?.()
+  auth.applyAuthInfo?.(data)
   applyThemeBackground(data?.theme_background)
   if (data.session_id) await replaceSessionUrl(data.session_id)
   if (data.is_guest) {
@@ -197,7 +225,7 @@ async function onSessionSelected(sessionId) {
   auth.sessionUUID = sessionId
   // The selected ID is now the active business session; stop using the
   // temporary system-auth context for subsequent API calls.
-  auth.authSessionUUID = sessionId
+  if (!auth.adminOriginSession) auth.authSessionUUID = sessionId
   auth.loginInProgress = true
   sessionData.value = {}
   viewMode.value = 'school-login'

@@ -59,7 +59,7 @@ async function startRun() {
       task_indices: [app.selectedTaskIndex],
       auto_generate: autoGenAll.value,
       ...overdueOverride,
-    })
+    }, { sessionContext: 'business' })
     if (result && result.success !== false) {
       app.isRunning = true
       app.addLog('执行已开始', 'INFO')
@@ -100,7 +100,7 @@ async function startAll() {
 
 async function stopRun() {
   try {
-    await callRawAPI('/api/background_task/stop', 'POST')
+    await callRawAPI('/api/background_task/stop', 'POST', null, { sessionContext: 'business' })
     app.isRunning = false
     app.addLog('跑步已停止', 'INFO')
   } catch (e) {

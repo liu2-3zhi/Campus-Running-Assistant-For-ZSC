@@ -230,6 +230,96 @@ test('live admin return origin keeps the button and the stored record', async ()
   assert.equal(harness.overlay.hidden, false)
 })
 
+test('chained admin viewing keeps A when the viewed owner is an ordinary user', () => {
+  const harness = buildReturnStateHarness({ fetchResult: { success: true, uuid_type: 'system_account' } })
+  harness.globals.currentUserData = { group: 'user' }
+  harness.globals.currentAuthUsername = 'viewed-user'
+  const api = vm.runInContext(`${extractSection('function isAdminLikeLegacyUser() {', 'function ensureAuthLoginSessionUUID() {')}
+    ({ shouldUseAdminSessionViewMode, rememberAdminReturnOriginSession });`, harness.context)
+  assert.equal(api.shouldUseAdminSessionViewMode(NEW_SESSION, 'viewed-user'), true)
+  assert.equal(api.rememberAdminReturnOriginSession(), ORIGIN_SESSION)
+  assert.equal(harness.storage.get('admin_return_origin'), ORIGIN_SESSION)
+})
+
+test('late actor responses cannot replace the current target or earliest origin', () => {
+  const harness = buildReturnStateHarness()
+  const api = vm.runInContext('({ applyLegacyAdminViewContext, getLegacyActorIdentity });', harness.context)
+  api.applyLegacyAdminViewContext({ success: true, admin_view_context: {
+    session_id: ORIGIN_SESSION, auth_username: 'manager', auth_group: 'admin', view_all_sessions: true,
+  } }, CURRENT_SESSION, ORIGIN_SESSION)
+  assert.equal(api.getLegacyActorIdentity().auth_username, 'manager')
+  harness.globals.sessionUUID = NEW_SESSION
+  api.applyLegacyAdminViewContext({ success: true, admin_view_context: {
+    session_id: AUTH_SESSION, auth_username: 'wrong', auth_group: 'admin', view_all_sessions: true,
+  } }, CURRENT_SESSION, ORIGIN_SESSION)
+  assert.equal(api.getLegacyActorIdentity().auth_username, 'manager')
+  assert.equal(harness.storage.get('admin_return_origin'), ORIGIN_SESSION)
+})
+
+test('desktop and mobile chaining never call token-switch even for another session owned by A', async () => {
+  for (const handler of ['selectSession', 'selectSessionFromPicker']) {
+    const harness = buildReturnStateHarness({ fetchResult: { success: true, uuid_type: 'system_account' } })
+    const requests = []
+    Object.assign(harness.globals, {
+      currentUserData: { group: 'user' }, currentAuthUsername: 'viewed',
+      jsShowConfirm: async () => true, closeSessionPicker() {},
+      Swal: { fire: () => Promise.resolve({}) },
+      fetch: async (...args) => { requests.push(args); throw new Error('token switch is forbidden') },
+    })
+    const api = vm.runInContext(`${extractSection('function isAdminLikeLegacyUser() {', 'function ensureAuthLoginSessionUUID() {')}
+      ${extractSection('async function selectSession(sessionId', 'async function deleteSession(sessionId')}
+      ${extractSection('async function selectSessionFromPicker(sessionId', 'async function deleteSessionFromPicker(')}
+      ({ selectSession, selectSessionFromPicker });`, harness.context)
+    await api[handler](NEW_SESSION, 'third-user')
+    assert.equal(harness.globals.window.location.href, `/uuid=${NEW_SESSION}`)
+    harness.globals.sessionUUID = NEW_SESSION
+    await api[handler](AUTH_SESSION, 'manager')
+    assert.equal(harness.globals.window.location.href, `/uuid=${AUTH_SESSION}`)
+    assert.equal(harness.storage.get('admin_return_origin'), ORIGIN_SESSION)
+    assert.deepEqual(requests, [])
+  }
+})
+
+test('an invalid verified origin locks navigation instead of falling back to token-switch', async () => {
+  const harness = buildReturnStateHarness()
+  const api = vm.runInContext(`${extractSection('function isAdminLikeLegacyUser() {', 'function ensureAuthLoginSessionUUID() {')}
+    ${extractSection('async function selectSession(sessionId', 'async function createNewSessionFromPicker(')}
+    ({ applyLegacyAdminViewContext, selectSession });`, harness.context)
+  let warnings = 0
+  harness.globals.Swal = { fire: async () => { warnings++ } }
+  api.applyLegacyAdminViewContext({ success: true }, CURRENT_SESSION, ORIGIN_SESSION)
+  await api.selectSession(NEW_SESSION, 'third-user')
+  assert.equal(warnings, 1)
+  assert.equal(harness.fetchCalls.length, 0)
+  assert.equal(harness.storage.has('admin_return_origin'), false)
+})
+
+test('legacy initialization ignores a response whose target changed while secrets were loading', async () => {
+  const harness = buildReturnStateHarness()
+  let resume
+  let entered
+  const hydrating = new Promise(resolve => { entered = resolve })
+  Object.assign(harness.globals, {
+    lastInitialDataRequest: 0, lastInitialDataResponse: null, lastInitialDataContextKey: '', INITIAL_DATA_RATE_LIMIT: 1000,
+    getApiRequestSessionHeaderValue: () => harness.globals.sessionUUID,
+    callPythonAPI: async () => ({ success: false }),
+    hydrateInitialDataMapProviderSecrets: async value => {
+      entered()
+      await new Promise(resolve => { resume = resolve })
+      return value
+    },
+    syncMapProviderConfigFromInitialData() {}, getInitialDataFailureNotice: () => null,
+  })
+  const load = vm.runInContext(`${extractSection('async function loadInitialData(options = {}) {', '// 彩虹易支付系统 - 前端JavaScript实现')}
+    loadInitialData;`, harness.context)
+  const pending = load({ force: true })
+  await hydrating
+  harness.globals.sessionUUID = NEW_SESSION
+  resume()
+  await assert.rejects(pending, /旧会话响应/)
+  assert.equal(harness.globals.lastInitialDataResponse, null)
+})
+
 test('origin check is skipped when the current session is the origin', async () => {
   const harness = buildReturnStateHarness({ currentSession: ORIGIN_SESSION })
 

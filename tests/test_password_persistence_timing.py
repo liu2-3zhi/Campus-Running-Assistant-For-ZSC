@@ -48,7 +48,7 @@ class _FakeAccount:
         self.worker_thread = None
         self.logs = []
 
-    def log(self, message):
+    def log_and_notify_frontend(self, message):
         self.logs.append(str(message))
 
 
@@ -64,7 +64,7 @@ class _PendingPasswordBase(unittest.TestCase):
         api._update_account_status_js = mock.Mock()
         api._multi_refresh_worker = mock.Mock()
         api._is_multi_account_execution_active = mock.Mock(return_value=False)
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
         api.multi_get_all_accounts_status = mock.Mock(
             return_value={"success": True, "accounts": []}
         )
@@ -241,7 +241,7 @@ class TestLoginOutcomeDrivesPersistence(unittest.TestCase):
         api._update_account_status_js = mock.Mock()
         api._multi_fetch_and_summarize_tasks = mock.Mock()
         api._persist_school_account_backup = mock.Mock()
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
         # 登录成功分支会拼 user/<username>.ini 路径，缺这个属性会直接抛异常，
         # 让测试在"落盘"之前就断掉（曾经造成"没落盘"的假失败）。
         api.user_dir = str(Path(tempfile.gettempdir()) / "dsh_pw_test")

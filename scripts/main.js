@@ -963,6 +963,10 @@ function returnToAdminSession() {
 
 // 新增：清除"返回管理员会话"记录并隐藏按钮
 function clearAdminReturnOriginState(reason = "") {
+  legacyAdminViewContext = null;
+  legacyAdminViewRejected = false;
+  adminReturnOriginVerifyToken++;
+  adminReturnOriginVerifiedFor = "";
   try {
     localStorage.removeItem(ADMIN_RETURN_ORIGIN_STORAGE_KEY);
   } catch (_error) {
@@ -990,6 +994,7 @@ function verifyAdminReturnOriginSession(originSession, currentUUID) {
   if (!originSession || !currentUUID || originSession === currentUUID) {
     return Promise.resolve();
   }
+  if (getStoredAdminReturnOriginSession() !== originSession) return Promise.resolve();
   if (adminReturnOriginVerifiedFor === originSession) {
     // 同一来源会话只校验一次；重复调用复用正在进行的请求。
     return adminReturnOriginVerifyPromise || Promise.resolve();
@@ -1009,6 +1014,7 @@ function verifyAdminReturnOriginSession(originSession, currentUUID) {
       if (getCurrentLegacySessionUUID() !== currentUUID) return;
       if (result && result.success && result.uuid_type === "unknown") {
         clearAdminReturnOriginState("来源会话已不存在: " + originSession);
+        legacyAdminViewRejected = true;
       }
     })
     .catch((error) => {
@@ -2461,6 +2467,32 @@ function isUsableClientSessionUUID(value) {
 
 const ADMIN_RETURN_ORIGIN_STORAGE_KEY = "admin_return_origin";
 const ADMIN_VIEW_ORIGIN_HEADER = "X-Admin-Origin-Session-ID";
+let legacyAdminViewContext = null;
+let legacyAdminViewRejected = false;
+
+function getLegacyActorIdentity(fallback = {}) {
+  return legacyAdminViewContext || fallback;
+}
+
+function applyLegacyAdminViewContext(result, requestSession, requestOrigin) {
+  if (!requestOrigin || !result || result.success !== true) return;
+  if (normalizeClientSessionUUID(requestSession) !== getCurrentLegacySessionUUID()) return;
+  if (normalizeClientSessionUUID(requestOrigin) !== getStoredAdminReturnOriginSession()) return;
+  const context = result.admin_view_context;
+  if (
+    context && context.view_all_sessions === true &&
+    normalizeClientSessionUUID(context.session_id) === requestOrigin &&
+    typeof context.auth_username === "string" && context.auth_username.trim() &&
+    typeof context.auth_group === "string" && context.auth_group.trim()
+  ) {
+    legacyAdminViewContext = { ...context };
+    legacyAdminViewRejected = false;
+    authSessionUUID = context.session_id;
+  } else {
+    clearAdminReturnOriginState("来源会话认证已失效");
+    legacyAdminViewRejected = true;
+  }
+}
 
 function normalizeClientSessionUUID(value) {
   const normalized = String(value || "").trim().toLowerCase();
@@ -2502,6 +2534,7 @@ function addAdminViewOriginSessionHeader(headers, currentSessionId) {
 }
 
 function isAdminLikeLegacyUser() {
+  if (legacyAdminViewContext?.view_all_sessions === true) return true;
   const group = String(
     currentUserData?.group || currentUserData?.auth_group || "",
   ).trim();
@@ -2538,6 +2571,7 @@ function shouldUseAdminSessionViewMode(targetSessionId, targetUsername = "") {
   if (!targetSession || !currentSession || targetSession === currentSession) {
     return false;
   }
+  if (getAdminViewOriginSessionUUID(currentSession)) return true;
   if (!isAdminLikeLegacyUser()) {
     return false;
   }
@@ -2573,6 +2607,7 @@ function getAuthRequestSessionUUID() {
 }
 
 function getAuthenticatedSessionHeaderValue() {
+  if (legacyAdminViewContext) return legacyAdminViewContext.session_id;
   if (isUsableClientSessionUUID(authSessionUUID)) {
     return authSessionUUID;
   }
@@ -2588,7 +2623,7 @@ function setActiveLegacySession(sessionId, options = {}) {
     return "";
   }
   sessionUUID = normalized;
-  if (options.promoteAuth !== false) {
+  if (options.promoteAuth !== false && !getAdminViewOriginSessionUUID(normalized)) {
     authSessionUUID = normalized;
   }
   try {
@@ -2606,6 +2641,7 @@ function isAuthContextApiMethod(method) {
 }
 
 function getApiRequestSessionHeaderValue(method) {
+  if (getAdminViewOriginSessionUUID()) return getCurrentLegacySessionUUID();
   if (authLoginInProgress && isUsableClientSessionUUID(authSessionUUID)) {
     return authSessionUUID;
   }
@@ -2903,6 +2939,7 @@ async function callPythonAPI(method, ...args) {
   };
 
   const requestSessionHeaderValue = getApiRequestSessionHeaderValue(method);
+  const requestAdminOriginSession = getAdminViewOriginSessionUUID(requestSessionHeaderValue);
   if (isUsableClientSessionUUID(requestSessionHeaderValue)) {
     headers["X-Session-ID"] = requestSessionHeaderValue;
     addAdminViewOriginSessionHeader(headers, requestSessionHeaderValue);
@@ -3469,10 +3506,25 @@ async function callPythonAPI(method, ...args) {
 
   logMessage_Info(`[API调用] ✓ 请求成功 (${method})`);
   const result = await response.json();
+  if (method === "get_initial_data") {
+    if (
+      normalizeClientSessionUUID(requestSessionHeaderValue) !==
+        normalizeClientSessionUUID(getApiRequestSessionHeaderValue(method)) ||
+      requestAdminOriginSession !== getAdminViewOriginSessionUUID(requestSessionHeaderValue)
+    ) {
+      throw new Error("会话已切换，已忽略旧会话响应");
+    }
+    applyLegacyAdminViewContext(
+      result, requestSessionHeaderValue, requestAdminOriginSession,
+    );
+  }
   logMessage_Info(
     `[API调用] ✓ 返回结果 (${method}):`,
     result.success ? "成功" : "失败",
   );
+  if (method === "get_initial_data" && typeof displayRoutePlanningFailures === "function") {
+    displayRoutePlanningFailures(result.route_planning_failures);
+  }
   return result;
 }
 
@@ -3507,6 +3559,10 @@ async function callPythonAPI_raw(path, method = "POST", data = null) {
     }
 
     const result = await response.json();
+    if (headers["X-Session-ID"] !== sessionUUID) return { success: false };
+    if (path === "/api/background_task/status" && typeof displayRoutePlanningFailures === "function") {
+      displayRoutePlanningFailures(result.task_status?.route_planning_failures);
+    }
     return result;
   } catch (error) {
     logMessage_Error(`API调用失败 (${path}):`, error);
@@ -8463,7 +8519,7 @@ async function checkAdminPermission(permissionName) {
       method: "POST",
       headers: {
         "Content-Type": "application/json", // 指定请求体格式为JSON
-        "X-Session-ID": sessionUUID, // 附加会话ID用于身份验证
+        "X-Session-ID": getAuthenticatedSessionHeaderValue(),
       },
       body: JSON.stringify({ permission: permissionName }), // 将权限名称序列化为JSON字符串
     });
@@ -14309,6 +14365,14 @@ async function destroySession(sessionId, confirm = true) {
 }
 
 async function selectSession(sessionId, sessionUsername = "") {
+  if (legacyAdminViewRejected) {
+    await Swal.fire({ icon: "warning", title: "需要重新登录", text: "管理员来源会话已失效，请重新登录后再查看。" });
+    return;
+  }
+  if (normalizeClientSessionUUID(sessionId) === getStoredAdminReturnOriginSession()) {
+    returnToAdminSession();
+    return;
+  }
   const confirmed = await jsShowConfirm(
     "确认切换",
     `确定要切换到会话\n ${sessionId} \n吗？`,
@@ -14699,6 +14763,14 @@ function updateSessionCountDisplay() {
 }
 
 async function selectSessionFromPicker(sessionId, sessionUsername = "") {
+  if (legacyAdminViewRejected) {
+    await Swal.fire({ icon: "warning", title: "需要重新登录", text: "管理员来源会话已失效，请重新登录后再查看。" });
+    return;
+  }
+  if (normalizeClientSessionUUID(sessionId) === getStoredAdminReturnOriginSession()) {
+    returnToAdminSession();
+    return;
+  }
   logMessage_Info(`准备切换到会话 ${sessionId.substring(0, 16)}...`);
   closeSessionPicker();
 
@@ -16420,8 +16492,8 @@ async function onLogin() {
   const mapProviderSessionUUID = getApiRequestSessionHeaderValue("login");
   let result = await callPythonAPI("login", user, pass);
   if (result.success) {
-    // 登录成功说明用户回到自己的会话，旧的"返回管理员会话"记录已失效。
-    clearAdminReturnOriginState("重新登录");
+    // 学校账号登录不会结束管理员查看链。
+    if (!getStoredAdminReturnOriginSession()) clearAdminReturnOriginState("重新登录");
     try {
       result = await hydrateMapProviderSecretsForLegacy(
         result,
@@ -20038,8 +20110,12 @@ async function pollBackgroundTaskStatus() {
           refreshTasks();
         }
       } else if (status.status === "error") {
-        const errorMsg = status.error || "未知错误";
-        logMessage_Error("后台任务执行出错: " + errorMsg);
+        const failures = status.route_planning_failures || [];
+        const latestFailure = failures[failures.length - 1];
+        const errorMsg = latestFailure
+          ? `${latestFailure.message}（诊断编号：${latestFailure.diagnostic_id}）`
+          : status.error || "未知错误";
+        if (!latestFailure) logMessage_Error("后台任务执行出错: " + errorMsg);
         if (!isOldTask) {
           showModalAlert("后台任务执行出错: " + errorMsg);
         }
@@ -21078,6 +21154,43 @@ function resetAdminUsersSearchFilters() {
   };
   console._original = originalConsole;
 })();
+const routeDiagnosticMessages = new Map();
+
+function displayRoutePlanningNotification(data) {
+  if (!data?.msg) return;
+  const id = data.diagnostic_id;
+  if (id && routeDiagnosticMessages.has(id)) return;
+  logMessage(data.msg, data.level || "INFO", "Backend");
+  if (id) {
+    routeDiagnosticMessages.set(id, { message: data.msg, detailed: false });
+    if (routeDiagnosticMessages.size > 100) routeDiagnosticMessages.delete(routeDiagnosticMessages.keys().next().value);
+  }
+}
+
+function displayRoutePlanningFailures(failures) {
+  if (!Array.isArray(failures)) return;
+  for (const failure of failures) {
+    if (!failure?.diagnostic_id || typeof failure.message !== "string") continue;
+    const previous = routeDiagnosticMessages.get(failure.diagnostic_id);
+    if (previous?.detailed) continue;
+    const context = [failure.segment != null ? `路段：${failure.segment}` : "", failure.error_code != null && failure.error_code !== "" ? `错误码：${failure.error_code}` : ""].filter(Boolean).join("；");
+    const message = `[${failure.provider || "地图服务"}] ${context ? context + "；" : ""}${failure.message}（诊断编号：${failure.diagnostic_id}）`;
+    let replaced = false;
+    if (previous) {
+      for (const id of ["log-text", "multi-log-text", "mobile-log-text"]) {
+        const area = document.getElementById(id);
+        if (area?.value?.includes(previous.message)) {
+          area.value = area.value.replace(previous.message, message);
+          replaced = true;
+        }
+      }
+    }
+    if (!replaced) logMessage(message, "ERROR", "Backend");
+    routeDiagnosticMessages.set(failure.diagnostic_id, { message, detailed: true });
+    if (routeDiagnosticMessages.size > 100) routeDiagnosticMessages.delete(routeDiagnosticMessages.keys().next().value);
+  }
+}
+
 function logMessage(msg, level = "INFO", source = null) {
   const now = new Date();
   const h = String(now.getHours()).padStart(2, "0");
@@ -27158,6 +27271,7 @@ async function hydrateInitialDataMapProviderSecrets(response, sessionId) {
  * 返回值：
  *   Promise<Object> - 包含初始数据的对象
  */
+let lastInitialDataContextKey = "";
 async function loadInitialData(options = {}) {
   // 使用try-catch块进行错误处理，这是异步函数的最佳实践
   try {
@@ -27167,6 +27281,9 @@ async function loadInitialData(options = {}) {
 
     // 获取当前时间戳（毫秒）
     const now = Date.now();
+    const initialDataSessionUUID = getApiRequestSessionHeaderValue("get_initial_data");
+    const initialDataOriginUUID = getAdminViewOriginSessionUUID(initialDataSessionUUID);
+    const initialDataContextKey = `${initialDataSessionUUID}|${initialDataOriginUUID}`;
 
     // 计算距离上次请求的时间间隔
     const timeSinceLastRequest = now - lastInitialDataRequest;
@@ -27176,6 +27293,7 @@ async function loadInitialData(options = {}) {
     if (
       !options.force &&
       timeSinceLastRequest < INITIAL_DATA_RATE_LIMIT &&
+      lastInitialDataContextKey === initialDataContextKey &&
       lastInitialDataResponse
     ) {
       // 记录日志：请求被限流
@@ -27211,7 +27329,6 @@ async function loadInitialData(options = {}) {
 
     // 更新最后请求时间戳
     lastInitialDataRequest = now;
-    const initialDataSessionUUID = getApiRequestSessionHeaderValue("get_initial_data");
 
     // 使用await关键字等待callPythonAPI的Promise完成
     // callPythonAPI是应用中已存在的函数，负责与Python后端通信
@@ -27221,6 +27338,12 @@ async function loadInitialData(options = {}) {
       response,
       initialDataSessionUUID,
     );
+    if (
+      initialDataSessionUUID !== getApiRequestSessionHeaderValue("get_initial_data") ||
+      initialDataOriginUUID !== getAdminViewOriginSessionUUID(initialDataSessionUUID)
+    ) {
+      throw new Error("会话已切换，已忽略旧会话响应");
+    }
 
     // 此时response已包含后端返回的完整数据对象
     // 如果API调用失败，callPythonAPI可能会抛出异常，会被catch块捕获
@@ -27231,6 +27354,7 @@ async function loadInitialData(options = {}) {
 
     // 将响应数据缓存起来，供下次限流时使用
     lastInitialDataResponse = response;
+    lastInitialDataContextKey = initialDataContextKey;
     syncMapProviderConfigFromInitialData(response);
 
     // ====================================================================

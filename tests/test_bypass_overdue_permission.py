@@ -136,7 +136,7 @@ class OverdueGateTests(unittest.TestCase):
     def _api(self, accounts=("2024050101059",)):
         api = object.__new__(main_module.Api)
         api.auth_username = "alice"
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
         api.multi_execution_lock = threading.RLock()
         api.multi_active_executions = set()
         api.multi_run_stop_flag = threading.Event()

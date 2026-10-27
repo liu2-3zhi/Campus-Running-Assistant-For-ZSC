@@ -7,12 +7,22 @@ function isUsableUUID(val) {
   return lower !== '' && lower !== 'none' && lower !== 'null' && lower !== 'undefined'
 }
 
+function normalizeAdminOrigin(value) {
+  if (typeof value !== 'string') return ''
+  const normalized = value.trim().toLowerCase()
+  return /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(normalized)
+    ? normalized : ''
+}
+
 function getUiEntryPath() {
   const base = typeof window !== 'undefined' ? window.__RUNNING_UI_BASE__ : '/'
   return typeof base === 'string' && base.startsWith('/') ? base : '/'
 }
 
 export const useAuthStore = defineStore('auth', () => {
+  const adminOriginSession = ref(readAdminOrigin())
+  const adminViewContext = ref(null)
+  const adminViewInvalid = ref(false)
   const sessionUUID = ref(null)
   const authSessionUUID = ref(null)
   const loginInProgress = ref(false)
@@ -36,13 +46,83 @@ export const useAuthStore = defineStore('auth', () => {
 
   const hasSession = computed(() => isUsableUUID(sessionUUID.value) || isUsableUUID(authSessionUUID.value))
 
+  function readAdminOrigin() {
+    try {
+      const value = localStorage.getItem('admin_return_origin')
+      const normalized = normalizeAdminOrigin(value)
+      if (normalized) localStorage.setItem('admin_return_origin', normalized)
+      else localStorage.removeItem('admin_return_origin')
+      return normalized
+    } catch (_) { return '' }
+  }
+
+  function clearAdminView() {
+    adminOriginSession.value = ''
+    adminViewContext.value = null
+    adminViewInvalid.value = false
+    try { localStorage.removeItem('admin_return_origin') } catch (_) {}
+  }
+
+  function syncViewedSession(target) {
+    if (target === adminOriginSession.value) {
+      authSessionUUID.value = target
+      clearAdminView()
+    }
+    if (isUsableUUID(target)) sessionUUID.value = target
+  }
+
+  function getAdminOriginHeaderValue(target = sessionUUID.value) {
+    return adminOriginSession.value && target !== adminOriginSession.value
+      ? adminOriginSession.value : ''
+  }
+
+  function beginAdminView(target, targetUsername = '') {
+    if (adminViewInvalid.value) throw new Error('管理员来源会话已失效，请重新登录')
+    if (!isUsableUUID(target) || target === sessionUUID.value) return false
+    if (!adminOriginSession.value) {
+      if (!(permissions.value.view_all_sessions || isAdmin.value)) return false
+      if (targetUsername && targetUsername === username.value) return false
+      const origin = normalizeAdminOrigin(getAuthenticatedSessionHeaderValue())
+      if (!origin) return false
+      adminOriginSession.value = origin
+      try { localStorage.setItem('admin_return_origin', origin) } catch (_) {}
+    }
+    sessionUUID.value = target
+    sessionStorage.setItem('session_uuid', target)
+    return true
+  }
+
+  function applyAdminViewContext(data, requestSession) {
+    if (requestSession !== sessionUUID.value) return false
+    const origin = adminOriginSession.value
+    if (!origin || requestSession === origin) return false
+    const context = data?.admin_view_context
+    if (
+      !context || normalizeAdminOrigin(context.session_id) !== origin || context.view_all_sessions !== true ||
+      typeof context.auth_username !== 'string' || !context.auth_username.trim() ||
+      typeof context.auth_group !== 'string' || !context.auth_group.trim()
+    ) {
+      adminViewContext.value = null
+      adminViewInvalid.value = true
+      try { localStorage.removeItem('admin_return_origin') } catch (_) {}
+      return false
+    }
+    adminViewContext.value = { ...context, session_id: origin, auth_username: context.auth_username.trim(), auth_group: context.auth_group.trim() }
+    authSessionUUID.value = origin
+    adminViewInvalid.value = false
+    permissions.value = { ...permissions.value, view_all_sessions: true }
+    return true
+  }
+
   function getAuthenticatedSessionHeaderValue() {
+    if (adminViewContext.value && adminOriginSession.value) return adminOriginSession.value
     if (isUsableUUID(authSessionUUID.value)) return authSessionUUID.value
     if (isUsableUUID(sessionUUID.value)) return sessionUUID.value
     return ''
   }
 
   function getSessionHeaderValue(method) {
+    if (adminOriginSession.value && isUsableUUID(sessionUUID.value)) return sessionUUID.value
     if (loginInProgress.value && isUsableUUID(authSessionUUID.value)) {
       return authSessionUUID.value
     }
@@ -82,13 +162,14 @@ export const useAuthStore = defineStore('auth', () => {
   function activateSession(sessionId) {
     if (!isUsableUUID(sessionId)) return
     sessionUUID.value = sessionId
-    authSessionUUID.value = sessionId
+    if (!adminOriginSession.value) authSessionUUID.value = sessionId
     sessionStorage.setItem('session_uuid', sessionId)
   }
 
   function applyAuthInfo(data) {
     if (!data || data.success === false) return
-    const identity = data.auth_username ?? data.username
+    const actor = adminViewContext.value
+    const identity = actor?.auth_username ?? data.auth_username ?? data.username
     if (identity !== undefined && identity !== username.value) {
       permissions.value = {}
       group.value = ''
@@ -96,12 +177,12 @@ export const useAuthStore = defineStore('auth', () => {
       displayName.value = ''
     }
     if (identity != null) username.value = identity
-    if (data.auth_group != null || data.group != null) {
-      group.value = data.auth_group ?? data.group
+    if (actor?.auth_group != null || data.auth_group != null || data.group != null) {
+      group.value = actor?.auth_group ?? data.auth_group ?? data.group
       isAdmin.value = ['admin', 'super_admin'].includes(group.value)
     } else if (data.is_admin !== undefined) isAdmin.value = !!data.is_admin
     if (data.is_authenticated !== undefined) isAuthenticated.value = !!data.is_authenticated
-    if (data.is_guest !== undefined) isGuest.value = !!data.is_guest
+    if (data.is_guest !== undefined) isGuest.value = actor ? false : !!data.is_guest
     displayName.value = data.display_name ?? data.nickname ?? (displayName.value || username.value)
     const user = data.userInfo || data.user_info || data
     realName.value = user.real_name ?? user.realName ?? user.name ?? realName.value
@@ -109,12 +190,14 @@ export const useAuthStore = defineStore('auth', () => {
     if (data.avatar_url !== undefined) avatarUrl.value = data.avatar_url || ''
     if (data.theme) theme.value = data.theme
     if (data.theme_style) themeStyle.value = data.theme_style
-    if (data.permissions) permissions.value = data.permissions
+    if (data.permissions && !actor) permissions.value = data.permissions
+    if (actor) permissions.value = { ...permissions.value, view_all_sessions: true }
     if (data.session_limit_info !== undefined) sessionLimitInfo.value = data.session_limit_info
     if (data.token !== undefined) token.value = data.token || ''
   }
 
   async function loadPermissions(keys) {
+    if (adminOriginSession.value && !adminViewContext.value) return
     const sessionId = getAuthenticatedSessionHeaderValue()
     if (!sessionId) return
     const entries = await Promise.all([...new Set(keys)].map(async permission => {
@@ -205,6 +288,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
+    clearAdminView()
     sessionStorage.removeItem('session_uuid')
     sessionUUID.value = null
     authSessionUUID.value = null
@@ -229,6 +313,8 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated, isBanned, bannedData, isGuest, isAdmin, group,
     username, displayName, realName, studentId, avatarUrl, theme, themeStyle,
     permissions, sessionLimitInfo, token, hasSession,
+    adminOriginSession, adminViewContext, adminViewInvalid,
+    clearAdminView, syncViewedSession, beginAdminView, getAdminOriginHeaderValue, applyAdminViewContext,
     getAuthenticatedSessionHeaderValue, getSessionHeaderValue,
     setLoginResult, applyAuthInfo, activateSession, loadPermissions, setBanned, handleSessionExpired, handleLoggedOutElsewhere, logout,
   }

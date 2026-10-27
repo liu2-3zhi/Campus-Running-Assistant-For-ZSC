@@ -589,7 +589,9 @@ globalThis.fetch = async (url, options) => {{
   fetchCalls.push({{ url, headers: options.headers }});
   return {{
     ok: true,
-    json: async () => ({{ success: true }}),
+    json: async () => ({{ success: true, admin_view_context: {{
+      session_id: originSession, auth_username: 'manager', auth_group: 'admin', view_all_sessions: true,
+    }} }}),
   }};
 }};
 

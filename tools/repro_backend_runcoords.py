@@ -34,7 +34,7 @@ class _Harness:
         self._impl.params = dict(getattr(Api, "_default_params", {}) or {})
         self._impl.all_run_data = [_RunStub()]
         self._impl.current_run_idx = 0
-        self._impl.log = lambda *args, **kwargs: None
+        self._impl.log_and_notify_frontend = lambda *args, **kwargs: None
 
     def __getattr__(self, name):
         return getattr(self._impl, name)
@@ -60,7 +60,7 @@ def main():
     runtime.params = params
     runtime.all_run_data = [_RunStub()]
     runtime.current_run_idx = 0
-    runtime.log = lambda *args, **kwargs: None
+    runtime.log_and_notify_frontend = lambda *args, **kwargs: None
 
     # _calculate_distance_m / _gps_random_offset / _get_path_for_distance 都是纯函数
     import random

@@ -70,6 +70,26 @@ get_ip_location = None
 config = None
 
 
+def _project_admin_view_context(result, target_session_id, origin_session_id, token):
+    if not isinstance(result, dict):
+        return result
+    projected = dict(result)
+    projected.pop("admin_view_context", None)
+    if result.get("success") is not True or not origin_session_id:
+        return projected
+    context = _main().resolve_admin_origin_session_context(
+        target_session_id, origin_session_id, token
+    )
+    if context:
+        projected["admin_view_context"] = {
+            "session_id": context["session_id"],
+            "auth_username": context["username"],
+            "auth_group": context["group"],
+            "view_all_sessions": True,
+        }
+    return projected
+
+
 def start_web_server(args_param):
     """
     启动Flask Web服务器主函数，集成SocketIO实时通信和Chrome浏览器自动化。
@@ -1774,15 +1794,19 @@ def start_web_server(args_param):
         @functools.wraps(f)
         def decorated_function(*args, **kwargs):
             session_id = _main().normalize_session_uuid(_main().request.headers.get("X-Session-ID", ""))
-            admin_origin_session_id = _main().normalize_session_uuid(
-                _main().request.headers.get(_main().ADMIN_ORIGIN_SESSION_HEADER, "")
-            )
+            origin_header = _main().request.headers.get(_main().ADMIN_ORIGIN_SESSION_HEADER, "")
+            admin_origin_session_id = _main().normalize_session_uuid(origin_header)
             token = _main().request.cookies.get("auth_token")
             admin_origin_context = _main().resolve_admin_origin_session_context(
                 session_id,
                 admin_origin_session_id,
                 token,
             )
+            if origin_header and admin_origin_session_id != session_id and not admin_origin_context:
+                return _main().jsonify({
+                    "success": False, "message": "管理员来源会话无效或查看权限已撤销，请重新登录",
+                    "need_login": True,
+                }), 401
             if admin_origin_context:
                 _main().g.user = admin_origin_context["username"]
                 _main().g.api_instance = admin_origin_context["api_instance"]
@@ -1903,6 +1927,24 @@ def start_web_server(args_param):
             session_id = _main().normalize_session_uuid(
                 _main().request.headers.get("X-Session-ID", "")
             )
+            origin_header = _main().request.headers.get(_main().ADMIN_ORIGIN_SESSION_HEADER, "")
+            origin_session_id = _main().normalize_session_uuid(origin_header)
+            if origin_header and origin_session_id != session_id:
+                origin_context = _main().resolve_admin_origin_session_context(
+                    session_id, origin_session_id, _main().request.cookies.get("auth_token")
+                )
+                if not origin_context:
+                    return _main().jsonify({
+                        "success": False, "message": "管理员来源会话无效或查看权限已撤销，请重新登录",
+                        "need_login": True,
+                    }), 401
+                if origin_context["group"] not in ("admin", "super_admin"):
+                    return _main().jsonify({"success": False, "message": "权限不足，仅管理员可访问"}), 403
+                _main().g.user = origin_context["username"]
+                _main().g.api_instance = origin_context["api_instance"]
+                _main().g.session_id = origin_context["session_id"]
+                _main().g.viewed_session_id = session_id
+                return f(*args, **kwargs)
             api_instance = None
             is_authenticated = False
             auth_username = None
@@ -3391,6 +3433,17 @@ def start_web_server(args_param):
             response = _main().make_response(_main().jsonify(response_data), 401)
             response.set_cookie("auth_token", "", max_age=0)
             return response
+        with web_sessions_lock:
+            target_api = web_sessions.get(target_session_id)
+            target_owner = getattr(target_api, "auth_username", "") if target_api else ""
+        if not target_owner:
+            target_state = _main().load_session_state(target_session_id)
+            target_owner = target_state.get("auth_username", "") if target_state else ""
+        if target_owner != username:
+            return _main().jsonify({
+                "success": False,
+                "message": "仅可切换本账号会话，查看其他账号请使用管理员查看模式",
+            }), 403
         new_token_for_target = _main().token_manager.create_token(
             username, target_session_id)
         logging.info(
@@ -13208,7 +13261,10 @@ def start_web_server(args_param):
         if not session_id:
             return _main().jsonify({"success": False, "message": "缺少会话ID"}), 401
 
-        task_status = background_task_manager.get_task_status(session_id)
+        from route_failure_visibility import can_view_route_failure_details
+        task_status = background_task_manager.get_task_status(
+            session_id, include_route_failures=can_view_route_failure_details(session_id)
+        )
         if task_status:
             return _main().jsonify({"success": True, "task_status": task_status})
         else:
@@ -13364,12 +13420,21 @@ def start_web_server(args_param):
                 403,
             )
         session_id = _main().normalize_session_uuid(_main().request.headers.get("X-Session-ID", ""))
-        admin_origin_session_id = _main().normalize_session_uuid(
-            _main().request.headers.get(_main().ADMIN_ORIGIN_SESSION_HEADER, "")
-        )
+        origin_header = _main().request.headers.get(_main().ADMIN_ORIGIN_SESSION_HEADER, "")
+        admin_origin_session_id = _main().normalize_session_uuid(origin_header)
         admin_origin_context = None
         admin_view_identity = None
         request_token = _main().request.cookies.get("auth_token")
+        # An explicit view chain must keep validating A even when C has the same owner.
+        if origin_header and admin_origin_session_id != session_id:
+            admin_origin_context = _main().resolve_admin_origin_session_context(
+                session_id, admin_origin_session_id, request_token
+            )
+            if not admin_origin_context:
+                return _main().jsonify({
+                    "success": False, "message": "管理员来源会话无效或查看权限已撤销，请重新登录",
+                    "need_login": True,
+                }), 401
 
         def _make_auth_optional_api_instance(context_reason):
             api = _main().Api(args)
@@ -13752,6 +13817,11 @@ def start_web_server(args_param):
                 else:
                     result = func()
 
+                if method == "get_initial_data":
+                    result = _project_admin_view_context(
+                        result, session_id, admin_origin_session_id, request_token
+                    )
+
                 if method == "on_user_selected" and result and isinstance(result, dict):
                     # 密码回传按可见级别控制：
                     #   all  —— 任意学校账号都回传密码
@@ -13810,6 +13880,14 @@ def start_web_server(args_param):
                 if method in auto_save_methods:
                     _main().save_session_state(session_id, api_instance)
                     logging.debug(f"API '{method}' 调用后自动保存会话状态")
+                from route_failure_visibility import can_view_route_failure_details, project_route_failure_response
+                result = project_route_failure_response(result, session_id)
+                if method == "get_initial_data" and isinstance(result, dict):
+                    result.pop("route_planning_failures", None)
+                    if can_view_route_failure_details(session_id):
+                        failures = background_task_manager.get_route_planning_failures(session_id)
+                        if failures:
+                            result["route_planning_failures"] = failures
                 response = _main().jsonify(
                     result if result is not None else {"success": True})
                 if (
@@ -26875,23 +26953,58 @@ def start_web_server(args_param):
         if isinstance(data, str):
             try:
                 data = json.loads(data)
-            except Exception as e:
-                logging.warning(
-                    f"WebSocket 'join' 事件数据解析失败: {e}, 原始数据: {data}"
-                )
+            except (TypeError, ValueError):
+                logging.warning("WebSocket 'join' 事件数据解析失败")
                 return
         if not isinstance(data, dict):
             logging.warning(f"WebSocket 'join' 接收到无效数据类型: {type(data)}")
             return
-        session_id = data.get("session_id")
-        if session_id:
-            _main().join_room(session_id)
-            logging.info(f"WebSocket 客户端 {request.sid} 成功加入 {session_id}")
-            _main().emit("log_message", {"msg": "WebSocket 连接成功！"}, room=session_id)
-        else:
+        runtime = _main()
+        authorized = False
+        session_id = ""
+        try:
+            session_id = runtime.normalize_session_uuid(data.get("session_id"))
+            with runtime.web_sessions_lock:
+                target_api = runtime.web_sessions.get(session_id)
+                authenticated = bool(getattr(target_api, "is_authenticated", False))
+                is_guest = bool(getattr(target_api, "is_guest", True))
+                owner = getattr(target_api, "auth_username", "")
+            owner = owner.strip() if isinstance(owner, str) else ""
+            if session_id and authenticated and owner:
+                token = runtime.request.cookies.get("auth_token")
+                origin_value = data.get("admin_origin_session_id")
+                if origin_value:
+                    origin_id = runtime.normalize_session_uuid(origin_value)
+                    authorized = bool(origin_id) and bool(
+                        runtime.resolve_admin_origin_session_context(
+                            session_id, origin_id, token
+                        )
+                    )
+                elif owner == "guest" and is_guest:
+                    authorized = True
+                elif not is_guest and owner != "guest":
+                    authorized = bool(
+                        runtime._verify_session_cookie_token(session_id, owner, token)
+                    )
+                    if not authorized:
+                        authorized = bool(runtime.resolve_admin_view_identity(
+                            session_id, token, owner
+                        ))
+        except Exception as error:
             logging.warning(
-                f"WebSocket 客户端 {request.sid} 加入房间失败：缺少 session_id。"
+                "WebSocket 'join' 会话验证失败 (%s)", type(error).__name__
             )
+        if not authorized:
+            runtime.emit(
+                "log_message", {"msg": "WebSocket 会话验证失败，请重新登录"},
+                to=runtime.request.sid,
+            )
+            return
+        runtime.join_room(session_id)
+        logging.info(
+            "WebSocket 客户端 %s 成功加入 %s", runtime.request.sid, session_id[:8]
+        )
+        runtime.emit("log_message", {"msg": "WebSocket 连接成功！"}, room=session_id)
 
     @socketio.on("heartbeat")
     def handle_heartbeat(data):

@@ -24,7 +24,7 @@ from api_runtime import Api  # noqa: E402
 def _make_runtime():
     runtime = Api.__new__(Api)
     runtime.params = {}
-    runtime.log = lambda *args, **kwargs: None
+    runtime.log_and_notify_frontend = lambda *args, **kwargs: None
     return runtime
 
 

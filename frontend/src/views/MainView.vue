@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useMapStore } from '@/stores/map'
 import { useNotificationStore } from '@/stores/notification'
+import { useBackgroundTask } from '@/composables/useBackgroundTask'
 import { callAPI } from '@/services/api'
 import { hydrateMapProviderSecrets } from '@/services/mapKeyRuntime'
 import { connectWebSocket, disconnectWebSocket, isWebSocketConnected, onWebSocketStatus } from '@/services/socket'
@@ -35,6 +36,7 @@ const theme = useThemeStore()
 const mapStore = useMapStore()
 const notifStore = useNotificationStore()
 const router = useRouter()
+const backgroundTask = useBackgroundTask()
 
 // ── Mobile state ──
 const sidebarVisible = ref(false)
@@ -74,12 +76,15 @@ let resizeHandler = null
 
 // ── Initial data load ──
 async function loadInitialData() {
+  const requestSession = auth.sessionUUID
   app.isLoading = true
   try {
     const responseData = await callAPI('get_initial_data')
     const data = await hydrateMapProviderSecrets(responseData)
+    if (!viewMounted || requestSession !== auth.sessionUUID) return
     if (data) {
       auth.applyAuthInfo(data)
+      app.addRoutePlanningFailures(data.route_planning_failures)
       if (data.tasks) app.tasks = data.tasks
       if (data.users) app.users = data.users
       if (data.notifications || data.notices) {
@@ -95,9 +100,14 @@ async function loadInitialData() {
       if (data.selected_task_index != null) app.selectedTaskIndex = data.selected_task_index
       if (data.isLoggedIn && !data.tasks) {
         const taskResult = await callAPI('load_tasks')
+        if (!viewMounted || requestSession !== auth.sessionUUID) return
         if (taskResult?.success) app.tasks = taskResult.tasks || []
       }
-      if (data.isLoggedIn && !data.params) app.pythonParams = await callAPI('get_params')
+      if (data.isLoggedIn && !data.params) {
+        const params = await callAPI('get_params')
+        if (!viewMounted || requestSession !== auth.sessionUUID) return
+        app.pythonParams = params
+      }
 
       const mapConfig = {}
       const providers = data.map_providers || {}
@@ -114,9 +124,9 @@ async function loadInitialData() {
       app.addLog('初始数据加载完成', 'INFO', 'System')
     }
   } catch (e) {
-    app.addLog('加载初始数据失败: ' + (e.message || e), 'ERROR', 'System')
+    if (viewMounted && requestSession === auth.sessionUUID) app.addLog('加载初始数据失败: ' + (e.message || e), 'ERROR', 'System')
   } finally {
-    app.isLoading = false
+    if (viewMounted && requestSession === auth.sessionUUID) app.isLoading = false
   }
 }
 
@@ -134,6 +144,7 @@ async function refreshUsers() {
     }
     if (data) {
       auth.applyAuthInfo(data)
+      app.addRoutePlanningFailures(data.route_planning_failures)
       if (data.users) app.users = data.users
       if (data.tasks) app.tasks = data.tasks
       if (data.run_data) app.runData = data.run_data
@@ -202,6 +213,7 @@ onMounted(() => {
   viewMounted = true
   app.detectMobile()
   loadInitialData()
+  backgroundTask.startPolling()
   socketStatusUnsubscribe = onWebSocketStatus(syncUserRefreshWithSocket)
   connectWebSocket()
   notifStore.fetchNotifications()

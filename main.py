@@ -139,6 +139,7 @@ from background_task_manager import (
     PlaywrightContextProxy,
     PlaywrightPageProxy,
 )
+from route_diagnostics import new_diagnostic_id, sanitize_diagnostic
 from runtime_models import (
     AccountSession,
     RunData,
@@ -988,6 +989,9 @@ def _get_map_provider_plugins(provider, route_mode="walking"):
 
 def _install_map_runtime_guard(page, provider="amap", guard_label="MapRuntime"):
     provider = _normalize_map_provider(provider)
+    if isinstance(page, PlaywrightPageProxy):
+        # The pool installs listeners on the real page in its owning worker.
+        return
     try:
         def _handle_page_error(error):
             logging.warning(f"[{guard_label}] pageerror: {error}")
@@ -1047,17 +1051,22 @@ def _build_map_backend_session_url(app_base_url, session_id):
     )
 
 
-def _ensure_map_backend_page_origin(page, session_id, app_base_url, guard_label="MapRoutePlanning"):
+def _ensure_map_backend_page_origin(page, session_id, app_base_url, guard_label="MapRoutePlanning", diagnostic_context=None, error_details=None):
     session_url = _build_map_backend_session_url(app_base_url, session_id)
     if not session_url:
         return False
     try:
-        page.goto(session_url, wait_until="domcontentloaded", timeout=15000)
+        options = {"wait_until": "domcontentloaded", "timeout": 15000}
+        if diagnostic_context and isinstance(page, PlaywrightPageProxy):
+            options["_route_diagnostic_context"] = diagnostic_context
+        page.goto(session_url, **options)
         return True
     except Exception as e:
-        logging.warning(
-            f"[{guard_label}] 后端地图页面来源初始化失败: {e}"
-        )
+        safe_error = sanitize_diagnostic(e, sensitive_values=(diagnostic_context or {}).get("sensitive_values", [session_id]))
+        if error_details is not None:
+            error_details.append(safe_error)
+        logging.debug("[%s] id=%s 后端地图页面来源初始化失败: %s", guard_label,
+                      (diagnostic_context or {}).get("diagnostic_id", "-"), safe_error)
         return False
 
 
@@ -1112,6 +1121,76 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
             const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+            const diagnosticStarted = Date.now();
+            const diagnostic = { waves: 0, segments: Array.from({length: Math.max(0, waypointsPy.length - 1)}, (_, i) => ({segment: i + 1, attempts: 0})) };
+            function beginAttempt(index) {
+                const item = diagnostic.segments[index];
+                item.attempts += 1;
+                item.started_at ??= Date.now();
+            }
+            function recordResponse(index, status, value) {
+                const item = diagnostic.segments[index];
+                item.status = String(status ?? '');
+                item.response_type = typeof value;
+                item.finished_at = Date.now();
+                const routes = value && Array.isArray(value.routes) ? value.routes : [];
+                const steps = routes[0] && Array.isArray(routes[0].steps) ? routes[0].steps : [];
+                item.routes_count = routes.length;
+                item.steps_count = steps.length;
+                item.path_count = steps.reduce((count, step) => count + (step && Array.isArray(step.path) ? step.path.length : 0), 0);
+                item.valid_path_count = extractSegmentPath(value).length;
+                const seen = new WeakSet();
+                function snapshot(child, depth = 0) {
+                    if (depth > 5) { return '<depth limit>'; }
+                    if (typeof child === 'string') {
+                        const credential = String(arg[1] || '');
+                        return (credential ? child.split(credential).join('<redacted>').split(encodeURIComponent(credential)).join('<redacted>') : child).slice(0, 600);
+                    }
+                    if (!child || typeof child !== 'object') { return child; }
+                    if (seen.has(child)) { return '<cycle>'; }
+                    seen.add(child);
+                    if (Array.isArray(child)) { return child.slice(0, 8).map(entry => snapshot(entry, depth + 1)); }
+                    const safe = {};
+                    Object.keys(child).slice(0, 30).forEach(key => {
+                        if (/key|token|secret|password|authorization|cookie|session|signature|security.?code/i.test(key)) {
+                            safe[key] = '<redacted>';
+                        } else if (/^(?:path|routes|steps|polyline|waypoints|target_points|run_coords|config|provider_config)$/i.test(key)) {
+                            safe[key] = '<omitted>';
+                        } else {
+                            safe[key] = snapshot(child[key], depth + 1);
+                        }
+                    });
+                    return safe;
+                }
+                try { item.callback_detail = JSON.stringify(snapshot(value ?? null)).slice(0, 1200); }
+                catch (_) { item.callback_detail = '<unavailable callback>'; }
+                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.error);
+                let text;
+                try { text = (typeof reason === 'string' ? reason : JSON.stringify(reason)) || ''; }
+                catch (_) { text = String(reason); }
+                const credential = String(arg[1] || '');
+                if (credential) { text = text.split(credential).join('<redacted>').split(encodeURIComponent(credential)).join('<redacted>'); }
+                item.reason = text.slice(0, 600);
+                item.error_code = value && typeof value === 'object' ? (value.infocode ?? value.code ?? value.status ?? '') : '';
+                item.callback_history ??= [];
+                item.callback_history.push({attempt: item.attempts, wave: diagnostic.waves,
+                    status: item.status, response_type: item.response_type, error_code: item.error_code,
+                    reason: item.reason.slice(0, 200), elapsed_ms: Date.now() - diagnosticStarted});
+                if (item.callback_history.length > 4) {
+                    item.callback_history.shift();
+                    item.callbacks_dropped = (item.callbacks_dropped || 0) + 1;
+                }
+            }
+            function diagnosticResult(result, segment) {
+                diagnostic.elapsed_ms = Date.now() - diagnosticStarted;
+                if (segment) {
+                    diagnostic.segment = segment;
+                    diagnostic.error_code = diagnostic.segments[segment - 1]?.error_code;
+                }
+                diagnostic.segments.forEach(item => { item.elapsed_ms = item.started_at ? (item.finished_at || Date.now()) - item.started_at : 0; delete item.started_at; delete item.finished_at; });
+                return {...result, diagnostic};
+            }
+
             async function ensureAmapLoader() {
                 if (typeof AMapLoader !== 'undefined') {
                     return;
@@ -1142,15 +1221,20 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                 const steps = firstRoute && Array.isArray(firstRoute.steps) ? firstRoute.steps : [];
                 const path = [];
                 steps.forEach(step => {
-                    const stepPath = Array.isArray(step.path) ? step.path : [];
-                    stepPath.forEach(pt => path.push({ lng: Number(pt.lng), lat: Number(pt.lat) }));
+                    const stepPath = step && Array.isArray(step.path) ? step.path : [];
+                    stepPath.forEach(pt => {
+                        if (!pt || pt.lng == null || pt.lat == null) { return; }
+                        const lng = Number(pt.lng);
+                        const lat = Number(pt.lat);
+                        if (Number.isFinite(lng) && Number.isFinite(lat)) { path.push({lng, lat}); }
+                    });
                 });
                 return path;
             }
 
             // 高德通过 result.info 反馈错误；限流时 info 会带「上限/限流/CUQPS」等字样
             function isRateLimited(result, status) {
-                const info = String((result && (result.info || result.message)) || status || '');
+                const info = String((typeof result === 'string' ? result : result && (result.info || result.message || result.error)) || status || '');
                 return info.indexOf('上限') >= 0
                     || info.indexOf('限流') >= 0
                     || info.indexOf('CUQPS') >= 0
@@ -1179,16 +1263,18 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                 const waypoints = waypointsPy.map(buildLngLat);
                 const allPath = [];
 
-                const searchSegment = (start, end) => new Promise((resolve) => {
+                const searchSegment = (start, end, segmentIndex) => new Promise((resolve) => {
                     const attempts = { count: 0 };
                     const runOnce = () => {
                         attempts.count += 1;
+                        beginAttempt(segmentIndex);
                         let settled = false;
                         const timeoutId = window.setTimeout(() => {
                             if (settled) {
                                 return;
                             }
                             settled = true;
+                            recordResponse(segmentIndex, 'timeout', '地图路线服务请求超时');
                             resolve({ error: '地图路线服务请求超时' });
                         }, 15000);
 
@@ -1198,14 +1284,18 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                             }
                             settled = true;
                             window.clearTimeout(timeoutId);
+                            recordResponse(segmentIndex, status, result);
                             if (status === 'complete') {
                                 const segmentPath = extractSegmentPath(result);
                                 if (segmentPath.length > 0) {
                                     resolve({ path: segmentPath });
                                     return;
                                 }
+                                const item = diagnostic.segments[segmentIndex];
+                                item.reason = `地图路线服务返回无可用几何 (status=${item.status}, info=${item.reason || 'missing'}, routes=${item.routes_count}, steps=${item.steps_count}, path=${item.path_count})`;
+                                item.callback_history[item.callback_history.length - 1].reason = item.reason.slice(0, 200);
                             }
-                            const errorInfo = result && result.info ? result.info : status || 'Unknown error';
+                            const errorInfo = diagnostic.segments[segmentIndex].reason || status || 'Unknown error';
                             if (isRateLimited(result, status) && attempts.count <= 4) {
                                 // 限流退避：标记 rateLimited，避免被当成「该段无路线」
                                 const backoff = Math.min(5000, 400 * Math.pow(2, attempts.count));
@@ -1229,12 +1319,19 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                 let consecutiveFailedWaves =0;
 
                 while (pendingIndexes.length >0) {
+                    diagnostic.waves += 1;
                     const waveIndexes = pendingIndexes.slice();
                     pendingIndexes.length = 0;
                     const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
                         // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
                         await sleep(Math.max(queueIntervalMs * order, qpsIntervalMs * order));
-                        const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1]);
+                        let result;
+                        try {
+                            result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1], segmentIndex);
+                        } catch (error) {
+                            recordResponse(segmentIndex, 'exception', error && error.message ? error.message : String(error));
+                            result = {error: diagnostic.segments[segmentIndex].reason || '路线请求异常'};
+                        }
                         return { segmentIndex, result };
                     }));
                     let waveSuccessCount = 0;
@@ -1286,7 +1383,7 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                             allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
                             continue;
                         }
-                        return { error: `Segment ${i + 1} failed after ${maxFailedWaves} failed waves: ${segmentErrors[i] || 'Unknown error'}` };
+                        return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                     }
                     if (i > 0) {
                         allPath.push(...segmentPath.slice(1));
@@ -1295,7 +1392,7 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                     }
                 }
 
-                return { path: allPath };
+                return diagnosticResult({ path: allPath });
             }
 
             return await planPath();
@@ -1306,6 +1403,8 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
         python_params or {},
         plugins,
         actual_mode,
+        **({"diagnostic_context": provider_plan["_diagnostic_context"]}
+           if provider_plan.get("_diagnostic_context") else {}),
     )
 
 
@@ -1336,6 +1435,45 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             const qpsIntervalMs = Math.ceil(1000 / qpsLimit);
             const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            const diagnosticStarted = Date.now();
+            const diagnostic = { waves: 0, segments: Array.from({length: Math.max(0, waypointsPy.length - 1)}, (_, i) => ({segment: i + 1, attempts: 0})) };
+            function beginAttempt(index) {
+                const item = diagnostic.segments[index];
+                item.attempts += 1;
+                item.started_at ??= Date.now();
+            }
+            function recordResponse(index, status, value) {
+                const item = diagnostic.segments[index];
+                item.status = String(status ?? '');
+                item.response_type = typeof value;
+                item.finished_at = Date.now();
+                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.error);
+                let text;
+                try { text = (typeof reason === 'string' ? reason : JSON.stringify(reason)) || ''; }
+                catch (_) { text = String(reason); }
+                const credential = String(arg[1] || '');
+                if (credential) { text = text.split(credential).join('<redacted>').split(encodeURIComponent(credential)).join('<redacted>'); }
+                item.reason = text.slice(0, 600);
+                item.error_code = value && typeof value === 'object' ? (value.infocode ?? value.code ?? value.status ?? '') : '';
+                item.callback_history ??= [];
+                item.callback_history.push({attempt: item.attempts, wave: diagnostic.waves,
+                    status: item.status, response_type: item.response_type, error_code: item.error_code,
+                    reason: item.reason.slice(0, 200), elapsed_ms: Date.now() - diagnosticStarted});
+                if (item.callback_history.length > 4) {
+                    item.callback_history.shift();
+                    item.callbacks_dropped = (item.callbacks_dropped || 0) + 1;
+                }
+            }
+            function diagnosticResult(result, segment) {
+                diagnostic.elapsed_ms = Date.now() - diagnosticStarted;
+                if (segment) {
+                    diagnostic.segment = segment;
+                    diagnostic.error_code = diagnostic.segments[segment - 1]?.error_code;
+                }
+                diagnostic.segments.forEach(item => { item.elapsed_ms = item.started_at ? (item.finished_at || Date.now()) - item.started_at : 0; delete item.started_at; delete item.finished_at; });
+                return {...result, diagnostic};
+            }
             let jsonpRequestId = 0;
 
             function buildRouteUrl(startCoord, endCoord) {
@@ -1453,10 +1591,12 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                 return message.indexOf('上限') >= 0 || message.indexOf('限流') >= 0;
             }
 
-            async function searchSegment(startCoord, endCoord) {
+            async function searchSegment(startCoord, endCoord, segmentIndex) {
                 let rateLimitHits = 0;
                 while (true) {
+                    beginAttempt(segmentIndex);
                     const data = await requestJsonp(buildRouteUrl(startCoord, endCoord));
+                    recordResponse(segmentIndex, data && data.status, data);
                     if (!data || typeof data !== 'object') {
                         return { error: '路线服务未返回有效数据。' };
                     }
@@ -1498,12 +1638,19 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             let consecutiveFailedWaves =0;
 
             while (pendingIndexes.length >0) {
+                diagnostic.waves += 1;
                 const waveIndexes = pendingIndexes.slice();
                 pendingIndexes.length = 0;
                 const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
                     // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
                     await sleep(Math.max(queueIntervalMs * order, qpsIntervalMs * order));
-                    const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1]);
+                    let result;
+                    try {
+                        result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1], segmentIndex);
+                    } catch (error) {
+                        recordResponse(segmentIndex, 'exception', error && error.message ? error.message : String(error));
+                        result = {error: diagnostic.segments[segmentIndex].reason || '路线请求异常'};
+                    }
                     return { segmentIndex, result };
                 }));
                 let waveSuccessCount = 0;
@@ -1555,7 +1702,7 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                         allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
                         continue;
                     }
-                    return { error: `Segment ${i + 1} failed after ${maxFailedWaves} failed waves: ${segmentErrors[i] || 'Unknown error'}` };
+                    return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                 }
                 if (i > 0) {
                     allPath.push(...segmentPath.slice(1));
@@ -1564,13 +1711,15 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                 }
             }
 
-            return { path: allPath };
+            return diagnosticResult({ path: allPath });
         })
         """,
         waypoints,
         map_key,
         python_params or {},
         actual_mode,
+        **({"diagnostic_context": provider_plan["_diagnostic_context"]}
+           if provider_plan.get("_diagnostic_context") else {}),
     )
 
 
@@ -1600,6 +1749,45 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             const qpsIntervalMs = Math.ceil(1000 / qpsLimit);
             const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            const diagnosticStarted = Date.now();
+            const diagnostic = { waves: 0, segments: Array.from({length: Math.max(0, waypointsPy.length - 1)}, (_, i) => ({segment: i + 1, attempts: 0})) };
+            function beginAttempt(index) {
+                const item = diagnostic.segments[index];
+                item.attempts += 1;
+                item.started_at ??= Date.now();
+            }
+            function recordResponse(index, status, value) {
+                const item = diagnostic.segments[index];
+                item.status = String(status ?? '');
+                item.response_type = typeof value;
+                item.finished_at = Date.now();
+                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.error);
+                let text;
+                try { text = (typeof reason === 'string' ? reason : JSON.stringify(reason)) || ''; }
+                catch (_) { text = String(reason); }
+                const credential = String(arg[1] || '');
+                if (credential) { text = text.split(credential).join('<redacted>').split(encodeURIComponent(credential)).join('<redacted>'); }
+                item.reason = text.slice(0, 600);
+                item.error_code = value && typeof value === 'object' ? (value.infocode ?? value.code ?? value.status ?? '') : '';
+                item.callback_history ??= [];
+                item.callback_history.push({attempt: item.attempts, wave: diagnostic.waves,
+                    status: item.status, response_type: item.response_type, error_code: item.error_code,
+                    reason: item.reason.slice(0, 200), elapsed_ms: Date.now() - diagnosticStarted});
+                if (item.callback_history.length > 4) {
+                    item.callback_history.shift();
+                    item.callbacks_dropped = (item.callbacks_dropped || 0) + 1;
+                }
+            }
+            function diagnosticResult(result, segment) {
+                diagnostic.elapsed_ms = Date.now() - diagnosticStarted;
+                if (segment) {
+                    diagnostic.segment = segment;
+                    diagnostic.error_code = diagnostic.segments[segment - 1]?.error_code;
+                }
+                diagnostic.segments.forEach(item => { item.elapsed_ms = item.started_at ? (item.finished_at || Date.now()) - item.started_at : 0; delete item.started_at; delete item.finished_at; });
+                return {...result, diagnostic};
+            }
             const GCJ_PI = Math.PI;
             const GCJ_A = 6378245.0;
             const GCJ_EE = 0.00669342162296594323;
@@ -1754,10 +1942,11 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                     || text.indexOf('too many') >= 0;
             }
 
-            async function searchSegment(startCoord, endCoord) {
+            async function searchSegment(startCoord, endCoord, segmentIndex) {
                 const maxRateLimitRetries = 4;
                 let rateLimitHits = 0;
                 while (true) {
+                    beginAttempt(segmentIndex);
                     const controller = new AbortController();
                     const timeoutId = window.setTimeout(() => {
                         controller.abort();
@@ -1767,6 +1956,7 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                             signal: controller.signal
                         });
                         const bodyText = await response.text();
+                        recordResponse(segmentIndex, response.status, response.ok ? '' : bodyText);
                         if (!response.ok) {
                             const limited = isRateLimited(response, bodyText);
                             if (limited && rateLimitHits < maxRateLimitRetries) {
@@ -1775,7 +1965,7 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                                 continue;
                             }
                             return {
-                                error: `路线服务请求失败：HTTP ${response.status}`,
+                                error: `路线服务请求失败：HTTP ${response.status} ${diagnostic.segments[segmentIndex].reason}`,
                                 rateLimited: limited
                             };
                         }
@@ -1787,9 +1977,11 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                         try {
                             return { path: extractRoutePathPoints(bodyText) };
                         } catch (parseError) {
+                            recordResponse(segmentIndex, 'parse_error', parseError && parseError.message ? parseError.message : String(parseError));
                             return { error: `路线服务返回无效数据：${parseError && parseError.message ? parseError.message : String(parseError)}` };
                         }
                     } catch (error) {
+                        recordResponse(segmentIndex, error && error.name || 'exception', error && error.message ? error.message : String(error));
                         if (error && error.name === 'AbortError') {
                             return { error: '地图路线服务请求超时' };
                         }
@@ -1818,12 +2010,19 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             let consecutiveFailedWaves =0;
 
             while (pendingIndexes.length >0) {
+                diagnostic.waves += 1;
                 const waveIndexes = pendingIndexes.slice();
                 pendingIndexes.length = 0;
                 const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
                     // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
                     await sleep(Math.max(queueIntervalMs * order, qpsIntervalMs * order));
-                    const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1]);
+                    let result;
+                    try {
+                        result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1], segmentIndex);
+                    } catch (error) {
+                        recordResponse(segmentIndex, 'exception', error && error.message ? error.message : String(error));
+                        result = {error: diagnostic.segments[segmentIndex].reason || '路线请求异常'};
+                    }
                     return { segmentIndex, result };
                 }));
                 let waveSuccessCount = 0;
@@ -1875,7 +2074,7 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                         allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
                         continue;
                     }
-                    return { error: `Segment ${i + 1} failed after ${maxFailedWaves} failed waves: ${segmentErrors[i] || 'Unknown error'}` };
+                    return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                 }
                 if (i > 0) {
                     allPath.push(...segmentPath.slice(1));
@@ -1884,13 +2083,15 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                 }
             }
 
-            return { path: allPath };
+            return diagnosticResult({ path: allPath });
         })
         """,
         waypoints,
         token,
         python_params or {},
         actual_mode,
+        **({"diagnostic_context": provider_plan["_diagnostic_context"]}
+           if provider_plan.get("_diagnostic_context") else {}),
     )
 
 
@@ -1920,6 +2121,45 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             const qpsIntervalMs = Math.ceil(1000 / qpsLimit);
             const maxFailedWaves =2;
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            const diagnosticStarted = Date.now();
+            const diagnostic = { waves: 0, segments: Array.from({length: Math.max(0, waypointsPy.length - 1)}, (_, i) => ({segment: i + 1, attempts: 0})) };
+            function beginAttempt(index) {
+                const item = diagnostic.segments[index];
+                item.attempts += 1;
+                item.started_at ??= Date.now();
+            }
+            function recordResponse(index, status, value) {
+                const item = diagnostic.segments[index];
+                item.status = String(status ?? '');
+                item.response_type = typeof value;
+                item.finished_at = Date.now();
+                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.error);
+                let text;
+                try { text = (typeof reason === 'string' ? reason : JSON.stringify(reason)) || ''; }
+                catch (_) { text = String(reason); }
+                const credential = String(arg[1] || '');
+                if (credential) { text = text.split(credential).join('<redacted>').split(encodeURIComponent(credential)).join('<redacted>'); }
+                item.reason = text.slice(0, 600);
+                item.error_code = value && typeof value === 'object' ? (value.infocode ?? value.code ?? value.status ?? '') : '';
+                item.callback_history ??= [];
+                item.callback_history.push({attempt: item.attempts, wave: diagnostic.waves,
+                    status: item.status, response_type: item.response_type, error_code: item.error_code,
+                    reason: item.reason.slice(0, 200), elapsed_ms: Date.now() - diagnosticStarted});
+                if (item.callback_history.length > 4) {
+                    item.callback_history.shift();
+                    item.callbacks_dropped = (item.callbacks_dropped || 0) + 1;
+                }
+            }
+            function diagnosticResult(result, segment) {
+                diagnostic.elapsed_ms = Date.now() - diagnosticStarted;
+                if (segment) {
+                    diagnostic.segment = segment;
+                    diagnostic.error_code = diagnostic.segments[segment - 1]?.error_code;
+                }
+                diagnostic.segments.forEach(item => { item.elapsed_ms = item.started_at ? (item.finished_at || Date.now()) - item.started_at : 0; delete item.started_at; delete item.finished_at; });
+                return {...result, diagnostic};
+            }
 
             function gcj02ToBd09(lng, lat) {
                 const xPi = Math.PI * 3000.0 / 180.0;
@@ -2025,13 +2265,13 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                             if (points.length < 2) {
                                 throw new Error('路线结果未返回可绘制的有效路径点。');
                             }
-                            resolve({ path: points });
+                            resolve({ path: points, status });
                         } catch (error) {
                             if (status !== null && typeof BMAP_STATUS_SUCCESS !== 'undefined' && status !== BMAP_STATUS_SUCCESS) {
-                                resolve({ error: `路线规划失败，状态码：${status}` });
+                                resolve({ error: `路线规划失败，状态码：${status}`, status });
                                 return;
                             }
-                            resolve({ error: error.message || String(error) });
+                            resolve({ error: error.message || String(error), status });
                         }
                     }
                 };
@@ -2056,17 +2296,19 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                 return false;
             }
 
-            function searchSegment(startCoord, endCoord, routeType, map) {
+            function searchSegment(startCoord, endCoord, segmentIndex) {
                 return new Promise((resolve) => {
                     const maxRateLimitRetries = 4;
                     let rateLimitHits = 0;
                     const runOnce = () => {
+                        beginAttempt(segmentIndex);
                         let settled = false;
                         const timeoutId = window.setTimeout(() => {
                             if (settled) {
                                 return;
                             }
                             settled = true;
+                            recordResponse(segmentIndex, 'timeout', '地图路线服务请求超时');
                             resolve({ error: '地图路线服务请求超时' });
                         }, 15000);
                         const searchInstance = createRouteSearch(routeType, map, (result) => {
@@ -2075,6 +2317,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                             }
                             settled = true;
                             window.clearTimeout(timeoutId);
+                            recordResponse(segmentIndex, result && result.status, result);
                             if (result && result.error && isRateLimited(null, result.error)
                                 && rateLimitHits < maxRateLimitRetries) {
                                 // 限流退避：标记 rateLimited，避免被当成「该段无路线」
@@ -2118,12 +2361,19 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             let consecutiveFailedWaves =0;
 
             while (pendingIndexes.length >0) {
+                diagnostic.waves += 1;
                 const waveIndexes = pendingIndexes.slice();
                 pendingIndexes.length = 0;
                 const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
                     // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
                     await sleep(Math.max(queueIntervalMs * order, qpsIntervalMs * order));
-                    const result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1]);
+                    let result;
+                    try {
+                        result = await searchSegment(waypoints[segmentIndex], waypoints[segmentIndex + 1], segmentIndex);
+                    } catch (error) {
+                        recordResponse(segmentIndex, 'exception', error && error.message ? error.message : String(error));
+                        result = {error: diagnostic.segments[segmentIndex].reason || '路线请求异常'};
+                    }
                     return { segmentIndex, result };
                 }));
                 let waveSuccessCount = 0;
@@ -2175,7 +2425,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                         allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
                         continue;
                     }
-                    return { error: `Segment ${i + 1} failed after ${maxFailedWaves} failed waves: ${segmentErrors[i] || 'Unknown error'}` };
+                    return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                 }
                 if (i > 0) {
                     allPath.push(...segmentPath.slice(1));
@@ -2184,13 +2434,15 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                 }
             }
 
-            return { path: allPath };
+            return diagnosticResult({ path: allPath });
         })
         """,
         waypoints,
         ak,
         python_params or {},
         actual_mode,
+        **({"diagnostic_context": provider_plan["_diagnostic_context"]}
+           if provider_plan.get("_diagnostic_context") else {}),
     )
 
 
@@ -2372,6 +2624,59 @@ def _build_multi_account_completion_status(total_tasks, successful_tasks):
 
 
 
+def _bounded_route_runtime_diagnostic(diagnostic, sensitive_values):
+    def fits(value):
+        return max(len(json.dumps(value, ensure_ascii=ascii_only).encode("utf-8")) for ascii_only in (False, True)) <= 4096
+
+    try:
+        safe = json.loads(sanitize_diagnostic(diagnostic, 4096, sensitive_values))
+        if isinstance(safe, dict) and fits(safe):
+            return safe
+    except (ValueError, TypeError):
+        pass
+
+    def scalar(value, budget=80):
+        return value if isinstance(value, (bool, int, float)) else sanitize_diagnostic(value, budget, sensitive_values)
+
+    compact = {
+        field: scalar(diagnostic[field])
+        for field in ("guard_label", "actual_mode", "waypoint_count", "segment", "error_code", "waves", "elapsed_ms")
+        if field in diagnostic
+    }
+    if "failed_endpoints" in diagnostic:
+        compact["failed_endpoints"] = json.loads(sanitize_diagnostic(diagnostic["failed_endpoints"], 400, sensitive_values))
+    segments = diagnostic.get("segments")
+    if isinstance(segments, list) and segments:
+        selected = next((row for row in segments if isinstance(row, dict) and row.get("segment") == diagnostic.get("segment")), segments[0])
+        if isinstance(selected, dict):
+            segment = {
+                field: scalar(selected[field], 200 if field == "reason" else 40)
+                for field in ("segment", "attempts", "status", "response_type", "error_code", "reason", "elapsed_ms", "callbacks_dropped", "routes_count", "steps_count", "path_count", "valid_path_count")
+                if field in selected
+            }
+            history = selected.get("callback_history")
+            if isinstance(history, list):
+                segment["callback_history"] = [
+                    {field: scalar(row[field], 120 if field == "reason" else 40)
+                     for field in ("attempt", "wave", "status", "response_type", "error_code", "reason", "elapsed_ms") if field in row}
+                    for row in history[-4:] if isinstance(row, dict)
+                ]
+            compact["segments"] = [segment]
+            compact["segments_omitted"] = len(segments) - 1
+    # Preserve structured attempts and the failed segment when complete callbacks exceed the budget.
+    while not fits(compact):
+        segment = (compact.get("segments") or [{}])[0]
+        history = segment.get("callback_history") or []
+        if len(history) > 1:
+            history.pop(0)
+            segment["callbacks_dropped"] = segment.get("callbacks_dropped", 0) + 1
+        elif segment:
+            compact.pop("segments", None)
+        else:
+            return {field: compact[field] for field in ("guard_label", "actual_mode", "waypoint_count", "segment") if field in compact}
+    return compact
+
+
 def _plan_route_path_with_provider_runtime(
     session_id,
     waypoints,
@@ -2381,57 +2686,119 @@ def _plan_route_path_with_provider_runtime(
     guard_label="MapRoutePlanning",
     app_base_url=None,
 ):
-    runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
-    provider_plan = _plan_route_with_map_provider(
-        waypoints,
-        provider=provider,
-        route_mode="walking",
-        runtime_config=runtime_config,
-    )
-    provider = provider_plan["provider"]
+    diagnostic_id = new_diagnostic_id()
+    started = time.monotonic()
+    provider_plan = {}
+    sensitive_values = [session_id]
+    actual_mode = "unknown"
+    waypoint_count = len(waypoints) if isinstance(waypoints, (list, tuple)) else 0
+    entry_logged = False
 
-    global chrome_pool
-    if not chrome_pool:
-        return {
-            "error": "Chrome浏览器池不可用，无法进行路径规划。",
-            "provider": provider,
-            "notices": provider_plan.get("notices", []),
+    def log_entry():
+        logging.info("[路径诊断] phase=start id=%s provider=%s guard_label=%s actual_mode=%s waypoint_count=%s",
+                     diagnostic_id, sanitize_diagnostic(provider or "unknown", 80, sensitive_values),
+                     sanitize_diagnostic(guard_label, 160, sensitive_values),
+                     sanitize_diagnostic(actual_mode, 80, sensitive_values), waypoint_count)
+
+    try:
+        runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
+        provider_plan = _plan_route_with_map_provider(
+            waypoints, provider=provider, route_mode="walking", runtime_config=runtime_config,
+        )
+        provider = provider_plan["provider"]
+        sensitive_values.extend(
+            value for value in (provider_plan.get("provider_config") or {}).values()
+            if isinstance(value, str) and value
+        )
+        actual_mode = provider_plan.get("actual_mode") or "walking"
+        log_entry()
+        entry_logged = True
+        pool = globals().get("chrome_pool")
+        if not pool:
+            raise RuntimeError("Chrome浏览器池不可用，无法进行路径规划。")
+        ctx = pool.get_context(session_id)
+        page = ctx["page"]
+        _install_map_runtime_guard(page, provider=provider, guard_label=guard_label)
+        diagnostic_context = {
+            "diagnostic_id": diagnostic_id, "provider": provider,
+            "guard_label": guard_label, "actual_mode": actual_mode, "waypoint_count": waypoint_count,
+            "sensitive_values": sensitive_values,
         }
-
-    ctx = chrome_pool.get_context(session_id)
-    page = ctx["page"]
-    _install_map_runtime_guard(page, provider=provider, guard_label=guard_label)
-    if app_base_url and not _ensure_map_backend_page_origin(
-        page,
-        session_id,
-        app_base_url,
-        guard_label=guard_label,
-    ):
-        return {
-            "error": "后端地图页面来源初始化失败，无法执行地图路径规划。",
-            "provider": provider,
-            "provider_plan": provider_plan,
-            "notices": provider_plan.get("notices", []),
-        }
-
-    if provider == "amap":
-        result = _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_plan, python_params)
-    elif provider == "tencent":
-        result = _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_plan, python_params)
-    elif provider == "tianditu":
-        result = _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider_plan, python_params)
-    elif provider == "baidu":
-        result = _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_plan, python_params)
-    else:
-        result = {"error": f"不支持的地图供应商: {provider}"}
-
-    if not isinstance(result, dict):
-        result = {"error": "路径规划执行器未返回有效结果。"}
-    if provider in ("tencent", "tianditu", "baidu") and isinstance(result.get("path"), list):
-        result["path"] = _complete_route_path_with_waypoint_endpoints(result["path"], waypoints)
+        origin_errors = []
+        if app_base_url and not _ensure_map_backend_page_origin(
+            page, session_id, app_base_url, guard_label=guard_label,
+            diagnostic_context=diagnostic_context, error_details=origin_errors,
+        ):
+            raise RuntimeError("后端地图页面来源初始化失败，无法执行地图路径规划。" + " ".join(origin_errors))
+        execution_plan = dict(provider_plan)
+        execution_plan["_diagnostic_context"] = diagnostic_context
+        if provider == "amap":
+            result = _plan_route_path_with_amap_runtime(session_id, page, waypoints, execution_plan, python_params)
+        elif provider == "tencent":
+            result = _plan_route_path_with_tencent_runtime(session_id, page, waypoints, execution_plan, python_params)
+        elif provider == "tianditu":
+            result = _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, execution_plan, python_params)
+        elif provider == "baidu":
+            result = _plan_route_path_with_baidu_runtime(session_id, page, waypoints, execution_plan, python_params)
+        else:
+            result = {"error": f"不支持的地图供应商: {provider}"}
+        if not isinstance(result, dict):
+            result = {"error": "路径规划执行器未返回有效结果。"}
+        if not result.get("error"):
+            path = result.get("path")
+            normalized_path = [
+                normalized for point in path
+                if (normalized := _normalize_provider_route_point(point)) is not None
+            ] if isinstance(path, (list, tuple)) else []
+            if not normalized_path:
+                result.pop("path", None)
+                result["error"] = "路径规划未返回可用路线几何（path 缺失、为空或坐标无效）。"
+            elif provider in ("tencent", "tianditu", "baidu"):
+                result["path"] = _complete_route_path_with_waypoint_endpoints(normalized_path, waypoints)
+            else:
+                result["path"] = normalized_path
+    except Exception as error:
+        result = {"error": sanitize_diagnostic(error, sensitive_values=sensitive_values)}
+    if not entry_logged:
+        log_entry()
+    if not isinstance(provider_plan, dict):
+        provider_plan = {}
+    result["diagnostic_id"] = diagnostic_id
     result["provider"] = provider
     result["provider_plan"] = provider_plan
     result["notices"] = provider_plan.get("notices", [])
+    if result.get("error"):
+        result["error"] = sanitize_diagnostic(result["error"], sensitive_values=sensitive_values)
+    elapsed_ms = round((time.monotonic() - started) * 1000)
+    diagnostic = result.get("diagnostic")
+    diagnostic = dict(diagnostic) if isinstance(diagnostic, dict) else ({"detail": sanitize_diagnostic(diagnostic, 1200, sensitive_values)} if diagnostic is not None else {})
+    diagnostic.update({"guard_label": guard_label, "actual_mode": actual_mode, "waypoint_count": waypoint_count})
+    diagnostic.setdefault("elapsed_ms", elapsed_ms)
+    failed_endpoints = []
+    try:
+        failed_segment = int(diagnostic.get("segment", 0))
+        if result.get("error") and 0 < failed_segment < waypoint_count:
+            failed_endpoints = [_normalize_provider_route_point(waypoints[index]) for index in (failed_segment - 1, failed_segment)]
+            diagnostic["failed_endpoints"] = failed_endpoints
+    except (TypeError, ValueError, OverflowError):
+        pass
+    segments = diagnostic.get("segments")
+    for segment in segments if isinstance(segments, list) else []:
+        logging.debug("[路径诊断] id=%s provider=%s segment=%s", diagnostic_id, provider,
+                      sanitize_diagnostic(segment, 1500, sensitive_values))
+        history = segment.get("callback_history") if isinstance(segment, dict) else None
+        for callback in history[-4:] if isinstance(history, list) else []:
+            logging.debug("[路径诊断] id=%s segment=%s callback_history=%s", diagnostic_id,
+                          segment.get("segment"), sanitize_diagnostic(callback, 800, sensitive_values))
+    result["diagnostic"] = _bounded_route_runtime_diagnostic(diagnostic, sensitive_values)
+    logging.info("[路径诊断] phase=result id=%s provider=%s guard_label=%s actual_mode=%s waypoint_count=%s success=%s elapsed_ms=%s failed_endpoints=%s reason=%s",
+                 diagnostic_id, sanitize_diagnostic(provider or "unknown", 80, sensitive_values),
+                 sanitize_diagnostic(guard_label, 160, sensitive_values), sanitize_diagnostic(actual_mode, 80, sensitive_values),
+                 waypoint_count, not bool(result.get("error")), elapsed_ms,
+                 sanitize_diagnostic(failed_endpoints, 400, sensitive_values),
+                 sanitize_diagnostic(result.get("error") or "ok", 800, sensitive_values))
+    logging.debug("[路径诊断] id=%s detail=%s", diagnostic_id,
+                  sanitize_diagnostic(result.get("diagnostic") or {}, 4096, sensitive_values))
     return result
 
 
@@ -9411,6 +9778,10 @@ def cleanup_inactive_session(session_id, reason="manual"):
         api_instance = None
         with web_sessions_lock:
             api_instance = web_sessions.pop(session_id, None)
+
+        task_manager = globals().get("background_task_manager")
+        if task_manager and hasattr(task_manager, "clear_route_planning_failures"):
+            task_manager.clear_route_planning_failures(session_id)
 
         if api_instance is None:
             logging.warning(

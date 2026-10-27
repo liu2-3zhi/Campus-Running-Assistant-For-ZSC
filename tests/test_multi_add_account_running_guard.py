@@ -68,7 +68,7 @@ class _TestBase(unittest.TestCase):
         api._get_auth_user_and_check_admin = mock.Mock(
             return_value=("zhangzhi", False)
         )
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
         api._multi_refresh_worker = mock.Mock()
         return api
 

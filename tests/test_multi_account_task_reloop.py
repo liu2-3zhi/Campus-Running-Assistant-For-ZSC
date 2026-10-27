@@ -50,7 +50,7 @@ class _FakeAccount:
         self.stop_event = mock.Mock()
         self.stop_event.is_set.return_value = False
 
-    def log(self, message):
+    def log_and_notify_frontend(self, message):
         self.logs.append(message)
 
 
@@ -337,14 +337,14 @@ class TestWorkerReloopBehavior(unittest.TestCase):
         两个任务之间等待 1 次，全部跑完后不再等待。
         """
         gap_logs = []
-        original_log = self.acc.log
+        original_log = self.acc.log_and_notify_frontend
 
         def capture(message):
             if "进入任务间隔等待" in message:
                 gap_logs.append(message)
             original_log(message)
 
-        self.acc.log = capture
+        self.acc.log_and_notify_frontend = capture
         self.api._multi_account_worker(self.acc, 0, True)
 
         self.assertEqual(self.executed, ["e1", "e2"])
@@ -361,14 +361,14 @@ class TestWorkerReloopBehavior(unittest.TestCase):
         self._apply_phase()
 
         gap_logs = []
-        original_log = self.acc.log
+        original_log = self.acc.log_and_notify_frontend
 
         def capture(message):
             if "进入任务间隔等待" in message:
                 gap_logs.append(message)
             original_log(message)
 
-        self.acc.log = capture
+        self.acc.log_and_notify_frontend = capture
         self.api._multi_account_worker(self.acc, 0, True)
 
         self.assertEqual(self.executed, ["only"])

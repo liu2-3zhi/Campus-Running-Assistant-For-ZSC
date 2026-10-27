@@ -80,7 +80,7 @@ class _BaseTest(unittest.TestCase):
         api.multi_execution_lock = threading.RLock()
         api.multi_active_executions = set()
         api.multi_run_only_incomplete = True
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
         api._update_multi_global_buttons = mock.Mock()
         api.multi_get_all_accounts_status = lambda addition=None: {
             "success": True,

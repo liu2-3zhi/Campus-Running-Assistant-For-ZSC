@@ -39,7 +39,7 @@ def _new_api():
     api.multi_run_stop_flag = threading.Event()
     api.multi_run_stop_flag.set()
     api.multi_login_lock = threading.Semaphore(20)
-    api.log = mock.Mock()
+    api.log_and_notify_frontend = mock.Mock()
     api._update_multi_global_buttons = mock.Mock()
     api._payment_required_for_overdue_gate = mock.Mock(return_value=False)
     return api

@@ -23,7 +23,7 @@ class _FakeRunInfoClient:
     def __init__(self, status):
         self._status = status
         self.app = SimpleNamespace(
-            log=lambda _message: None,
+            log_and_notify_frontend=lambda _message: None,
             user_data=SimpleNamespace(username="student-a"),
         )
 
@@ -332,7 +332,7 @@ class TestMultiAccountExecutionParity(unittest.TestCase):
         api.multi_run_stop_flag = threading.Event()
         api._is_multi_account_execution_active = lambda _acc: False
         api._payment_required_for_overdue_gate = lambda: False
-        api.log = lambda _message: None
+        api.log_and_notify_frontend = lambda _message: None
 
         def start_worker(_acc, _delay, _run_only_incomplete):
             _acc.status_text = "无任务可执行"

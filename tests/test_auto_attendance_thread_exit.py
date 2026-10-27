@@ -59,7 +59,7 @@ class TestAutoAttendanceThreadExit(unittest.TestCase):
         api._init_state_variables()
         api.user_data = _FakeUserData()
         api.is_multi_account_mode = False
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
 
         with mock.patch.object(
             main_module, "_is_auto_attendance_enabled", return_value=False

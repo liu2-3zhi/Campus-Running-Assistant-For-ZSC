@@ -147,8 +147,8 @@ class ApiClient:
     ) -> _main().requests.Response | None:
         """统一的网络请求方法（增强：支持取消）"""
 
-        log_func = self.app.log if hasattr(
-            self.app, "log") else self.app.api_bridge.log
+        log_func = self.app.log_and_notify_frontend if hasattr(
+            self.app, "log_and_notify_frontend") else self.app.api_bridge.log_and_notify_frontend
         is_offline = (
             self.app.is_offline_mode
             if hasattr(self.app, "is_offline_mode")
@@ -334,8 +334,8 @@ class ApiClient:
 
     def _json(self, resp: _main().requests.Response | None) -> dict | None:
         """安全地将Response对象解析为JSON字典"""
-        log_func = self.app.log if hasattr(
-            self.app, "log") else self.app.api_bridge.log
+        log_func = self.app.log_and_notify_frontend if hasattr(
+            self.app, "log_and_notify_frontend") else self.app.api_bridge.log_and_notify_frontend
         if resp:
             try:
                 json_data = resp.json()

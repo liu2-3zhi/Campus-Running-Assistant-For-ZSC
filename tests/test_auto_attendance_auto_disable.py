@@ -92,7 +92,7 @@ class TestAutoAttendanceAutoDisable(unittest.TestCase):
             "auto_attendance_stop_after_success": True,
             "auto_attendance_success_limit": 1,
         }
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
         api.trigger_attendance = mock.Mock(return_value={"success": True, "message": "签到成功"})
 
         with mock.patch.object(main_module, "_is_auto_attendance_enabled", return_value=True), mock.patch.object(
@@ -144,7 +144,7 @@ class TestAutoAttendanceAutoDisable(unittest.TestCase):
             "auto_attendance_stop_after_success": True,
             "auto_attendance_success_limit": 1,
         }
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
         api.trigger_attendance = mock.Mock(
             return_value={"success": False, "message": "签到失败"}
         )
@@ -168,7 +168,7 @@ class TestAutoAttendanceAutoDisable(unittest.TestCase):
             "auto_attendance_stop_after_success": True,
             "auto_attendance_success_limit": 1,
         }
-        api.log = mock.Mock()
+        api.log_and_notify_frontend = mock.Mock()
         api.trigger_attendance = mock.Mock(
             return_value={"success": True, "message": "已签到"}
         )

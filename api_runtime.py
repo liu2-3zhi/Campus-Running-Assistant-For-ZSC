@@ -24,6 +24,7 @@ import warnings
 
 
 from main_runtime import _main
+from route_diagnostics import build_route_failure_summary, detailed_route_failure_message, generic_route_failure_message, sanitize_diagnostic
 from theme_background_state import background_files_locked
 
 
@@ -632,11 +633,12 @@ class Api:
         except Exception as e:
             return {"success": False, "message": str(e)}
 
-    def log(self, message):
-        """将日志消息通过 WebSocket 发送到前端界面显示"""
+    def log_and_notify_frontend(self, message, *, frontend_message=None, diagnostic_id=None):
+        """记录服务器日志，并向会话前端发送可独立选择的文案。"""
         session_id = getattr(self, "_web_session_id", None)
         safe_message = _main()._redact_sensitive_log_value(message)
         logging.info(safe_message)
+        public_message = safe_message if frontend_message is None else _main()._redact_sensitive_log_value(frontend_message)
         if session_id and _main().socketio:
             try:
                 # 添加线程诊断日志
@@ -644,8 +646,10 @@ class Api:
                 thread_info = f"Thread[name={current_thread.name}, id={current_thread.ident}]"
                 logging.debug(f"[SocketIO Emit] Attempting emit from {thread_info}")
                 
-                _main().socketio.emit("log_message", {
-                              "msg": str(safe_message)}, room=session_id)
+                payload = {"msg": str(public_message)}
+                if diagnostic_id:
+                    payload["diagnostic_id"] = str(diagnostic_id)
+                _main().socketio.emit("log_message", payload, room=session_id)
                 logging.debug(f"[SocketIO Emit] Success from {thread_info}")
             except Exception as e:
                 current_thread = threading.current_thread()
@@ -2777,7 +2781,7 @@ class Api:
             _main()._write_config_with_comments(cfg, self.config_path)
 
             display_name = _main().MAP_PROVIDER_DISPLAY_NAMES[provider]
-            self.log(f"{display_name} API Key已保存。")
+            self.log_and_notify_frontend(f"{display_name} API Key已保存。")
             logging.info(f"已成功保存新的{display_name} API Key")
             map_public_payload = _main()._build_public_map_provider_frontend_payload(
                 cfg,
@@ -2792,7 +2796,7 @@ class Api:
                 "map_provider_key_bundle": map_public_payload["map_provider_key_bundle"],
             }
         except Exception as e:
-            self.log(f"保存地图API Key失败: {e}")
+            self.log_and_notify_frontend(f"保存地图API Key失败: {e}")
             logging.error(f"保存地图API Key失败: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
 
@@ -3128,7 +3132,7 @@ class Api:
         if not username or not password:
             return {"success": False, "message": "用户名和密码不能为空！"}
 
-        self.log("正在登录...")
+        self.log_and_notify_frontend("正在登录...")
         logging.debug(f"正在尝试为用户进行登录认证: 用户名={username}")
         self.user_data = _main().UserData()
         input_username = username
@@ -3142,11 +3146,11 @@ class Api:
                 if resp
                 else "网络连接失败，无法连接到学校服务器。"
             )
-            self.log(f"服务器反馈登录失败：{msg}")
+            self.log_and_notify_frontend(f"服务器反馈登录失败：{msg}")
             logging.warning(f"用户登录失败: {msg}")
             return {"success": False, "message": msg}
 
-        self.log("登录成功，正在解析用户信息...")
+        self.log_and_notify_frontend("登录成功，正在解析用户信息...")
         data = resp.get("data", {})
         ud = self.user_data
         ud.username = input_username
@@ -3187,7 +3191,7 @@ class Api:
             self._fetch_server_attendance_radius_if_needed(
                 self.api_client, None)
         except Exception as e:
-            self.log(f"获取签到半径失败: {e}")
+            self.log_and_notify_frontend(f"获取签到半径失败: {e}")
             logging.warning(
                 f"Failed to fetch attendance radius post-login: {e}")
 
@@ -3222,7 +3226,7 @@ class Api:
             else:
                 logging.warning("[单账号登录] 无法启动刷新线程：用户未登录或无ID")
         except Exception as e:
-            self.log(f"启动自动刷新线程失败: {e}")
+            self.log_and_notify_frontend(f"启动自动刷新线程失败: {e}")
             logging.error(f"[单账号登录] 启动刷新线程失败: {e}", exc_info=True)
 
         user_info_dict = self._get_full_user_info_dict()
@@ -3275,7 +3279,7 @@ class Api:
     def logout(self):
         """处理注销逻辑"""
         logging.info("API调用: logout - 用户注销登出操作")
-        self.log("已注销。")
+        self.log_and_notify_frontend("已注销。")
         logging.info("用户已成功登出，正在清除会话和状态数据")
 
         self.shutdown_session_runtime(reason="logout")
@@ -3324,7 +3328,7 @@ class Api:
 
             self._load_tasks_inflight = True
             try:
-                self.log("正在获取任务列表...")
+                self.log_and_notify_frontend("正在获取任务列表...")
                 logging.debug("正在从服务器获取任务运行列表数据")
 
                 self.all_run_data = []
@@ -3336,7 +3340,7 @@ class Api:
                     resp = self.api_client.get_run_list(
                         self.user_data.id, offset)
                     if not resp or not resp.get("success"):
-                        self.log("获取任务列表失败。")
+                        self.log_and_notify_frontend("获取任务列表失败。")
                         logging.warning("从服务器获取任务列表失败")
                         break
 
@@ -3379,7 +3383,7 @@ class Api:
                     if len(tasks) < 10:
                         break
 
-                self.log(f"任务列表加载完毕，共 {len(self.all_run_data)} 项。")
+                self.log_and_notify_frontend(f"任务列表加载完毕，共 {len(self.all_run_data)} 项。")
                 if dup_count > 0:
                     logging.info(
                         f"Task de-dup completed: {dup_count} duplicates skipped (robust key)."
@@ -3637,7 +3641,7 @@ class Api:
             task_dict["target_range_m"] = self.target_range_m
             return {"success": True, "details": task_dict}
 
-        self.log(f"正在加载任务详情...")
+        self.log_and_notify_frontend(f"正在加载任务详情...")
         logging.debug(
             f"正在获取任务详细信息: 任务索引={index}, 任务名称={run_data.run_name}"
         )
@@ -3683,7 +3687,7 @@ class Api:
                         temp_coords.append((0.0, 0.0))
             run_data.recommended_coords = temp_coords
             run_data.details_fetched = True
-            self.log("任务详情加载成功。")
+            self.log_and_notify_frontend("任务详情加载成功。")
             logging.debug(
                 f"任务详情获取成功: 目标点数量={len(run_data.target_points)}, 推荐路径点数量={len(run_data.recommended_coords)}"
             )
@@ -3691,7 +3695,7 @@ class Api:
             task_dict["target_range_m"] = self.target_range_m
             return {"success": True, "details": task_dict}
         else:
-            self.log("获取任务详情失败。")
+            self.log_and_notify_frontend("获取任务详情失败。")
             logging.warning("从服务器获取任务详情失败")
             return {"success": False, "message": "获取任务详情失败"}
 
@@ -3851,7 +3855,7 @@ class Api:
         if not run.draft_coords or len(run.draft_coords) < 2:
             return {"success": False, "message": "没有可处理的路径"}
 
-        self.log("正在处理路径...")
+        self.log_and_notify_frontend("正在处理路径...")
         logging.debug(
             f"正在处理路径: 将 {len(run.draft_coords)} 个草稿点转换为运动坐标序列"
         )
@@ -3954,7 +3958,7 @@ class Api:
             total_time += interval_t
 
         run.total_run_time_s, run.total_run_distance_m = total_time, total_dist
-        self.log(f"处理完成。")
+        self.log_and_notify_frontend(f"处理完成。")
         logging.info(
             f"路径处理完成: 生成坐标点数={len(run.run_coords)}, 总距离={total_dist:.1f}米, 总时长={total_time:.1f}秒"
         )
@@ -4132,7 +4136,7 @@ class Api:
     def stop_run(self):
         """停止当前所有正在执行的任务"""
         logging.info("API调用: stop_run - 停止当前所有正在执行的任务")
-        self.log("正在停止任务...")
+        self.log_and_notify_frontend("正在停止任务...")
         logging.info("已收到停止运行任务的信号")
         self.stop_run_flag.set()
         # 停止后清掉“此次不计费”状态，下一次启动必须重新明确申请豁免。
@@ -4183,8 +4187,8 @@ class Api:
     ):
         """将一小块轨迹数据提交到服务器"""
         log_func = (
-            client.app.log if hasattr(
-                client.app, "log") else client.app.api_bridge.log
+            client.app.log_and_notify_frontend if hasattr(
+                client.app, "log_and_notify_frontend") else client.app.api_bridge.log_and_notify_frontend
         )
 
         if self.is_offline_mode:
@@ -4380,8 +4384,8 @@ class Api:
             auth_username: 认证（系统）用户名，缺省时从 api_instance 推断。
         """
         log_func = (
-            client.app.log if hasattr(
-                client.app, "log") else client.app.api_bridge.log
+            client.app.log_and_notify_frontend if hasattr(
+                client.app, "log_and_notify_frontend") else client.app.api_bridge.log_and_notify_frontend
         )
         log_func("正在确认任务状态...")
         logging.debug(f"正在确认任务完成状态，任务追踪ID: trid={run_data.trid}")
@@ -4518,8 +4522,8 @@ class Api:
         logging.info(f"[Thread Entry] _run_submission_thread started in Thread[{current_thread.name}, id={current_thread.ident}]")
         
         log_func = (
-            client.app.log if hasattr(
-                client.app, "log") else client.app.api_bridge.log
+            client.app.log_and_notify_frontend if hasattr(
+                client.app, "log_and_notify_frontend") else client.app.api_bridge.log_and_notify_frontend
         )
         user_data = (
             client.app.user_data if hasattr(
@@ -5780,7 +5784,7 @@ class Api:
         s, e = path[idx - 1], path[idx]
         return (s[0] + (e[0] - s[0]) * ratio, s[1] + (e[1] - s[1]) * ratio)
 
-    def auto_generate_path_with_api(self, api_path_coords, min_t_m, max_t_m, min_d_m):
+    def auto_generate_path_with_api(self, api_path_coords, min_t_m, max_t_m, min_d_m, *, apply_result=True):
         """接收地图供应商规划好的路径点，并生成模拟数据"""
         logging.info(
             f"API CALL: auto_generate_path_with_api with {len(api_path_coords)} points"
@@ -5789,7 +5793,7 @@ class Api:
             return {"success": False, "message": "请先选择任务"}
         run = self.all_run_data[self.current_run_idx]
 
-        self.log("收到地图路径规划结果，正在生成模拟数据...")
+        self.log_and_notify_frontend("收到地图路径规划结果，正在生成模拟数据...")
         logging.info(
             f"Auto-generating path from {len(api_path_coords)} map provider points."
         )
@@ -5822,7 +5826,7 @@ class Api:
             python_params=self.params,
             app_base_url=getattr(self, "_web_app_base_url", None),
             guard_label="SingleAutoGenerate",
-            log_func=self.log,
+            log_func=self.log_and_notify_frontend,
         )
 
         final_cumulative = [0.0]
@@ -5878,20 +5882,43 @@ class Api:
             if d_covered >= actual_total_dist:
                 break
 
-        run.run_coords = run_coords
-        run.total_run_time_s = t_elapsed
-        run.total_run_distance_m = d_covered
+        if apply_result:
+            run.run_coords = run_coords
+            run.total_run_time_s = t_elapsed
+            run.total_run_distance_m = d_covered
 
-        self.log("自动生成完成。")
+        self.log_and_notify_frontend("自动生成完成。")
         logging.info(
-            f"Auto-generated path: points={len(run.run_coords)}, dist={d_covered:.1f}, time={t_elapsed:.1f}"
+            f"Auto-generated path: points={len(run_coords)}, dist={d_covered:.1f}, time={t_elapsed:.1f}"
         )
         return {
             "success": True,
-            "run_coords": run.run_coords,
+            "run_coords": run_coords,
             "total_dist": d_covered,
             "total_time": t_elapsed,
         }
+
+    def _notify_route_planning_failure(self, result, account=None, execution_id=None):
+        summary = build_route_failure_summary(result)
+        public_message = generic_route_failure_message(summary["diagnostic_id"])
+        if account is not None:
+            try:
+                owner = getattr(self, "auth_username", None)
+                if owner and _main().auth_system.get_user_group(owner) in ("admin", "super_admin"):
+                    public_message = detailed_route_failure_message(summary)
+            except Exception:
+                pass
+        elif execution_id is not None:
+            manager = getattr(_main(), "background_task_manager", None)
+            if manager:
+                if manager.record_route_planning_failure(getattr(self, "_web_session_id", ""), summary, execution_id) is None:
+                    return summary
+        notifier = account if account is not None else self
+        notifier.log_and_notify_frontend(
+            "路径规划失败 [%s] [%s]: %s" % (summary["diagnostic_id"], summary["provider"], summary["message"]),
+            frontend_message=public_message, diagnostic_id=summary["diagnostic_id"],
+        )
+        return summary
 
     def auto_generate_path_with_provider(self, min_t_m, max_t_m, min_d_m):
         """按当前地图供应商规划路线，并生成模拟数据。"""
@@ -5905,38 +5932,48 @@ class Api:
 
         session_id = getattr(self, "_web_session_id", None)
         if not session_id:
-            return {"success": False, "message": "当前会话缺少浏览器会话ID，无法执行路径规划"}
+            summary = self._notify_route_planning_failure({"error": "当前会话缺少浏览器会话ID，无法执行路径规划"})
+            return {"success": False, "message": generic_route_failure_message(summary["diagnostic_id"]), "diagnostic_id": summary["diagnostic_id"], "_route_failure": summary}
 
-        self.log("正在按当前地图供应商进行路径规划...")
-        path_result = _main()._plan_route_path_with_provider_runtime(
-            session_id,
-            run.target_points,
-            python_params=self.params,
-            guard_label="SingleManualPathPlanning",
-            app_base_url=getattr(self, "_web_app_base_url", None),
-        )
+        self.log_and_notify_frontend("正在按当前地图供应商进行路径规划...")
+        try:
+            path_result = _main()._plan_route_path_with_provider_runtime(
+                session_id,
+                run.target_points,
+                python_params=self.params,
+                guard_label="SingleManualPathPlanning",
+                app_base_url=getattr(self, "_web_app_base_url", None),
+            )
+        except Exception as exc:
+            path_result = {"error": sanitize_diagnostic(exc)}
+        if not isinstance(path_result, dict):
+            path_result = {"error": "路径规划执行器返回无效结果"}
         notices = path_result.get("notices", [])
-        for notice in notices:
-            self.log(notice)
-
-        if "path" not in path_result:
+        if not path_result.get("path"):
+            summary = self._notify_route_planning_failure(path_result)
             return {
                 "success": False,
-                "message": path_result.get("error", "地图服务未能返回有效路径"),
+                "message": generic_route_failure_message(summary["diagnostic_id"]),
+                "diagnostic_id": summary["diagnostic_id"],
+                "_route_failure": summary,
                 "provider": path_result.get("provider"),
-                "notices": notices,
+                "notices": [],
             }
+        for notice in notices:
+            self.log_and_notify_frontend(sanitize_diagnostic(notice))
 
-        self.log(
+        self.log_and_notify_frontend(
             f"路径规划成功，共 {len(path_result['path'])} 个坐标点。正在生成模拟数据..."
         )
-        result = self.auto_generate_path_with_api(
-            path_result["path"],
-            min_t_m,
-            max_t_m,
-            min_d_m,
-        )
+        try:
+            result = self.auto_generate_path_with_api(path_result["path"], min_t_m, max_t_m, min_d_m)
+        except Exception as exc:
+            result = {"success": False, "message": sanitize_diagnostic(exc)}
+        if not result.get("success"):
+            summary = self._notify_route_planning_failure({**path_result, "error": result.get("message", "生成模拟轨迹失败")})
+            return {"success": False, "message": generic_route_failure_message(summary["diagnostic_id"]), "diagnostic_id": summary["diagnostic_id"], "_route_failure": summary}
         result["provider"] = path_result.get("provider")
+        result["diagnostic_id"] = path_result.get("diagnostic_id")
         result["notices"] = notices
         return result
 
@@ -6041,18 +6078,26 @@ class Api:
             logging.info(
                 f"Starting 'run all' process. Queue={list(queue)}, auto-generate={auto_generate}"
             )
+            task_manager = getattr(_main(), "background_task_manager", None)
+            route_session_id = getattr(self, "_web_session_id", "")
+            diagnostic_execution_id = task_manager.begin_route_planning_batch(
+                route_session_id,
+                task_status={"status": "running", "total_tasks": len(queue), "start_time": time.time()},
+            ) if task_manager and route_session_id else None
             run_all_thread = threading.Thread(
                 target=self._run_with_single_school_account_execution,
                 args=(
                     execution_token,
                     self._run_all_tasks_manager,
-                    (queue, auto_generate),
+                    (queue, auto_generate, diagnostic_execution_id),
                 ),
                 daemon=True,
             )
             try:
                 run_all_thread.start()
             except Exception:
+                if task_manager and route_session_id:
+                    task_manager.clear_route_planning_failures(route_session_id)
                 self._release_single_school_account_execution(execution_token)
                 self.stop_run_flag.set()
                 raise
@@ -6060,9 +6105,42 @@ class Api:
         logging.info(f"[Thread Creation] Run_all thread started: {run_all_thread.name} (id={run_all_thread.ident})")
         return {"success": True}
 
-    def _run_all_tasks_manager(self, queue: collections.deque, auto_gen_enabled: bool):
-        """管理“执行所有”任务队列的线程函数"""
-        self.log("开始执行所有任务。")
+    def _run_all_tasks_manager(self, queue: collections.deque, auto_gen_enabled: bool, execution_id=None):
+        """管理队列生命周期，使独立执行线程的失败也可通过状态接口查询。"""
+        manager = getattr(_main(), "background_task_manager", None)
+        session_id = getattr(self, "_web_session_id", "")
+        if execution_id is None and manager and session_id:
+            execution_id = manager.begin_route_planning_batch(
+                session_id,
+                task_status={"status": "running", "total_tasks": len(queue), "start_time": time.time()},
+            )
+        status = "error"
+        try:
+            executed = self._execute_all_task_queue(queue, auto_gen_enabled, execution_id)
+            failures = manager.get_route_planning_failures(session_id) if manager and session_id else []
+            status = "stopped" if self.stop_run_flag.is_set() else "error" if not executed and failures else "completed"
+        except Exception as exc:
+            self._notify_route_planning_failure({"error": sanitize_diagnostic(exc)}, execution_id=execution_id)
+        finally:
+            current = not manager or execution_id is None or manager.update_route_planning_batch_status(
+                session_id, execution_id, {"status": status, "end_time": time.time()}
+            )
+            if manager and execution_id is not None:
+                with manager.lock:
+                    batch = manager.route_failure_batches.get(session_id)
+                    current = bool(batch and batch[0] is execution_id)
+                    if current:
+                        self.stop_run_flag.set()
+            elif current:
+                self.stop_run_flag.set()
+            if current:
+                if getattr(self, "window", None):
+                    self.window.evaluate_js("onAllRunsToggled(false)")
+
+    def _execute_all_task_queue(self, queue: collections.deque, auto_gen_enabled: bool, execution_id=None):
+        manager = getattr(_main(), "background_task_manager", None)
+        session_id = getattr(self, "_web_session_id", "")
+        self.log_and_notify_frontend("开始执行所有任务。")
         if self.window:
             self.window.evaluate_js("onAllRunsToggled(true)")
         is_first_task = True
@@ -6070,6 +6148,11 @@ class Api:
         tasks_executed_count = 0
 
         while queue:
+            if manager and execution_id is not None:
+                with manager.lock:
+                    batch = manager.route_failure_batches.get(session_id)
+                    if not batch or batch[0] is not execution_id:
+                        return
             if self.stop_run_flag.is_set():
                 break
 
@@ -6082,7 +6165,7 @@ class Api:
             time.sleep(1.2)
 
             if not run_data.run_coords and auto_gen_enabled:
-                self.log(f"正在为任务 '{run_data.run_name}' 自动生成路线...")
+                self.log_and_notify_frontend(f"正在为任务 '{run_data.run_name}' 自动生成路线...")
                 logging.info(
                     f"Auto-generating path for task in 'run all' mode: {run_data.run_name}"
                 )
@@ -6090,7 +6173,7 @@ class Api:
                 if not run_data.details_fetched:
                     details_resp = self.get_task_details(idx)
                     if not details_resp.get("success"):
-                        self.log("获取详情失败，跳过。")
+                        self.log_and_notify_frontend("获取详情失败，跳过。")
                         logging.warning(
                             f"Skipping task {run_data.run_name}: failed to get details."
                         )
@@ -6098,17 +6181,17 @@ class Api:
                     run_data = self.all_run_data[idx]
 
                 if not run_data.target_points:
-                    self.log(f"跳过: 任务 '{run_data.run_name}' 无打卡点")
+                    self.log_and_notify_frontend(f"跳过: 任务 '{run_data.run_name}' 无打卡点")
                     logging.warning(
                         f"[Task Skipped] No checkpoints for task {run_data.run_name}, cannot auto-generate path."
                     )
                     continue
 
                 try:
-                    self.log("正在按当前地图供应商进行路径规划...")
+                    self.log_and_notify_frontend("正在按当前地图供应商进行路径规划...")
                     session_id = getattr(self, "_web_session_id", None)
                     if not session_id:
-                        self.log("错误: 当前会话缺少浏览器会话ID，无法执行路径规划。")
+                        self._notify_route_planning_failure({"error": "当前会话缺少浏览器会话ID"}, execution_id=execution_id)
                         continue
 
                     waypoints = run_data.target_points
@@ -6119,19 +6202,14 @@ class Api:
                         guard_label="SingleRunPathPlanning",
                         app_base_url=getattr(self, "_web_app_base_url", None),
                     )
-                    for notice in path_result.get("notices", []):
-                        self.log(notice)
-
-                    if "path" not in path_result:
-                        error_msg = path_result.get("error", "超时或未知错误")
-                        self.log(f"路径规划失败或超时：{error_msg}，跳过此任务。")
-                        logging.warning(
-                            f"Path planning failed for task {run_data.run_name}: {error_msg}"
-                        )
+                    if not isinstance(path_result, dict) or not path_result.get("path"):
+                        self._notify_route_planning_failure(path_result, execution_id=execution_id)
                         continue
+                    for notice in path_result.get("notices", []):
+                        self.log_and_notify_frontend(sanitize_diagnostic(notice))
 
                     api_path_coords = path_result["path"]
-                    self.log(
+                    self.log_and_notify_frontend(
                         f"路径规划成功，共 {len(api_path_coords)} 个点，正在生成模拟数据..."
                     )
 
@@ -6141,35 +6219,36 @@ class Api:
                         p.get("min_time_m", 20),
                         p.get("max_time_m", 30),
                         p.get("min_dist_m", 2000),
+                        apply_result=False,
                     )
                     if not gen_resp.get("success"):
-                        self.log(
-                            f"自动生成失败：{gen_resp.get('message', '未知错误')}，跳过。"
-                        )
-                        logging.warning(
-                            f"Auto-generation failed for task {run_data.run_name}: {gen_resp}"
-                        )
+                        self._notify_route_planning_failure({**path_result, "error": gen_resp.get("message", "生成轨迹失败")}, execution_id=execution_id)
                         continue
 
-                    run_data.run_coords = gen_resp["run_coords"]
-                    run_data.total_run_distance_m = gen_resp["total_dist"]
-                    run_data.total_run_time_s = gen_resp["total_time"]
+                    if manager and execution_id is not None:
+                        with manager.lock:
+                            batch = manager.route_failure_batches.get(session_id)
+                            if not batch or batch[0] is not execution_id:
+                                return
+                            run_data.run_coords = gen_resp["run_coords"]
+                            run_data.total_run_distance_m = gen_resp["total_dist"]
+                            run_data.total_run_time_s = gen_resp["total_time"]
+                    else:
+                        run_data.run_coords = gen_resp["run_coords"]
+                        run_data.total_run_distance_m = gen_resp["total_dist"]
+                        run_data.total_run_time_s = gen_resp["total_time"]
 
                 except Exception as e:
-                    self.log(f"自动生成失败，跳过：{e}")
-                    logging.error(
-                        f"Auto-generation failed for {run_data.run_name}: {e}",
-                        exc_info=True,
-                    )
+                    self._notify_route_planning_failure({"error": sanitize_diagnostic(e)}, execution_id=execution_id)
                     continue
 
-                self.log("路径已生成，正在更新界面...")
+                self.log_and_notify_frontend("路径已生成，正在更新界面...")
                 if self.window:
                     self.window.evaluate_js(f"forceRefreshTaskUI({idx})")
                 time.sleep(1.0)
 
             if not run_data.run_coords:
-                self.log(f"任务 '{run_data.run_name}' 无可用路线，跳过。")
+                self.log_and_notify_frontend(f"任务 '{run_data.run_name}' 无可用路线，跳过。")
                 logging.warning(
                     f"Skipping task {run_data.run_name}: no route available."
                 )
@@ -6179,7 +6258,7 @@ class Api:
                 wait_time = random.uniform(
                     self.params["task_gap_min_s"], self.params["task_gap_max_s"]
                 )
-                self.log(f"任务间等待中...")
+                self.log_and_notify_frontend(f"任务间等待中...")
                 logging.info(f"等待 {wait_time:.1f}秒 后开始执行下一个任务")
                 if self.stop_run_flag.wait(timeout=wait_time):
                     break
@@ -6195,13 +6274,11 @@ class Api:
             task_finished_event.wait()
 
         if tasks_executed_count == 0:
-            self.log("所有任务均被跳过，未执行任何操作。")
+            self.log_and_notify_frontend("所有任务均被跳过，未执行任何操作。")
         else:
-            self.log("所有任务执行结束。")
+            self.log_and_notify_frontend("所有任务执行结束。")
 
-        self.stop_run_flag.set()
-        if self.window:
-            self.window.evaluate_js("onAllRunsToggled(false)")
+        return tasks_executed_count
 
     def get_task_history(self, index):
         """获取任务的历史跑步记录"""
@@ -6211,7 +6288,7 @@ class Api:
         if not (0 <= index < len(self.all_run_data)):
             return {"success": False, "message": "任务索引无效"}
         run_data = self.all_run_data[index]
-        self.log("正在获取历史记录...")
+        self.log_and_notify_frontend("正在获取历史记录...")
         logging.debug(f"正在获取任务的历史记录: 任务名称={run_data.run_name}")
         resp = self.api_client.get_run_history_list(
             self.user_data.id, run_data.errand_schedule
@@ -6240,7 +6317,7 @@ class Api:
                         "trid": rec.get("trid"),
                     }
                 )
-            self.log(f"历史记录已加载。")
+            self.log_and_notify_frontend(f"历史记录已加载。")
             logging.debug(f"已成功加载 {len(records)} 条历史记录")
             return {"success": True, "history": history_list}
         return {"success": False, "message": "获取历史记录失败"}
@@ -6250,7 +6327,7 @@ class Api:
         logging.info(
             f"API调用: get_historical_track - 根据轨迹ID获取历史轨迹，trid: {trid}"
         )
-        self.log("正在加载历史轨迹...")
+        self.log_and_notify_frontend("正在加载历史轨迹...")
         logging.debug(f"正在加载历史运动轨迹数据，轨迹ID: trid={trid}")
         resp = self.api_client.get_history_track_by_trid(trid)
         if resp and resp.get("success"):
@@ -6265,10 +6342,10 @@ class Api:
                         coords.append((lon, lat))
                 except (json.JSONDecodeError, ValueError):
                     continue
-            self.log("历史轨迹加载成功。")
+            self.log_and_notify_frontend("历史轨迹加载成功。")
             logging.debug(f"历史轨迹数据加载成功，包含 {len(coords)} 个坐标点")
             return {"success": True, "coords": coords}
-        self.log("加载历史轨迹失败。")
+        self.log_and_notify_frontend("加载历史轨迹失败。")
         logging.warning("加载历史运动轨迹数据失败")
         return {"success": False, "message": "加载历史轨迹失败"}
 
@@ -6368,7 +6445,7 @@ class Api:
                                         # 启用成功后，确保刷新线程正在运行
                                         self._ensure_account_refresh_thread(
                                             account_id)
-                                        self.log("自动签到已启用，配置已保存到JSON文件。")
+                                        self.log_and_notify_frontend("自动签到已启用，配置已保存到JSON文件。")
                                         logging.info(
                                             f"[参数更新] 已启用自动签到 - "
                                             f"学校账号: {school_username}, "
@@ -6379,14 +6456,14 @@ class Api:
                                         # 启用失败，记录错误日志
                                         logging.error(
                                             f"[参数更新] 启用自动签到失败 - 学校账号: {school_username}")
-                                        self.log("自动签到启用失败，请检查日志。")
+                                        self.log_and_notify_frontend("自动签到启用失败，请检查日志。")
                                 else:
                                     # 没有会话UUID，无法启用自动签到
                                     logging.warning(
                                         f"[参数更新] 无法启用自动签到：未找到会话UUID - "
                                         f"学校账号: {school_username}"
                                     )
-                                    self.log("自动签到启用失败：未找到会话信息。")
+                                    self.log_and_notify_frontend("自动签到启用失败：未找到会话信息。")
                             else:  # 如果禁用自动签到
                                 # 调用JSON配置函数禁用自动签到
                                 if _main()._disable_auto_attendance(school_username):
@@ -6395,7 +6472,7 @@ class Api:
                                         if account_id in self.account_refresh_threads:
                                             # 从线程字典中移除，线程会自动检测配置变化并退出
                                             del self.account_refresh_threads[account_id]
-                                            self.log("自动签到已禁用，刷新线程将停止。")
+                                            self.log_and_notify_frontend("自动签到已禁用，刷新线程将停止。")
                                             logging.info(
                                                 f"[参数更新] 已禁用自动签到 - "
                                                 f"学校账号: {school_username}, "
@@ -6405,15 +6482,15 @@ class Api:
                                     # 禁用失败，记录错误日志
                                     logging.error(
                                         f"[参数更新] 禁用自动签到失败 - 学校账号: {school_username}")
-                                    self.log("自动签到禁用失败，请检查日志。")
+                                    self.log_and_notify_frontend("自动签到禁用失败，请检查日志。")
                         else:
                             # 用户未登录，无法更新自动签到配置
                             logging.warning("[参数更新] 无法更新自动签到配置：用户未登录或数据不完整")
-                            self.log("自动签到更新失败：用户未登录。")
+                            self.log_and_notify_frontend("自动签到更新失败：用户未登录。")
                     except Exception as e:
                         # 捕获所有异常，避免影响其他参数的更新
                         logging.error(f"[参数更新] 更新自动签到配置失败: {e}", exc_info=True)
-                        self.log(f"自动签到更新失败: {e}")
+                        self.log_and_notify_frontend(f"自动签到更新失败: {e}")
 
                 # [新版] 当 auto_attendance_refresh_s 参数改变时，重启相关线程
                 # 刷新间隔时间变化不需要修改JSON配置，只需要重启线程
@@ -6429,7 +6506,7 @@ class Api:
                             if _main()._is_auto_attendance_enabled(school_username):
                                 # 如果启用了自动签到，重启刷新线程以应用新的刷新间隔
                                 self._ensure_account_refresh_thread(account_id)
-                                self.log("自动签到刷新间隔已更新，刷新线程已重启。")
+                                self.log_and_notify_frontend("自动签到刷新间隔已更新，刷新线程已重启。")
                                 logging.info(
                                     f"[参数更新] 已更新刷新间隔为 {target_params[key]} 秒，"
                                     f"账号 {account_id} 刷新线程已重启"
@@ -6753,7 +6830,7 @@ class Api:
             self.all_run_data = [debug_run]
             self.current_run_idx = 0
 
-            self.log("离线数据已导入。")
+            self.log_and_notify_frontend("离线数据已导入。")
             logging.info(f"离线数据导入成功: {debug_run.run_name}")
 
             tasks_for_js = [r.__dict__.copy() for r in self.all_run_data]
@@ -6766,7 +6843,7 @@ class Api:
                 "userInfo": self._get_full_user_info_dict(),
             }
         except Exception as e:
-            self.log("导入失败。")
+            self.log_and_notify_frontend("导入失败。")
             logging.error(f"导入失败: {e}", exc_info=True)
             return {"success": False, "message": f"导入失败: {e}"}
 
@@ -6887,7 +6964,7 @@ class Api:
                 "enter_multi_account_mode pre-stop single failed (non-fatal)."
             )
 
-        self.log("进入多账号模式。")
+        self.log_and_notify_frontend("进入多账号模式。")
         self.is_multi_account_mode = True
         self._update_multi_global_buttons()
 
@@ -6971,7 +7048,7 @@ class Api:
                     logging.error(
                         f"[多账号模式] 为账号 {username} 创建刷新线程失败: {e}", exc_info=True)
         except Exception as e:
-            self.log(f"启动多账号监控线程失败: {e}")
+            self.log_and_notify_frontend(f"启动多账号监控线程失败: {e}")
             logging.error(f"[多账号模式] 启动监控线程失败: {e}", exc_info=True)
 
         if session_id:
@@ -7067,7 +7144,7 @@ class Api:
 
         self._init_state_variables()
         self._load_global_config()
-        self.log("已退出多账号模式。")
+        self.log_and_notify_frontend("已退出多账号模式。")
 
         session_id = getattr(self, "_web_session_id", None)
         if session_id:
@@ -7105,7 +7182,7 @@ class Api:
         self.path_gen_callbacks.clear()
 
         self.is_multi_account_mode = False
-        self.log("进入单账号模式。")
+        self.log_and_notify_frontend("进入单账号模式。")
         return {"success": True}
 
     # def exit_single_account_mode(self):
@@ -7226,7 +7303,7 @@ class Api:
         """
         模式一：从配置文件加载账号
         """
-        self.log("正在从配置文件加载账号列表...")
+        self.log_and_notify_frontend("正在从配置文件加载账号列表...")
 
         # 获取用户权限组，判断是否为管理员
         if hasattr(_main(), "auth_system") and _main().auth_system:
@@ -7242,11 +7319,11 @@ class Api:
         if is_admin:
             # 管理员：遍历所有 school_accounts 并兼容 INI 格式
             # 使用 _load_user_school_accounts 的逻辑，它已经处理了管理员权限聚合
-            self.log("检测到管理员权限，加载所有用户的账号...")
+            self.log_and_notify_frontend("检测到管理员权限，加载所有用户的账号...")
             users = self._load_user_school_accounts(auth_username)
         else:
             # 普通用户：仅加载自己的账号
-            self.log(f"检测到普通用户权限，仅加载 {auth_username} 的账号...")
+            self.log_and_notify_frontend(f"检测到普通用户权限，仅加载 {auth_username} 的账号...")
             file_path = self._get_user_accounts_file(auth_username)
 
             if os.path.exists(file_path):
@@ -7311,9 +7388,9 @@ class Api:
                     elif add_result and add_result.get("success"):
                         loaded_count += 1
 
-        self.log(f"已加载 {loaded_count} 个账号。")
+        self.log_and_notify_frontend(f"已加载 {loaded_count} 个账号。")
         if accounts_missing_password:
-            self.log(
+            self.log_and_notify_frontend(
                 f"发现 {len(accounts_missing_password)} 个账号缺少密码，等待用户手动添加。"
             )
         self._update_multi_global_buttons()
@@ -7449,9 +7526,9 @@ class Api:
                 if tag is not None:
                     acc.tag = str(tag)
                     self._save_account_tag(username, acc.tag)
-                    self.log(f"已更新账号 [{username}] 的标记：{acc.tag}。")
+                    self.log_and_notify_frontend(f"已更新账号 [{username}] 的标记：{acc.tag}。")
 
-                self.log(f"账号 [{username}] 已存在，未重复添加。")
+                self.log_and_notify_frontend(f"账号 [{username}] 已存在，未重复添加。")
                 logging.info(
                     f"[{username}] 账号已存在且状态正常，跳过重复添加"
                     f"（不清空会话、不重新登录）"
@@ -7472,7 +7549,7 @@ class Api:
                 reason_text = (
                     "密码需要更新" if password_changed else "账号状态异常需要重新登录"
                 )
-                self.log(
+                self.log_and_notify_frontend(
                     f"账号 [{username}] 正在执行任务，{reason_text}，"
                     f"本次未覆盖。请先停止该账号的任务后重试。"
                 )
@@ -7496,22 +7573,22 @@ class Api:
             # 落盘统一走 _commit_pending_account_password/_rollback_pending_account_password。
             if password_changed:
                 self._stage_pending_account_password(acc, password)
-                self.log(
+                self.log_and_notify_frontend(
                     f"账号 [{username}] 新密码已暂存，将重新登录验证；"
                     f"验证通过后才写入配置。"
                 )
             elif password:
                 # 状态异常的账号（本来就没有可用密码）：直接用新密码去试
                 acc.password = password
-                self.log(f"已更新账号 [{username}] 的密码。")
+                self.log_and_notify_frontend(f"已更新账号 [{username}] 的密码。")
 
             if tag is not None:
                 acc.tag = str(tag)
                 self._save_account_tag(username, acc.tag)
-                self.log(f"已更新账号 [{username}] 的标记：{acc.tag}。")
+                self.log_and_notify_frontend(f"已更新账号 [{username}] 的标记：{acc.tag}。")
 
             if not password_changed:
-                self.log(
+                self.log_and_notify_frontend(
                     f"账号 [{username}] 处于异常状态"
                     f"（首次验证未通过或会话已失效），将重新登录。"
                 )
@@ -7572,7 +7649,7 @@ class Api:
                 del self.accounts[username]
             except Exception:
                 pass
-            self.log(f"账号 {username} 缺少密码，已弹出输入框以完善密码。")
+            self.log_and_notify_frontend(f"账号 {username} 缺少密码，已弹出输入框以完善密码。")
             return {
                 "success": False,
                 "message": "缺少密码",
@@ -7587,7 +7664,7 @@ class Api:
         # 如果用户提供了密码，则需要进行首次登录验证以确认凭据有效性
         if password:
             needs_verification = True
-            self.log(f"账号 {username} 提供了密码，标记为需要首次登录验证。")
+            self.log_and_notify_frontend(f"账号 {username} 提供了密码，标记为需要首次登录验证。")
 
         if needs_verification:
             self.accounts[username].is_first_login_verified = False
@@ -7611,7 +7688,7 @@ class Api:
             except Exception:
                 logging.warning(f"保存配置失败（将继续运行）：{traceback.format_exc()}")
 
-        self.log(f"已添加账号: {username}")
+        self.log_and_notify_frontend(f"已添加账号: {username}")
         self._update_multi_global_buttons()
 
         session_id = getattr(self, "_web_session_id", None)
@@ -7710,7 +7787,7 @@ class Api:
         self._save_config(acc.username, acc.password, acc.device_ua)
         setattr(acc, "_pending_password", None)
         setattr(acc, "_password_before_change", None)
-        acc.log("新密码登录验证成功，已写入配置。")
+        acc.log_and_notify_frontend("新密码登录验证成功，已写入配置。")
 
     def _rollback_pending_account_password(self, acc):
         """登录失败：撤销内存里的新密码，恢复成原来可用的密码。"""
@@ -7720,7 +7797,7 @@ class Api:
         acc.password = previous
         setattr(acc, "_pending_password", None)
         setattr(acc, "_password_before_change", None)
-        acc.log("新密码登录验证失败，已恢复原有密码。")
+        acc.log_and_notify_frontend("新密码登录验证失败，已恢复原有密码。")
 
     def _reset_account_session_for_relogin(self, acc, username=None):
         """清空账号的会话状态并另起线程重新登录。
@@ -7781,7 +7858,7 @@ class Api:
 
             # 从账号字典中删除
             del self.accounts[username]
-            self.log(f"已移除账号: {username}")
+            self.log_and_notify_frontend(f"已移除账号: {username}")
 
         self._update_multi_global_buttons()
         if hasattr(self, "_web_session_id") and self._web_session_id:
@@ -7796,10 +7873,10 @@ class Api:
         )
 
         if not self.accounts:
-            self.log("账号列表为空，无需刷新。")
+            self.log_and_notify_frontend("账号列表为空，无需刷新。")
             return {"success": True}
 
-        self.log("正在刷新所有账号状态...")
+        self.log_and_notify_frontend("正在刷新所有账号状态...")
         for acc in self.accounts.values():
             if self._is_multi_account_execution_active(acc):
                 continue
@@ -7895,7 +7972,7 @@ class Api:
                             self._update_account_status_js(
                                 acc, status_text=f"验证失败: {fail_msg}"
                             )
-                        acc.log(f"首次登录验证失败: {fail_msg}")
+                        acc.log_and_notify_frontend(f"首次登录验证失败: {fail_msg}")
                     else:
                         if not preserve_now:
                             # 已验证过的账号刷新失败，也显示具体原因
@@ -7922,7 +7999,7 @@ class Api:
                     try:
                         self._save_config(
                             acc.username, acc.password, acc.device_ua)
-                        acc.log(f"首次登录验证成功，密码已保存到配置文件。")
+                        acc.log_and_notify_frontend(f"首次登录验证成功，密码已保存到配置文件。")
                     except Exception as e:
                         logging.error(f"保存密码到配置文件失败: {e}", exc_info=True)
                 else:
@@ -7945,7 +8022,7 @@ class Api:
 
             tasks_refreshed = self._multi_fetch_and_summarize_tasks(acc)
             if tasks_refreshed is False:
-                acc.log("获取任务列表失败，保留上次成功获取的任务状态。")
+                acc.log_and_notify_frontend("获取任务列表失败，保留上次成功获取的任务状态。")
                 if not preserve_now:
                     self._update_account_status_js(
                         acc, status_text="刷新失败: 获取任务列表失败"
@@ -7995,7 +8072,7 @@ class Api:
                         acc, status_text=final_status, summary=acc.summary
                     )
 
-            acc.log("状态刷新完成。")
+            acc.log_and_notify_frontend("状态刷新完成。")
 
             # 登录成功后，如果启用了自动签到，确保有刷新线程
             # 从JSON配置文件读取启用状态
@@ -8057,7 +8134,7 @@ class Api:
                 del self.accounts[username]
                 removed_count += 1
 
-        self.log(f"移除了 {removed_count} 个选定账号。")
+        self.log_and_notify_frontend(f"移除了 {removed_count} 个选定账号。")
         self._update_multi_global_buttons()
         if hasattr(self, "_web_session_id") and self._web_session_id:
             _main().save_session_state(self._web_session_id, self, force_save=True)
@@ -8073,7 +8150,7 @@ class Api:
 
         count = len(self.accounts)
         self.accounts.clear()
-        self.log(f"已移除全部 {count} 个账号。")
+        self.log_and_notify_frontend(f"已移除全部 {count} 个账号。")
         self._update_multi_global_buttons()
         if hasattr(self, "_web_session_id") and self._web_session_id:
             _main().save_session_state(self._web_session_id, self, force_save=True)
@@ -8197,7 +8274,7 @@ class Api:
             file_content = base64.b64encode(file_bytes).decode("utf-8")
             filename = f"账号导入模板_{datetime.datetime.now().strftime('%Y%m%d')}.xlsx"
 
-            self.log(f"模板已生成：{filename}")
+            self.log_and_notify_frontend(f"模板已生成：{filename}")
             return {
                 "success": True,
                 "filename": filename,
@@ -8205,7 +8282,7 @@ class Api:
                 "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             }
         except Exception as e:
-            self.log(f"模板生成失败：{e}")
+            self.log_and_notify_frontend(f"模板生成失败：{e}")
             logging.error(
                 f"Template generation failed: {traceback.format_exc()}")
             return {"success": False, "message": f"生成失败: {e}"}
@@ -8412,7 +8489,7 @@ class Api:
             summary["accounts"] = self.multi_get_all_accounts_status().get(
                 "accounts", []
             )
-            self.log(summary["message"])
+            self.log_and_notify_frontend(summary["message"])
             logging.info(
                 f"导入完成：共 {summary['total_rows']} 行，"
                 f"新增 {summary['imported_count']}，"
@@ -8424,7 +8501,7 @@ class Api:
             return summary
 
         except Exception as e:
-            self.log(f"导入失败: {e}")
+            self.log_and_notify_frontend(f"导入失败: {e}")
             logging.error(f"导入多账号配置失败，详细错误信息: {traceback.format_exc()}")
             return {"success": False, "message": f"导入失败: {e}"}
 
@@ -8555,7 +8632,7 @@ class Api:
             file_content = base64.b64encode(output.read()).decode("utf-8")
             filename = f"跑步任务汇总_{datetime.datetime.now().strftime('%Y%m%d')}.xlsx"
 
-            self.log(f"汇总信息已导出到 {filename}")
+            self.log_and_notify_frontend(f"汇总信息已导出到 {filename}")
             return {
                 "success": True,
                 "filename": filename,
@@ -8563,7 +8640,7 @@ class Api:
                 "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             }
         except Exception as e:
-            self.log(f"导出失败: {e}")
+            self.log_and_notify_frontend(f"导出失败: {e}")
             logging.error(
                 f"Export accounts summary failed: {traceback.format_exc()}")
             return {"success": False, "message": f"导出失败: {e}"}
@@ -8604,7 +8681,7 @@ class Api:
                 # 改参数都不该顺手把内存里的密码写进凭据库。
                 # 密码只在登录成功后由 _multi_refresh_worker_unlocked 落盘。
                 self._save_config(username)
-                self.log(f"已更新账号 [{username}] 的参数 {key}。")
+                self.log_and_notify_frontend(f"已更新账号 [{username}] 的参数 {key}。")
 
                 # 当 auto_attendance_enabled 参数改变时，更新JSON配置文件
                 # 多账号模式下也需要使用JSON配置管理
@@ -8928,7 +9005,7 @@ class Api:
             if overdue_count > 0 and not self._overdue_bypass_allowed(
                 bypass_overdue
             ):
-                self.log(f"[欠费检查] 账号 {username} 存在欠费 ({overdue_count} 次)，拒绝启动任务")
+                self.log_and_notify_frontend(f"[欠费检查] 账号 {username} 存在欠费 ({overdue_count} 次)，拒绝启动任务")
                 return {
                     "success": False,
                     "message": "有账号存在欠费，请先缴费",
@@ -8946,7 +9023,7 @@ class Api:
 
         acc = self.accounts[username]
         if self._is_multi_account_execution_active(acc):
-            self.log(f"账号 {username} 已在运行中。")
+            self.log_and_notify_frontend(f"账号 {username} 已在运行中。")
             return {"success": False, "message": "该账号已在运行"}
 
         # 步骤3：原子占用该账号的执行槽，避免双击或并发 API 启动多个线程
@@ -8955,9 +9032,9 @@ class Api:
             0,
             bool(run_only_incomplete),
         ):
-            self.log(f"账号 {username} 正在执行其它操作。")
+            self.log_and_notify_frontend(f"账号 {username} 正在执行其它操作。")
             return {"success": False, "message": "该账号正在运行或刷新，请稍后重试"}
-        self.log(f"已启动账号: {username}")
+        self.log_and_notify_frontend(f"已启动账号: {username}")
         self._update_multi_global_buttons()
         return {"success": True}
 
@@ -8971,7 +9048,7 @@ class Api:
 
         if self._is_multi_account_execution_active(acc):
             acc.stop_event.set()
-            self.log(f"已向账号 {username} 发送停止信号。")
+            self.log_and_notify_frontend(f"已向账号 {username} 发送停止信号。")
             self._update_account_status_js(acc, status_text="正在停止...")
             self._update_multi_global_buttons()
 
@@ -9034,7 +9111,7 @@ class Api:
         """
         # 步骤1：检查账号列表是否为空
         if not self.accounts:
-            self.log("账号列表为空，无法开始。请先添加账号。")
+            self.log_and_notify_frontend("账号列表为空，无法开始。请先添加账号。")
             return {
                 "success": False,
                 "message": "账号列表为空，无法开始。请先添加账号。",
@@ -9055,13 +9132,13 @@ class Api:
                         "overdue_count": overdue_count
                     })
         else:
-            self.log("[欠费检查] 当前为免费模式，跳过欠费拦截。")
+            self.log_and_notify_frontend("[欠费检查] 当前为免费模式，跳过欠费拦截。")
 
         # 如果发现任何账号有欠费，拒绝启动所有任务（拿到授权并点了强制执行
         # 的用户放行，且不再跳过欠费账号）。
         force_allowed = self._overdue_bypass_allowed(bypass_overdue)
         if overdue_accounts_list and not skip_overdue and not force_allowed:
-            self.log(
+            self.log_and_notify_frontend(
                 f"[欠费检查] 发现 {len(overdue_accounts_list)} 个账号存在欠费，拒绝启动任务"
             )
             return {
@@ -9093,7 +9170,7 @@ class Api:
                 "overdue_accounts": overdue_accounts_list,
             }
         if skipped_overdue_usernames:
-            self.log(
+            self.log_and_notify_frontend(
                 f"[欠费检查] 已跳过 {len(skipped_overdue_usernames)} 个欠费账号，"
                 "继续启动其余账号。"
             )
@@ -9112,7 +9189,7 @@ class Api:
             return {"success": False, "message": "任务已在运行中"}
 
         # 步骤4：准备启动所有账号
-        self.log("开始执行所有账号...")
+        self.log_and_notify_frontend("开始执行所有账号...")
         self._update_multi_global_buttons()
         if self.multi_run_stop_flag.is_set():
             self.multi_run_stop_flag.clear()
@@ -9145,7 +9222,7 @@ class Api:
             # 清空“已停止”标志后一个账号都没真正启动：若当前也没有账号在跑，
             # 必须把标志补回去，否则空闲会话会被会话不活跃监控永久保活。
             self._mark_multi_account_run_stopped_if_idle()
-            self.log("当前没有可启动的账号任务。")
+            self.log_and_notify_frontend("当前没有可启动的账号任务。")
             return {"success": False, "message": "当前没有可启动的账号任务。"}
 
         self._update_multi_global_buttons()
@@ -9163,19 +9240,19 @@ class Api:
         # 停止后清掉“此次不计费”状态，下一次启动必须重新明确申请豁免。
         self.waive_charge_active = False
         if not self.accounts:
-            self.log("当前无账号，无需停止。")
+            self.log_and_notify_frontend("当前无账号，无需停止。")
             self.multi_run_stop_flag.set()
             return {"success": False, "message": "当前无账号，无需停止。"}
 
         if self.multi_run_stop_flag.is_set():
             return {"success": True}
 
-        self.log("正在发送停止信号...")
+        self.log_and_notify_frontend("正在发送停止信号...")
         self.multi_run_stop_flag.set()
         for acc in self.accounts.values():
             acc.stop_event.set()
         self._update_multi_global_buttons()
-        self.log("所有任务将在当前步骤完成后停止。")
+        self.log_and_notify_frontend("所有任务将在当前步骤完成后停止。")
         self._update_multi_global_buttons()
 
         time.sleep(1)
@@ -9486,7 +9563,7 @@ class Api:
                 return None
             resp = acc.api_client.get_run_list(acc.user_data.id, offset)
             if not resp or not resp.get("success"):
-                acc.log("获取任务列表失败。")
+                acc.log_and_notify_frontend("获取任务列表失败。")
                 return False
 
             tasks = resp.get("data", {}).get("errandList", [])
@@ -9577,7 +9654,7 @@ class Api:
         text = self._format_multi_task_summary(acc)
         message = f"{prefix}: {text}"
         try:
-            acc.log(message)
+            acc.log_and_notify_frontend(message)
         except Exception:  # nosec B110 - 日志失败不能影响主流程
             pass
         logging.log(level, f"[{getattr(acc, 'username', '?')}] {message}")
@@ -9699,7 +9776,7 @@ class Api:
             run_data.errand_id, acc.user_data.id, run_data.errand_schedule
         )
         if not (details_resp and details_resp.get("success")):
-            acc.log(f"获取任务详情失败，跳过。")
+            acc.log_and_notify_frontend(f"获取任务详情失败，跳过。")
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
 
         details = details_resp.get("data", {}).get("errandDetail", {})
@@ -9710,27 +9787,22 @@ class Api:
         ]
         if not waypoints:
             task_name = details.get("title", run_data.run_name)
-            acc.log(f"跳过: 任务 '{task_name}' 无打卡点")
+            acc.log_and_notify_frontend(f"跳过: 任务 '{task_name}' 无打卡点")
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
         run_data.target_points = waypoints
 
         api_path_coords = None
 
         if not _main().chrome_pool:
-            acc.log("错误: Chrome浏览器池不可用，无法进行路径规划。")
+            self._notify_route_planning_failure({"error": "Chrome浏览器池不可用，无法进行路径规划"}, account=acc)
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
 
         try:
-            acc.log("正在按当前地图供应商进行路径规划...")
+            acc.log_and_notify_frontend("正在按当前地图供应商进行路径规划...")
 
             session_id = getattr(self, "_web_session_id", None)
             if not session_id:
-                acc.log(
-                    "错误: 无法获取会话ID（_web_session_id 属性不存在），跳过任务。"
-                )
-                logging.error(
-                    f"多账号模式缺少 _web_session_id 属性，账号: {acc.username}"
-                )
+                self._notify_route_planning_failure({"error": "无法获取浏览器会话ID"}, account=acc)
                 return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
 
             path_coords = _main()._plan_route_path_with_provider_runtime(
@@ -9740,29 +9812,21 @@ class Api:
                 guard_label="MultiAccountPathPlanning",
                 app_base_url=getattr(self, "_web_app_base_url", None),
             )
-            for notice in path_coords.get("notices", []):
-                acc.log(notice)
-
-
-            if path_coords and "path" in path_coords:
+            if path_coords and path_coords.get("path"):
                 api_path_coords = path_coords["path"]
-                acc.log(f"路径规划成功。")
+                for notice in path_coords.get("notices", []):
+                    acc.log_and_notify_frontend(sanitize_diagnostic(notice))
+                acc.log_and_notify_frontend(f"路径规划成功。")
             else:
-                error_msg = (
-                    path_coords.get("error", "未知错误")
-                    if path_coords
-                    else "无响应"
-                )
-                acc.log(f"路径规划失败: {error_msg}")
+                self._notify_route_planning_failure(path_coords, account=acc)
                 return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
 
         except Exception as e:
-            logging.error(f"Chrome浏览器池路径规划失败: {e}", exc_info=True)
-            acc.log(f"路径规划异常: {str(e)}")
+            self._notify_route_planning_failure({"error": sanitize_diagnostic(e)}, account=acc)
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
 
         if not api_path_coords:
-            acc.log("路径规划失败，跳过任务。")
+            self._notify_route_planning_failure({"error": "路径规划未返回有效路径"}, account=acc)
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
 
         logging.debug(
@@ -9780,6 +9844,7 @@ class Api:
         for p in api_path_coords:
             longitude = p.get("lng", p.get("lon"))
             if longitude is None:
+                self._notify_route_planning_failure({**path_coords, "error": "路径坐标缺少经度"}, account=acc)
                 return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
             coord = (longitude, p["lat"])
             if coord != last_coord:
@@ -9787,7 +9852,7 @@ class Api:
                 last_coord = coord
 
         if not final_path_dedup:
-            acc.log("路径处理失败：无有效坐标点。")
+            self._notify_route_planning_failure({**path_coords, "error": "路径处理失败：无有效坐标点"}, account=acc)
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
 
         logging.debug(
@@ -9809,7 +9874,7 @@ class Api:
             python_params=acc.params,
             app_base_url=getattr(self, "_web_app_base_url", None),
             guard_label="MultiAccountAutoGenerate",
-            log_func=acc.log,
+            log_func=acc.log_and_notify_frontend,
         )
         final_cumulative = [0.0]
         for idx_c in range(len(final_geo_path) - 1):
@@ -9825,10 +9890,10 @@ class Api:
 
         actual_total_dist = final_cumulative[-1] if final_cumulative else 0.0
         if actual_total_dist == 0:
-            acc.log("路径计算距离为0，跳过。")
+            self._notify_route_planning_failure({**path_coords, "error": "路径计算距离为0"}, account=acc)
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
 
-        acc.log(
+        acc.log_and_notify_frontend(
             f"路径计算完成: 目标距离 {actual_total_dist:.1f}m, 目标耗时 {target_time_s:.1f}s"
         )
 
@@ -9873,7 +9938,7 @@ class Api:
         run_data.total_run_distance_m = d_covered
         run_data.total_run_time_s = t_elapsed
 
-        acc.log(f"已生成模拟轨迹: {len(new_run_coords)} 个GPS点")
+        acc.log_and_notify_frontend(f"已生成模拟轨迹: {len(new_run_coords)} 个GPS点")
 
         run_data.trid = f"{acc.user_data.student_id}{int(time.time() * 1000)}"
         start_time_ms = str(int(time.time() * 1000))
@@ -9884,7 +9949,7 @@ class Api:
         run_data.suppress_last_target_until_finish = True
 
         if total_points <= 1:
-            acc.log("警告: 生成的轨迹点数过少，无法执行任务。")
+            acc.log_and_notify_frontend("警告: 生成的轨迹点数过少，无法执行任务。")
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
 
         _mr_exec_start_real = time.time()
@@ -10081,7 +10146,7 @@ class Api:
                 acc.api_client,
                 acc.user_data,
                 stop_event=acc.stop_event,
-                log_func=acc.log,
+                log_func=acc.log_and_notify_frontend,
                 stop_predicate=self.multi_run_stop_flag.is_set,
             ):
                 submission_successful = False
@@ -10095,7 +10160,7 @@ class Api:
                     self.check_target_reached_during_run(run_data, end_lon, end_lat)
                 except Exception:  # nosec B110 - 目标检查失败不影响主流程
                     pass
-            acc.log(f"任务 {run_data.run_name} 数据提交完毕，等待服务器确认...")
+            acc.log_and_notify_frontend(f"任务 {run_data.run_name} 数据提交完毕，等待服务器确认...")
             time.sleep(3)
             if self._finalize_run(
                 run_data,
@@ -10108,7 +10173,7 @@ class Api:
                 # 完成计数在 _finalize_run 内已处理；此处仅刷新展示用的统计
                 self._multi_fetch_and_summarize_tasks(acc)
                 self._update_account_status_js(acc, summary=acc.summary)
-                acc.log(f"任务 {run_data.run_name} 执行流程完成。")
+                acc.log_and_notify_frontend(f"任务 {run_data.run_name} 执行流程完成。")
                 self._update_account_status_js(
                     acc,
                     status_text="任务已完成",
@@ -10118,7 +10183,7 @@ class Api:
                 )
             else:
                 task_succeeded = False
-                acc.log(f"任务 {run_data.run_name} 未被服务器确认完成。")
+                acc.log_and_notify_frontend(f"任务 {run_data.run_name} 未被服务器确认完成。")
                 self._update_account_status_js(
                     acc,
                     status_text="任务未确认完成",
@@ -10136,7 +10201,7 @@ class Api:
                         f"[{acc.username}] 任务结束后保存会话失败: {e}"
                     )
         if not (self.multi_run_stop_flag.is_set() or acc.stop_event.is_set()):
-            acc.log(f"任务 {run_data.run_name} 执行失败。")
+            acc.log_and_notify_frontend(f"任务 {run_data.run_name} 执行失败。")
             self._update_account_status_js(acc, status_text="任务失败")
 
         return "success" if task_succeeded else "failed"
@@ -10161,7 +10226,7 @@ class Api:
                 )
 
                 if not (list_resp and list_resp.get("success")):
-                    acc.log(f"获取通知列表失败 (Offset: {offset})")
+                    acc.log_and_notify_frontend(f"获取通知列表失败 (Offset: {offset})")
                     break
 
                 notices = list_resp.get("data", {}).get("noticeList", [])
@@ -10215,7 +10280,7 @@ class Api:
             )
 
         except Exception as e:
-            acc.log(f"刷新签到统计时出错: {e}")
+            acc.log_and_notify_frontend(f"刷新签到统计时出错: {e}")
             logging.error(
                 f"[{acc.username}] Failed to fetch attendance stats: {e}", exc_info=True
             )
@@ -10261,7 +10326,7 @@ class Api:
             )
 
             if skip_refresh:
-                acc.log(
+                acc.log_and_notify_frontend(
                     f"距离上次刷新仅 {time_since_last_refresh:.1f} 秒，跳过重复刷新，直接使用已有数据。"
                 )
             else:
@@ -10311,7 +10376,7 @@ class Api:
                     )
                 )
                 if not identity_claimed:
-                    acc.log(
+                    acc.log_and_notify_frontend(
                         f"学校账号 {conflict_identity or acc.user_data.username} "
                         "已在单账号或其他多账号任务中执行，本次启动已中止。"
                     )
@@ -10322,7 +10387,7 @@ class Api:
                     acc.stop_event.set()
                     return
 
-                acc.log("登录成功。")
+                acc.log_and_notify_frontend("登录成功。")
 
                 self._persist_school_account_backup(
                     acc.user_data.username,
@@ -10371,7 +10436,7 @@ class Api:
 
                 # ---- 安全上限：防止服务端持续返回同一批未完成任务导致死循环 ----
                 if len(attempted_task_keys) >= _main().MULTI_WORKER_MAX_TASKS:
-                    acc.log(
+                    acc.log_and_notify_frontend(
                         f"已达到单次运行的任务上限 "
                         f"{_main().MULTI_WORKER_MAX_TASKS} 个，停止继续挑任务。"
                     )
@@ -10383,14 +10448,14 @@ class Api:
                 tasks_refreshed = self._multi_fetch_and_summarize_tasks(acc)
                 if tasks_refreshed is False:
                     task_fetch_failed = True
-                    acc.log("获取任务列表失败，本次执行停止并保留上次成功状态。")
+                    acc.log_and_notify_frontend("获取任务列表失败，本次执行停止并保留上次成功状态。")
                     self._update_account_status_js(
                         acc, status_text="刷新失败: 获取任务列表失败"
                     )
                     break
 
                 ignore_time = acc.params.get("ignore_task_time", True)
-                acc.log(
+                acc.log_and_notify_frontend(
                     f"分析任务参数: ignore_task_time={ignore_time}, "
                     f"run_only_incomplete={run_only_incomplete}"
                 )
@@ -10482,7 +10547,7 @@ class Api:
                     wait_time = random.uniform(
                         acc.params["task_gap_min_s"], acc.params["task_gap_max_s"]
                     )
-                    acc.log(
+                    acc.log_and_notify_frontend(
                         f"已确认存在下一个可执行任务，进入任务间隔等待 {wait_time:.0f}s。"
                     )
                     should_break_worker = False
@@ -10586,7 +10651,7 @@ class Api:
                         f"失败 {failed_tasks} / {remaining_text}"
                         + ("（已中止）" if aborted else "")
                     )
-                    acc.log(summary_message)
+                    acc.log_and_notify_frontend(summary_message)
                     logging.info(f"[{acc.username}] {summary_message}")
                     self._log_multi_task_summary(
                         acc, prefix="结束时的任务统计", level=logging.INFO
@@ -10665,7 +10730,7 @@ class Api:
         started_threads = 0
         for i, acc in enumerate(account_list):
             if self._is_multi_account_execution_active(acc):
-                acc.log("已在运行，本次'全部开始'将跳过此账号。")
+                acc.log_and_notify_frontend("已在运行，本次'全部开始'将跳过此账号。")
                 continue
 
             delay = delays[i] if use_delay else 0
@@ -10676,7 +10741,7 @@ class Api:
             ):
                 started_threads += 1
             else:
-                acc.log("正在执行其它操作，本次'全部开始'将跳过此账号。")
+                acc.log_and_notify_frontend("正在执行其它操作，本次'全部开始'将跳过此账号。")
 
         return started_threads
 
@@ -10692,7 +10757,7 @@ class Api:
         - 单账号模式: 缓存到 self.server_attendance_radius_m
         - 多账号模式: 缓存到 acc.server_attendance_radius_m
         """
-        log_func = acc.log if acc else self.log
+        log_func = acc.log_and_notify_frontend if acc else self.log_and_notify_frontend
         cache_duration_s = 3600
 
         if acc:
@@ -10762,16 +10827,16 @@ class Api:
 
         if acc:
             client = acc.api_client
-            log_func = acc.log
+            log_func = acc.log_and_notify_frontend
             user = acc.user_data
             params = acc.params
         elif not self.is_multi_account_mode:
             client = self.api_client
-            log_func = self.log
+            log_func = self.log_and_notify_frontend
             user = self.user_data
             params = self.params
         else:
-            self.log("trigger_attendance 在多账号模式下被错误调用（未传入acc）")
+            self.log_and_notify_frontend("trigger_attendance 在多账号模式下被错误调用（未传入acc）")
             return {"success": False, "message": "多账号模式内部错误"}
 
         if not user.id:
@@ -10968,7 +11033,7 @@ class Api:
                         if len(current_notices) < batch_size:
                             break
                     else:
-                        self.log("获取通知列表时失败。")
+                        self.log_and_notify_frontend("获取通知列表时失败。")
                         break
             else:
                 while True:
@@ -10986,7 +11051,7 @@ class Api:
                         if len(current_notices) < limit:
                             break
                     else:
-                        self.log("获取通知列表时失败。")
+                        self.log_and_notify_frontend("获取通知列表时失败。")
                         break
 
             notices = all_notices
@@ -11044,7 +11109,7 @@ class Api:
                     has_more = len(peek_notices) > 0
 
             if not is_auto_refresh:
-                self.log(
+                self.log_and_notify_frontend(
                     f"获取到 {unread_count} 条未读通知，本次返回 {len(notices)} 条通知。"
                 )
 
@@ -11067,7 +11132,7 @@ class Api:
                 "returnedCount": len(notices),
             }
         except Exception as e:
-            self.log(f"获取通知失败: {e}")
+            self.log_and_notify_frontend(f"获取通知失败: {e}")
             logging.error(f"get_notifications failed: {e}", exc_info=True)
             return {"success": False, "message": str(e)}
 
@@ -11586,11 +11651,11 @@ class Api:
                 if is_enabled:
                     # 本轮确认启用，重置未启用计数
                     disabled_rounds = 0
-                    self.log("(后台) 自动签到已启用，正在检查...")
+                    self.log_and_notify_frontend("(后台) 自动签到已启用，正在检查...")
                     auto_attendance_closed = self._check_and_trigger_auto_attendance(self)
                     if auto_attendance_closed:
                         break
-                    self.log("正在自动刷新通知 (后台)...")
+                    self.log_and_notify_frontend("正在自动刷新通知 (后台)...")
                     result = self.get_notifications(is_auto_refresh=True)
                     if result.get("success"):
                         session_id = getattr(self, "_web_session_id", None)
@@ -11625,12 +11690,12 @@ class Api:
                         )
                         break
 
-                self.log(f"自动刷新完成，等待 {refresh_interval_s} 秒后再次刷新...")
+                self.log_and_notify_frontend(f"自动刷新完成，等待 {refresh_interval_s} 秒后再次刷新...")
                 if self.stop_auto_refresh.wait(timeout=refresh_interval_s):
                     break
 
             except Exception as e:
-                self.log(f"自动刷新线程出错: {e}")
+                self.log_and_notify_frontend(f"自动刷新线程出错: {e}")
                 logging.error(f"Auto-refresh worker error: {e}", exc_info=True)
                 if self.stop_auto_refresh.wait(timeout=60):
                     break
@@ -11644,7 +11709,7 @@ class Api:
         """
         if isinstance(context, _main().AccountSession):
             client = context.api_client
-            log_func = context.log
+            log_func = context.log_and_notify_frontend
             user = context.user_data
             params = context.params
             # 从JSON配置读取启用状态
@@ -11653,7 +11718,7 @@ class Api:
                 return False
         else:
             client = self.api_client
-            log_func = self.log
+            log_func = self.log_and_notify_frontend
             user = self.user_data
             params = self.params
             # 从JSON配置读取启用状态
@@ -11801,14 +11866,14 @@ class Api:
                 refresh_interval_s = self.global_params.get(
                     "auto_attendance_refresh_s", 15)
 
-                self.log(f"(多账号) 自动签到: 等待 {refresh_interval_s} 秒...")
+                self.log_and_notify_frontend(f"(多账号) 自动签到: 等待 {refresh_interval_s} 秒...")
                 if self.stop_multi_auto_refresh.wait(timeout=refresh_interval_s):
                     break
 
                 if not self.is_multi_account_mode:
                     continue
 
-                self.log("(多账号) 正在为所有账号执行后台签到检查...")
+                self.log_and_notify_frontend("(多账号) 正在为所有账号执行后台签到检查...")
 
                 accounts_to_check = list(self.accounts.values())
 
@@ -11821,7 +11886,7 @@ class Api:
                     if school_username and _main()._is_auto_attendance_enabled(school_username):
                         if acc.user_data.id:
                             if self._check_and_trigger_auto_attendance(acc):
-                                acc.log("(后台) 自动签到已达到设定次数，停止本账号自动刷新。")
+                                acc.log_and_notify_frontend("(后台) 自动签到已达到设定次数，停止本账号自动刷新。")
                                 continue
                             self._multi_fetch_attendance_stats(acc)
                             self._update_account_status_js(
@@ -11829,13 +11894,13 @@ class Api:
                             time.sleep(random.uniform(1.0, 3.0))
                         else:
 
-                            acc.log("(后台) 尚未登录，跳过自动签到检查。")
+                            acc.log_and_notify_frontend("(后台) 尚未登录，跳过自动签到检查。")
                     else:
 
-                        acc.log("(后台) 自动签到未在此账号上启用，跳过。")
+                        acc.log_and_notify_frontend("(后台) 自动签到未在此账号上启用，跳过。")
 
             except Exception as e:
-                self.log(f"(多账号) 自动签到线程出错: {e}")
+                self.log_and_notify_frontend(f"(多账号) 自动签到线程出错: {e}")
                 logging.error(
                     f"Multi-auto-attendance worker error: {e}", exc_info=True)
                 time.sleep(60)

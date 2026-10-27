@@ -446,9 +446,16 @@ class AccountSession:
         self.stop_event = threading.Event()
         self.account_operation_lock = threading.Lock()
 
-    def log(self, message: str):
-        """为日志自动添加账号前缀"""
-        self.api_bridge.log(f"[{self.username}] {message}")
+    def log_and_notify_frontend(self, message: str, *, frontend_message=None, diagnostic_id=None):
+        """添加账号前缀后记录日志并通知前端。"""
+        if frontend_message is None and diagnostic_id is None:
+            self.api_bridge.log_and_notify_frontend(f"[{self.username}] {message}")
+            return
+        self.api_bridge.log_and_notify_frontend(
+            f"[{self.username}] {message}",
+            frontend_message=(f"[{self.username}] {frontend_message}" if frontend_message is not None else None),
+            diagnostic_id=diagnostic_id,
+        )
 
 
 

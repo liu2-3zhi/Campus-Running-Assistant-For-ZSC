@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import vm from 'node:vm'
 import { paramDefs, paramGroups } from '../frontend/src/utils/legacyParams.js'
+import { isRestorableSessionUUIDResponse } from '../frontend/src/utils/validation.js'
 
 const require = createRequire(new URL('../frontend/package.json', import.meta.url))
 const { parse, compileScript } = require('@vue/compiler-sfc')
@@ -33,7 +34,7 @@ function setupComponent(path, overrides = {}, props = {}) {
     connectWebSocket() {}, disconnectWebSocket() {},
     isWebSocketConnected: () => false,
     onWebSocketStatus: listener => { listener(false); return () => {} },
-    checkOverdueBeforeStart: async () => true, paramDefs, paramGroups,
+    checkOverdueBeforeStart: async () => true, paramDefs, paramGroups, isRestorableSessionUUIDResponse,
     consumeOverdueForceOverride: () => ({ bypass_overdue: false, waive_charge: false }),
     Swal: { fire: async () => ({ isConfirmed: true }) },
     ...overrides,
@@ -67,6 +68,76 @@ test('school login accepts the backend string user list and displays its current
   assert.equal(ctx.state.userList.value[0].username, 'student-a')
   assert.equal(ctx.state.selectedUser.value, 'student-b')
   assert.equal(ctx.state.userAgent.value, 'saved-device')
+})
+
+test('a session picker inside a view chain selects by navigation without rotating tokens', async () => {
+  const viewed = []
+  const ctx = setupComponent('components/login/SessionPicker.vue', {
+    useAuthStore: () => ({ adminOriginSession: 'origin-a', beginAdminView: target => { viewed.push(target); return true } }),
+    globals: { fetch: () => { throw new Error('view chains must not call switch_session') } },
+  })
+  await ctx.state.selectSession('target-c')
+  assert.deepEqual(viewed, ['target-c'])
+  assert.deepEqual(ctx.emitted, [['session-selected', 'target-c']])
+})
+
+test('a refreshed viewed UUID restores the administrator before loading its session controls', async () => {
+  const events = []
+  const auth = {
+    sessionUUID: 'target-b', adminOriginSession: 'origin-a',
+    applyAuthInfo(data) { events.push('apply-actor'); this.adminViewContext = data.admin_view_context },
+    getAuthenticatedSessionHeaderValue() { return this.adminViewContext?.session_id || this.sessionUUID },
+  }
+  const ctx = setupComponent('views/LoginView.vue', {
+    useAuthStore: () => auth,
+    useRoute: () => ({ params: { uuid: 'target-b' } }),
+    callRawAPI: async () => ({ success: true, uuid_type: 'system_account' }),
+    callAPI: async method => { events.push(method); return { success: true, admin_view_context: { session_id: 'origin-a', auth_username: 'admin-a', auth_group: 'admin', view_all_sessions: true } } },
+    globals: {
+      sessionStorage: { setItem() {} },
+      fetch: async (_, options) => { events.push(`sessions:${options.headers['X-Session-ID']}`); return { json: async () => ({ sessions: [] }) } },
+    },
+  })
+  await ctx.state.checkUUID('target-b')
+  assert.deepEqual(events, ['get_initial_data', 'apply-actor', 'sessions:origin-a'])
+  assert.equal(ctx.state.viewMode.value, 'school-login')
+})
+
+test('a failed viewed UUID initialization retains the administrator return context', async () => {
+  const auth = { sessionUUID: 'target-b', adminOriginSession: 'origin-a' }
+  const ctx = setupComponent('views/LoginView.vue', {
+    useAuthStore: () => auth,
+    useRoute: () => ({ params: { uuid: 'target-b' } }),
+    callRawAPI: async () => ({ success: true, uuid_type: 'system_account' }),
+    callAPI: async () => { throw new Error('来源验证失败') },
+    globals: { sessionStorage: { setItem() {} }, fetch: () => { throw new Error('must not load session controls') } },
+  })
+  await ctx.state.checkUUID('target-b')
+  assert.equal(ctx.state.viewMode.value, 'error')
+  assert.equal(ctx.state.errorMsg.value, '来源验证失败')
+  assert.equal(auth.adminOriginSession, 'origin-a')
+})
+
+test('late initialization for a previous viewed UUID cannot apply its actor or page', async () => {
+  let resolveData
+  let initialStarted
+  const started = new Promise(resolve => { initialStarted = resolve })
+  const route = { params: { uuid: 'target-b' } }
+  const auth = { sessionUUID: 'target-b', adminOriginSession: 'origin-a', applyAuthInfo() { throw new Error('must not apply stale actor') } }
+  const ctx = setupComponent('views/LoginView.vue', {
+    useAuthStore: () => auth, useRoute: () => route,
+    callRawAPI: async () => ({ success: true, uuid_type: 'system_account' }),
+    callAPI: () => new Promise(resolve => { resolveData = resolve; initialStarted() }),
+    globals: { sessionStorage: { setItem() {} }, fetch: () => { throw new Error('must not load stale controls') } },
+  })
+  const pending = ctx.state.checkUUID('target-b')
+  await Promise.race([started, pending.then(() => assert.fail('view initialization must request administrator context'))])
+  route.params.uuid = 'target-c'
+  auth.sessionUUID = 'target-c'
+  resolveData({ success: true })
+  await pending
+  assert.equal(auth.sessionUUID, 'target-c')
+  assert.equal(ctx.state.viewMode.value, 'loading')
 })
 
 test('random UA comes from the backend and is the value shown in the form', async () => {

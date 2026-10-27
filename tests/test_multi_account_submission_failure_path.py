@@ -60,7 +60,7 @@ class _FakeAcc:
         self.stop_event.wait.return_value = False
         self.current_position = None
 
-    def log(self, message):
+    def log_and_notify_frontend(self, message):
         self.logs.append(str(message))
 
 

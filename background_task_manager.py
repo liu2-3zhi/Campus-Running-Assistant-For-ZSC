@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import copy
 import hashlib
 import json
 import logging
@@ -12,6 +13,7 @@ import time
 
 
 from main_runtime import _main
+from route_diagnostics import build_route_failure_summary, generic_route_failure_message, sanitize_diagnostic
 
 
 class BackgroundTaskManager:
@@ -20,6 +22,7 @@ class BackgroundTaskManager:
     def __init__(self):
         self.tasks = {}
         self.execution_tokens = {}
+        self.route_failure_batches = {}
         self.lock = threading.Lock()
         self.task_storage_dir = os.path.join(
             os.path.dirname(__file__), "background_tasks"
@@ -27,6 +30,40 @@ class BackgroundTaskManager:
         if not os.path.exists(self.task_storage_dir):
             os.makedirs(self.task_storage_dir)
         logging.info("BackgroundTaskManager initialized")
+
+    def begin_route_planning_batch(self, session_id, task_status=None):
+        execution_id = object()
+        with self.lock:
+            self.route_failure_batches[session_id] = (execution_id, [], copy.deepcopy(task_status or {}))
+        return execution_id
+
+    def update_route_planning_batch_status(self, session_id, execution_id, task_status):
+        """更新仅驻留内存的队列状态，忽略已被替换的执行批次。"""
+        with self.lock:
+            batch = self.route_failure_batches.get(session_id)
+            if not batch or batch[0] is not execution_id:
+                return False
+            batch[2].update(copy.deepcopy(task_status))
+            return True
+
+    def record_route_planning_failure(self, session_id, result, execution_id=None):
+        summary = build_route_failure_summary(result)
+        with self.lock:
+            batch = self.route_failure_batches.get(session_id)
+            if batch is None or (execution_id is not None and batch[0] is not execution_id):
+                return None
+            batch[1].append(summary)
+            del batch[1][:-20]
+        return copy.deepcopy(summary)
+
+    def get_route_planning_failures(self, session_id):
+        with self.lock:
+            batch = self.route_failure_batches.get(session_id)
+            return copy.deepcopy(batch[1]) if batch else []
+
+    def clear_route_planning_failures(self, session_id):
+        with self.lock:
+            self.route_failure_batches.pop(session_id, None)
 
     def _get_task_file_path(self, session_id):
         """获取任务状态文件路径"""
@@ -268,10 +305,12 @@ class BackgroundTaskManager:
 
             self.tasks[session_id] = task_state
             self.execution_tokens[session_id] = execution_token
+            execution_id = object()
+            self.route_failure_batches[session_id] = (execution_id, [], {})
             self.save_task_state(session_id, task_state)
             thread = threading.Thread(
                 target=self._execute_tasks_background,
-                args=(session_id, api_instance, task_indices, auto_generate),
+                args=(session_id, api_instance, task_indices, auto_generate, execution_id),
                 daemon=True,
             )
             try:
@@ -279,6 +318,7 @@ class BackgroundTaskManager:
             except Exception:
                 self.tasks.pop(session_id, None)
                 self.execution_tokens.pop(session_id, None)
+                self.route_failure_batches.pop(session_id, None)
                 _main()._release_school_account_execution(execution_token)
                 raise
 
@@ -291,15 +331,33 @@ class BackgroundTaskManager:
             }
 
     def _execute_tasks_background(
-        self, session_id, api_instance, task_indices, auto_generate
+        self, session_id, api_instance, task_indices, auto_generate, execution_id=None
     ):
         """后台执行任务的线程函数"""
+        if execution_id is None:
+            execution_id = self.begin_route_planning_batch(session_id)
+        with self.lock:
+            batch = self.route_failure_batches.get(session_id)
+            execution_token = self.execution_tokens.get(session_id) if batch and batch[0] is execution_id else None
+        def is_current_batch():
+            batch = self.route_failure_batches.get(session_id)
+            return batch is not None and batch[0] is execution_id
+
+        def record_failure(result):
+            summary = self.record_route_planning_failure(session_id, result, execution_id)
+            if summary:
+                api_instance.log_and_notify_frontend(
+                    "路径规划失败 [%s]: %s" % (summary["diagnostic_id"], summary["message"]),
+                    frontend_message=generic_route_failure_message(summary["diagnostic_id"]),
+                    diagnostic_id=summary["diagnostic_id"],
+                )
+
         try:
             tasks_executed = 0
 
             for i, task_idx in enumerate(task_indices):
                 with self.lock:
-                    if session_id not in self.tasks:
+                    if session_id not in self.tasks or not is_current_batch():
                         logging.info(f"后台任务已取消，会话ID前缀: {session_id[:8]}")
                         return
 
@@ -308,6 +366,8 @@ class BackgroundTaskManager:
                         logging.info(f"后台任务已停止，会话ID前缀: {session_id[:8]}")
                         return
                 with self.lock:
+                    if not is_current_batch():
+                        return
                     task_state["current_task_index"] = i
                     task_state["last_update"] = time.time()
                     self.save_task_state(session_id, task_state)
@@ -335,18 +395,14 @@ class BackgroundTaskManager:
                             details_resp = api_instance.get_task_details(
                                 task_idx)
                             if not details_resp.get("success"):
-                                logging.error(
-                                    f"获取任务详情失败，任务名称: {run_data.run_name}，错误信息: {details_resp.get('message', '未知错误')}"
-                                )
+                                record_failure({"error": details_resp.get("message", "获取任务详情失败")})
                                 continue
                             run_data = api_instance.all_run_data[task_idx]
                             logging.info(f"任务详情获取成功: {run_data.run_name}")
 
                         if not run_data.target_points:
 
-                            logging.warning(
-                                f"[跳过任务] 任务 '{run_data.run_name}' 因缺少打卡点 (0个) 而无法自动生成路径。请检查学校平台任务设置。"
-                            )
+                            record_failure({"error": "任务没有打卡点，无法自动生成路径"})
 
                             continue
 
@@ -363,10 +419,6 @@ class BackgroundTaskManager:
                             else f"Waypoints: {waypoints}"
                         )
 
-                        if not _main().chrome_pool:
-                            logging.error("Chrome浏览器池不可用，无法进行路径规划！")
-                            continue
-
                         try:
                             path_coords = _main()._plan_route_path_with_provider_runtime(
                                 session_id,
@@ -378,17 +430,17 @@ class BackgroundTaskManager:
                             for notice in path_coords.get("notices", []):
                                 logging.info(notice)
                         except Exception as e:
-                            logging.error(
-                                f"Chrome浏览器池路径规划失败，任务名称: {run_data.run_name}，异常信息: {e}",
-                                exc_info=True,
-                            )
+                            record_failure({"error": sanitize_diagnostic(e)})
                             continue
 
                         logging.info(
                             f"路径规划JavaScript返回结果: 类型={type(path_coords)}, 包含'path'键={'是' if (path_coords and 'path' in path_coords) else '否'}"
                         )
 
-                        if path_coords and "path" in path_coords:
+                        with self.lock:
+                            if not is_current_batch():
+                                return
+                        if path_coords and path_coords.get("path"):
                             api_path_coords = path_coords["path"]
                             logging.info(
                                 f"路径规划成功，包含 {len(api_path_coords)} 个坐标点"
@@ -402,26 +454,29 @@ class BackgroundTaskManager:
                                 p.get("min_time_m", 20),
                                 p.get("max_time_m", 30),
                                 p.get("min_dist_m", 2000),
+                                apply_result=False,
                             )
+                            with self.lock:
+                                if not is_current_batch():
+                                    return
 
                             logging.info(
                                 f"auto_generate_path_with_api函数返回: 成功={gen_resp.get('success')}"
                             )
 
                             if gen_resp.get("success"):
-                                run_data.run_coords = gen_resp["run_coords"]
-                                run_data.total_run_distance_m = gen_resp[
-                                    "total_dist"
-                                ]
-                                run_data.total_run_time_s = gen_resp[
-                                    "total_time"
-                                ]
+                                with self.lock:
+                                    if not is_current_batch():
+                                        return
+                                    run_data.run_coords = gen_resp["run_coords"]
+                                    run_data.total_run_distance_m = gen_resp["total_dist"]
+                                    run_data.total_run_time_s = gen_resp["total_time"]
                                 logging.info(
                                     f"路径自动生成成功，任务: {run_data.run_name}，坐标点数: {len(gen_resp['run_coords'])}, 总距离: {gen_resp['total_dist']}米, 总时长: {gen_resp['total_time']}秒"
                                 )
 
                                 with self.lock:
-                                    if session_id in self.tasks:
+                                    if session_id in self.tasks and is_current_batch():
                                         task_state = self.tasks[session_id]
                                         task_state["last_update"] = time.time(
                                         )
@@ -468,26 +523,19 @@ class BackgroundTaskManager:
                                         )
 
                             else:
-                                logging.error(
-                                    f"生成运动坐标序列失败: {gen_resp.get('message')}"
-                                )
+                                record_failure({**path_coords, "error": gen_resp.get("message", "生成运动坐标序列失败")})
                                 continue
                         else:
-                            error_msg = (
-                                path_coords.get(
-                                    "error", "Unknown error")
-                                if path_coords
-                                else "No response from path planning"
-                            )
-                            logging.error(
-                                f"任务路径规划失败，任务名称: {run_data.run_name}，错误信息: {error_msg}"
-                            )
+                            record_failure(path_coords or {"error": "路径规划未返回有效路径"})
                             continue
 
                     except Exception as e:
-                        logging.error(f"自动生成路径失败，异常信息: {e}", exc_info=True)
+                        record_failure({"error": sanitize_diagnostic(e)})
                         continue
 
+                with self.lock:
+                    if not is_current_batch():
+                        return
                 if not run_data.run_coords:
                     logging.warning(f"任务没有可用路径，跳过执行: {run_data.run_name}")
                     continue
@@ -495,25 +543,22 @@ class BackgroundTaskManager:
                     task_idx = api_instance.all_run_data.index(run_data)
                 except ValueError:
                     task_idx = -1
-                run_data.target_sequence = 0
-                run_data.is_in_target_zone = False
-                if hasattr(api_instance, "stop_run_flag"):
-                    api_instance.stop_run_flag.clear()
                 finished_event = threading.Event()
                 try:
-                    thread = threading.Thread(
-                        target=api_instance._run_submission_thread,
-                        args=(
-                            run_data,
-                            task_idx,
-                            api_instance.api_client,
-                            False,
-                            finished_event,
-                        ),
-                        daemon=True,
-                    )
-                    thread.start()
-                    tasks_executed += 1
+                    with self.lock:
+                        if not is_current_batch():
+                            return
+                        run_data.target_sequence = 0
+                        run_data.is_in_target_zone = False
+                        if hasattr(api_instance, "stop_run_flag"):
+                            api_instance.stop_run_flag.clear()
+                        thread = threading.Thread(
+                            target=api_instance._run_submission_thread,
+                            args=(run_data, task_idx, api_instance.api_client, False, finished_event),
+                            daemon=True,
+                        )
+                        thread.start()
+                        tasks_executed += 1
                     total_time_s = sum(p[2]
                                        for p in run_data.run_coords) / 1000.0
                     timeout = max(total_time_s * 2, 300)
@@ -524,6 +569,8 @@ class BackgroundTaskManager:
                             api_instance.stop_run_flag.set()
                             break
                         with self.lock:
+                            if not is_current_batch():
+                                return
                             if hasattr(run_data, "current_point_index"):
                                 total_points = len(run_data.run_coords)
                                 current_progress = int(
@@ -592,6 +639,8 @@ class BackgroundTaskManager:
                                     }
                         if int(time.time() - start_wait) % 5 == 0:
                             with self.lock:
+                                if not is_current_batch():
+                                    return
                                 self.save_task_state(session_id, task_state)
 
                         time.sleep(1)
@@ -602,6 +651,8 @@ class BackgroundTaskManager:
 
                 # 标记当前任务已完成（更新进度状态）
                 with self.lock:
+                    if not is_current_batch():
+                        return
                     task_state["completed_tasks"] = i + 1
                     task_state["progress_percent"] = int(
                         (i + 1) / len(task_indices) * 100
@@ -617,6 +668,8 @@ class BackgroundTaskManager:
                 # ========== 结束：次数扣减处理 ==========
             if tasks_executed > 0:
                 with self.lock:
+                    if not is_current_batch():
+                        return
                     task_state["status"] = "completed"
                     task_state["last_update"] = time.time()
                     self.save_task_state(session_id, task_state)
@@ -624,6 +677,8 @@ class BackgroundTaskManager:
                 logging.info(f"所有后台任务已完成，会话ID: {session_id}")
             else:
                 with self.lock:
+                    if not is_current_batch():
+                        return
                     if task_state.get("status") != "error":
                         task_state["status"] = "error"
                         if auto_generate:
@@ -642,33 +697,49 @@ class BackgroundTaskManager:
                     )
 
         except Exception as e:
-            logging.error(f"后台任务执行失败，异常信息: {e}", exc_info=True)
+            logging.error("后台任务执行失败: %s", sanitize_diagnostic(e))
             with self.lock:
-                if session_id in self.tasks:
+                if session_id in self.tasks and is_current_batch():
                     self.tasks[session_id]["status"] = "error"
-                    self.tasks[session_id]["error"] = str(e)
+                    self.tasks[session_id]["error"] = "后台任务执行失败，请查看服务器日志"
                     self.save_task_state(session_id, self.tasks[session_id])
         finally:
             with self.lock:
-                execution_token = self.execution_tokens.pop(session_id, None)
-            _main()._release_school_account_execution(execution_token)
+                if self.execution_tokens.get(session_id) is execution_token:
+                    self.execution_tokens.pop(session_id, None)
+            if execution_token is not None:
+                _main()._release_school_account_execution(execution_token)
 
-    def get_task_status(self, session_id):
-        """获取任务状态"""
+    def get_task_status(self, session_id, include_route_failures=False):
+        """返回独立快照；详细失败摘要只在调用方已鉴权时附加。"""
         with self.lock:
-            if session_id in self.tasks:
-                return self.tasks[session_id]
-        task_state = self.load_task_state(session_id)
-        if task_state:
+            batch = self.route_failure_batches.get(session_id)
+            task_state = copy.deepcopy(batch[2] if batch and batch[2] else self.tasks.get(session_id))
+            failures = copy.deepcopy(batch[1]) if batch else []
+        if task_state is None:
+            task_state = self.load_task_state(session_id)
+            if task_state is None:
+                return None
+            task_state = copy.deepcopy(task_state)
+            task_state.pop("route_planning_failures", None)
             with self.lock:
-                self.tasks[session_id] = task_state
-            return task_state
-
-        return None
+                self.tasks.setdefault(session_id, copy.deepcopy(task_state))
+        task_state.pop("route_planning_failures", None)
+        if task_state.get("status") == "error" and failures and not task_state.get("error"):
+            task_state["error"] = generic_route_failure_message(failures[-1]["diagnostic_id"])
+        if task_state.get("error"):
+            task_state["error"] = sanitize_diagnostic(task_state["error"]) if include_route_failures else generic_route_failure_message(failures[-1]["diagnostic_id"] if failures else "未记录")
+        if include_route_failures and failures:
+            task_state["route_planning_failures"] = failures
+        return task_state
 
     def stop_task(self, session_id):
         """停止后台任务"""
         with self.lock:
+            batch = self.route_failure_batches.get(session_id)
+            if batch and batch[2]:
+                batch[2]["status"] = "stopped"
+                return {"success": True, "message": "后台任务已停止"}
             if session_id in self.tasks:
                 self.tasks[session_id]["status"] = "stopped"
                 self.save_task_state(session_id, self.tasks[session_id])
@@ -1062,6 +1133,7 @@ class ChromeBrowserPool:
                         args.get("session_id"),
                         args.get("script"),
                         args.get("js_args", []),
+                        diagnostic_context=args.get("diagnostic_context"),
                     )
                 elif operation == "close_context":
                     # 关闭指定会话的上下文
@@ -1191,9 +1263,57 @@ class ChromeBrowserPool:
                 logging.error(f"创建上下文失败: {e}", exc_info=True)
                 return {"success": False, "error": str(e)}
 
+        self._install_route_page_diagnostics(self._contexts[session_id])
         return {"success": True, "session_id": session_id}
 
-    def _do_execute_js(self, session_id, script, js_args):
+    def _install_route_page_diagnostics(self, entry):
+        """Install once on the real, worker-owned page; scope events to a command."""
+        from route_diagnostics import sanitize_diagnostic
+
+        if entry.get("route_listeners_installed"):
+            return
+        page = entry["page"]
+
+        def capture(kind, value):
+            active = entry.get("route_diagnostic_context")
+            if not active:
+                return
+            if len(active["events"]) >= 12:
+                active["events_dropped"] = active.get("events_dropped", 0) + 1
+                return
+            safe = sanitize_diagnostic(value, 800, active.get("sensitive_values", ()))
+            event = {"kind": kind, "detail": safe}
+            active["events"].append(event)
+            logging.debug("[路径诊断] id=%s provider=%s browser=%s", active.get("diagnostic_id"),
+                          active.get("provider"), safe)
+
+        def failed(request):
+            capture("requestfailed", {"url": getattr(request, "url", ""),
+                                      "failure": getattr(request, "failure", "unknown")})
+
+        def response_failed(response):
+            if int(getattr(response, "status", 0)) >= 400:
+                capture("http_error", {"url": getattr(response, "url", ""),
+                                       "status": getattr(response, "status", None)})
+
+        def console(message):
+            if getattr(message, "type", "") in ("warning", "error"):
+                capture("console", getattr(message, "text", ""))
+
+        def dialog_opened(dialog):
+            if entry.get("route_diagnostic_context"):
+                capture("dialog", getattr(dialog, "message", ""))
+            # Match Playwright's automatic dismissal when no route command is active.
+            dialog.dismiss()
+
+        page.on("requestfailed", failed)
+        page.on("response", response_failed)
+        page.on("console", console)
+        page.on("pageerror", lambda error: capture("pageerror", error))
+        page.on("dialog", dialog_opened)
+        entry["route_listeners_installed"] = True
+
+    def _do_execute_js(self, session_id, script, js_args, diagnostic_context=None):
         """
         在专用线程中执行 JavaScript 代码。
 
@@ -1210,16 +1330,35 @@ class ChromeBrowserPool:
         if not ctx_result.get("success"):
             return ctx_result
 
+        from route_diagnostics import sanitize_diagnostic
+
+        entry = self._contexts[session_id]
+        active = dict(diagnostic_context) if diagnostic_context else None
+        if active is not None:
+            active["events"] = []
+        entry["route_diagnostic_context"] = active
         try:
             # 获取页面对象
             page = self._contexts[session_id]["page"]
             # 执行 JavaScript 代码
             result = page.evaluate(script, js_args)
+            if active and isinstance(result, dict):
+                if not isinstance(result.get("diagnostic"), dict):
+                    result["diagnostic"] = {}
+                result["diagnostic"]["browser_events"] = active["events"]
+                if active.get("events_dropped"):
+                    result["diagnostic"]["browser_events_dropped"] = active["events_dropped"]
             return {"success": True, "result": result}
         except Exception as e:
-            logging.error(
-                f"执行 JS 失败 (session={session_id}): {e}", exc_info=True)
+            if active:
+                error = sanitize_diagnostic(e, sensitive_values=active.get("sensitive_values", ()))
+                logging.debug("[路径诊断] id=%s JavaScript异常=%s", active.get("diagnostic_id"), error)
+                return {"success": False, "error": error,
+                        "diagnostic": {"browser_events": active["events"]}}
+            logging.error(f"执行 JS 失败 (session={session_id}): {e}", exc_info=True)
             return {"success": False, "error": str(e)}
+        finally:
+            entry["route_diagnostic_context"] = None
 
     def _do_close_context(self, session_id):
         """
@@ -1264,6 +1403,13 @@ class ChromeBrowserPool:
         if not ctx_result.get("success"):
             return ctx_result
 
+        options = dict(options or {})
+        diagnostic_context = options.pop("_route_diagnostic_context", None)
+        entry = self._contexts[session_id]
+        active = dict(diagnostic_context) if diagnostic_context else None
+        if active is not None:
+            active["events"] = []
+        entry["route_diagnostic_context"] = active
         try:
             # 获取页面对象
             page = self._contexts[session_id]["page"]
@@ -1271,10 +1417,18 @@ class ChromeBrowserPool:
             result = page.goto(url, **options) if options else page.goto(url)
             return {"success": True, "result": result}
         except Exception as e:
+            if active:
+                from route_diagnostics import sanitize_diagnostic
+
+                safe_error = sanitize_diagnostic(e, sensitive_values=active.get("sensitive_values", ()))
+                logging.debug("[路径诊断] id=%s 页面导航失败: %s", active.get("diagnostic_id"), safe_error)
+                return {"success": False, "error": safe_error}
             logging.error(
                 f"页面导航失败 (session={session_id}, url={url}): {e}", exc_info=True
             )
             return {"success": False, "error": str(e)}
+        finally:
+            entry["route_diagnostic_context"] = None
 
     def _do_page_set_content(self, session_id, html, options):
         """
@@ -1479,7 +1633,7 @@ class ChromeBrowserPool:
             "page": PlaywrightPageProxy(session_id, self),
         }
 
-    def execute_js(self, session_id, script, *args):
+    def execute_js(self, session_id, script, *args, diagnostic_context=None):
         """
         在指定会话的Chrome中执行JavaScript代码（通过专用线程执行）。
 
@@ -1499,6 +1653,7 @@ class ChromeBrowserPool:
                     "session_id": session_id,
                     "script": script,
                     "js_args": list(args),
+                    "diagnostic_context": diagnostic_context,
                 },
             )
 
@@ -1506,10 +1661,19 @@ class ChromeBrowserPool:
                 return result.get("result")
             else:
                 error_msg = result.get("error", "未知错误")
+                if diagnostic_context:
+                    from route_diagnostics import sanitize_diagnostic
+
+                    return {"error": sanitize_diagnostic(error_msg, sensitive_values=diagnostic_context.get("sensitive_values", ())),
+                            "diagnostic": result.get("diagnostic", {})}
                 logging.error(f"执行 JS 失败 (session={session_id}): {error_msg}")
                 return None
 
         except Exception as e:
+            if diagnostic_context:
+                from route_diagnostics import sanitize_diagnostic
+
+                return {"error": sanitize_diagnostic(e, sensitive_values=diagnostic_context.get("sensitive_values", ()))}
             logging.error(
                 f"执行 JS 异常 (session={session_id}): {e}", exc_info=True)
             return None

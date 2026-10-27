@@ -26,7 +26,16 @@ function getSessionHeaders(method) {
   const sessionId = auth.getSessionHeaderValue(method)
   const headers = { 'Content-Type': 'application/json' }
   if (sessionId) headers['X-Session-ID'] = sessionId
+  const origin = auth.getAdminOriginHeaderValue?.(sessionId)
+  if (origin) headers['X-Admin-Origin-Session-ID'] = origin
   return headers
+}
+
+function isStaleBusinessRequest(auth, headers) {
+  const target = headers['X-Session-ID'] || ''
+  const origin = headers['X-Admin-Origin-Session-ID'] || ''
+  const currentOrigin = auth.getAdminOriginHeaderValue?.(target) || ''
+  return Boolean((origin || auth.adminOriginSession) && (target !== auth.sessionUUID || origin !== currentOrigin))
 }
 
 export async function callAPI(method, ...args) {
@@ -93,11 +102,16 @@ export async function callAPI(method, ...args) {
     }
   }
 
+  if (isStaleBusinessRequest(auth, headers)) {
+    throw new Error('会话已切换，已忽略旧请求结果')
+  }
+
   if (!response.ok) {
     let errorData = {}
     try {
       errorData = await response.json()
     } catch (_) {}
+    if (isStaleBusinessRequest(auth, headers)) throw new Error('会话已切换，已忽略旧请求结果')
 
     if (response.status === 403 && errorData.message?.includes('账号已被封禁')) {
       network.enterErrorState()
@@ -135,22 +149,38 @@ export async function callAPI(method, ...args) {
     throw new Error(errorData.message || `API错误: ${response.status}`)
   }
 
-  return response.json()
+  const result = await response.json()
+  if (isStaleBusinessRequest(auth, headers)) throw new Error('会话已切换，已忽略旧请求结果')
+  if (method === 'get_initial_data' && result?.success !== false && headers['X-Session-ID'] === auth.sessionUUID) {
+    auth.applyAdminViewContext?.(result, headers['X-Session-ID'])
+  }
+  return result
 }
 
-export async function callRawAPI(url, method = 'POST', body = null) {
+export async function callRawAPI(url, method = 'POST', body = null, { sessionContext = 'auth' } = {}) {
   const auth = useAuthStore()
   const headers = { 'Content-Type': 'application/json' }
-  const sessionId = auth.getAuthenticatedSessionHeaderValue()
+  const sessionId = sessionContext === 'business'
+    ? auth.getSessionHeaderValue(url)
+    : auth.getAuthenticatedSessionHeaderValue()
   if (sessionId) headers['X-Session-ID'] = sessionId
+  const origin = auth.getAdminOriginHeaderValue?.(sessionId)
+  if (origin) headers['X-Admin-Origin-Session-ID'] = origin
 
   const opts = { method, headers, credentials: 'include' }
   if (body !== null) opts.body = JSON.stringify(body)
 
   const response = await fetch(url, opts)
+  const requestIsStale = () => sessionContext === 'business'
+    ? isStaleBusinessRequest(auth, headers)
+    : sessionId !== auth.getAuthenticatedSessionHeaderValue()
+  if (requestIsStale()) throw new Error('会话已切换，已忽略旧请求结果')
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
+    if (requestIsStale()) throw new Error('会话已切换，已忽略旧请求结果')
     throw new Error(err.message || `请求失败: ${response.status}`)
   }
-  return response.json()
+  const result = await response.json()
+  if (requestIsStale()) throw new Error('会话已切换，已忽略旧请求结果')
+  return result
 }

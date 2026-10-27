@@ -285,7 +285,7 @@ class BruteForceTaskManager:
             class TempApp:
                 def __init__(self):
                     self.device_ua = _main().ApiClient.generate_random_ua()
-                    self.log = lambda msg: logging.debug(f"[密码恢复临时登录] {msg}")
+                    self.log_and_notify_frontend = lambda msg: logging.debug(f"[密码恢复临时登录] {msg}")
                     # 补充缺失属性，防止 ApiClient._request 报错
                     self.is_offline_mode = False
                     # ApiClient 会先检查 is_offline_mode，有了上面这行通常不需要 api_bridge，但为了保险起见设为 None 或 self

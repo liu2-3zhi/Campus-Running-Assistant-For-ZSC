@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import LoadingOverlay from '@/components/common/LoadingOverlay.vue'
 import BannedOverlay from '@/components/common/BannedOverlay.vue'
 import NetworkErrorDialog from '@/components/common/NetworkErrorDialog.vue'
+import AdminReturnButton from '@/components/common/AdminReturnButton.vue'
 
 const app = useAppStore()
 const theme = useThemeStore()
@@ -38,12 +39,13 @@ onUnmounted(() => {
   <div id="app-root" class="min-h-screen">
     <router-view v-slot="{ Component }">
       <transition name="fade" mode="out-in">
-        <component :is="Component" />
+        <component :is="Component" :key="$route.params.uuid || $route.name" />
       </transition>
     </router-view>
 
     <LoadingOverlay v-if="app.isLoading" />
     <BannedOverlay v-if="auth.isBanned" />
     <NetworkErrorDialog />
+    <AdminReturnButton />
   </div>
 </template>

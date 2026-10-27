@@ -82,7 +82,7 @@ async function startTask() {
       task_indices: [app.selectedTaskIndex],
       auto_generate: true,
       ...overdueOverride,
-    })
+    }, { sessionContext: 'business' })
     if (!result?.success) throw new Error(result?.message || '启动失败')
     if (result.success) {
       app.isRunning = true
@@ -97,7 +97,7 @@ async function startTask() {
 
 async function stopTask() {
   try {
-    const result = await callRawAPI('/api/background_task/stop', 'POST')
+    const result = await callRawAPI('/api/background_task/stop', 'POST', null, { sessionContext: 'business' })
     if (!result?.success) throw new Error(result?.message || '停止失败')
     app.isRunning = false
     app.addLog('跑步已停止', 'INFO')

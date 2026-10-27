@@ -56,6 +56,10 @@ async function loadSessions() {
 async function selectSession(sessionId) {
   errorMsg.value = ''
   try {
+    if (auth.adminOriginSession) {
+      if (auth.beginAdminView(sessionId)) emit('session-selected', sessionId)
+      return
+    }
     const headerVal = auth.getAuthenticatedSessionHeaderValue()
     const res = await fetch('/auth/switch_session', {
       method: 'POST',
