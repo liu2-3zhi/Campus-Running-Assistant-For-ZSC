@@ -16,6 +16,8 @@ export default defineConfig({
       '/api': 'http://localhost:5000',
       '/auth': 'http://localhost:5000',
       '/health': 'http://localhost:5000',
+      '/map-proxy': 'http://localhost:5000',
+      '/scripts': 'http://localhost:5000',
       '/socket.io': {
         target: 'http://localhost:5000',
         ws: true,

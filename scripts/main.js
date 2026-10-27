@@ -16965,28 +16965,74 @@ function renderMobileCheckpointsList() {
     checkpointsListDiv.appendChild(item);
   });
 }
-async function forceLoadTaskDataForPolling(taskIndex) {
-  if (taskIndex < 0 || taskIndex >= currentTasks.length) return;
-  if (currentRunData && currentRunData.task_index === taskIndex) return;
+let pollingTaskMapRequest = 0;
+let pollingTaskMapPending = null;
+function getLegacyTaskMapSnapshotKey(taskIndex) {
+  return `${sessionUUID}:${legacyRunnerExecutionState.id}:${taskIndex}`;
+}
+async function forceLoadTaskDataForPolling(taskIndex, taskStatus = null) {
+  if (taskIndex < 0 || taskIndex >= currentTasks.length) return false;
+  if (taskStatus?.route_ready === false) {
+    pollingTaskMapRequest++;
+    pollingTaskMapPending = null;
+    legacyRunnerExecutionState.mapSnapshotKey = "";
+    const hadGeometry = currentRunData?.run_coords?.length;
+    currentRunData = currentRunData?.task_index === taskIndex
+      ? { ...currentRunData, run_coords: [], status: taskStatus.status }
+      : { task_index: taskIndex, run_coords: [], status: taskStatus.status };
+    if (hadGeometry) drawOnMap();
+    return true;
+  }
+  const snapshotKey = getLegacyTaskMapSnapshotKey(taskIndex);
+  if (currentRunData?.task_index === taskIndex && currentRunData.run_coords?.length && legacyRunnerExecutionState.mapSnapshotKey === snapshotKey) return true;
+  if (pollingTaskMapPending?.key === snapshotKey && pollingTaskMapPending.request === pollingTaskMapRequest) {
+    if (taskStatus?.status) pollingTaskMapPending.status = taskStatus.status;
+    return pollingTaskMapPending.promise;
+  }
+  const request = ++pollingTaskMapRequest;
+  const requestSession = sessionUUID;
+  const requestExecution = legacyRunnerExecutionState.id;
+  const pending = { key: snapshotKey, request, status: taskStatus?.status, promise: null };
+  pollingTaskMapPending = pending;
 
   logMessage_Info(`[Polling] 强制加载任务 #${taskIndex} 的数据...`);
-  try {
-    const result = await callPythonAPI("get_task_details", taskIndex);
-    if (result.success) {
-      currentRunData = result.details;
-      currentRunData.task_index = taskIndex;
-      updateDashboard();
-      drawOnMap();
-      loadHistory(taskIndex);
-      singleProcessedPoints = 0;
-      singleTotalPoints = currentRunData.run_coords?.length || 0;
-      updateSingleProgress(0, "0 / " + singleTotalPoints + " 点");
-    } else {
-      logMessage_Error(`[Polling] 强制加载任务数据失败: ${result.message}`);
+  pending.promise = (async () => {
+    try {
+      const result = await callPythonAPI("get_task_map_snapshot", taskIndex);
+      if (
+        request !== pollingTaskMapRequest ||
+        requestSession !== sessionUUID || requestExecution !== legacyRunnerExecutionState.id ||
+        selectedTaskIndex !== taskIndex
+      ) return false;
+      if (result.success) {
+        const details = { ...result.details, task_index: taskIndex };
+        if (pending.status) details.status = pending.status;
+        if (details.target_sequence != null) details.target_sequence = Number(details.target_sequence) + 1;
+        if (currentRunData?.task_index === taskIndex && Number(currentRunData.current_point_index) > 0 && Number(currentRunData.current_point_index) >= Number(details.current_point_index ?? -1)) {
+          for (const field of ["current_point_index", "point_index", "current_position", "current_lon", "current_lat", "distance_covered_m", "current_distance", "target_sequence", "checked_targets_count"]) {
+            if (currentRunData[field] != null) details[field] = currentRunData[field];
+          }
+        }
+        currentRunData = details;
+        legacyRunnerExecutionState.mapSnapshotKey = result.route_ready === true || (result.route_ready == null && currentRunData.run_coords?.length) ? snapshotKey : "";
+        updateDashboard();
+        drawOnMap();
+        loadHistory(taskIndex);
+        singleTotalPoints = currentRunData.run_coords?.length || 0;
+        singleProcessedPoints = Math.max(0, Math.min(singleTotalPoints, Math.floor(Number(currentRunData.current_point_index) || 0)));
+        updateSingleProgress(Math.floor(singleProcessedPoints * 100 / Math.max(1, singleTotalPoints)), `${singleProcessedPoints} / ${singleTotalPoints} 点`);
+        return true;
+      } else {
+        logMessage_Error(`[Polling] 强制加载任务数据失败: ${result.message}`);
+      }
+    } catch (e) {
+      logMessage_Error(`[Polling] 强制加载任务时出错: ${e}`);
+    } finally {
+      if (pollingTaskMapPending === pending) pollingTaskMapPending = null;
     }
-  } catch (e) {
-    logMessage_Error(`[Polling] 强制加载任务时出错: ${e}`);
-  }
+    return false;
+  })();
+  return pending.promise;
 }
 
 async function selectTask(index, Update_Dashboard = true) {
@@ -19956,6 +20002,7 @@ async function toggleAllRuns() {
 // ========== 后台任务管理函数 ==========
 let backgroundTaskPollInterval = null;
 let backgroundTaskStartTime = 0;
+let backgroundTaskStatusRequest = 0;
 
 function startBackgroundTaskPolling() {
   if (backgroundTaskPollInterval) {
@@ -19966,21 +20013,52 @@ function startBackgroundTaskPolling() {
   backgroundTaskPollInterval = setInterval(pollBackgroundTaskStatus, 3000);
 }
 function stopBackgroundTaskPolling() {
+  backgroundTaskStatusRequest++;
+  pollingTaskMapRequest++;
+  pollingTaskMapPending = null;
   if (backgroundTaskPollInterval) {
     clearInterval(backgroundTaskPollInterval);
     backgroundTaskPollInterval = null;
   }
   backgroundTaskStartTime = 0;
 }
+function getLegacyActiveTaskIndex(status) {
+  const index = Object.prototype.hasOwnProperty.call(status, "active_task_index")
+    ? status.active_task_index
+    : status.task_indices?.[status.current_task_index];
+  return Number.isInteger(index) && index >= 0 ? index : null;
+}
+function mergeLegacyRunnerProgress(status) {
+  const previousPoint = Number(status.current_position?.point_index ?? status.singleProcessedPoints ?? -1);
+  const latestPoint = Number(currentRunData?.current_point_index ?? -1);
+  if (currentRunData?.task_index !== getLegacyActiveTaskIndex(status) || !Number.isFinite(latestPoint) || latestPoint <= previousPoint) return status;
+  const position = currentRunData.current_position;
+  const lon = position?.lon ?? position?.lng ?? currentRunData.current_lon;
+  const lat = position?.lat ?? currentRunData.current_lat;
+  const distance = currentRunData.distance_covered_m ?? status.current_distance_m;
+  const sequence = currentRunData.target_sequence;
+  return {
+    ...status, singleProcessedPoints: latestPoint,
+    current_distance_m: distance,
+    checked_targets_count: sequence ?? status.checked_targets_count,
+    elapsed_time_s: Math.max(Number(status.elapsed_time_s) || 0, runAccumulatedMs / 1000),
+    ...(Number.isFinite(lon) && Number.isFinite(lat) ? {
+      current_position: { lon, lat, distance, point_index: latestPoint, target_sequence: Math.max(0, (Number(sequence) || 1) - 1) },
+    } : {}),
+  };
+}
 async function pollBackgroundTaskStatus() {
+  const request = ++backgroundTaskStatusRequest;
+  const requestSession = sessionUUID;
   try {
     const result = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
       null,
     );
+    if (request !== backgroundTaskStatusRequest || requestSession !== sessionUUID) return;
     if (result.success && result.task_status) {
-      const status = result.task_status;
+      let status = result.task_status;
       if (!acceptLegacyRunnerExecution(status, true)) return;
       if (status.status === "stopped") {
         activeTaskMapProviderLock = null;
@@ -19995,6 +20073,20 @@ async function pollBackgroundTaskStatus() {
           getActiveMapProvider();
         singleRunProgressVisualActive = true;
       }
+      const activeTaskIndex = getLegacyActiveTaskIndex(status);
+      if (activeTaskIndex != null && (
+        activeTaskIndex !== selectedTaskIndex || currentRunData?.task_index !== activeTaskIndex ||
+        legacyRunnerExecutionState.mapSnapshotKey !== getLegacyTaskMapSnapshotKey(activeTaskIndex) ||
+        (status.route_ready === true && !currentRunData?.run_coords?.length) ||
+        (status.route_ready === false && currentRunData?.run_coords?.length)
+      )) {
+        logMessage_Info(`[Polling] 检测到任务切换: ${selectedTaskIndex} -> ${activeTaskIndex}`);
+        selectedTaskIndex = activeTaskIndex;
+        renderTaskList();
+        if (!(await forceLoadTaskDataForPolling(activeTaskIndex, status))) return;
+        if (request !== backgroundTaskStatusRequest || requestSession !== sessionUUID) return;
+      }
+      status = mergeLegacyRunnerProgress(status);
       if (status.run_coords && status.run_coords.length > 0) {
         if (
           !currentRunData ||
@@ -20061,25 +20153,6 @@ async function pollBackgroundTaskStatus() {
       }
 
       updateSingleProgress(pct, displayText);
-      if (status.task_indices && status.current_task_index !== undefined) {
-        const task_list = status.task_indices;
-        const current_list_index = status.current_task_index;
-        if (task_list.length > current_list_index) {
-          const global_task_index = task_list[current_list_index];
-
-          if (
-            global_task_index !== selectedTaskIndex ||
-            (currentRunData && currentRunData.task_index !== global_task_index)
-          ) {
-            logMessage_Info(
-              `[Polling] 检测到任务切换: ${selectedTaskIndex} -> ${global_task_index}`,
-            );
-            selectedTaskIndex = global_task_index;
-            renderTaskList();
-            await forceLoadTaskDataForPolling(global_task_index);
-          }
-        }
-      }
       if (status.elapsed_time_s !== undefined) {
         runAccumulatedMs = status.elapsed_time_s * 1000;
       }
@@ -20153,15 +20226,18 @@ async function pollBackgroundTaskStatus() {
   }
 }
 async function checkBackgroundTaskOnLoad() {
+  const request = ++backgroundTaskStatusRequest;
+  const requestSession = sessionUUID;
   try {
     const result = await callPythonAPI_raw(
       "/api/background_task/status",
       "GET",
       null,
     );
+    if (request !== backgroundTaskStatusRequest || requestSession !== sessionUUID) return false;
 
     if (result.success && result.task_status) {
-      const status = result.task_status;
+      let status = result.task_status;
       if (!acceptLegacyRunnerExecution(status, true)) return false;
       if (status.status === "running") {
         activeTaskMapProviderLock =
@@ -20180,51 +20256,18 @@ async function checkBackgroundTaskOnLoad() {
           $("start-all-button").classList.remove("btn-secondary");
           $("start-all-button").classList.add("btn-danger");
         }
-        const task_list = status.task_indices || [];
-        const current_list_index = status.current_task_index || 0;
-
-        if (task_list.length > current_list_index) {
-          const global_task_index = task_list[current_list_index];
-
+        const global_task_index = getLegacyActiveTaskIndex(status);
+        if (global_task_index != null) {
           logMessage_Info(
             `正在恢复运行中的任务 (索引: ${global_task_index}) 的地图数据...`,
           );
 
-          if (status.run_coords && status.run_coords.length > 0) {
-            currentRunData = {
-              run_coords: status.run_coords || [],
-              target_points: status.target_points || [],
-              target_point_names: status.target_point_names || "",
-              recommended_coords: status.recommended_coords || [],
-              target_sequence: status.checked_targets_count || 0,
-              distance_covered_m: status.current_distance_m || 0,
-              total_run_time_s: status.estimated_total_time_s || 0,
-              total_run_distance_m: status.estimated_total_distance_m || 0,
-            };
-
-            selectedTaskIndex = global_task_index;
-            const taskListDiv = $("task-list");
-            Array.from(taskListDiv.children).forEach((child, idx) => {
-              if (idx === global_task_index) {
-                child.classList.add("selected");
-              } else {
-                child.classList.remove("selected");
-              }
-            });
-            loadHistory(global_task_index);
-            updateDashboard();
-            drawOnMap();
-
-            logMessage_Info(
-              `任务数据已从API响应恢复，总点数: ${currentRunData.run_coords.length}`,
-              "INFO",
-            );
-          } else {
-            await selectTask(global_task_index);
-          }
-        } else {
-          logMessage_Warning("后台任务状态不一致，无法恢复地图路径。");
+          selectedTaskIndex = global_task_index;
+          renderTaskList();
+          if (!(await forceLoadTaskDataForPolling(global_task_index, status))) return false;
+          if (request !== backgroundTaskStatusRequest || requestSession !== sessionUUID) return false;
         }
+        status = mergeLegacyRunnerProgress(status);
         const completedTasks = status.completed_tasks || 0;
         const progressPercent = status.progress_percent || 0;
         const currentTaskProgress = status.current_task_progress || 0;
@@ -20317,7 +20360,7 @@ function ensureRunnerMarker() {
   });
   map.add(runnerMarker);
 }
-const legacyRunnerExecutionState = { id: "", startedAt: 0, taskIndex: null, retired: new Set() };
+const legacyRunnerExecutionState = { id: "", startedAt: 0, taskIndex: null, mapSnapshotKey: "", retired: new Set() };
 function resetLegacyRunnerExecution() {
   if (legacyRunnerExecutionState.id) legacyRunnerExecutionState.retired.add(legacyRunnerExecutionState.id);
   while (legacyRunnerExecutionState.retired.size > 32) {
@@ -20326,9 +20369,10 @@ function resetLegacyRunnerExecution() {
   legacyRunnerExecutionState.id = "";
   legacyRunnerExecutionState.startedAt = 0;
   legacyRunnerExecutionState.taskIndex = null;
+  legacyRunnerExecutionState.mapSnapshotKey = "";
 }
 function acceptLegacyRunnerExecution(data, allowStart = false) {
-  if (!data?.execution_id) return !legacyRunnerExecutionState.id || allowStart;
+  if (!data?.execution_id) return !legacyRunnerExecutionState.id;
   const id = String(data.execution_id);
   if (legacyRunnerExecutionState.retired.has(id)) return false;
   const startedAt = Number(data.execution_started_at || 0);
@@ -20348,6 +20392,7 @@ function acceptLegacyRunnerExecution(data, allowStart = false) {
     legacyRunnerExecutionState.id = id;
     legacyRunnerExecutionState.startedAt = Math.max(startedAt, legacyRunnerExecutionState.startedAt);
     legacyRunnerExecutionState.taskIndex = taskIndex ?? null;
+    legacyRunnerExecutionState.mapSnapshotKey = "";
     if (typeof singleProcessedPoints !== "undefined") singleProcessedPoints = 0;
     if (typeof runAccumulatedMs !== "undefined") runAccumulatedMs = 0;
     if (typeof currentRunData !== "undefined" && currentRunData && (taskIndex == null || currentRunData.task_index === taskIndex)) {
@@ -20355,6 +20400,7 @@ function acceptLegacyRunnerExecution(data, allowStart = false) {
       currentRunData.point_index = 0;
       currentRunData.distance_covered_m = 0;
       currentRunData.target_sequence = 0;
+      currentRunData.status = "running";
       delete currentRunData.current_position;
     }
   }
@@ -20488,7 +20534,9 @@ function updateRunnerPosition(
   ) {
     singleTotalPoints = currentRunData.run_coords.length;
     singleProcessedPoints = Math.min(
-      singleProcessedPoints + 1,
+      currentPointIndex != null && Number.isFinite(Number(currentPointIndex))
+        ? Math.max(0, Math.floor(Number(currentPointIndex)))
+        : singleProcessedPoints + 1,
       singleTotalPoints,
     );
     const pct = Math.floor(

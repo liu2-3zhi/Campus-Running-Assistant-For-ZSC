@@ -6,7 +6,7 @@ import { ref } from '../frontend/node_modules/vue/dist/vue.esm-browser.prod.js'
 import * as coordinates from '../frontend/src/utils/coordinates.js'
 import * as routeProgress from '../frontend/src/utils/routeProgress.js'
 
-function createRuntime({ proxyInitialize } = {}) {
+function createRuntime({ proxyInitialize, documentOverride } = {}) {
   const created = []
   const removed = []
   const listeners = new Map()
@@ -72,13 +72,43 @@ function createRuntime({ proxyInitialize } = {}) {
     },
     BMAP_COORD_GCJ02: 2,
     ...coordinates, ...routeProgress,
-    document: { getElementById: () => ({ style: {} }), createElement: () => ({ textContent: '', outerHTML: '<span>点</span>' }) },
+    document: documentOverride || { getElementById: () => ({ style: {} }), createElement: () => ({ textContent: '', outerHTML: '<span>点</span>' }) },
     setTimeout, clearTimeout, console,
   }
   const setup = new Function(...Object.keys(dependencies), `${script.replace(/^import .*$/gm, '')}\nreturn component.setup`)(...Object.values(dependencies))
   const panel = setup({ containerId: 'map', isMultiAccount: false }, { expose() {} })
-  return { panel, app, store, sdk, created, removed, listeners, unmount }
+  return { panel, app, store, sdk, created, removed, listeners, unmount, window: dependencies.window }
 }
+
+test('proxy-rewritten loader URL remains cached when the component remounts', async () => {
+  let current, appended = 0
+  const document = {
+    getElementById: () => current,
+    createElement: () => ({ dataset: {}, remove() { current = null },
+      set src(value) { this.rewrittenUrl = '/map-proxy/amap/https/webapi.amap.com/loader.js' },
+      get src() { return this.rewrittenUrl },
+    }),
+    head: { appendChild(script) { current = script; appended++; queueMicrotask(() => script.onload()) } },
+  }
+  const { panel } = createRuntime({ documentOverride: document })
+  await panel.loadScript('https://webapi.amap.com/loader.js', 'amap-loader')
+  await panel.loadScript('https://webapi.amap.com/loader.js', 'amap-loader')
+  assert.equal(appended, 1)
+})
+
+test('Tianditu checkpoint titles do not require a nonexistent Marker.setTitle method', async () => {
+  const { panel, store, window } = createRuntime()
+  await panel.initBaidu()
+  let marker
+  window.T = {
+    LngLat: class { constructor(lng, lat) { this.lng = lng; this.lat = lat } },
+    Marker: class { constructor(point, options) { this.point = point; this.options = options; marker = this } },
+  }
+  store.activeProvider = 'tianditu'
+  store.map.addOverLay = store.map.addOverlay
+  assert.doesNotThrow(() => panel.addMarker([113.39, 22.52], { title: '检查点' }))
+  assert.equal(marker.options.title, '检查点')
+})
 
 test('Baidu v4 keeps default BD09 and converts business coordinates once at SDK boundary', async () => {
   const { panel, store, sdk } = createRuntime()

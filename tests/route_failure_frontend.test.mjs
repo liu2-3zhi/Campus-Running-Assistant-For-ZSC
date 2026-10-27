@@ -158,6 +158,51 @@ test('a response from a departed target is ignored', async () => {
   assert.equal(app.isRunning, true)
 })
 
+for (const legacyStatus of [false, true]) test(`a ${legacyStatus ? 'legacy' : 'previous execution'} status cannot stop polling a restarted task`, async () => {
+  let resolveRequest
+  const auth = { sessionUUID: 'target' }
+  const app = { isRunning: true, activeExecutionId: 'old', activeExecutionStartedAt: 1,
+    addRoutePlanningFailures() { throw new Error('stale diagnostics') } }
+  const bg = loadSource('frontend/src/composables/useBackgroundTask.js', {
+    ref: value => ({ value }), onUnmounted() {}, watch() {}, useAppStore: () => app, useAuthStore: () => auth,
+    callRawAPI: () => new Promise(resolve => { resolveRequest = resolve }),
+    setInterval: () => 1, clearInterval() {},
+  }, 'useBackgroundTask()')
+  bg.startPolling()
+  app.activeExecutionId = 'new'
+  app.activeExecutionStartedAt = 2
+  resolveRequest({ success: true, task_status: { ...(legacyStatus ? {} : { execution_id: 'old', execution_started_at: 1 }), status: 'completed' } })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(app.isRunning, true)
+  assert.equal(bg.isPolling.value, true)
+  assert.equal(bg.taskStatus.value, null)
+})
+
+test('an execution restarted while a terminal status waits for geometry keeps polling', async () => {
+  let resolveSnapshot
+  const auth = { sessionUUID: 'target' }
+  const app = { isRunning: true, activeExecutionId: 'old', activeExecutionStartedAt: 1, addRoutePlanningFailures() {} }
+  const bg = loadSource('frontend/src/composables/useBackgroundTask.js', {
+    ref: value => ({ value }), onUnmounted() {}, watch() {}, useAppStore: () => app, useAuthStore: () => auth,
+    callRawAPI: async () => ({ success: true, task_status: { execution_id: 'old', execution_started_at: 1,
+      status: 'completed', active_task_index: 2, route_ready: true } }),
+    callAPI: () => new Promise(resolve => { resolveSnapshot = resolve }),
+    setInterval: () => 1, clearInterval() {},
+  }, 'useBackgroundTask()')
+  bg.startPolling()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(typeof resolveSnapshot, 'function')
+  app.activeExecutionId = 'new'
+  app.activeExecutionStartedAt = 2
+  app.isRunning = true
+  app.runData = { task_index: 2, current_point_index: 0 }
+  resolveSnapshot({ success: true, route_ready: true, details: { current_point_index: 90, run_coords: [[113, 22], [114, 22]] } })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(app.isRunning, true)
+  assert.equal(bg.isPolling.value, true)
+  assert.equal(app.runData.current_point_index, 0)
+})
+
 test('a per-task completion keeps polling until the whole batch finishes', async () => {
   let onRunningChanged
   let status = { status: 'running' }

@@ -17,17 +17,24 @@ export function useBackgroundTask() {
   let disposed = false
   const mapRestorer = createTaskMapRestorer({ app, loadSnapshot: index => callAPI('get_task_map_snapshot', index), getSession: () => auth.sessionUUID })
 
+  function isObsoleteExecution(status) {
+    if (!app.activeExecutionId) return false
+    if (!status.execution_id) return true
+    return status.execution_id !== app.activeExecutionId && Number(status.execution_started_at || 0) <= Number(app.activeExecutionStartedAt || 0)
+  }
+
   async function applyStatus(status) {
-    if (disposed || !status) return
-    if (status.execution_id && app.activeExecutionId && status.execution_id !== app.activeExecutionId && Number(status.execution_started_at || 0) <= Number(app.activeExecutionStartedAt || 0)) return
+    if (disposed || !status) return false
+    if (isObsoleteExecution(status)) return false
     const timestamp = Number(status.last_update ?? status.start_time ?? 0)
-    if (timestamp && timestamp < latestStatusTimestamp) return
+    if (timestamp && timestamp < latestStatusTimestamp) return false
     if (timestamp) latestStatusTimestamp = timestamp
     taskStatus.value = status
     app.addRoutePlanningFailures(status.route_planning_failures)
     if (['running', 'paused'].includes(status.status)) app.isRunning = true
     else if (['completed', 'stopped', 'error'].includes(status.status)) app.isRunning = false
     try { await mapRestorer.apply(status) } catch (_) {}
+    return !disposed && !isObsoleteExecution(status)
   }
 
   async function pollStatus() {
@@ -42,8 +49,8 @@ export function useBackgroundTask() {
         stopPolling()
         return
       }
-      await applyStatus(status)
-      if (disposed || requestEpoch !== epoch || sessionId !== auth.sessionUUID) return
+      const applied = await applyStatus(status)
+      if (!applied || disposed || requestEpoch !== epoch || requestNumber !== statusRequest || sessionId !== auth.sessionUUID) return
       if (['completed', 'stopped', 'error'].includes(status.status)) {
         app.isRunning = false
         stopPolling()

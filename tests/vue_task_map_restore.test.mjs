@@ -38,6 +38,26 @@ test('old task and old session snapshots cannot overwrite the current task', asy
   assert.equal(app.selectedTaskIndex, 5)
 })
 
+test('a snapshot awaiting the previous execution cannot overwrite a same-task websocket restart', async () => {
+  const app = { selectedTaskIndex: 2, activeExecutionId: 'old', runData: null }
+  const requests = []
+  const restorer = createTaskMapRestorer({ app, getSession: () => 'C', loadSnapshot: () => new Promise(resolve => requests.push(resolve)) })
+  const old = restorer.apply({ execution_id: 'old', status: 'running', active_task_index: 2, route_ready: true })
+  app.activeExecutionId = 'new'
+  app.runData = { task_index: 2, execution_id: 'new', status: 'running', current_point_index: 0 }
+  requests[0]({ success: true, route_ready: true, details: { current_point_index: 90, run_coords: [[113, 22], [114, 22]] } })
+  await old
+  assert.equal(app.runData.execution_id, 'new')
+  assert.equal(app.runData.current_point_index, 0)
+  assert.equal(app.runData.run_coords, undefined)
+
+  const current = restorer.apply({ execution_id: 'new', status: 'running', active_task_index: 2, route_ready: true })
+  requests[1]({ success: true, route_ready: true, details: { current_point_index: 0, run_coords: [[115, 23], [116, 23]] } })
+  await current
+  assert.equal(app.runData.current_point_index, 0)
+  assert.deepEqual(app.runData.run_coords, [[115, 23], [116, 23]])
+})
+
 test('rerunning a completed task starts fresh and does not inherit completed coloring', async () => {
   const app = { selectedTaskIndex: 0, runData: { task_index: 0, current_point_index: 4, status: 1 } }
   const restorer = createTaskMapRestorer({ app, getSession: () => 'C', loadSnapshot: async () => ({ success: true, route_ready: true,

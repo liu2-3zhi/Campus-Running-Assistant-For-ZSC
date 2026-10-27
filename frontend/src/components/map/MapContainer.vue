@@ -49,7 +49,8 @@ let draftPolyline = null      // 草稿折线实例（独立于普通 overlays �
 function loadScript(src, id) {
   return new Promise((resolve, reject) => {
     let existing = document.getElementById(id)
-    if (existing?.src && existing.src !== src) { existing.remove(); existing = null }
+    // The request proxy rewrites script.src; retain the requested URL for cache identity.
+    if (existing?.src && (existing.dataset?.sourceUrl || existing.src) !== src) { existing.remove(); existing = null }
     if (existing?.dataset?.loaded === 'true') { resolve(); return }
     const script = existing || document.createElement('script')
     const timer = setTimeout(() => finish(new Error('地图 SDK 加载超时')), 20000)
@@ -61,6 +62,7 @@ function loadScript(src, id) {
       else { if (script.dataset) script.dataset.loaded = 'true'; resolve() }
     }
     script.id = id
+    if (script.dataset) script.dataset.sourceUrl = src
     script.src = src
     script.onload = () => finish()
     script.onerror = () => finish(new Error('地图 SDK 脚本加载失败'))
@@ -498,10 +500,9 @@ function addMarker(pos, opts = {}) {
   } else if (provider === 'tianditu') {
     const T = window.T
     if (!T) return null
-    marker = new T.Marker(new T.LngLat(pos[0], pos[1]))
+    marker = new T.Marker(new T.LngLat(pos[0], pos[1]), { title: opts.title || '' })
     map.addOverLay(marker)
     if (opts.title) {
-      marker.setTitle(opts.title)
       if (T.Label) {
         const label = new T.Label({ text: opts.title, position: new T.LngLat(pos[0], pos[1]) })
         label.setBackgroundColor?.(opts.color || '#10b981')
@@ -955,7 +956,7 @@ defineExpose({
       :id="containerId"
       class="map-container h-full w-full"
       :class="{ 'min-h-[300px]': !isMultiAccount, 'min-h-[200px]': isMultiAccount }"
-      v-show="mapReady"
+      :style="{ visibility: mapReady ? 'visible' : 'hidden' }"
     ></div>
 
     <!-- Zoom controls overlay -->

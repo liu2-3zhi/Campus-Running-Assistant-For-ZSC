@@ -36,6 +36,7 @@ export function createTaskMapRestorer({ app, loadSnapshot, getSession }) {
       }
       app.runData = { ...app.runData, status: status.status }
       const requestGeneration = generation
+      const requestExecutionId = app.activeExecutionId || ''
       const position = status.current_position
       if (position) {
         const previous = app.runData || {}
@@ -55,7 +56,7 @@ export function createTaskMapRestorer({ app, loadSnapshot, getSession }) {
       if (pending) return pending
       pending = (async () => {
         const snapshot = await loadSnapshot(index)
-        if (requestGeneration !== generation || session !== getSession() || app.selectedTaskIndex !== index) return
+        if (requestGeneration !== generation || session !== getSession() || app.selectedTaskIndex !== index || requestExecutionId !== (app.activeExecutionId || '')) return
         if (snapshot?.success && snapshot.details) {
           const details = { ...snapshot.details, task_index: index, status: app.runData?.status ?? status.status }
           if (details.target_sequence != null) details.target_sequence = Number(details.target_sequence) + 1

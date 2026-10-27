@@ -25,6 +25,12 @@ export const useAppStore = defineStore('app', () => {
   const multiStatus = ref({})
   const multiGlobalButtons = ref({ startDisabled: false, stopDisabled: false, exitDisabled: false })
   const multiPositions = ref({})
+  let multiAccountsLoaded = false
+  let multiAccountsRevision = 0
+  let multiSnapshotRequest = 0
+  let lastMultiSnapshotRequest = 0
+  let multiPositionRevision = 0
+  const multiPositionVersions = new Map()
 
   // 日志
   const logs = ref([])
@@ -101,6 +107,9 @@ export const useAppStore = defineStore('app', () => {
       multiAccounts.value = []
       multiPositions.value = {}
       multiStatus.value = {}
+      multiAccountsLoaded = false
+      multiAccountsRevision++
+      multiPositionVersions.clear()
       clearLogs()
     }
     businessSession.value = session
@@ -115,12 +124,66 @@ export const useAppStore = defineStore('app', () => {
           ? { ...account, ...data.data }
           : account
       })
+      if (Object.hasOwn(data.data, 'current_position')) {
+        updateMultiPosition(data.username, data.data.current_position, data.data.name)
+      }
     }
   }
 
+  function captureMultiAccountsSnapshot() {
+    return { session: businessSession.value, request: ++multiSnapshotRequest,
+      accountsRevision: multiAccountsRevision, positionRevision: multiPositionRevision }
+  }
+
+  function normalizeMultiPosition(position, name) {
+    const lon = position?.lon
+    const lat = position?.lat
+    return typeof lon === 'number' && Number.isFinite(lon) && typeof lat === 'number' && Number.isFinite(lat)
+      ? { lon, lat, name } : null
+  }
+
+  function updateMultiPosition(username, position, name) {
+    const account = multiAccounts.value.find(account => (account.username || account.name || account.id) === username)
+    if (multiAccountsLoaded && !account) return
+    const next = { ...multiPositions.value }
+    const point = normalizeMultiPosition(position, name || account?.name || next[username]?.name || username)
+    if (point) next[username] = point
+    else delete next[username]
+    multiPositionVersions.set(username, ++multiPositionRevision)
+    multiPositions.value = next
+  }
+
+  function applyMultiAccountsSnapshot(accounts, context = null) {
+    if (!Array.isArray(accounts)) return false
+    if (context && (context.session !== businessSession.value || context.accountsRevision !== multiAccountsRevision || context.request < lastMultiSnapshotRequest)) return false
+    if (context) lastMultiSnapshotRequest = context.request
+    multiAccounts.value = accounts
+    multiAccountsLoaded = true
+    const positions = { ...multiPositions.value }
+    const usernames = new Set(accounts.map(account => account.username || account.name || account.id))
+    for (const username of Object.keys(positions)) {
+      if (!usernames.has(username)) { delete positions[username]; multiPositionVersions.delete(username) }
+    }
+    for (const username of multiPositionVersions.keys()) {
+      if (!usernames.has(username)) multiPositionVersions.delete(username)
+    }
+    for (const account of accounts) {
+      const username = account.username || account.name || account.id
+      if (!username || !Object.hasOwn(account, 'current_position')) continue
+      // A position pushed after this HTTP request started takes precedence over its snapshot.
+      if (context && (multiPositionVersions.get(username) || 0) > context.positionRevision) continue
+      const point = normalizeMultiPosition(account.current_position, account.name || username)
+      if (point) positions[username] = point
+      else delete positions[username]
+    }
+    multiPositions.value = positions
+    return true
+  }
+
   function handleAccountsUpdated(data) {
-    if (data?.accounts) {
-      multiAccounts.value = data.accounts
+    if (Array.isArray(data?.accounts)) {
+      multiAccountsRevision++
+      applyMultiAccountsSnapshot(data.accounts)
     }
   }
 
@@ -237,10 +300,7 @@ export const useAppStore = defineStore('app', () => {
 
   function handleMultiPositionUpdate(data) {
     if (data?.username) {
-      multiPositions.value = {
-        ...multiPositions.value,
-        [data.username]: { lon: data.lon, lat: data.lat, name: data.name || data.username }
-      }
+      updateMultiPosition(data.username, data, data.name)
     }
   }
 
@@ -252,7 +312,7 @@ export const useAppStore = defineStore('app', () => {
     logs, notifications, unreadCount, verificationCodes,
     pythonParams, beianData,
     detectMobile, addLog, clearLogs, addRoutePlanningFailures,
-    handleMultiStatusUpdate, handleAccountsUpdated,
+    handleMultiStatusUpdate, handleAccountsUpdated, captureMultiAccountsSnapshot, applyMultiAccountsSnapshot,
     handleGlobalButtonsUpdate, handlePositionUpdate, beginRunnerExecution,
     handleTaskCompleted, handleRunStopped,
     handleNotificationsUpdated, handleVerificationCodesUpdated,

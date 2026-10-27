@@ -898,6 +898,8 @@ async function initializeApp() {
   }
 }
 async function restoreMobileTaskState() {
+  const request = ++backgroundTaskStatusRequest;
+  const requestSession = sessionUUID;
   try {
     logMessage_Info("[移动端状态恢复] 开始检查后端任务状态...");
 
@@ -906,25 +908,24 @@ async function restoreMobileTaskState() {
       "GET",
       null,
     );
+    if (request !== backgroundTaskStatusRequest || requestSession !== sessionUUID) return;
 
     if (statusRes.success && statusRes.task_status) {
       const status = statusRes.task_status;
       if (!acceptLegacyRunnerExecution(status, true)) return;
       if (status.status === "running" || status.status === "paused") {
         logMessage_Info("[移动端状态恢复] 检测到后端任务正在执行，恢复状态...");
-        if (status.task_indices && status.current_task_index !== undefined) {
-          const task_list = status.task_indices;
-          const current_list_index = status.current_task_index;
-          if (task_list.length > current_list_index) {
-            const global_task_index = task_list[current_list_index];
-            selectedTaskIndex = global_task_index;
-            logMessage_Info(
-              `[移动端状态恢复] 恢复任务索引: ${selectedTaskIndex}`,
-            );
+        singleRunProgressVisualActive = true;
+        const global_task_index = getLegacyActiveTaskIndex(status);
+        if (global_task_index != null) {
+          selectedTaskIndex = global_task_index;
+          logMessage_Info(
+            `[移动端状态恢复] 恢复任务索引: ${selectedTaskIndex}`,
+          );
 
-            if (currentTasks && currentTasks[selectedTaskIndex]) {
-              await selectTask(selectedTaskIndex, false);
-            }
+          if (currentTasks && currentTasks[selectedTaskIndex]) {
+            if (!(await forceLoadTaskDataForPolling(selectedTaskIndex, status))) return;
+            if (request !== backgroundTaskStatusRequest || requestSession !== sessionUUID) return;
           }
         }
 

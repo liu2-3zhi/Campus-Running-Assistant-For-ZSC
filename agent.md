@@ -97,9 +97,12 @@
 - 前端代理启用后，SDK、JSONP、瓦片、动态 HTML/CSS 与 Worker 请求都要经过同源白名单代理。不能只验证 SDK 首个脚本；真实验收要检查地图初始化、规划、动态 setter 和是否出现直连。
 - 不要用正则改写 SDK 的协议片段：高德实际使用 `protocol + "://restapi.amap.com"`，百度也会单独拼接协议。应保留片段，在浏览器请求入口代理完整 URL；百度根路径查询必须支持 `/` 和多余的根斜杠。
 - 高德 JSONP 可能返回 `application/json` 或 `application/octet-stream`。保留 `nosniff`，仅在唯一合法回调、精确回调包裹及严格 JSON 均通过时纠正 MIME；不能把任意 JSON、HTML 或额外脚本提升为 JavaScript。
+- 腾讯 `confinfo` 会返回 `callback&&callback(JSON)` 和 `text/plain`；只允许同一个已验证回调的精确守卫包装，不能接受其他表达式。Vue 的 SDK 脚本缓存应使用原始请求 URL，不能拿代理改写后的 `script.src` 比较，否则重建组件会重载高德 Loader。
+- 地图容器初始化前保持布局尺寸，可用 `visibility:hidden`，不能以 `display:none` 隐藏后再创建腾讯 GL 地图；天地图 `T.Marker` 没有 `setTitle()`，标题放构造参数并通过 `T.Label` 显示。验收时天地图坐标 getter 自身会舍入，预期值须按同一 SDK getter 规范化，不能修改业务坐标迎合测试。
 - 代理凭证须在过期前续签；鉴权失败不能恢复直连。初始化和续签要隔离旧会话响应，成功鉴权只维持真实调用者的内存活跃时间，不新增每瓦片 Token 保存。
 - Nginx 必须保留请求 Host 的非默认端口，且包括 HTTP 重定向在内的访问/错误日志不能记录地图代理查询串。Python 的统一脱敏还必须覆盖 `ak`、`tk`、`jscode`、`securityJsCode`，包括 urllib3 DEBUG 记录。
 - `tests/browser_map_proxy_smoke.py` 是显式启用的真实后端代理验收，凭据只从环境变量进入内存；不得把真实 Key、Token、原始响应或完整路线写入脚本、配置或验收记录。
+- 后台任务启动、状态、停止接口都须验证真实调用者及显式管理员来源，再按调用者权限执行；游客同时核对 Token 索引与实体文件且不增加轮询写入。旧版路线快照按会话/执行批次/任务合并进行中的请求，不能因下一次 3 秒轮询到来持续作废慢快照。返回时合并更晚 WebSocket 位置；新批次、路线未就绪、任务切换和停止必须使旧请求失效。相关回归见 `tests/test_background_task_route_auth.py`、`tests/legacy_task_map_restore.test.mjs`。
 
 ## 坐标转换踩坑
 

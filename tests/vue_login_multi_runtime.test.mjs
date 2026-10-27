@@ -12,6 +12,8 @@ const vue = require('vue')
 const { defineStore, createPinia } = require('pinia')
 const themeSource = readFileSync(new URL('../frontend/src/stores/theme.js', import.meta.url), 'utf8')
   .replace(/^import .*$/gm, '').replace('export const useThemeStore', 'const useThemeStore')
+const appSource = readFileSync(new URL('../frontend/src/stores/app.js', import.meta.url), 'utf8')
+  .replace(/^import .*$/gm, '').replace('export const useAppStore', 'const useAppStore')
 
 function setupComponent(path, overrides = {}, props = {}) {
   const source = readFileSync(new URL(`../frontend/src/${path}`, import.meta.url), 'utf8')
@@ -20,7 +22,8 @@ function setupComponent(path, overrides = {}, props = {}) {
   const mounted = []
   const emitted = []
   const calls = []
-  const app = { users: [], multiAccounts: [], multiStatus: {}, multiPositions: {}, logs: [], pythonParams: {}, multiGlobalButtons: {}, bindBusinessSession(session) { this.businessSession = session }, addLog(msg, level) { this.logs.push({ msg, level }) } }
+  const useAppStore = vm.runInNewContext(`${appSource}\nuseAppStore`, { ...vue, defineStore })
+  const app = useAppStore(createPinia())
   const auth = { sessionUUID: 'session-id', isAuthenticated: false, getAuthenticatedSessionHeaderValue: () => 'session-id', setLoginResult() {} }
   const dependencies = {
     ...vue,
@@ -204,6 +207,32 @@ test('Vue start-all forwards skip-overdue decisions to the backend', async () =>
   assert.equal(startAll[1].skip_overdue, true)
   assert.equal(startAll[1].bypass_overdue, false)
   assert.equal(startAll[1].waive_charge, false)
+})
+
+test('multi-account HTTP refresh restores markers, keeps newer pushed positions and removes deleted accounts', async () => {
+  let resolveAccounts
+  let removed = false
+  const ctx = setupComponent('views/MultiAccountView.vue', {
+    callAPI: async method => {
+      if (method === 'multi_remove_account') { removed = true; return { success: true } }
+      if (method === 'multi_get_all_accounts_status' && removed) return { success: true, accounts: [] }
+      return new Promise(resolve => { resolveAccounts = resolve })
+    },
+  })
+  ctx.app.bindBusinessSession('A')
+  const initial = ctx.state.loadAccounts()
+  resolveAccounts({ success: true, accounts: [{ username: 'first', current_position: { lon: 113, lat: 22 } }] })
+  await initial
+  assert.equal(ctx.app.multiPositions.first.lon, 113)
+
+  const pending = ctx.state.loadAccounts()
+  ctx.app.handleMultiPositionUpdate({ username: 'first', lon: 114, lat: 23 })
+  resolveAccounts({ success: true, accounts: [{ username: 'first', current_position: { lon: 112, lat: 21 } }] })
+  await pending
+  assert.equal(ctx.app.multiPositions.first.lon, 114)
+  await ctx.state.removeAccount({ username: 'first' })
+  assert.equal(ctx.app.multiAccounts.length, 0)
+  assert.equal(Object.keys(ctx.app.multiPositions).length, 0)
 })
 
 test('Vue overdue modal offers skip when a partial set can start', () => {

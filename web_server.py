@@ -13174,10 +13174,63 @@ def start_web_server(args_param):
     #         logging.error(f"加载 HTML 片段时发生错误: {e}", exc_info=True)
     #         return jsonify({"error": "Internal server error"}), 500
 
+    def _background_task_login_required(f):
+        authenticated_handler = login_required(f)
+
+        @functools.wraps(f)
+        def decorated_function(*args, **kwargs):
+            session_id = _main().normalize_session_uuid(_main().request.headers.get("X-Session-ID", ""))
+            with web_sessions_lock:
+                api_instance = web_sessions.get(session_id)
+                is_guest = bool(
+                    api_instance and getattr(api_instance, "is_authenticated", False)
+                    and getattr(api_instance, "is_guest", False)
+                    and getattr(api_instance, "auth_username", "") == "guest"
+                )
+            if not is_guest or _main().request.headers.get(_main().ADMIN_ORIGIN_SESSION_HEADER):
+                return authenticated_handler(*args, **kwargs)
+            try:
+                token = _main().request.cookies.get("auth_token", "")
+                guest_store = getattr(_main().token_manager, "guest_store", None)
+                guest_record = _main()._load_guest_session_record(session_id)
+                guest_config = _main()._get_guest_config(
+                    _main()._read_config_ini() or _main()._get_default_config()
+                )
+                last_accessed = float((guest_record or {}).get("last_accessed", 0))
+                valid_guest = bool(
+                    token and guest_store and last_accessed > 0
+                    and time.time() <= last_accessed + guest_config["guest_session_inactivity_timeout"]
+                    and guest_store.find_session_id(token) == session_id
+                    and guest_store.find_token_for_session(session_id) == token
+                )
+            except Exception:
+                valid_guest = False
+            if not valid_guest:
+                return _main().jsonify({"success": False, "message": "认证令牌无效，请重新登录", "need_login": True}), 401
+            _main().g.user = "guest"
+            _main().g.api_instance = api_instance
+            _main().g.session_id = session_id
+            return f(*args, **kwargs)
+
+        return decorated_function
+
+    def _require_background_task_permission(permission):
+        try:
+            username = getattr(_main().g, "user", "")
+            if username and _main().auth_system.check_permission(username, permission) is True:
+                return None
+        except Exception as error:
+            logging.warning("[后台任务] 调用者权限校验失败: %s", type(error).__name__)
+        return _main().jsonify({"success": False, "message": f"权限不足：需要 {permission} 权限"}), 403
+
     @app.route("/api/background_task/start", methods=["POST"])
+    @_background_task_login_required
     def start_background_task():
         """启动后台任务执行"""
-        session_id = _main().request.headers.get("X-Session-ID", "")
+        permission_error = _require_background_task_permission("start_tasks")
+        if permission_error is not None:
+            return permission_error
+        session_id = _main().normalize_session_uuid(_main().request.headers.get("X-Session-ID", ""))
         if not session_id or session_id not in web_sessions:
             return _main().jsonify({"success": False, "message": "会话无效或未登录"}), 401
 
@@ -13186,6 +13239,18 @@ def start_web_server(args_param):
         auto_generate = data.get("auto_generate", False)
         bypass_overdue = bool(data.get("bypass_overdue"))
         waive_charge = bool(data.get("waive_charge"))
+
+        if bypass_overdue:
+            permission_error = _require_background_task_permission("bypass_overdue")
+            if permission_error is not None:
+                return permission_error
+        if waive_charge:
+            try:
+                can_waive_charge = _main().auth_system.get_user_group(_main().g.user) in ("admin", "super_admin")
+            except Exception:
+                can_waive_charge = False
+            if not can_waive_charge:
+                return _main().jsonify({"success": False, "message": "仅管理员可使用此次不计费"}), 403
 
         if not task_indices:
             return _main().jsonify({"success": False, "message": "未指定任务"}), 400
@@ -13285,9 +13350,13 @@ def start_web_server(args_param):
         return _main().jsonify(result)
 
     @app.route("/api/background_task/status", methods=["GET"])
+    @_background_task_login_required
     def get_background_task_status():
         """获取后台任务状态"""
-        session_id = _main().request.headers.get("X-Session-ID", "")
+        permission_error = _require_background_task_permission("view_tasks")
+        if permission_error is not None:
+            return permission_error
+        session_id = _main().normalize_session_uuid(_main().request.headers.get("X-Session-ID", ""))
         if not session_id:
             return _main().jsonify({"success": False, "message": "缺少会话ID"}), 401
 
@@ -13301,9 +13370,13 @@ def start_web_server(args_param):
             return _main().jsonify({"success": False, "message": "未找到后台任务"})
 
     @app.route("/api/background_task/stop", methods=["POST"])
+    @_background_task_login_required
     def stop_background_task():
         """停止后台任务"""
-        session_id = _main().request.headers.get("X-Session-ID", "")
+        permission_error = _require_background_task_permission("stop_tasks")
+        if permission_error is not None:
+            return permission_error
+        session_id = _main().normalize_session_uuid(_main().request.headers.get("X-Session-ID", ""))
         if not session_id or session_id not in web_sessions:
             return _main().jsonify({"success": False, "message": "会话无效或未登录"}), 401
         try:

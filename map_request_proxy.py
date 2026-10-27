@@ -146,7 +146,8 @@ def _validated_jsonp_content_type(body, content_type, query, fetch_destination="
     try:
         text = body.decode(charset)
         envelope = re.fullmatch(
-            r"\s*(?:/\*\*/\s*)?" + re.escape(callback) + r"\s*\(\s*([\s\S]+)\s*\)\s*;?\s*",
+            r"\s*(?:/\*\*/\s*)?(?:" + re.escape(callback) + r"\s*&&\s*)?"
+            + re.escape(callback) + r"\s*\(\s*([\s\S]+)\s*\)\s*;?\s*",
             text.lstrip("\ufeff"),
         )
         if not envelope:

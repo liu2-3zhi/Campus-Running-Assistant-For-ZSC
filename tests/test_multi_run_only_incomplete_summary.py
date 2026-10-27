@@ -220,7 +220,8 @@ class FrontendWiringTests(unittest.TestCase):
             PROJECT_ROOT / "frontend" / "src" / "views" / "MultiAccountView.vue"
         ).read_text(encoding="utf-8")
         self.assertIn("set_multi_run_only_incomplete", source)
-        self.assertIn("appStore.multiAccounts = result.accounts", source)
+        self.assertIn("const snapshotContext = appStore.captureMultiAccountsSnapshot()", source)
+        self.assertIn("appStore.applyMultiAccountsSnapshot(result.accounts, snapshotContext)", source)
 
     def test_stop_watcher_preserves_stopped_status_source(self):
         source = (
