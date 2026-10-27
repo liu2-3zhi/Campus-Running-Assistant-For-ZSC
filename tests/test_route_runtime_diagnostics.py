@@ -8,9 +8,15 @@ from unittest.mock import Mock, patch
 
 import main
 from background_task_manager import ChromeBrowserPool
+from map_error_catalog import map_error_retry_policy
 
 
 class TestRouteRuntimeDiagnostics(unittest.TestCase):
+    def setUp(self):
+        origin = patch.object(main, "resolve_backend_page_origin", return_value=("https://runtime.test", "request"))
+        origin.start()
+        self.addCleanup(origin.stop)
+
     def _provider_source(self, provider):
         module = ast.parse(Path(main.__file__).read_text(encoding="utf-8"))
         helper = next(node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == f"_plan_route_path_with_{provider}_runtime")
@@ -18,10 +24,104 @@ class TestRouteRuntimeDiagnostics(unittest.TestCase):
         return call.args[1].value
 
     def _execute_provider(self, provider, prelude, args):
+        args = list(args)
+        args[2] = dict(args[2], _map_error_retry_policy=map_error_retry_policy(provider))
         code = prelude + "\nconst fn=" + self._provider_source(provider) + ";\nfn(" + json.dumps(args) + ").then(result=>console.log(JSON.stringify(result)));"
         proc = subprocess.run(["node", "-e", code], capture_output=True, encoding="utf-8", timeout=10)
         self.assertEqual(0, proc.returncode, proc.stderr)
         return json.loads(proc.stdout)
+
+    def _failure_prelude(self, code, http_status=200):
+        return r'''
+globalThis.window=globalThis;
+const failureCode=FAILURE_CODE;
+const nativeTimeout=setTimeout;
+globalThis.setTimeout=(fn,delay)=>delay>=15000?0:nativeTimeout(fn,0);
+globalThis.clearTimeout=()=>{};
+globalThis.document={getElementById:()=>null,createElement:()=>({style:{}}),body:{appendChild(){}},
+head:{appendChild(script){const callback=new URL(script.src).searchParams.get('callback');globalThis[callback]({status:failureCode,message:'vendor failure'});}}};
+globalThis.fetch=async()=>({ok:HTTP_STATUS===200,status:HTTP_STATUS,text:async()=>JSON.stringify({code:failureCode,msg:'vendor failure'})});
+globalThis.BMAP_STATUS_SUCCESS=0;
+globalThis.BMap={Point:class{constructor(lng,lat){this.lng=lng;this.lat=lat;}},
+Map:class{centerAndZoom(){}},WalkingRoute:class{constructor(map,options){this.options=options;}getStatus(){return failureCode;}search(){this.options.onSearchComplete({getPlan:()=>null});}}};
+globalThis.AMapLoader={load:async()=>{}};
+globalThis.AMap={LngLat:class{constructor(lng,lat){this.lng=lng;this.lat=lat;}},Walking:class{search(a,b,cb){cb('error',{info:failureCode});}}};
+'''.replace("FAILURE_CODE", json.dumps(code)).replace("HTTP_STATUS", str(http_status))
+
+    def _failure_args(self, provider, retries=99):
+        args = [[[113.39, 22.52], [113.40, 22.53]], "test-key", {"api_retries": retries, "api_retry_delay_s": 0}]
+        return args + ([[], "walking"] if provider == "amap" else ["walking"])
+
+    def test_known_permanent_errors_do_not_consume_additional_retry_waves(self):
+        cases = (("amap", "INVALID_USER_SCODE"), ("amap", "INVALID_USER_DOMAIN"),
+                 ("tencent", 121), ("tencent", 408), ("baidu", 4), ("baidu", 6),
+                 ("tianditu", 301001), ("tianditu", 301012), ("tianditu", 308011))
+        for provider, code in cases:
+            with self.subTest(provider=provider, code=code):
+                result = self._execute_provider(provider, self._failure_prelude(code), self._failure_args(provider))
+                segment = result["diagnostic"]["segments"][0]
+                self.assertIn("error", result)
+                self.assertEqual(str(code), str(segment["error_code"]))
+                self.assertEqual(1, segment["attempts"])
+                self.assertEqual(1, result["diagnostic"]["waves"])
+
+    def test_transient_failures_have_bounded_real_attempts_even_with_large_retry_budget(self):
+        cases = (("amap", "SERVICE_NOT_AVAILABLE", 200, 2), ("tencent", 120, 200, 10),
+                 ("tencent", 510, 200, 2), ("baidu", 7, 200, 2), ("baidu", 8, 200, 2),
+                 ("tianditu", 99999, 503, 2))
+        for provider, code, http_status, attempts in cases:
+            with self.subTest(provider=provider, code=code):
+                result = self._execute_provider(provider, self._failure_prelude(code, http_status), self._failure_args(provider))
+                self.assertEqual(attempts, result["diagnostic"]["segments"][0]["attempts"])
+                self.assertEqual(2, result["diagnostic"]["waves"])
+                self.assertLessEqual(len(result["diagnostic"]["segments"][0]["callback_history"]), 4)
+
+    def test_tencent_qps_retry_success_retains_history_without_final_error(self):
+        prelude = self._failure_prelude(120) + r'''
+let requests=0;
+document.head.appendChild=(script)=>{
+ const callback=new URL(script.src).searchParams.get('callback');
+ globalThis[callback](++requests===1?{status:120,message:'QPS limit'}:{status:0,result:{routes:[{polyline:[22.52,113.39,10000,10000]}]}});
+};
+'''
+        result = self._execute_provider("tencent", prelude, self._failure_args("tencent"))
+        self.assertNotIn("error", result)
+        self.assertEqual([{"lng": 113.39, "lat": 22.52}, {"lng": 113.4, "lat": 22.53}], result["path"])
+        self.assertEqual(2, result["diagnostic"]["segments"][0]["attempts"])
+        self.assertEqual(["120", "0"], [row["status"] for row in result["diagnostic"]["segments"][0]["callback_history"]])
+        self.assertEqual(1, result["diagnostic"]["waves"])
+
+    def test_tianditu_request_mode_uses_walking_three_and_driving_zero(self):
+        prelude = self._failure_prelude(308010) + r'''
+fetch=async(url)=>{
+ const post=JSON.parse(new URL(url).searchParams.get('postStr'));
+ return {ok:true,status:200,text:async()=>JSON.stringify({code:308010,msg:'STYLE_'+post.style})};
+};
+'''
+        for mode, style in (("walking", "3"), ("driving", "0")):
+            with self.subTest(mode=mode):
+                args = self._failure_args("tianditu", retries=0)
+                args[3] = mode
+                result = self._execute_provider("tianditu", prelude, args)
+                self.assertIn("STYLE_" + style, result["error"])
+
+    def test_common_entry_attaches_explanations_without_losing_vendor_codes(self):
+        cases = (("amap", "INVALID_USER_SCODE", "安全码未通过验证"),
+                 ("amap", "INVALID_USER_DOMAIN", "绑定域名无效"),
+                 ("tencent", 408, "自定义 Referer 错误"),
+                 ("baidu", 4, "路线 SDK 密钥无效"),
+                 ("tianditu", 301012, "权限类型错误"))
+        for provider, code, explanation in cases:
+            with self.subTest(provider=provider, code=code):
+                payload = {"error": "vendor failure", "diagnostic": {"segment": 1, "segments": [{"segment": 1, "error_code": code}]}}
+                with patch.object(main, "chrome_pool", SimpleNamespace(), create=True), patch.object(
+                    main, "_plan_route_with_map_provider", return_value={"provider": provider}
+                ), patch.object(main, f"_plan_route_path_with_{provider}_runtime", return_value=payload):
+                    result = main._plan_route_path_with_provider_runtime("session-1", [[113.39, 22.52], [113.40, 22.53]])
+                self.assertEqual(code, result["error_code"])
+                self.assertEqual(explanation, result["error_explanation"])
+                self.assertTrue(result["error_hint"])
+                self.assertTrue(result["diagnostic_id"])
 
     def test_common_entry_always_adds_identifier_and_contains_executor_exception(self):
         plan = {"provider": "amap", "provider_config": {"js_key": "known-secret"}}
@@ -146,16 +246,18 @@ globalThis.document={getElementById:()=>null,createElement:()=>({style:{}}),body
 head:{appendChild(script){const callback=new URL(script.src).searchParams.get('callback');globalThis[callback]({status:110,message:'INVALID_USER_KEY'});}}};
 globalThis.fetch=async()=>({ok:false,status:403,text:async()=> 'permission denied'});
 globalThis.BMAP_STATUS_SUCCESS=0;
-globalThis.BMapGL={Point:class{constructor(lng,lat){this.lng=lng;this.lat=lat;}},
+globalThis.BMap={Point:class{constructor(lng,lat){this.lng=lng;this.lat=lat;}},
 Map:class{centerAndZoom(){}},WalkingRoute:class{constructor(map,options){this.options=options;}getStatus(){return 2;}search(){this.options.onSearchComplete({getPlan:()=>null});}}};
 '''
-        for provider, mode, expected, status in (("tencent", "walking", "INVALID_USER_KEY", "110"), ("tianditu", "driving", "permission denied", "403"), ("baidu", "walking", "状态码：2", "2")):
+        for provider, mode, expected, status in (("tencent", "walking", "INVALID_USER_KEY", "110"), ("tianditu", "driving", "permission denied", "response"), ("baidu", "walking", "状态码：2", "2")):
             with self.subTest(provider=provider):
                 result = self._execute_provider(provider, prelude, [[[1, 2], [3, 4]], "fake-key", {"api_retries": 0, "api_retry_delay_s": 0}, mode])
                 self.assertIn(expected, result["error"])
                 self.assertEqual(1, result["diagnostic"]["waves"])
                 self.assertEqual(1, result["diagnostic"]["segments"][0]["attempts"])
                 self.assertEqual(status, result["diagnostic"]["segments"][0]["status"])
+                if provider == "tianditu":
+                    self.assertEqual(403, result["diagnostic"]["segments"][0]["http_status"])
 
     def test_each_provider_keeps_bounded_retry_callback_history(self):
         prelude = r'''
@@ -164,11 +266,11 @@ const nativeTimeout=setTimeout;
 globalThis.setTimeout=(fn,delay)=>delay>=15000?0:nativeTimeout(fn,0);
 globalThis.clearTimeout=()=>{};
 globalThis.document={getElementById:()=>null,createElement:()=>({style:{}}),body:{appendChild(){}},
-head:{appendChild(script){const callback=new URL(script.src).searchParams.get('callback');globalThis[callback]({status:110,message:'RETRY_FAILURE'});}}};
-globalThis.fetch=async()=>({ok:false,status:403,text:async()=> 'RETRY_FAILURE'});
+head:{appendChild(script){const callback=new URL(script.src).searchParams.get('callback');globalThis[callback]({status:510,message:'RETRY_FAILURE'});}}};
+globalThis.fetch=async()=>({ok:false,status:503,text:async()=> 'RETRY_FAILURE'});
 globalThis.BMAP_STATUS_SUCCESS=0;
-globalThis.BMapGL={Point:class{constructor(lng,lat){this.lng=lng;this.lat=lat;}},
-Map:class{centerAndZoom(){}},WalkingRoute:class{constructor(map,options){this.options=options;}getStatus(){return 2;}search(){this.options.onSearchComplete({getPlan:()=>null});}}};
+globalThis.BMap={Point:class{constructor(lng,lat){this.lng=lng;this.lat=lat;}},
+Map:class{centerAndZoom(){}},WalkingRoute:class{constructor(map,options){this.options=options;}getStatus(){return 7;}search(){this.options.onSearchComplete({getPlan:()=>null});}}};
 globalThis.AMapLoader={load:async()=>{}};
 globalThis.AMap={LngLat:class{constructor(lng,lat){this.lng=lng;this.lat=lat;}},Walking:class{search(a,b,cb){cb('error','RETRY_FAILURE');}}};
 '''

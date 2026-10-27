@@ -65,7 +65,7 @@
 - 应用自绘控件必须挂在外层地图容器上，不能挂在 SDK surface 里，否则会被 SDK 自己的 DOM 层级影响。
 - 腾讯自定义 SVG 标记使用 `TMap.MultiMarker` / `MarkerStyle` 时，不要给 `PointGeometry.content` 填文字；否则 SDK 会额外渲染一份原生文字，造成双重标签。需要文字时应放进自定义 SVG 或应用自己的 marker 样式里。
 - 腾讯实时位置标记不要在每次轮询时 `setMap(null)` 后重建 `MultiMarker`。多账号位置应复用同一标记对象，使用相同 `PointGeometry.id` 调用 `updateGeometries()` 原位更新；旧 SDK 不支持时再退回 `setGeometries()`。否则高频刷新会触发 SDK 移除图层异常，表现为标记反复消失/出现并刷出 `getSource` 报错。
-- 天地图和百度实时位置标记同样不能在每次轮询时删除重建；应分别调用 `T.Marker.setLngLat()` 和 `BMapGL.Marker.setPosition()` 原位更新。高德当前已有 `setPosition()` 路径，四个供应商的实时位置标记都应保持对象稳定。
+- 天地图和百度实时位置标记同样不能在每次轮询时删除重建；应分别调用 `T.Marker.setLngLat()` 和 `BMap.Marker.setPosition()` 原位更新。高德当前已有 `setPosition()` 路径，四个供应商的实时位置标记都应保持对象稳定。
 - 多账号标记颜色必须按账号稳定缓存，不能在每次位置刷新时递增全局颜色索引；否则即使标记不重建，颜色也会持续变化。相关回归测试见 `tests/map_provider_frontend_runtime.test.mjs`。
 - 活动任务路线渲染要传 `showEndpoints:false`，不要让 SDK 或通用渲染层额外加“起点/终点”标记；第一眼可见的标记应该是实际检查点名称。
 - 右上角缩放等级不能写死为 `17`。腾讯地图要用 `getZoom()` 读取真实缩放，并监听官方 `zoom` 事件刷新标签。
@@ -74,10 +74,10 @@
 
 ## 百度和天地图控件踩坑
 
-- 百度地图必须使用 BMapGL/WebGL 版本，加载 URL 要带 WebGL 类型，初始化时保留 3D 能力。
-- 百度左上角视角控件优先使用 BMapGL 原生 `NavigationControl3D`，不要默认叠加 `provider-3d-view-btn` 自绘控件；初始化时如果发现旧自绘 overlay，要清理掉。
+- 百度地图统一使用 JS API v4 的 `BMap` 命名空间与默认 BD09；不要混入 v1、`BMapGL` 或 `coordType: 3`。业务 GCJ-02 只在 SDK 输入、输出边界转换一次，公开折线/标记的 setter 和点击结果也必须经过相同边界。
+- 百度左上角视角控件优先使用 v4 原生 `NavigationControl3D`，不要默认叠加 `provider-3d-view-btn` 自绘控件；初始化时如果发现旧自绘 overlay，要清理掉。
 - 百度地图的视觉缩放比例和其他供应商不完全一致，默认/复位缩放用 `18.0`；天地图默认/复位缩放用 `17`。不要把所有非高德供应商统一写成同一个整数缩放。
-- 百度原生 `NavigationControl3D` 如果用 `BMAP_ANCHOR_TOP_LEFT` 还离左上角太远，检查 `BMapGL.Size` offset；当前应贴近左上角，使用 `new BMapGL.Size(12, 12)`。
+- 百度原生 `NavigationControl3D` 如果用 `BMAP_ANCHOR_TOP_LEFT` 还离左上角太远，检查 `BMap.Size` offset；当前应贴近左上角，使用 `new BMap.Size(12, 12)`。
 - 百度和天地图的左上角/右上角缩放数字不会自动跟随 SDK 原生缩放，必须绑定 SDK 缩放事件后再调用 `updateProviderMapZoomLabel()`；百度监听 `zoomend` / `zoom_changed`，天地图监听 `zoomend` / `zoom`。
 - 天地图缺少右键拖动时，需要在 SDK surface 上自定义右键拖动并调用 `panBy()`，同时阻止浏览器默认右键菜单。
 - 天地图标记点必须显式显示点名称，不能只画图标，否则会和百度、高德表现不一致。
@@ -90,6 +90,16 @@
 - 任务执行中必须避免突然切换地图。后台任务启动时要把当时的 `map_provider` 写入任务状态；`get_initial_data` 只在任务 `running` / `paused` 时返回 `task_status`，前端据此锁定当前地图提供方。
 - 浏览器关闭后再打开仍要考虑运行中任务：不能依赖页面内存里的 pending 状态。前端初始化如果看到运行中的 `task_status.map_provider`，应优先使用任务绑定的地图提供方，把最新配置继续留到任务结束后的下一次地图加载。
 - `applyPendingMapProviderConfigIfAny()` 应先检查后台轮询、执行视觉态和任务 provider 锁；只有确认没有执行中的地图任务，才允许应用 pending 配置。
+
+## 地图来源与代理验证
+
+- `backend_page_origin` 只保留 HTTP/HTTPS 协议、主机和端口，按供应商覆盖、全局、当前请求来源依次解析；不能下发到普通初始化或密钥包，也不能携带 UUID 到配置域名导航。后端浏览器来源页由本地 `route.fulfill()` 提供，来源与执行必须位于同一个队列命令。
+- 前端代理启用后，SDK、JSONP、瓦片、动态 HTML/CSS 与 Worker 请求都要经过同源白名单代理。不能只验证 SDK 首个脚本；真实验收要检查地图初始化、规划、动态 setter 和是否出现直连。
+- 不要用正则改写 SDK 的协议片段：高德实际使用 `protocol + "://restapi.amap.com"`，百度也会单独拼接协议。应保留片段，在浏览器请求入口代理完整 URL；百度根路径查询必须支持 `/` 和多余的根斜杠。
+- 高德 JSONP 可能返回 `application/json` 或 `application/octet-stream`。保留 `nosniff`，仅在唯一合法回调、精确回调包裹及严格 JSON 均通过时纠正 MIME；不能把任意 JSON、HTML 或额外脚本提升为 JavaScript。
+- 代理凭证须在过期前续签；鉴权失败不能恢复直连。初始化和续签要隔离旧会话响应，成功鉴权只维持真实调用者的内存活跃时间，不新增每瓦片 Token 保存。
+- Nginx 必须保留请求 Host 的非默认端口，且包括 HTTP 重定向在内的访问/错误日志不能记录地图代理查询串。Python 的统一脱敏还必须覆盖 `ak`、`tk`、`jscode`、`securityJsCode`，包括 urllib3 DEBUG 记录。
+- `tests/browser_map_proxy_smoke.py` 是显式启用的真实后端代理验收，凭据只从环境变量进入内存；不得把真实 Key、Token、原始响应或完整路线写入脚本、配置或验收记录。
 
 ## 坐标转换踩坑
 

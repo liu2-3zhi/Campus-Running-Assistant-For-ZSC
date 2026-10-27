@@ -109,6 +109,9 @@ function createDocument(options = {}) {
       addEventListener(eventName, handler) {
         this.events.push({ eventName, handler });
       },
+      removeEventListener(eventName, handler) {
+        this.events = this.events.filter((event) => event.eventName !== eventName || event.handler !== handler);
+      },
       contains(child) {
         let node = child;
         while (node) {
@@ -173,6 +176,9 @@ function createDocument(options = {}) {
     events: [],
     addEventListener(eventName, handler) {
       this.events.push({ eventName, handler });
+    },
+    removeEventListener(eventName, handler) {
+      this.events = this.events.filter((event) => event.eventName !== eventName || event.handler !== handler);
     },
     head: createElementObject('head'),
     body: createElementObject('body'),
@@ -432,13 +438,21 @@ function createTianDiTuSdk() {
       this.position = position;
       this.positionUpdateCount += 1;
     }
+    setIcon(icon) { this.options.icon = icon; }
   }
   class Icon {
     constructor(options = {}) {
       this.options = options;
     }
   }
-  class Polyline extends Marker {}
+  class Polyline {
+    constructor(points, options = {}) {
+      this.position = points;
+      this.options = options;
+    }
+    setLngLats(points) { this.position = points; }
+    setColor(color) { this.options.color = color; }
+  }
   class TileLayer {
     constructor(url, options) {
       this.url = url;
@@ -563,6 +577,7 @@ function createBaiduSdk() {
       this.content = content;
       this.options = options;
     }
+    setStyle(style) { this.style = style; }
   }
   class Size {
     constructor(width, height) {
@@ -575,6 +590,8 @@ function createBaiduSdk() {
       this.points = points;
       this.options = options;
     }
+    setPath(points) { this.points = points; }
+    setStrokeColor(color) { this.options.strokeColor = color; }
   }
   class NavigationControl3D {
     constructor(options = {}) {
@@ -761,6 +778,8 @@ function createRuntime(provider, options = {}) {
     'addProviderMarker',
     'rememberProviderRouteSegmentOverlays',
     'forgetProviderRouteSegmentOverlays',
+    'updateProviderRouteProgressSegmentsInPlace',
+    'createProviderProgressPolyline',
     'drawProviderRouteOnMap',
     'getSingleProviderMapContainerIds',
     'appendSingleMapOverlay',
@@ -779,9 +798,12 @@ function createRuntime(provider, options = {}) {
     'buildProviderRouteProgressSegments',
     'buildProviderRouteProgressSegmentsByProgress',
     'drawProviderTaskOnMap',
+    'syncProviderTaskCheckpointMarkers',
+    'updateProviderCheckpointMarkerStyle',
     'clearMapOverlays',
     'resetMapView',
     'drawAmapRunRoute',
+    'updateTaskProgressSegmentsInPlace',
     'drawMarkers',
     'drawOnMap_signature',
     'ensureRunnerMarker',
@@ -817,12 +839,8 @@ function createRuntime(provider, options = {}) {
   if (options.preloadSdks !== false) {
     window.TMap = createTencentSdk(options.tencentSdkOptions || {});
     window.T = createTianDiTuSdk();
-    if (options.baiduGlOnly) {
-      window.BMapGL = createBaiduSdk();
-    } else {
-      window.BMap = createBaiduSdk();
-      window.BMapGL = createBaiduSdk();
-    }
+    window.BMap = createBaiduSdk();
+    window.BMapGL = createBaiduSdk();
     window.AMap = createAmapSdk();
   }
 
@@ -893,12 +911,15 @@ function createRuntime(provider, options = {}) {
     ${functionSources.join('\n\n')}
     return {
       initProviderMap,
+      destroyProviderMapInstance,
       addProviderMarker,
       drawProviderRouteOnMap,
       ensureActiveMapProviderRuntimeIfNeeded,
       loadActiveMapProviderRuntime,
       zoomProviderMap,
       fitProviderMapToLastRoute,
+      fitProviderMapToCoordinates,
+      updateProviderRouteProgressSegmentsInPlace,
       updateProviderRunnerMarker,
       resolveMultiAccountRunnerColor,
       multi_updateRunnerPosition,
@@ -918,6 +939,7 @@ function createRuntime(provider, options = {}) {
       setCurrentRunData: (data) => {
         currentRunData = data;
       },
+      setSingleRunProgressVisualActive: (active) => { singleRunProgressVisualActive = active; },
       getCurrentRunData: () => currentRunData,
       getPendingMapProviderRuntimeConfig: () => pendingMapProviderRuntimeConfig,
       getScheduledTimeouts: () => window.__scheduledTimeouts,
@@ -1101,14 +1123,14 @@ test('initProviderMap restores desktop controls after provider map replaces stat
   }
 });
 
-test('baidu provider initializes BMapGL with 3d view controls', () => {
+test('baidu provider initializes v4 BMap with default BD09 and 3d view controls', () => {
   const runtime = createRuntime('baidu', { baiduGlOnly: true });
 
   assert.equal(runtime.initProviderMap('map-container', false), true);
 
   const instance = runtime.getProviderMapInstance('map-container');
-  assert.ok(instance instanceof runtime.getWindow().BMapGL.Map);
-  assert.equal(instance.options.forceRenderType, 'webgl');
+  assert.ok(instance instanceof runtime.getWindow().BMap.Map);
+  assert.equal(runtime.getWindow().BMap.coordType, undefined);
   assert.equal(instance.options.showControls, false);
   assert.equal(instance.options.enableRotate, true);
   assert.equal(instance.options.enableTilt, true);
@@ -1122,7 +1144,7 @@ test('baidu provider initializes BMapGL with 3d view controls', () => {
   assert.equal(instance.tilt, 55);
   assert.equal(instance.heading, 0);
   const viewControl = instance.controls.find(
-    (control) => control instanceof runtime.getWindow().BMapGL.NavigationControl3D,
+    (control) => control instanceof runtime.getWindow().BMap.NavigationControl3D,
   );
   assert.ok(viewControl);
   assert.equal(viewControl.options.anchor, 'top-left');
@@ -1364,7 +1386,7 @@ test('baidu provider uses the sdk native 3d navigation control without app-level
 
   const instance = runtime.getProviderMapInstance('map-container');
   const viewControl = instance.controls.find(
-    (control) => control instanceof runtime.getWindow().BMapGL.NavigationControl3D,
+    (control) => control instanceof runtime.getWindow().BMap.NavigationControl3D,
   );
   assert.ok(viewControl);
   assert.equal(viewControl.options.offset.width, 12);
@@ -1579,6 +1601,8 @@ test('provider runner markers update current position in place on non-amap maps'
       assert.equal(firstMarker, secondMarker, `${provider} runner marker should be updated in place`);
       assert.equal(firstMarker.positionUpdateCount, 1);
       assert.ok(firstMarker.position, `${provider} runner marker should keep a position`);
+      const expected = runtime.convertGcj02ToProviderCoordinates(provider, { lng: 113.40, lat: 22.53 });
+      assert.ok(distanceMeters(firstMarker.position, expected) < 0.001, `${provider} marker setter converts GCJ exactly once`);
     }
     assert.equal(Object.keys(runtime.getState().providerRunnerMarkers).length, 1, provider);
   }
@@ -1744,6 +1768,8 @@ test('tencent single map redraws checkpoint status while preserving current posi
 
   assert.equal(runtime.getState().providerRunnerMarkers['map-container'], runnerMarker);
   let markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
+  const originalCheckpoint = findTencentMarkerByTitle(runtime, 'map-container', '教学楼');
+  const originalRoute = runtime.getState().providerMapOverlays['map-container'].find((overlay) => overlay.options?.id === 'provider-route-map-container');
   assert.equal(markerSvgs.some((svg) => svg.includes('起点') || svg.includes('终点')), false);
   assert.ok(markerSvgs.some((svg) => svg.includes('教学楼') && svg.includes('#059669')));
   assert.ok(markerSvgs.some((svg) => svg.includes('操场') && svg.includes('#059669')));
@@ -1751,6 +1777,8 @@ test('tencent single map redraws checkpoint status while preserving current posi
   runtime.updateRunnerPosition(113.392, 22.522, 100, 1, 1000);
 
   assert.equal(runtime.getCurrentRunData().target_sequence, 2);
+  assert.equal(findTencentMarkerByTitle(runtime, 'map-container', '教学楼'), originalCheckpoint);
+  assert.ok(runtime.getState().providerMapOverlays['map-container'].includes(originalRoute));
   assert.ok(runtime.getState().providerRunnerMarkers['map-container']);
   markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
   assert.ok(markerSvgs.some((svg) => svg.includes('教学楼') && svg.includes('#94a3b8')));
@@ -2035,7 +2063,7 @@ test('stopping execution resets provider map visuals without clearing realtime s
     .find((overlay) => overlay.options?.id === 'provider-route-map-container');
   assert.ok(routeLayer);
   assert.equal(routeLayer.options.styles.route.options.color, '#ef4444');
-  assert.equal(routeLayer.options.styles.current, undefined);
+  assert.ok(routeLayer.options.geometries.every((geometry) => geometry.styleId === 'route'));
   const markerSvgs = collectTencentMarkerSvgs(runtime, 'map-container');
   assert.ok(markerSvgs.every((svg) => !svg.includes('#94a3b8') && !svg.includes('#0284c7')));
   assert.equal(runtime.getState().singleRunProgressVisualActive, false);
@@ -2190,6 +2218,108 @@ test('provider route drawing stores fit coordinates for subsequent viewport cont
   assert.equal(instance.fitBoundsCalls[1].bounds.points.length >= 2, true);
 });
 
+test('legacy route updates keep provider coordinates, overlays and viewport stable across progress boundaries', () => {
+  const route = Array.from({ length: 7 }, (_, i) => [113.390 + i * 0.001, 22.520]);
+  for (const provider of ['baidu', 'tianditu', 'tencent']) {
+    const runtime = createRuntime(provider);
+    assert.equal(runtime.initProviderMap('map-container'), true);
+    runtime.setSingleRunProgressVisualActive(true);
+    const original = structuredClone(route);
+    const line = runtime.drawProviderRouteOnMap('map-container', route, { showEndpoints: false });
+    const instance = runtime.getProviderMapInstance('map-container');
+    const fitCount = provider === 'tencent' ? instance.fitBoundsCalls.length : instance.setViewportCalls.length;
+    const firstLine = Array.isArray(line) ? line[0] : line;
+    const data = { status: 0, current_point_index: 3, run_coords: route, target_points: [route[0], route[4], route[6]] };
+    assert.equal(runtime.updateProviderRouteProgressSegmentsInPlace('map-container', data), true, provider);
+    assert.ok(runtime.getState().providerMapOverlays['map-container'].includes(firstLine), `${provider} retains first line`);
+    const lines = runtime.getState().providerMapOverlays['map-container'];
+    const current = provider === 'tencent'
+      ? line.options.geometries.find((segment) => segment.styleId === 'current').paths
+      : (provider === 'baidu'
+          ? lines.find((segment) => segment.options.strokeColor === '#0284c7').points
+          : lines.find((segment) => segment.options.color === '#0284c7').position);
+    const expected = runtime.convertGcj02ToProviderCoordinates(provider, { lng: route[2][0], lat: route[2][1] });
+    assert.ok(distanceMeters(current[0], expected) < 0.001, `${provider} progress setter converts GCJ once`);
+    assert.equal(runtime.updateProviderRouteProgressSegmentsInPlace('map-container', { ...data, current_point_index: 7 }), true, provider);
+    const differentRoute = route.map(([lng, lat]) => [lng + 0.01, lat]);
+    assert.equal(runtime.updateProviderRouteProgressSegmentsInPlace('map-container', { ...data, run_coords: differentRoute }), false, `${provider} refuses another task geometry`);
+    assert.deepEqual(route, original, `${provider} does not alter execution coordinates`);
+    assert.equal(provider === 'tencent' ? instance.fitBoundsCalls.length : instance.setViewportCalls.length, fitCount, `${provider} preserves viewport`);
+  }
+});
+
+test('provider viewport accepts business GCJ coordinates and never converts cached fit coordinates twice', () => {
+  for (const provider of ['baidu', 'tianditu']) {
+    const runtime = createRuntime(provider);
+    runtime.initProviderMap('map-container');
+    const coord = { lng: 113.390342, lat: 22.527403 };
+    const expected = runtime.convertGcj02ToProviderCoordinates(provider, coord);
+    runtime.fitProviderMapToCoordinates('map-container', [coord]);
+    runtime.addProviderMarker('map-container', coord);
+    runtime.fitProviderMapToLastRoute('map-container');
+    for (const points of runtime.getProviderMapInstance('map-container').setViewportCalls) {
+      assert.ok(distanceMeters(points[0], expected) < 0.001, `${provider} converts viewport boundary exactly once`);
+    }
+  }
+});
+
+test('legacy progress keeps route separator gaps and declines unsupported SDK setters', () => {
+  const route = [[113.39, 22.52], [113.391, 22.52], [0, 0], [113.40, 22.53], [113.401, 22.53]];
+  const runtime = createRuntime('baidu');
+  runtime.initProviderMap('map-container');
+  runtime.setSingleRunProgressVisualActive(true);
+  const lines = runtime.drawProviderRouteOnMap('map-container', route, { showEndpoints: false });
+  const data = { status: 0, current_point_index: 4, run_coords: route, target_points: [route[0], route[4]] };
+  assert.equal(runtime.updateProviderRouteProgressSegmentsInPlace('map-container', data), true);
+  for (const line of runtime.getState().providerMapOverlays['map-container'].filter((overlay) => overlay.points)) {
+    for (let index = 1; index < line.points.length; index += 1) {
+      assert.ok(distanceMeters(line.points[index - 1], line.points[index]) < 500, 'must not bridge separator or draw zero coordinate');
+    }
+  }
+  lines[0].setPath = undefined;
+  assert.equal(runtime.updateProviderRouteProgressSegmentsInPlace('map-container', data), false);
+});
+
+test('legacy baidu and tianditu checkpoints keep identity and update color when execution starts', () => {
+  const route = Array.from({ length: 7 }, (_, i) => [113.390 + i * 0.001, 22.520]);
+  for (const provider of ['baidu', 'tianditu']) {
+    const runtime = createRuntime(provider);
+    runtime.initProviderMap('map-container');
+    runtime.setCurrentRunData({ status: 0, run_coords: route, target_points: [route[0], route[4], route[6]], target_point_names: '起始楼|运动场|终点楼' });
+    runtime.drawOnMap_signature();
+    const original = runtime.getState().providerMapOverlays['map-container'].find((overlay) => overlay.options.title === '起始楼');
+    runtime.updateRunnerPosition(route[2][0], route[2][1], 100, 1, 1000, false, 3);
+    const updated = runtime.getState().providerMapOverlays['map-container'].find((overlay) => overlay.options.title === '起始楼');
+    assert.equal(updated, original, provider);
+    if (provider === 'baidu') assert.equal(updated.label.style.backgroundColor, '#94a3b8');
+    else assert.match(decodeURIComponent(updated.options.icon.options.iconUrl), /#94a3b8/);
+  }
+});
+
+test('legacy SDK loading times out and can be retried without accepting BMapGL as v4', async () => {
+  const runtime = createRuntime('baidu', { preloadSdks: false });
+  runtime.getWindow().BMapGL = createBaiduSdk();
+  const first = runtime.loadActiveMapProviderRuntime('baidu');
+  assert.equal(runtime.getDocument().appendedScripts.length, 1);
+  const rejected = assert.rejects(first, /超时/);
+  runtime.runLastScheduledTimeout();
+  await rejected;
+  const second = runtime.loadActiveMapProviderRuntime('baidu');
+  assert.equal(runtime.getDocument().appendedScripts.length, 2);
+  runtime.getWindow().BMap = createBaiduSdk();
+  runtime.getWindow().__onBaiduMapApiLoaded();
+  assert.equal(await second, runtime.getWindow().BMap);
+});
+
+test('legacy tianditu teardown removes document drag listeners before another SDK takes the surface', () => {
+  const runtime = createRuntime('tianditu');
+  runtime.initProviderMap('map-container');
+  const document = runtime.getDocument();
+  assert.ok(document.events.some((event) => event.eventName === 'mousemove'));
+  runtime.destroyProviderMapInstance('map-container');
+  assert.ok(document.events.every((event) => event.eventName !== 'mousemove' && event.eventName !== 'mouseup'));
+});
+
 test('provider runtime loaders inject the active provider sdk script and resolve from callbacks', async () => {
   const cases = [
     {
@@ -2218,14 +2348,14 @@ test('provider runtime loaders inject the active provider sdk script and resolve
     },
     {
       provider: 'baidu',
-      expectedSrc: 'https://api.map.baidu.com/api?v=1.0&type=webgl&ak=baidu-ak&callback=__onBaiduMapApiLoaded',
+      expectedSrc: 'https://api.map.baidu.com/api?v=4.0&ak=baidu-ak&callback=__onBaiduMapApiLoaded',
       datasetKey: 'baiduMapApi',
       installSdk(window) {
-        window.BMapGL = createBaiduSdk();
+        window.BMap = createBaiduSdk();
       },
       finish(window) {
         window.__onBaiduMapApiLoaded();
-        return window.BMapGL;
+        return window.BMap;
       },
     },
   ];

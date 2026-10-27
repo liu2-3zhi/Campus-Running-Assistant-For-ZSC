@@ -14,6 +14,7 @@ from flask import jsonify, make_response, request, send_from_directory
 
 from payment_crypto import RsaSigner
 from config_adapter import JsonConfigAdapter
+from map_runtime_origin import merge_map_settings, resolve_backend_page_origin
 from log_archiving import ArchiveManager, move_no_replace
 from auto_attendance_config import (
     _disable_auto_attendance,
@@ -140,6 +141,7 @@ from background_task_manager import (
     PlaywrightPageProxy,
 )
 from route_diagnostics import new_diagnostic_id, sanitize_diagnostic
+from map_error_catalog import normalize_map_error, map_error_retry_policy
 from runtime_models import (
     AccountSession,
     RunData,
@@ -450,12 +452,13 @@ def _redact_sensitive_log_text(value):
         r"(?i)(['\"]?\b("
         r"api[_-]?key|map[_-]?key|js[_-]?key|amap[_-]?key|"
         r"tencent[_-]?map[_-]?key|tianditu[_-]?token|baidu[_-]?ak|"
+        r"key|ak|tk|js[_-]?code|"
         r"token|password|secret|private[_-]?key|access[_-]?key|"
         r"authorization|cookie|captcha(?:[_-]?id)?|sms[_-]?code|"
         r"two[_-]?fa[_-]?code|verification[_-]?code|auth[_-]?code|"
         r"refresh[_-]?token|csrf[_-]?token|session[_-]?(?:id|uuid)|"
         r"x-session-id|shiro[_-]?cookie|sub[_-]?openid|sub[_-]?appid|"
-        r"signature|merchant[_-]?key|"
+        r"signature|security[_-]?(?:js[_-]?)?code|merchant[_-]?key|"
         r"app[_-]?secret|client[_-]?secret|pay[_-]?url|payment[_-]?url|"
         r"return[_-]?url|notify[_-]?url|request[_-]?url"
         r")['\"]?\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|[^,\s;&}]+)",
@@ -463,7 +466,7 @@ def _redact_sensitive_log_text(value):
         text,
     )
     return re.sub(
-        r"(?i)([?&](?:api[_-]?key|key|token|password|secret|"
+        r"(?i)([?&](?:api[_-]?key|key|ak|tk|js[_-]?code|security[_-]?(?:js[_-]?)?code|token|password|secret|"
         r"authorization|cookie|captcha(?:[_-]?id)?|sms[_-]?code|"
         r"verification[_-]?code|auth[_-]?code|openid|signature|sign|p)="
         r")[^&#\s]+",
@@ -523,7 +526,11 @@ def _redact_sensitive_log_value(value):
         redacted = {}
         for key, item in value.items():
             normalized_key = str(key or "").strip().lower().replace("-", "_")
-            if any(fragment in normalized_key for fragment in sensitive_fragments):
+            if normalized_key in {
+                "key", "ak", "tk", "jscode", "js_code", "securitycode",
+                "security_code", "securityjscode", "security_js_code",
+                "security_jscode", "securityjs_code",
+            } or any(fragment in normalized_key for fragment in sensitive_fragments):
                 redacted[key] = "<redacted>"
             else:
                 redacted[key] = _redact_sensitive_log_value(item)
@@ -627,7 +634,7 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
     return clientKeyPairPromise;
   }
 
-  async function decryptMapProviderKeys(bundle, explicitSessionId) {
+  async function decryptMapProviderKeys(bundle, explicitSessionId, adminOriginSessionId) {
     assertDebugAllowed();
     const clientKeyPair = await getClientKeyPair();
     const clientPublicKey = await crypto.subtle.exportKey(
@@ -637,6 +644,7 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
     const headers = { "Content-Type": "application/json" };
     const sessionId = explicitSessionId || getSessionId();
     if (sessionId) headers["X-Session-ID"] = sessionId;
+    if (adminOriginSessionId) headers["X-Admin-Origin-Session-ID"] = adminOriginSessionId;
     const endpointUrl = runtimeVersion
       ? decryptEndpoint + "?v=" + encodeURIComponent(runtimeVersion)
       : decryptEndpoint;
@@ -743,6 +751,7 @@ def _get_map_provider_runtime_config(config=None, provider=None):
                 amap_provider.get("js_key")
                 or runtime_config.get("Map", "amap_js_key", fallback="")
             ).strip(),
+            "security_js_code": str(amap_provider.get("security_js_code") or "").strip(),
             "coordinate_system": "gcj02",
             "business_coordinate_system": "gcj02",
         },
@@ -780,18 +789,33 @@ def _get_map_provider_runtime_config(config=None, provider=None):
     return provider_configs[provider]
 
 
+def _get_map_provider_admin_config(config, provider):
+    provider_config = dict(_get_map_provider_runtime_config(config, provider=provider))
+    providers = config.get("Map", "providers", fallback=None)
+    stored = providers.get(provider, {}) if isinstance(providers, dict) else {}
+    provider_config["backend_page_origin"] = stored.get("backend_page_origin", "") if isinstance(stored, dict) else ""
+    return provider_config
+
+
 def _get_map_provider_frontend_config(config=None):
     runtime_config = config or _read_config_ini(CONFIG_FILE)
     map_provider = _get_active_map_provider(runtime_config)
+    proxy_value = str(
+        runtime_config.get("Map", "frontend_proxy_enabled", fallback="false")
+    ).strip().lower()
+    frontend_proxy_enabled = proxy_value in {"1", "true", "yes", "on"}
     map_providers = {
         "amap": _get_map_provider_runtime_config(runtime_config, provider="amap"),
         "tencent": _get_map_provider_runtime_config(runtime_config, provider="tencent"),
         "tianditu": _get_map_provider_runtime_config(runtime_config, provider="tianditu"),
         "baidu": _get_map_provider_runtime_config(runtime_config, provider="baidu"),
     }
+    for provider_config in map_providers.values():
+        provider_config["frontend_proxy_enabled"] = frontend_proxy_enabled
     return {
         "map_provider": map_provider,
         "map_providers": map_providers,
+        "frontend_proxy_enabled": frontend_proxy_enabled,
     }
 
 
@@ -803,6 +827,8 @@ def _strip_map_provider_secret_fields(map_providers):
         secret_field = MAP_PROVIDER_KEY_FIELDS.get(provider)
         if secret_field:
             entry.pop(secret_field, None)
+        entry.pop("security_js_code", None)
+        entry.pop("backend_page_origin", None)
         sanitized[provider] = entry
     return sanitized
 
@@ -901,6 +927,12 @@ def _build_map_provider_key_bundle(
             "field": requested_key_field,
             "ciphertext": encrypted_secret,
         }
+        if requested_provider == "amap" and provider_config.get("security_js_code"):
+            encrypted_providers[requested_provider]["extra_fields"] = {
+                "security_js_code": _encrypt_map_provider_secret(
+                    provider_config["security_js_code"], runtime_context=runtime_context,
+                ),
+            }
         return {
             "provider": requested_provider,
             "runtime_version": runtime_context.get("runtime_version", ""),
@@ -948,6 +980,7 @@ def _build_public_map_provider_frontend_payload(
     return {
         "map_provider": frontend_config.get("map_provider", "amap"),
         "map_providers": _strip_map_provider_secret_fields(map_providers),
+        "frontend_proxy_enabled": frontend_config.get("frontend_proxy_enabled") is True,
         "map_provider_key_bundle": _build_map_provider_key_bundle(
             map_providers,
             provider=provider,
@@ -1035,51 +1068,12 @@ def _is_map_runtime_request_authorized(session_id):
         return normalized_session_id in sessions
 
 
-def _build_map_backend_session_url(app_base_url, session_id):
-    normalized_base = str(app_base_url or "").strip()
-    if not normalized_base:
-        return None
-    parsed = urllib.parse.urlparse(normalized_base)
-    if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
-        return None
-    query = urllib.parse.urlencode(
-        {"session_id": str(session_id or "")}
-    )
-    return urllib.parse.urljoin(
-        normalized_base.rstrip("/") + "/",
-        f"{MAP_RUNTIME_PATH.lstrip('/')}?{query}",
-    )
-
-
-def _ensure_map_backend_page_origin(page, session_id, app_base_url, guard_label="MapRoutePlanning", diagnostic_context=None, error_details=None):
-    session_url = _build_map_backend_session_url(app_base_url, session_id)
-    if not session_url:
-        return False
-    try:
-        options = {"wait_until": "domcontentloaded", "timeout": 15000}
-        if diagnostic_context and isinstance(page, PlaywrightPageProxy):
-            options["_route_diagnostic_context"] = diagnostic_context
-        page.goto(session_url, **options)
-        return True
-    except Exception as e:
-        safe_error = sanitize_diagnostic(e, sensitive_values=(diagnostic_context or {}).get("sensitive_values", [session_id]))
-        if error_details is not None:
-            error_details.append(safe_error)
-        logging.debug("[%s] id=%s 后端地图页面来源初始化失败: %s", guard_label,
-                      (diagnostic_context or {}).get("diagnostic_id", "-"), safe_error)
-        return False
-
-
-
 def _plan_route_with_map_provider(waypoints, provider=None, route_mode="walking", runtime_config=None):
     runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
     provider = _normalize_map_provider(provider or _get_active_map_provider(runtime_config))
     provider_config = _get_map_provider_runtime_config(runtime_config, provider=provider)
     actual_mode = str(route_mode or "walking").strip().lower() or "walking"
     notices = []
-    if provider == "tianditu" and route_mode == "walking":
-        actual_mode = "driving"
-        notices.append("当前地图供应商不支持步行规划，已自动使用驾车规划代替")
     plugins = _get_map_provider_plugins(provider, actual_mode)
     return {
         "provider": provider,
@@ -1091,6 +1085,21 @@ def _plan_route_with_map_provider(waypoints, provider=None, route_mode="walking"
         "waypoints": waypoints,
     }
 
+
+
+def _map_runtime_execution_options(provider_plan):
+    return {key: provider_plan[field] for key, field in (
+        ("diagnostic_context", "_diagnostic_context"),
+        ("runtime_page_origin", "_runtime_page_origin"),
+        ("deadline_epoch_ms", "_deadline_epoch_ms"),
+    ) if provider_plan.get(field) is not None}
+
+
+def _map_runtime_parameters(python_params, provider, provider_plan):
+    params = dict(python_params or {})
+    params["_map_error_retry_policy"] = map_error_retry_policy(provider)
+    params["_deadline_epoch_ms"] = provider_plan.get("_deadline_epoch_ms")
+    return params
 
 
 def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_plan, python_params=None):
@@ -1110,8 +1119,9 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
             const pythonParams = arg[2] || {};
             const plugins = arg[3] || ["AMap.Walking"];
             const actualMode = arg[4] || "walking";
+            const securityJsCode = arg[5] || '';
             const useFallback = pythonParams.api_fallback_line ?? false;
-            const maxRetries = pythonParams.api_retries ?? 2;
+            const maxRetries = Math.max(0, Math.floor(Number(pythonParams.api_retries ?? 2) || 0));
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
             const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
             // 每秒请求上限（默认 4 次/秒）：与排队间隔共同决定段间最小间隔，
@@ -1164,14 +1174,15 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                 }
                 try { item.callback_detail = JSON.stringify(snapshot(value ?? null)).slice(0, 1200); }
                 catch (_) { item.callback_detail = '<unavailable callback>'; }
-                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.error);
+                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.msg || value.error);
                 let text;
                 try { text = (typeof reason === 'string' ? reason : JSON.stringify(reason)) || ''; }
                 catch (_) { text = String(reason); }
                 const credential = String(arg[1] || '');
                 if (credential) { text = text.split(credential).join('<redacted>').split(encodeURIComponent(credential)).join('<redacted>'); }
                 item.reason = text.slice(0, 600);
-                item.error_code = value && typeof value === 'object' ? (value.infocode ?? value.code ?? value.status ?? '') : '';
+                const rawCode = typeof value === 'string' ? value : value && (value.info ?? value.code ?? value.status ?? '');
+                item.error_code = /^[A-Z][A-Z0-9_]*$/.test(String(rawCode || '')) ? rawCode : '';
                 item.callback_history ??= [];
                 item.callback_history.push({attempt: item.attempts, wave: diagnostic.waves,
                     status: item.status, response_type: item.response_type, error_code: item.error_code,
@@ -1246,11 +1257,16 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                     return { error: 'Waypoints must be at least 2.' };
                 }
 
+                if (securityJsCode) {
+                    window._AMapSecurityConfig = { securityJsCode };
+                } else if (window._AMapSecurityConfig) {
+                    delete window._AMapSecurityConfig.securityJsCode;
+                }
                 await ensureAmapLoader();
                 try {
                     await AMapLoader.load({ key: apiKey, version: '2.0', plugins });
                 } catch (error) {
-                    return { error: 'AMapLoader.load failed: ' + (error ? error.message : 'Unknown error') };
+                    return { error: 'AMapLoader.load failed: ' + (error && error.message || String(error || 'Unknown error')), diagnostic: {stage: 'sdk_load'} };
                 }
 
                 const serviceName = actualMode === 'driving' ? 'Driving' : 'Walking';
@@ -1343,25 +1359,19 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                             return;
                         }
                         segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
-                        if (result && result.rateLimited) {
-                            // 限流不代表「该段无路线」：不消耗重试预算，退避后重排
-                            waveRateLimited += 1;
-                        } else {
-                            segmentAttempts[segmentIndex] += 1;
-                        }
-                        if (segmentAttempts[segmentIndex] < maxRetries + 1) {
+                        if (result && result.rateLimited) { waveRateLimited += 1; }
+                        segmentAttempts[segmentIndex] += 1;
+                        const code = String(diagnostic.segments[segmentIndex].error_code ?? '');
+                        const retryable = (pythonParams._map_error_retry_policy || {})[code] !== false;
+                        if (retryable && segmentAttempts[segmentIndex] < maxRetries + 1) {
                             pendingIndexes.push(segmentIndex);
                         }
                     });
                     if (waveSuccessCount ===0) {
-                        if (waveRateLimited > 0) {
-                            // 整波被限流：退避等待，不累计失败波次
+                        consecutiveFailedWaves += 1;
+                        if (consecutiveFailedWaves >= maxFailedWaves) { break; }
+                        if (waveRateLimited > 0 && pendingIndexes.length > 0) {
                             await sleep(Math.min(5000, 600 * waveRateLimited));
-                        } else {
-                            consecutiveFailedWaves += 1;
-                            if (consecutiveFailedWaves >= maxFailedWaves) {
-                                break;
-                            }
                         }
                     } else {
                         consecutiveFailedWaves =0;
@@ -1400,11 +1410,11 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
         """,
         waypoints,
         api_key,
-        python_params or {},
+        _map_runtime_parameters(python_params, "amap", provider_plan),
         plugins,
         actual_mode,
-        **({"diagnostic_context": provider_plan["_diagnostic_context"]}
-           if provider_plan.get("_diagnostic_context") else {}),
+        str(provider_config.get("security_js_code") or "").strip(),
+        **_map_runtime_execution_options(provider_plan),
     )
 
 
@@ -1426,7 +1436,7 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             const actualMode = arg[3] || 'walking';
             const routeType = actualMode === 'driving' ? 'driving' : 'walking';
             const useFallback = pythonParams.api_fallback_line ?? false;
-            const maxRetries = pythonParams.api_retries ?? 2;
+            const maxRetries = Math.max(0, Math.floor(Number(pythonParams.api_retries ?? 2) || 0));
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
             const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
             // 每秒请求上限（默认 4 次/秒）：与排队间隔共同决定段间最小间隔，
@@ -1448,7 +1458,7 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                 item.status = String(status ?? '');
                 item.response_type = typeof value;
                 item.finished_at = Date.now();
-                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.error);
+                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.msg || value.error);
                 let text;
                 try { text = (typeof reason === 'string' ? reason : JSON.stringify(reason)) || ''; }
                 catch (_) { text = String(reason); }
@@ -1587,8 +1597,7 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                 if (Number(data.status) === 120) {
                     return true;
                 }
-                const message = String(data.message || '');
-                return message.indexOf('上限') >= 0 || message.indexOf('限流') >= 0;
+                return false;
             }
 
             async function searchSegment(startCoord, endCoord, segmentIndex) {
@@ -1609,7 +1618,7 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                         await sleep(Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200);
                         continue;
                     }
-                    if (data.status !== 0) {
+                    if (Number(data.status) !== 0) {
                         return { error: data.message || `路线服务返回状态异常：${data.status}` };
                     }
                     const pathPoints = extractRoutePathPoints(data);
@@ -1662,26 +1671,20 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                         return;
                     }
                     segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
-                    if (result && result.rateLimited) {
-                        // 限流不代表「该段无路线」：不消耗重试预算，退避后重排
-                        waveRateLimited += 1;
-                    } else {
+                        if (result && result.rateLimited) { waveRateLimited += 1; }
                         segmentAttempts[segmentIndex] += 1;
-                    }
-                    if (segmentAttempts[segmentIndex] < maxRetries + 1) {
+                        const code = String(diagnostic.segments[segmentIndex].error_code ?? '');
+                        const retryable = (pythonParams._map_error_retry_policy || {})[code] !== false;
+                        if (retryable && segmentAttempts[segmentIndex] < maxRetries + 1) {
                         pendingIndexes.push(segmentIndex);
                     }
                 });
-                if (waveSuccessCount ===0) {
-                    if (waveRateLimited > 0) {
-                        // 整波被限流：退避等待，不累计失败波次
-                        await sleep(Math.min(5000, 600 * waveRateLimited));
-                    } else {
+                    if (waveSuccessCount ===0) {
                         consecutiveFailedWaves += 1;
-                        if (consecutiveFailedWaves >= maxFailedWaves) {
-                            break;
+                        if (consecutiveFailedWaves >= maxFailedWaves) { break; }
+                        if (waveRateLimited > 0 && pendingIndexes.length > 0) {
+                            await sleep(Math.min(5000, 600 * waveRateLimited));
                         }
-                    }
                 } else {
                     consecutiveFailedWaves =0;
                 }
@@ -1716,10 +1719,9 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
         """,
         waypoints,
         map_key,
-        python_params or {},
+        _map_runtime_parameters(python_params, "tencent", provider_plan),
         actual_mode,
-        **({"diagnostic_context": provider_plan["_diagnostic_context"]}
-           if provider_plan.get("_diagnostic_context") else {}),
+        **_map_runtime_execution_options(provider_plan),
     )
 
 
@@ -1730,7 +1732,7 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
     if not token:
         return {"error": "未配置天地图 Token"}
 
-    actual_mode = str(provider_plan.get("actual_mode") or "driving").strip().lower() or "driving"
+    actual_mode = str(provider_plan.get("actual_mode") or "walking").strip().lower() or "walking"
     return chrome_pool.execute_js(
         session_id,
         r"""
@@ -1740,7 +1742,7 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             const pythonParams = arg[2] || {};
             const actualMode = arg[3] || 'driving';
             const useFallback = pythonParams.api_fallback_line ?? false;
-            const maxRetries = pythonParams.api_retries ?? 2;
+            const maxRetries = Math.max(0, Math.floor(Number(pythonParams.api_retries ?? 2) || 0));
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
             const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
             // 每秒请求上限（默认 4 次/秒）：与排队间隔共同决定段间最小间隔，
@@ -1762,7 +1764,7 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                 item.status = String(status ?? '');
                 item.response_type = typeof value;
                 item.finished_at = Date.now();
-                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.error);
+                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.msg || value.error);
                 let text;
                 try { text = (typeof reason === 'string' ? reason : JSON.stringify(reason)) || ''; }
                 catch (_) { text = String(reason); }
@@ -1886,7 +1888,7 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                 const postStr = {
                     orig: `${startCoord.lng},${startCoord.lat}`,
                     dest: `${endCoord.lng},${endCoord.lat}`,
-                    style: '0'
+                    style: actualMode === 'walking' ? '3' : '0'
                 };
                 return `https://api.tianditu.gov.cn/drive?postStr=${encodeURIComponent(JSON.stringify(postStr))}&type=search&tk=${encodeURIComponent(token)}`;
             }
@@ -1930,16 +1932,9 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                 return points;
             }
 
-            // 天地图限流：HTTP 429 或响应体带「上限/限流/超出」等字样
+            // Drive 没有稳定完整的业务码表，只有 HTTP 429 可明确视为短时限流。
             function isRateLimited(response, bodyText) {
-                if (response && response.status === 429) {
-                    return true;
-                }
-                const text = String(bodyText || '');
-                return text.indexOf('上限') >= 0
-                    || text.indexOf('限流') >= 0
-                    || text.indexOf('超出') >= 0
-                    || text.indexOf('too many') >= 0;
+                return response && response.status === 429;
             }
 
             async function searchSegment(startCoord, endCoord, segmentIndex) {
@@ -1956,7 +1951,21 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                             signal: controller.signal
                         });
                         const bodyText = await response.text();
-                        recordResponse(segmentIndex, response.status, response.ok ? '' : bodyText);
+                        let vendorError = null;
+                        if (bodyText.trim().startsWith('{')) {
+                            try { vendorError = JSON.parse(bodyText); } catch (_) {}
+                        } else if (/^\s*</.test(bodyText)) {
+                            const xml = new DOMParser().parseFromString(bodyText, 'text/xml');
+                            const error = xml.querySelector('error');
+                            if (error) {
+                                vendorError = {
+                                    code: error.querySelector('code')?.textContent || error.getAttribute('code'),
+                                    message: error.querySelector('message, msg')?.textContent || error.textContent,
+                                };
+                            }
+                        }
+                        recordResponse(segmentIndex, 'response', vendorError || (response.ok ? '' : bodyText));
+                        diagnostic.segments[segmentIndex].http_status = response.status;
                         if (!response.ok) {
                             const limited = isRateLimited(response, bodyText);
                             if (limited && rateLimitHits < maxRateLimitRetries) {
@@ -1973,6 +1982,9 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                             rateLimitHits += 1;
                             await sleep(Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200);
                             continue;
+                        }
+                        if (vendorError) {
+                            return { error: diagnostic.segments[segmentIndex].reason || '路线服务返回错误 JSON/XML' };
                         }
                         try {
                             return { path: extractRoutePathPoints(bodyText) };
@@ -1992,8 +2004,8 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                 }
             }
 
-            if (actualMode !== 'driving') {
-                return { error: '当前天地图执行器仅支持驾车规划。' };
+            if (!['walking', 'driving'].includes(actualMode)) {
+                return { error: '当前天地图执行器仅支持步行或驾车规划。' };
             }
             if (!Array.isArray(waypointsPy) || waypointsPy.length < 2) {
                 return { error: 'Waypoints must be at least 2.' };
@@ -2034,26 +2046,20 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                         return;
                     }
                     segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
-                    if (result && result.rateLimited) {
-                        // 限流不代表「该段无路线」：不消耗重试预算，退避后重排
-                        waveRateLimited += 1;
-                    } else {
+                        if (result && result.rateLimited) { waveRateLimited += 1; }
                         segmentAttempts[segmentIndex] += 1;
-                    }
-                    if (segmentAttempts[segmentIndex] < maxRetries + 1) {
+                        const code = String(diagnostic.segments[segmentIndex].error_code ?? '');
+                        const retryable = (pythonParams._map_error_retry_policy || {})[code] !== false;
+                        if (retryable && segmentAttempts[segmentIndex] < maxRetries + 1) {
                         pendingIndexes.push(segmentIndex);
                     }
                 });
-                if (waveSuccessCount ===0) {
-                    if (waveRateLimited > 0) {
-                        // 整波被限流：退避等待，不累计失败波次
-                        await sleep(Math.min(5000, 600 * waveRateLimited));
-                    } else {
+                    if (waveSuccessCount ===0) {
                         consecutiveFailedWaves += 1;
-                        if (consecutiveFailedWaves >= maxFailedWaves) {
-                            break;
+                        if (consecutiveFailedWaves >= maxFailedWaves) { break; }
+                        if (waveRateLimited > 0 && pendingIndexes.length > 0) {
+                            await sleep(Math.min(5000, 600 * waveRateLimited));
                         }
-                    }
                 } else {
                     consecutiveFailedWaves =0;
                 }
@@ -2088,10 +2094,9 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
         """,
         waypoints,
         token,
-        python_params or {},
+        _map_runtime_parameters(python_params, "tianditu", provider_plan),
         actual_mode,
-        **({"diagnostic_context": provider_plan["_diagnostic_context"]}
-           if provider_plan.get("_diagnostic_context") else {}),
+        **_map_runtime_execution_options(provider_plan),
     )
 
 
@@ -2112,7 +2117,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             const pythonParams = arg[2] || {};
             const actualMode = arg[3] || 'walking';
             const useFallback = pythonParams.api_fallback_line ?? false;
-            const maxRetries = pythonParams.api_retries ?? 2;
+            const maxRetries = Math.max(0, Math.floor(Number(pythonParams.api_retries ?? 2) || 0));
             const retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000;
             const queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
             // 每秒请求上限（默认 4 次/秒）：与排队间隔共同决定段间最小间隔，
@@ -2134,7 +2139,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                 item.status = String(status ?? '');
                 item.response_type = typeof value;
                 item.finished_at = Date.now();
-                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.error);
+                const reason = typeof value === 'string' ? value : value && (value.info || value.message || value.msg || value.error);
                 let text;
                 try { text = (typeof reason === 'string' ? reason : JSON.stringify(reason)) || ''; }
                 catch (_) { text = String(reason); }
@@ -2184,7 +2189,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             }
 
             async function ensureBaiduMapScript() {
-                if (window.BMapGL && typeof window.BMapGL.Map === 'function') {
+                if (window.BMap && typeof window.BMap.Map === 'function') {
                     return;
                 }
                 await new Promise((resolve, reject) => {
@@ -2194,7 +2199,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                     }
                     const script = document.createElement('script');
                     const callbackName = '__backendBaiduMapApiLoaded';
-                    script.src = `https://api.map.baidu.com/api?v=1.0&type=webgl&ak=${encodeURIComponent(ak)}&callback=${callbackName}`;
+                    script.src = `https://api.map.baidu.com/api?v=4.0&ak=${encodeURIComponent(ak)}&callback=${callbackName}`;
                     script.async = true;
                     script.defer = true;
                     script.dataset.baiduMapApi = 'true';
@@ -2204,7 +2209,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                         } catch (error) {
                             window[callbackName] = undefined;
                         }
-                        if (window.BMapGL && typeof window.BMapGL.Map === 'function') {
+                        if (window.BMap && typeof window.BMap.Map === 'function') {
                             resolve();
                             return;
                         }
@@ -2224,8 +2229,9 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                     document.body.appendChild(container);
                 }
                 if (!window.__backendBaiduRouteMap) {
-                    window.__backendBaiduRouteMap = new BMapGL.Map(container.id);
-                    window.__backendBaiduRouteMap.centerAndZoom(new BMapGL.Point(116.404, 39.915), 12);
+                    window.__backendBaiduRouteMap = new BMap.Map(container.id);
+                    const center = gcj02ToBd09(116.404, 39.915);
+                    window.__backendBaiduRouteMap.centerAndZoom(new BMap.Point(center.lng, center.lat), 12);
                 }
                 return window.__backendBaiduRouteMap;
             }
@@ -2277,9 +2283,9 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                 };
 
                 if (routeType === 'walking') {
-                    searchInstance = new BMapGL.WalkingRoute(map, commonOptions);
+                    searchInstance = new BMap.WalkingRoute(map, commonOptions);
                 } else {
-                    searchInstance = new BMapGL.DrivingRoute(map, commonOptions);
+                    searchInstance = new BMap.DrivingRoute(map, commonOptions);
                 }
                 return searchInstance;
             }
@@ -2349,7 +2355,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             const routeType = actualMode === 'driving' ? 'driving' : 'walking';
             const waypoints = waypointsPy.map(point => {
                 const converted = gcj02ToBd09(Number(point[0]), Number(point[1]));
-                return new BMapGL.Point(converted.lng, converted.lat);
+                return new BMap.Point(converted.lng, converted.lat);
             });
             const allPath = [];
 
@@ -2385,26 +2391,20 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                         return;
                     }
                     segmentErrors[segmentIndex] = result && result.error ? result.error : 'Unknown error';
-                    if (result && result.rateLimited) {
-                        // 限流不代表「该段无路线」：不消耗重试预算，退避后重排
-                        waveRateLimited += 1;
-                    } else {
+                        if (result && result.rateLimited) { waveRateLimited += 1; }
                         segmentAttempts[segmentIndex] += 1;
-                    }
-                    if (segmentAttempts[segmentIndex] < maxRetries + 1) {
+                        const code = String(diagnostic.segments[segmentIndex].error_code ?? '');
+                        const retryable = (pythonParams._map_error_retry_policy || {})[code] !== false;
+                        if (retryable && segmentAttempts[segmentIndex] < maxRetries + 1) {
                         pendingIndexes.push(segmentIndex);
                     }
                 });
-                if (waveSuccessCount ===0) {
-                    if (waveRateLimited > 0) {
-                        // 整波被限流：退避等待，不累计失败波次
-                        await sleep(Math.min(5000, 600 * waveRateLimited));
-                    } else {
+                    if (waveSuccessCount ===0) {
                         consecutiveFailedWaves += 1;
-                        if (consecutiveFailedWaves >= maxFailedWaves) {
-                            break;
+                        if (consecutiveFailedWaves >= maxFailedWaves) { break; }
+                        if (waveRateLimited > 0 && pendingIndexes.length > 0) {
+                            await sleep(Math.min(5000, 600 * waveRateLimited));
                         }
-                    }
                 } else {
                     consecutiveFailedWaves =0;
                 }
@@ -2439,10 +2439,9 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
         """,
         waypoints,
         ak,
-        python_params or {},
+        _map_runtime_parameters(python_params, "baidu", provider_plan),
         actual_mode,
-        **({"diagnostic_context": provider_plan["_diagnostic_context"]}
-           if provider_plan.get("_diagnostic_context") else {}),
+        **_map_runtime_execution_options(provider_plan),
     )
 
 
@@ -2640,7 +2639,7 @@ def _bounded_route_runtime_diagnostic(diagnostic, sensitive_values):
 
     compact = {
         field: scalar(diagnostic[field])
-        for field in ("guard_label", "actual_mode", "waypoint_count", "segment", "error_code", "waves", "elapsed_ms")
+        for field in ("guard_label", "actual_mode", "waypoint_count", "segment", "error_code", "http_status", "api_type", "stage", "error_explanation", "error_hint", "origin_source", "runtime_page_origin", "waves", "elapsed_ms")
         if field in diagnostic
     }
     if "failed_endpoints" in diagnostic:
@@ -2651,7 +2650,7 @@ def _bounded_route_runtime_diagnostic(diagnostic, sensitive_values):
         if isinstance(selected, dict):
             segment = {
                 field: scalar(selected[field], 200 if field == "reason" else 40)
-                for field in ("segment", "attempts", "status", "response_type", "error_code", "reason", "elapsed_ms", "callbacks_dropped", "routes_count", "steps_count", "path_count", "valid_path_count")
+                for field in ("segment", "attempts", "status", "http_status", "response_type", "error_code", "reason", "elapsed_ms", "callbacks_dropped", "routes_count", "steps_count", "path_count", "valid_path_count")
                 if field in selected
             }
             history = selected.get("callback_history")
@@ -2716,22 +2715,21 @@ def _plan_route_path_with_provider_runtime(
         pool = globals().get("chrome_pool")
         if not pool:
             raise RuntimeError("Chrome浏览器池不可用，无法进行路径规划。")
-        ctx = pool.get_context(session_id)
-        page = ctx["page"]
-        _install_map_runtime_guard(page, provider=provider, guard_label=guard_label)
+        # The worker creates the context inside the same queued command and deadline.
+        page = None
         diagnostic_context = {
             "diagnostic_id": diagnostic_id, "provider": provider,
             "guard_label": guard_label, "actual_mode": actual_mode, "waypoint_count": waypoint_count,
             "sensitive_values": sensitive_values,
         }
-        origin_errors = []
-        if app_base_url and not _ensure_map_backend_page_origin(
-            page, session_id, app_base_url, guard_label=guard_label,
-            diagnostic_context=diagnostic_context, error_details=origin_errors,
-        ):
-            raise RuntimeError("后端地图页面来源初始化失败，无法执行地图路径规划。" + " ".join(origin_errors))
+        runtime_page_origin, origin_source = resolve_backend_page_origin(runtime_config, provider, app_base_url)
+        diagnostic_context.update({"runtime_page_origin": runtime_page_origin, "origin_source": origin_source})
+        logging.info("[路径诊断] id=%s provider=%s origin=%s origin_source=%s",
+                     diagnostic_id, provider, runtime_page_origin, origin_source)
         execution_plan = dict(provider_plan)
         execution_plan["_diagnostic_context"] = diagnostic_context
+        execution_plan["_runtime_page_origin"] = runtime_page_origin
+        execution_plan["_deadline_epoch_ms"] = time.time() * 1000 + max(0, 45000 - (time.monotonic() - started) * 1000)
         if provider == "amap":
             result = _plan_route_path_with_amap_runtime(session_id, page, waypoints, execution_plan, python_params)
         elif provider == "tencent":
@@ -2773,6 +2771,22 @@ def _plan_route_path_with_provider_runtime(
     diagnostic = result.get("diagnostic")
     diagnostic = dict(diagnostic) if isinstance(diagnostic, dict) else ({"detail": sanitize_diagnostic(diagnostic, 1200, sensitive_values)} if diagnostic is not None else {})
     diagnostic.update({"guard_label": guard_label, "actual_mode": actual_mode, "waypoint_count": waypoint_count})
+    api_type = {"amap": "amap_jsapi", "tencent": "tencent_webservice", "tianditu": "tianditu_drive", "baidu": "baidu_jsapi_route"}.get(provider, "unknown")
+    diagnostic.setdefault("api_type", api_type)
+    diagnostic.setdefault("stage", "route")
+    if result.get("error"):
+        failed = next((row for row in diagnostic.get("segments", []) if isinstance(row, dict)
+                       and row.get("segment") == diagnostic.get("segment")), {})
+        for field in ("error_code", "http_status"):
+            if field in failed:
+                diagnostic[field] = failed[field]
+        normalized_error = normalize_map_error(provider, diagnostic["api_type"], {
+            "message": result["error"], "error_code": diagnostic.get("error_code"),
+        }, http_status=diagnostic.get("http_status"), stage=diagnostic["stage"])
+        for field in ("api_type", "stage", "error_code", "http_status", "error_explanation", "error_hint", "retryable"):
+            if field in normalized_error:
+                diagnostic[field] = normalized_error[field]
+                result[field] = normalized_error[field]
     diagnostic.setdefault("elapsed_ms", elapsed_ms)
     failed_endpoints = []
     try:
@@ -5854,6 +5868,8 @@ def _get_default_config():
 
     config["Map"] = {
         "provider": "amap",
+        "backend_page_origin": "",
+        "frontend_proxy_enabled": "false",
         "amap_js_key": "",
         "tencent_map_key": "",
         "tianditu_token": "",
@@ -7217,6 +7233,7 @@ def _create_default_json_config(json_path: str):
         if hasattr(default, "sections"):
             for section in default.sections():
                 data[section] = dict(default.items(section))
+            data["Map"] = merge_map_settings(default, {})
         os.makedirs(os.path.dirname(os.path.abspath(json_path)), exist_ok=True)
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)

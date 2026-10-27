@@ -3,10 +3,11 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import test from 'node:test'
 import vm from 'node:vm'
+import { createTaskMapRestorer } from '../frontend/src/utils/taskMapRestore.js'
 
 function loadSource(path, globals, exported) {
   const source = readFileSync(resolve(path), 'utf8').replace(/^import .*\r?\n/gm, '').replace(/export (const|function) /g, '$1 ')
-  return vm.runInNewContext(`${source}\n${exported}`, globals)
+  return vm.runInNewContext(`${source}\n${exported}`, { createTaskMapRestorer, ...globals })
 }
 
 test('a detailed failure replaces its socket hint and is not repeated', () => {
@@ -40,6 +41,90 @@ test('legacy diagnostics upgrade the same line in desktop and mobile logs', () =
     assert.match(area.value, /路段：2；错误码：10001/)
     assert.equal(area.value.trim().split('\n').length, 1)
   }
+})
+
+test('provider error explanations and hints remain readable next to the original code', () => {
+  const store = loadSource('frontend/src/stores/app.js', {
+    defineStore: (_, factory) => factory, ref: value => ({ value }), computed: fn => ({ get value() { return fn() } }),
+  }, 'useAppStore()')
+  store.addRoutePlanningFailures([{ diagnostic_id: 'scode', provider: 'amap', message: 'INVALID_USER_SCODE', error_explanation: '安全码未通过验证', error_hint: '检查安全密钥与 Key 是否配套' }])
+  assert.match(store.logs.value[0].msg, /INVALID_USER_SCODE；安全码未通过验证；检查安全密钥与 Key 是否配套/)
+  store.bindBusinessSession('B')
+  store.bindBusinessSession('C')
+  assert.equal(store.logs.value.length, 0, 'departed session diagnostics must not appear in another session')
+})
+
+test('position updates retain processed indices and clear geometry when the batch advances', () => {
+  const store = loadSource('frontend/src/stores/app.js', {
+    defineStore: (_, factory) => factory, ref: value => ({ value }), computed: fn => ({ get value() { return fn() } }),
+  }, 'useAppStore()')
+  store.selectedTaskIndex.value = 2
+  store.runData.value = { task_index: 2, run_coords: [[113, 22]], current_point_index: 3 }
+  store.handlePositionUpdate({ task_index: 5, point_index: 4, lon: 114, lat: 23, distance: 0 })
+  assert.equal(store.runData.value.current_point_index, 4)
+  assert.equal(store.runData.value.run_coords, undefined)
+  assert.equal(store.runData.value.current_distance, 0)
+  store.handlePositionUpdate({ task_index: 5, point_index: 2, lon: 115, lat: 24 })
+  assert.equal(store.runData.value.current_lon, 114, 'late progress must not move the runner backwards')
+})
+
+test('stopping and rerunning the same task ignores old batch progress and lifecycle events', () => {
+  const store = loadSource('frontend/src/stores/app.js', {
+    defineStore: (_, factory) => factory, ref: value => ({ value }), computed: fn => ({ get value() { return fn() } }),
+  }, 'useAppStore()')
+  store.beginRunnerExecution({ execution_id: 'old', execution_started_at: 1, task_index: 2 })
+  store.handlePositionUpdate({ execution_id: 'old', task_index: 2, point_index: 90, lon: 114, lat: 23 })
+  store.beginRunnerExecution({ execution_id: 'new', execution_started_at: 2, task_index: 2 })
+  store.isRunning.value = true
+  assert.equal(store.runData.value.current_point_index, 0)
+  store.handlePositionUpdate({ execution_id: 'old', task_index: 2, point_index: 99, lon: 115, lat: 24 })
+  store.handleRunStopped({ execution_id: 'old' })
+  store.handleTaskCompleted({ execution_id: 'old', task_index: 2 })
+  store.beginRunnerExecution({ execution_id: 'old', execution_started_at: 1, task_index: 2 })
+  store.handlePositionUpdate({ execution_id: 'new', task_index: 2, point_index: 1, lon: 113, lat: 22, elapsed_time: 3 })
+  assert.equal(store.activeExecutionId.value, 'new')
+  assert.equal(store.runData.value.current_point_index, 1)
+  assert.equal(store.runData.value.current_lon, 113)
+  assert.equal(store.runData.value.duration, 3)
+  assert.equal(store.isRunning.value, true)
+})
+
+test('legacy runner batches reset progress and reject old same-task messages', () => {
+  const source = readFileSync(resolve('scripts/main.js'), 'utf8')
+  const start = source.indexOf('const legacyRunnerExecutionState =')
+  const end = source.indexOf('function updateRunnerPosition(', start)
+  const context = vm.createContext({ currentRunData: { task_index: 2, current_point_index: 99 }, singleProcessedPoints: 99, runAccumulatedMs: 10000 })
+  vm.runInContext(`${source.slice(start, end)}\nglobalThis.accept = acceptLegacyRunnerExecution`, context)
+  assert.equal(context.accept({ execution_id: 'old', execution_started_at: 1, task_index: 2 }, true), true)
+  context.currentRunData.current_point_index = 99
+  assert.equal(context.accept({ execution_id: 'new', execution_started_at: 2, task_index: 2 }, true), true)
+  assert.equal(context.currentRunData.current_point_index, 0)
+  assert.equal(context.accept({ execution_id: 'old', execution_started_at: 1, task_index: 2 }, true), false)
+  assert.equal(context.accept({ execution_id: 'old', task_index: 2, point_index: 100 }), false)
+  assert.equal(context.accept({ execution_id: 'new', task_index: 2, point_index: 1 }), true)
+})
+
+test('legacy in-page relogin clears the batch and rejects the departed execution', () => {
+  const source = readFileSync(resolve('scripts/main.js'), 'utf8')
+  const helperStart = source.indexOf('const legacyRunnerExecutionState =')
+  const helperEnd = source.indexOf('function updateRunnerPosition(', helperStart)
+  const sessionStart = source.indexOf('function setActiveLegacySession(')
+  const sessionEnd = source.indexOf('const AUTH_CONTEXT_API_METHODS', sessionStart)
+  const context = vm.createContext({
+    sessionUUID: 'A', authSessionUUID: 'A', sessionStorage: { setItem() {} },
+    isUsableClientSessionUUID: value => !!value, getAdminViewOriginSessionUUID: () => '',
+    currentRunData: { task_index: 2, current_point_index: 99 }, singleProcessedPoints: 99, runAccumulatedMs: 10000,
+  })
+  vm.runInContext(`${source.slice(helperStart, helperEnd)}\n${source.slice(sessionStart, sessionEnd)}\nObject.assign(globalThis, { accept: acceptLegacyRunnerExecution, reset: resetLegacyRunnerExecution, setSession: setActiveLegacySession })`, context)
+  context.accept({ execution_id: 'old', execution_started_at: 100, task_index: 2 }, true)
+  context.setSession('A')
+  assert.equal(context.accept({ execution_id: 'old', task_index: 2 }), true, 'unchanged UUID keeps its execution')
+  context.setSession('B')
+  assert.equal(context.accept({ execution_id: 'old', execution_started_at: 100, task_index: 2 }, true), false)
+  assert.equal(context.accept({ execution_id: 'new', execution_started_at: 1, task_index: 2 }, true), true, 'new session must not inherit the previous session timestamp')
+  context.reset()
+  assert.equal(context.accept({ execution_id: 'new', execution_started_at: 1, task_index: 2 }, true), false, 'logout rejects late packets')
+  assert.equal(context.accept({ execution_id: 'relogin', execution_started_at: 2, task_index: 2 }, true), true)
 })
 
 test('background polling reads nested status and finishes after retaining diagnostics', async () => {
@@ -78,7 +163,7 @@ test('a per-task completion keeps polling until the whole batch finishes', async
   let status = { status: 'running' }
   const app = { isRunning: true, addRoutePlanningFailures(rows) { this.rows = rows } }
   const bg = loadSource('frontend/src/composables/useBackgroundTask.js', {
-    ref: value => ({ value }), onUnmounted() {}, watch: (_source, callback) => { onRunningChanged = callback },
+    ref: value => ({ value }), onUnmounted() {}, watch: (_source, callback) => { onRunningChanged ??= callback },
     useAppStore: () => app, useAuthStore: () => ({ sessionUUID: 'target' }),
     callRawAPI: async () => ({ success: true, task_status: status }), setInterval: () => 1, clearInterval() {},
   }, 'useBackgroundTask()')

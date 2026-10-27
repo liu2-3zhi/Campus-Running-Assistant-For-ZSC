@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { parse, compileScript } from '../frontend/node_modules/@vue/compiler-sfc/dist/compiler-sfc.esm-browser.js'
 import { ref, computed, reactive } from '../frontend/node_modules/vue/dist/vue.esm-browser.prod.js'
 import * as coordinates from '../frontend/src/utils/coordinates.js'
+import * as routeProgress from '../frontend/src/utils/routeProgress.js'
 
 const taskDataUrl = new URL('../frontend/src/components/main/taskData.js', import.meta.url)
 const taskData = existsSync(taskDataUrl) ? await import(taskDataUrl) : {}
@@ -99,6 +100,12 @@ for (const provider of ['amap', 'tencent', 'tianditu', 'baidu']) {
     class Overlay {
       constructor(...args) { this.args = args; if (!Array.isArray(args[0]) && args[0]?.map) added.push(this) }
       setMap() {} setTitle() {} setLabel() {}
+      setPosition(point) { this.position = point }
+      setLngLat(point) { this.position = point }
+      setPath(path) { this.path = path }
+      setLngLats(path) { this.path = path }
+      setColor(color) { this.color = color }
+      setGeometries(geometries) { this.geometries = geometries }
     }
     class Bounds { extend() {} }
     const sdk = { Marker: Overlay, Polyline: Overlay, Label: Overlay, Point, LngLat: Point, LngLatBounds: Bounds }
@@ -109,6 +116,11 @@ for (const provider of ['amap', 'tencent', 'tianditu', 'baidu']) {
       getViewport: () => ({ center: new Point(120, 30), zoom: 17 }), centerAndZoom() { fits++ },
     }
     const app = makeApp()
+    const auth = {
+      sessionUUID: '11111111-1111-4111-8111-111111111111',
+      getSessionHeaderValue() { return this.sessionUUID },
+      getAdminOriginHeaderValue() { return '' },
+    }
     app.selectedTaskIndex = 0
     app.runData = {
       task_index: 0,
@@ -120,9 +132,9 @@ for (const provider of ['amap', 'tencent', 'tianditu', 'baidu']) {
     const watched = []
     const panel = componentSetup('components/map/MapContainer.vue', {
       ref, watch: (...args) => watched.push(args), onMounted() {}, onUnmounted() {}, nextTick: async () => {},
-      useAppStore: () => app, useMapStore: () => ({ activeProvider: provider, isDrawing: false }),
-      MapPlaceholder: {}, MapControls: {}, ...coordinates,
-      window: { AMap: sdk, T: sdk, BMapGL: sdk, TMap: { LatLng, LatLngBounds: Bounds, MultiMarker: Overlay, MultiPolyline: Overlay, PolylineStyle: Overlay, MultiLabel: Overlay, LabelStyle: Overlay } },
+      useAppStore: () => app, useMapStore: () => ({ activeProvider: provider, isDrawing: false }), useAuthStore: () => auth,
+      MapPlaceholder: {}, MapControls: {}, ...coordinates, ...routeProgress,
+      window: { AMap: sdk, T: sdk, BMap: sdk, TMap: { LatLng, LatLngBounds: Bounds, MultiMarker: Overlay, MultiPolyline: Overlay, PolylineStyle: Overlay, MultiLabel: Overlay, LabelStyle: Overlay } },
       document: { createElement: () => ({ textContent: '', outerHTML: '<span>起跑点</span>' }) },
     }, { isMultiAccount: false, containerId: 'map' })
     panel.map = map
@@ -136,10 +148,25 @@ for (const provider of ['amap', 'tencent', 'tianditu', 'baidu']) {
     assert.ok(paths.every(path => path.length === 2))
     assert.ok(paths.flat().every(point => point.lng !== 0 && point.lat !== 0))
     assert.equal(fits, 1)
+    app.runData.current_point_index = 1
+    app.runData.current_position = { lon: 120, lat: 30 }
+    panel.renderTask()
+    const runner = panel.taskMarkers.get('runner')
+    app.runData.current_point_index = 2
+    app.runData.current_position = { lon: 120.01, lat: 30.01 }
+    panel.renderTask()
+    assert.equal(panel.taskMarkers.get('runner'), runner, 'runner object must survive progress changes')
+    const updated = provider === 'tencent' ? runner.geometries[0].position : runner.position
+    const expected = provider === 'baidu' ? coordinates.gcj02ToBd09(120.01, 30.01)
+      : provider === 'tianditu' ? coordinates.gcj02ToWgs84(120.01, 30.01) : { lng: 120.01, lat: 30.01 }
+    assert.equal(updated.lng, expected.lng)
+    assert.equal(updated.lat, expected.lat)
     app.runData.current_distance = 100
     panel.renderTask()
     assert.equal(fits, 1, 'progress updates must preserve the user viewport')
     delete app.runData.current_distance
+    delete app.runData.current_point_index
+    delete app.runData.current_position
     assert.equal(JSON.stringify(app.runData), before)
     assert.ok(watched.some(([source]) => Array.isArray(source) && source[0]() === app.runData), 'task data must drive rendering')
   })

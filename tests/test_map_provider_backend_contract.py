@@ -59,6 +59,14 @@ def _read_backend_source():
 
 
 class TestMapProviderBackendContract(unittest.TestCase):
+    def setUp(self):
+        original = main_module.resolve_backend_page_origin
+        def resolve(config, provider, request_origin=None):
+            return original(config, provider, request_origin or "https://runtime.test")
+        origin = mock.patch.object(main_module, "resolve_backend_page_origin", side_effect=resolve)
+        origin.start()
+        self.addCleanup(origin.stop)
+
     def _decode_obfuscated_runtime_script(self, script):
         match = re.search(
             r"const\s+_[0-9a-f]+='([^']+)',_[0-9a-f]+='([^']+)';",
@@ -131,13 +139,10 @@ class TestMapProviderBackendContract(unittest.TestCase):
     def test_admin_config_save_accepts_global_provider_and_multi_provider_keys(self):
         source = MAIN_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('if "Map" in data and "provider" in data["Map"]:', source)
+        self.assertIn('merge_map_settings(config, data["Map"]) if "Map" in data else None', source)
         self.assertIn('config.set("Map", "provider",', source)
-        self.assertIn('providers = data["Map"].get("providers") or {}', source)
-        self.assertIn('amap_provider = providers.get("amap") or {}', source)
-        self.assertIn('tencent_provider = providers.get("tencent") or {}', source)
-        self.assertIn('tianditu_provider = providers.get("tianditu") or {}', source)
-        self.assertIn('baidu_provider = providers.get("baidu") or {}', source)
+        self.assertIn('config.set("Map", "backend_page_origin", map_updates["backend_page_origin"])', source)
+        self.assertIn('map_updates["providers"]', source)
         self.assertIn('config.set(\n                    "Map",\n                    "providers",', source)
         self.assertIn('for legacy_key in [', source)
         self.assertIn('config.remove_option("Map", legacy_key)', source)
@@ -175,12 +180,11 @@ class TestMapProviderBackendContract(unittest.TestCase):
         )
         self.assertIn('"save_map_provider_key": "modify_params"', main_source)
 
-    def test_tianditu_walking_falls_back_to_driving_with_explicit_notice(self):
-        source = MAIN_PATH.read_text(encoding="utf-8")
-
-        self.assertIn('provider == "tianditu" and route_mode == "walking"', source)
-        self.assertIn('actual_mode = "driving"', source)
-        self.assertIn('当前地图供应商不支持步行规划，已自动使用驾车规划代替', source)
+    def test_tianditu_walking_remains_walking_without_fallback_notice(self):
+        runtime_config = self._runtime_config_with_map("tianditu", {"tianditu": {"token": "tianditu-token"}})
+        plan = main_module._plan_route_with_map_provider([[113.39, 22.52], [113.40, 22.53]], runtime_config=runtime_config)
+        self.assertEqual("walking", plan["actual_mode"])
+        self.assertEqual([], plan["notices"])
 
     def test_route_planning_no_longer_hardcodes_amap_walking_only(self):
         source = MAIN_PATH.read_text(encoding="utf-8")
@@ -763,6 +767,9 @@ globalThis.fetch = async (url, options) => {
   if (!options.headers || options.headers["X-Session-ID"] !== payload.session_id) {
     throw new Error("missing session header");
   }
+  if (options.headers["X-Admin-Origin-Session-ID"] !== payload.stale_session_id) {
+    throw new Error("missing administrator origin header");
+  }
   const body = JSON.parse(options.body || "{}");
   if (body.runtime_version !== payload.runtime_version) {
     throw new Error("missing runtime version");
@@ -822,7 +829,7 @@ globalThis.fetch = async (url, options) => {
     providers: {
       amap: { field: "js_key", ciphertext: "server-only-ciphertext" },
     },
-  }, payload.session_id);
+  }, payload.session_id, payload.stale_session_id);
   if (!result.amap || result.amap.js_key !== payload.secret) {
     throw new Error("server decrypt result mismatch");
   }
@@ -1276,7 +1283,7 @@ globalThis.fetch = async (url, options) => {
             cleanup_worker_source,
         )
 
-    def test_provider_runtime_navigates_to_auth_free_map_page_before_backend_js_execution(self):
+    def test_provider_runtime_passes_auth_free_origin_to_atomic_executor(self):
         runtime_config = self._runtime_config_with_map("amap", {
             "amap": {"js_key": "amap-key"},
         })
@@ -1284,15 +1291,13 @@ globalThis.fetch = async (url, options) => {
 
         class ChromePoolStub:
             def get_context(self, session_id):
-                return {"page": page}
+                raise AssertionError("planning must create the page inside the atomic executor")
 
         def amap_helper(session_id, helper_page, waypoints, provider_plan, python_params):
-            page.goto.assert_called_once_with(
-                "http://127.0.0.1:5000/map-runtime?session_id=session-1",
-                wait_until="domcontentloaded",
-                timeout=15000,
-            )
-            self.assertIs(helper_page, page)
+            page.goto.assert_not_called()
+            self.assertEqual(provider_plan["_runtime_page_origin"], "http://127.0.0.1:5000")
+            self.assertEqual(provider_plan["_diagnostic_context"]["origin_source"], "request")
+            self.assertIsNone(helper_page)
             return {"path": [{"lng": 1, "lat": 1}]}
 
         with mock.patch.object(main_module, "chrome_pool", ChromePoolStub(), create=True), \
@@ -1323,7 +1328,7 @@ globalThis.fetch = async (url, options) => {
         self.assertEqual(result["provider"], "tencent")
         self.assertIn("Chrome浏览器池不可用", result["error"])
 
-    def test_tianditu_provider_runtime_returns_driving_notice_for_walking_contract(self):
+    def test_tianditu_provider_runtime_preserves_walking_contract(self):
         runtime_config = self._runtime_config_with_map("tianditu", {
             "tianditu": {"token": "tianditu-token"},
         })
@@ -1333,7 +1338,7 @@ globalThis.fetch = async (url, options) => {
                 return {"page": mock.Mock(on=mock.Mock())}
 
         def tianditu_helper(session_id, page, waypoints, provider_plan, python_params):
-            self.assertEqual(provider_plan["actual_mode"], "driving")
+            self.assertEqual(provider_plan["actual_mode"], "walking")
             return {"path": [{"lng": 113.39, "lat": 22.52}, {"lng": 113.40, "lat": 22.53}]}
 
         with mock.patch.object(main_module, "chrome_pool", ChromePoolStub(), create=True), \
@@ -1345,7 +1350,7 @@ globalThis.fetch = async (url, options) => {
             )
 
         self.assertEqual(result["provider"], "tianditu")
-        self.assertIn("当前地图供应商不支持步行规划，已自动使用驾车规划代替", result["notices"])
+        self.assertEqual([], result["notices"])
 
     def test_tencent_provider_runtime_completes_snapped_route_endpoints(self):
         runtime_config = self._runtime_config_with_map("tencent", {
@@ -1459,8 +1464,8 @@ globalThis.fetch = async (url, options) => {
         expected_calls = [
             (
                 main_module._plan_route_path_with_amap_runtime,
-                {"provider_config": {"js_key": "amap-key"}, "actual_mode": "walking", "plugins": ["AMap.Walking"]},
-                ["amap-key", {"api_retries": 0}, ["AMap.Walking"], "walking"],
+                {"provider_config": {"js_key": "amap-key", "security_js_code": "amap-security"}, "actual_mode": "walking", "plugins": ["AMap.Walking"]},
+                ["amap-key", {"api_retries": 0}, ["AMap.Walking"], "walking", "amap-security"],
             ),
             (
                 main_module._plan_route_path_with_tencent_runtime,
@@ -1481,6 +1486,8 @@ globalThis.fetch = async (url, options) => {
 
         for helper, provider_plan, expected_tail in expected_calls:
             with self.subTest(helper=helper.__name__):
+                provider_plan = dict(provider_plan, _runtime_page_origin="https://runtime.test", _deadline_epoch_ms=1999999999999)
+                python_params = {"api_retries": 0}
                 page = mock.Mock(goto=mock.Mock())
                 chrome_pool_mock = mock.Mock(
                     execute_js=mock.Mock(return_value={"path": [{"lng": 113.39, "lat": 22.52}]})
@@ -1491,7 +1498,7 @@ globalThis.fetch = async (url, options) => {
                         page,
                         waypoints,
                         provider_plan,
-                        python_params={"api_retries": 0},
+                        python_params=python_params,
                     )
 
                 page.goto.assert_not_called()
@@ -1499,7 +1506,14 @@ globalThis.fetch = async (url, options) => {
                 args = chrome_pool_mock.execute_js.call_args.args
                 self.assertEqual(args[0], "session-1")
                 self.assertEqual(args[2], waypoints)
-                self.assertEqual(list(args[3:]), expected_tail)
+                self.assertEqual(args[3], expected_tail[0])
+                self.assertEqual(args[4]["api_retries"], 0)
+                self.assertTrue(args[4]["_map_error_retry_policy"])
+                self.assertEqual(args[4]["_deadline_epoch_ms"], 1999999999999)
+                self.assertEqual(list(args[5:]), expected_tail[2:])
+                self.assertEqual(python_params, {"api_retries": 0}, "reserved executor fields must not mutate caller settings")
+                self.assertEqual(chrome_pool_mock.execute_js.call_args.kwargs["runtime_page_origin"], "https://runtime.test")
+                self.assertEqual(chrome_pool_mock.execute_js.call_args.kwargs["deadline_epoch_ms"], 1999999999999)
                 self.assertEqual(result["path"], [{"lng": 113.39, "lat": 22.52}])
 
     def test_provider_route_helper_js_payloads_are_syntax_valid(self):
@@ -1528,12 +1542,12 @@ globalThis.fetch = async (url, options) => {
                 "signal: controller.signal",
             ],
             "_plan_route_path_with_baidu_runtime": [
-                "https://api.map.baidu.com/api?v=1.0&type=webgl&ak=",
+                "https://api.map.baidu.com/api?v=4.0&ak=",
                 "function gcj02ToBd09(",
                 "function bd09ToGcj02(",
-                "BMapGL.Map",
-                "BMapGL.WalkingRoute",
-                "BMapGL.DrivingRoute",
+                "BMap.Map",
+                "BMap.WalkingRoute",
+                "BMap.DrivingRoute",
                 "百度地图脚本加载完成但运行时不可用",
                 "地图路线服务请求超时",
                 "window.setTimeout",

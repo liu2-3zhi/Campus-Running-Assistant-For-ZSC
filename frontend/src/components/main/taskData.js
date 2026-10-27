@@ -28,16 +28,21 @@ export function taskPoints(details = {}) {
   }))
 }
 
+const selectionRequests = new WeakMap()
+
 export async function loadSelectedTask(app, index, api, isDrawing = false) {
   if (index < 0 || index >= app.tasks.length) return false
   if (index === app.selectedTaskIndex && app.runData) return true
   if (app.isRunning && index !== app.selectedTaskIndex) throw new Error('任务执行中，无法切换任务！请先停止当前任务。')
   if (isDrawing) throw new Error('请先结束当前路径绘制！')
+  const requestId = (selectionRequests.get(app) || 0) + 1
+  selectionRequests.set(app, requestId)
+  const session = app.businessSession
 
   const task = app.tasks[index]
   let details = task
   if (task.info_text !== '离线') {
-    const status = await api.callRawAPI('/api/background_task/status', 'GET')
+    const status = await api.callRawAPI('/api/background_task/status', 'GET', null, { sessionContext: 'business' })
     if (['running', 'paused'].includes(status?.task_status?.status) && index !== app.selectedTaskIndex) {
       app.isRunning = true
       throw new Error('任务执行中，无法切换任务！请先停止当前任务。')
@@ -46,6 +51,7 @@ export async function loadSelectedTask(app, index, api, isDrawing = false) {
     if (!result?.success || !result.details) throw new Error(result?.message || '获取任务详情失败')
     details = result.details
   }
+  if (selectionRequests.get(app) !== requestId || session !== app.businessSession) return false
   app.selectedTaskIndex = index
   app.runData = { ...details, task_index: index }
   app.tasks[index] = { ...task, ...details }
@@ -58,6 +64,7 @@ export function applyPathResult(app, result) {
   app.runData = {
     ...app.runData,
     ...(result.run_coords ? { run_coords: result.run_coords } : {}),
+    ...(result.run_coords ? { current_point_index: 0, point_index: 0, current_position: null, current_lon: null, current_lat: null, target_sequence: 1 } : {}),
     ...(result.total_dist != null ? { total_run_distance_m: result.total_dist } : {}),
     ...(result.total_time != null ? { total_run_time_s: result.total_time } : {}),
   }
@@ -68,7 +75,8 @@ export function clearTaskPath(app) {
   if (app.runData) app.runData = {
     ...app.runData, draft_coords: [], run_coords: [], total_run_distance_m: 0,
     total_run_time_s: 0, total_distance: 0, total_time: 0, progress: 0,
-    target_sequence: 0, isInTargetZone: false,
+    target_sequence: 1, isInTargetZone: false, current_point_index: 0, point_index: 0,
+    current_position: null, current_lon: null, current_lat: null, lng: null, lat: null,
   }
   if (app.tasks[app.selectedTaskIndex]) app.tasks[app.selectedTaskIndex] = { ...app.tasks[app.selectedTaskIndex], draft_coords: [], run_coords: [] }
 }

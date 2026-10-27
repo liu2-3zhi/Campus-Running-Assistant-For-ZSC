@@ -1,6 +1,7 @@
 <script setup>
 import { ref, reactive, watch, onMounted } from 'vue'
 import { callRawAPI } from '@/services/api'
+import { normalizeBackendPageOrigin } from '@/services/mapBackendOrigin'
 
 /* ── state ── */
 const loading = ref(false)
@@ -70,6 +71,26 @@ const sections = [
       { key: 'password_storage', label: '密码存储方式', type: 'select', options: ['plaintext', 'sha256', 'bcrypt'] },
       { key: 'brute_force_protection', label: '暴力破解防护', type: 'boolean' },
       { key: 'login_log_retention_days', label: '登录日志保留天数', type: 'number' },
+    ],
+  },
+  {
+    save: 'Map', load: 'Map', label: '地图配置',
+    fields: [
+      { key: 'provider', label: '地图提供方', type: 'select', options: [
+        { value: 'amap', label: '高德地图' }, { value: 'tencent', label: '腾讯地图' },
+        { value: 'tianditu', label: '天地图' }, { value: 'baidu', label: '百度地图' },
+      ] },
+      { key: 'backend_page_origin', label: '后端规划页面来源', type: 'origin', hint: '选填；留空自动使用应用请求来源。仅保留协议、域名和端口。' },
+      { key: 'frontend_proxy_enabled', label: '启用地图请求后端代理', type: 'boolean', hint: '仅代理白名单内的地图 SDK、服务与瓦片域名；来源按供应商覆盖、全局来源、当前页面来源顺序选择。' },
+      { key: 'providers.amap.js_key', label: '高德 JS Key', type: 'password' },
+      { key: 'providers.amap.security_js_code', label: '高德安全密钥（选填）', type: 'password' },
+      { key: 'providers.amap.backend_page_origin', label: '高德规划来源', type: 'origin', hint: '留空继承全局来源。' },
+      { key: 'providers.tencent.map_key', label: '腾讯地图 Key', type: 'password' },
+      { key: 'providers.tencent.backend_page_origin', label: '腾讯规划来源', type: 'origin', hint: '留空继承全局来源。' },
+      { key: 'providers.tianditu.token', label: '天地图 Token', type: 'password' },
+      { key: 'providers.tianditu.backend_page_origin', label: '天地图规划来源', type: 'origin', hint: '留空继承全局来源。' },
+      { key: 'providers.baidu.ak', label: '百度地图 AK', type: 'password' },
+      { key: 'providers.baidu.backend_page_origin', label: '百度规划来源', type: 'origin', hint: '留空继承全局来源。' },
     ],
   },
   {
@@ -171,7 +192,8 @@ function applyConfig(config) {
     const source = config[s.load] || {}
     if (!configForm[s.save]) configForm[s.save] = {}
     for (const field of s.fields) {
-      configForm[s.save][field.key] = coerceValue(field.type, source[field.key])
+      const raw = field.key.split('.').reduce((value, key) => value?.[key], source)
+      configForm[s.save][field.key] = coerceValue(field.type, raw)
     }
   }
   takeSnapshot()
@@ -197,7 +219,20 @@ async function saveConfig() {
   saving.value = true
   clearMessages()
   try {
-    const res = await callRawAPI('/api/admin/config/save', 'POST', { ...configForm })
+    const payload = {}
+    for (const section of sections) {
+      payload[section.save] = {}
+      for (const field of section.fields) {
+        let target = payload[section.save]
+        const keys = field.key.split('.')
+        const last = keys.pop()
+        for (const key of keys) target = target[key] ||= {}
+        const value = field.type === 'origin' ? normalizeBackendPageOrigin(configForm[section.save][field.key]) : configForm[section.save][field.key]
+        configForm[section.save][field.key] = value
+        target[last] = value
+      }
+    }
+    const res = await callRawAPI('/api/admin/config/save', 'POST', payload)
     if (res && res.success === false) throw new Error(res.message || '保存失败')
     success.value = '配置已保存'
     takeSnapshot()
@@ -207,6 +242,16 @@ async function saveConfig() {
   } finally {
     saving.value = false
   }
+}
+
+function normalizeOriginField(section, field) {
+  try {
+    configForm[section.save][field.key] = normalizeBackendPageOrigin(configForm[section.save][field.key])
+  } catch (e) { error.value = e.message }
+}
+
+function useCurrentPageOrigin(section, field) {
+  configForm[section.save][field.key] = normalizeBackendPageOrigin(window.location.origin)
 }
 
 /* ── reset: reload from server ── */
@@ -302,6 +347,16 @@ onMounted(loadConfig)
                 v-model="configForm[section.save][field.key]"
                 autocomplete="off"
               />
+            </template>
+
+            <template v-else-if="field.type === 'origin'">
+              <div class="flex-1 min-w-0">
+                <div class="flex flex-col sm:flex-row gap-2">
+                  <input type="text" class="input-field flex-1 min-w-0" v-model="configForm[section.save][field.key]" placeholder="https://example.com" @blur="normalizeOriginField(section, field)" />
+                  <button type="button" class="btn btn-secondary shrink-0" @click="useCurrentPageOrigin(section, field)">使用当前页面来源</button>
+                </div>
+                <p class="text-xs text-[var(--ink-muted)] mt-1">{{ field.hint }}</p>
+              </div>
             </template>
 
             <!-- text input (default) -->

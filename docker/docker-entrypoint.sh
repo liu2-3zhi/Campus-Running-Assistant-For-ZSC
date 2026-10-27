@@ -125,6 +125,11 @@ cat > /etc/nginx/nginx_map.conf <<NGINX_MAP_EOF
 map \$remote_addr \$real_forwarded_for {
     default \$proxy_add_x_forwarded_for;
 }
+# HTTP 重定向也会继承 http 级日志，统一排除可能含地图 Key 的查询请求。
+map \$uri \$map_proxy_access_log {
+    default 1;
+    ~^/map-proxy/ 0;
+}
 NGINX_MAP_EOF
 
 # ==========================================
@@ -210,7 +215,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
+            proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             # 标准代理链由 Flask 按 trusted_ips.txt 和内置内网信任规则解析
             proxy_set_header X-Forwarded-For $real_forwarded_for;
@@ -222,7 +227,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         # Vue 新版入口和旧版兼容入口统一交给 Flask 按当前构建产物与默认 UI 配置处理
         location = /frontend {
             proxy_pass http://127.0.0.1:5000;
-            proxy_set_header Host $host;
+            proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $real_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
@@ -230,7 +235,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
 
         location ^~ /frontend/ {
             proxy_pass http://127.0.0.1:5000;
-            proxy_set_header Host $host;
+            proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $real_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
@@ -238,7 +243,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
 
         location = /old {
             proxy_pass http://127.0.0.1:5000;
-            proxy_set_header Host $host;
+            proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $real_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
@@ -246,17 +251,34 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
 
         location ^~ /old/ {
             proxy_pass http://127.0.0.1:5000;
-            proxy_set_header Host $host;
+            proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $real_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # 地图 SDK 查询串包含 Key，禁止写入访问日志或经 JSON 日志转发到后端
+        location ^~ /map-proxy/ {
+            access_log off;
+            error_log /dev/null crit;
+            proxy_pass http://127.0.0.1:5000;
+            proxy_http_version 1.1;
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Real-IP $remote_addr;
+            # 标准代理链由 Flask 按 trusted_ips.txt 和内置内网信任规则解析
+            proxy_set_header X-Forwarded-For $real_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_buffering off;
+            proxy_read_timeout 300;
+            proxy_connect_timeout 300;
+            proxy_send_timeout 300;
         }
 
         # API请求代理到Flask后端
         location ~ ^/(api|auth|logs|cdn-cache|avatar|system-announcement)/ {
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
-            proxy_set_header Host $host;
+            proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             # 标准代理链由 Flask 按 trusted_ips.txt 和内置内网信任规则解析
             proxy_set_header X-Forwarded-For $real_forwarded_for;
@@ -299,7 +321,7 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
         location @backend {
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
-            proxy_set_header Host $host;
+            proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
             # 标准代理链由 Flask 按 trusted_ips.txt 和内置内网信任规则解析
             proxy_set_header X-Forwarded-For $real_forwarded_for;
@@ -353,9 +375,9 @@ http {
         '}';
     
     # 传统格式访问日志
-    access_log  /var/log/nginx/access.log  main;
+    access_log  /var/log/nginx/access.log  main if=$map_proxy_access_log;
     # JSON格式访问日志（用于程序化处理和转发到Python日志系统）
-    access_log  /var/log/nginx/access_json.log  json_combined;
+    access_log  /var/log/nginx/access_json.log  json_combined if=$map_proxy_access_log;
     
     sendfile        on;
     tcp_nopush      on;
@@ -457,9 +479,9 @@ http {
         '}';
     
     # 传统格式访问日志
-    access_log  /var/log/nginx/access.log  main;
+    access_log  /var/log/nginx/access.log  main if=$map_proxy_access_log;
     # JSON格式访问日志（用于程序化处理和转发到Python日志系统）
-    access_log  /var/log/nginx/access_json.log  json_combined;
+    access_log  /var/log/nginx/access_json.log  json_combined if=$map_proxy_access_log;
     
     sendfile        on;
     tcp_nopush      on;

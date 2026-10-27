@@ -8,10 +8,11 @@ export const useMapStore = defineStore('map', () => {
   const isMapReady = ref(false)
   const mapConfig = ref({
     amapKey: '',
-    amapSecurityKey: '',
+    amapSecurityJsCode: '',
     tencentKey: '',
     tiandituKey: '',
     baiduKey: '',
+    frontendProxyEnabled: false,
   })
 
   // --- 交互式路径绘制协调状态（对齐 original 的 isDrawing/draftPath/draftTotalDist）---

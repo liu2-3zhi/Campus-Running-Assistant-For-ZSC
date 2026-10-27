@@ -86,10 +86,10 @@ class TestMapProviderConfigUi(unittest.TestCase):
 
         self.assertIn('provider: $("config-Map-provider").value', save_system_config_source)
         self.assertIn('providers: {', save_system_config_source)
-        self.assertIn('amap: { js_key: $("config-Map.providers.amap-js_key").value }', save_system_config_source)
-        self.assertIn('tencent: { map_key: $("config-Map.providers.tencent-map_key").value }', save_system_config_source)
-        self.assertIn('tianditu: { token: $("config-Map.providers.tianditu-token").value }', save_system_config_source)
-        self.assertIn('baidu: { ak: $("config-Map.providers.baidu-ak").value }', save_system_config_source)
+        for provider, field in (("amap", "js_key"), ("tencent", "map_key"), ("tianditu", "token"), ("baidu", "ak")):
+            self.assertIn(f'{provider}: {{ {field}: $("config-Map.providers.{provider}-{field}").value', save_system_config_source)
+        self.assertIn('security_js_code: $("config-Map.providers.amap-security_js_code").value', save_system_config_source)
+        self.assertIn('normalizeBackendPageOrigin($("config-Map-backend_page_origin").value)', save_system_config_source)
 
     def test_save_system_config_defers_map_provider_runtime_switch(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + ADMIN_CONFIG_PATH.read_text(
@@ -122,10 +122,9 @@ class TestMapProviderConfigUi(unittest.TestCase):
         )
 
         self.assertIn('"provider": _get_active_map_provider(config)', config_load_source)
-        self.assertIn('"amap": _get_map_provider_runtime_config(config, provider="amap")', config_load_source)
-        self.assertIn('"tencent": _get_map_provider_runtime_config(config, provider="tencent")', config_load_source)
-        self.assertIn('"tianditu": _get_map_provider_runtime_config(config, provider="tianditu")', config_load_source)
-        self.assertIn('"baidu": _get_map_provider_runtime_config(config, provider="baidu")', config_load_source)
+        for provider in ("amap", "tencent", "tianditu", "baidu"):
+            self.assertIn(f'"{provider}": _get_map_provider_admin_config(config, provider="{provider}")', config_load_source)
+        self.assertIn('"backend_page_origin": config.get("Map", "backend_page_origin", fallback="")', config_load_source)
 
     def test_pc_and_mobile_config_panels_both_expose_provider_controls(self):
         html = INDEX_PATH.read_text(encoding="utf-8")

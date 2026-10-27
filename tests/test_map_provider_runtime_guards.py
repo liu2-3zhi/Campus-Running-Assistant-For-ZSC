@@ -148,18 +148,13 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             login_source.index("syncMapProviderConfigFromInitialData(result)"),
         )
 
-    def test_vue_runtime_loader_reloads_stale_same_version_script(self):
+    def test_vue_runtime_loader_binds_map_runtime_to_business_and_admin_origin(self):
         source = FRONTEND_MAP_KEY_RUNTIME_PATH.read_text(encoding="utf-8")
-        existing_source = source[
-            source.index("if (existing) {"):
-            source.index("const script = document.createElement('script')")
-        ]
-
-        self.assertIn("existing.remove()", existing_source)
-        self.assertNotIn(
-            "reject(new Error('地图密钥运行时版本不匹配'))",
-            existing_source,
-        )
+        self.assertIn("X-Session-ID': sessionId", source)
+        self.assertIn("X-Admin-Origin-Session-ID'] = originSessionId", source)
+        self.assertIn("runtimeLoadGeneration", source)
+        self.assertIn("assertCurrentContext()", source)
+        self.assertIn("runtime.decryptMapProviderKeys(keyBundle, sessionId, originSessionId)", source)
 
     def test_missing_key_modal_is_provider_agnostic(self):
         html = INDEX_PATH.read_text(encoding="utf-8")
@@ -264,7 +259,7 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("腾讯地图脚本加载完成但运行时不可用", runtime_source)
         self.assertIn("window.T && window.T.Map", runtime_source)
         self.assertIn("天地图脚本加载完成但运行时不可用", runtime_source)
-        self.assertIn('window.BMapGL && typeof window.BMapGL.Map === "function"', runtime_source)
+        self.assertIn('window.BMap && typeof window.BMap.Map === "function"', runtime_source)
         self.assertIn("百度地图脚本加载完成但运行时不可用", runtime_source)
 
     def test_provider_map_reinit_uses_isolated_sdk_surface(self):
@@ -290,7 +285,7 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("surface = ensureProviderMapSurface(containerId, !instance);", provider_map_source)
         self.assertIn("new TMap.Map(surface,", provider_map_source)
         self.assertIn("new T.Map(surface.id)", provider_map_source)
-        self.assertIn("new BMapGL.Map(surface.id,", provider_map_source)
+        self.assertIn("new BMap.Map(surface.id,", provider_map_source)
 
     def test_provider_map_instances_are_recreated_when_provider_changes(self):
         source = (
@@ -544,7 +539,7 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("let providerMapLastFitCoords = {};", source)
         self.assertIn("function zoomProviderMap(", source)
         self.assertIn("function fitProviderMapToLastRoute(", source)
-        self.assertIn('providerMapLastFitCoords[containerId] = providerCoords;', draw_source)
+        self.assertIn('providerMapLastFitCoords[containerId] = gcjCoords.map(cloneMapCoordinate);', draw_source)
         self.assertIn('zoomProviderMap("mobile-track-map-container", 1)', control_source)
         self.assertIn('zoomProviderMap("mobile-track-map-container", -1)', control_source)
         self.assertIn('fitProviderMapToLastRoute("mobile-track-map-container")', control_source)
@@ -617,7 +612,7 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("function addBaiduProvider3DControl(", source)
         self.assertIn('showControl: true', init_provider_source)
         self.assertIn("function configureTencentNativeViewControls(", source)
-        self.assertIn('forceRenderType: "webgl"', init_provider_source)
+        self.assertIn('new BMap.Map(surface.id,', init_provider_source)
         self.assertIn('showControls: false', init_provider_source)
         self.assertIn("enableRotateGestures", source)
         self.assertIn("enableTiltGestures", source)

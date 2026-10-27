@@ -33,6 +33,7 @@ import requests
 from flask import g, request
 
 from main_runtime import _main
+from map_request_proxy import register_map_proxy_routes
 
 
 chrome_pool = None
@@ -1914,6 +1915,57 @@ def start_web_server(args_param):
             return f(*args, **kwargs)
 
         return decorated_function
+
+    def _load_map_proxy_runtime_config():
+        try:
+            runtime_config = _main()._read_config_ini(_main().CONFIG_FILE)
+            return runtime_config or _main()._get_default_config()
+        except Exception as error:
+            logging.warning("[MapProxy] 配置读取失败，使用安全默认值: %s", type(error).__name__)
+            return _main()._get_default_config()
+
+    def _authorize_map_proxy_actor(username, auth_token, actor_session_id, require_view_all):
+        actor_session_id = _main().normalize_session_uuid(actor_session_id)
+        if not actor_session_id or not username or username == "guest":
+            return False
+        with web_sessions_lock:
+            actor_api = web_sessions.get(actor_session_id)
+        if (
+            not actor_api
+            or not getattr(actor_api, "is_authenticated", False)
+            or getattr(actor_api, "is_guest", False)
+            or getattr(actor_api, "auth_username", None) != username
+        ):
+            return False
+        if not _main()._verify_session_cookie_token(actor_session_id, username, auth_token):
+            return False
+        try:
+            if not _main().auth_system.check_permission(username, "view_map"):
+                return False
+            if require_view_all and not _main().auth_system.check_permission(
+                username, "view_all_sessions"
+            ):
+                return False
+        except Exception:
+            return False
+        if require_view_all:
+            _main().touch_admin_view_origin_session(actor_session_id)
+        else:
+            _main().update_session_activity(actor_session_id)
+            with _main().browsing_activity_lock:
+                _main().browsing_activity[actor_session_id] = time.time()
+        return True
+
+    def _refresh_map_proxy_context_actor(username, actor_session_id):
+        return _main().token_manager.refresh_token(username, actor_session_id) is True
+
+    register_map_proxy_routes(
+        app,
+        login_required,
+        _load_map_proxy_runtime_config,
+        _authorize_map_proxy_actor,
+        on_context_authenticated=_refresh_map_proxy_context_actor,
+    )
 
     # ==================== [修正] 添加缺失的 admin_required 装饰器，并采用权限组判断 ====================
     def admin_required(f):
@@ -8305,11 +8357,15 @@ def start_web_server(args_param):
                 },
                 "Map": {
                     "provider": _main()._get_active_map_provider(config),
+                    "backend_page_origin": config.get("Map", "backend_page_origin", fallback=""),
+                    "frontend_proxy_enabled": str(config.get(
+                        "Map", "frontend_proxy_enabled", fallback="false"
+                    )).strip().lower() in {"1", "true", "yes", "on"},
                     "providers": {
-                        "amap": _main()._get_map_provider_runtime_config(config, provider="amap"),
-                        "tencent": _main()._get_map_provider_runtime_config(config, provider="tencent"),
-                        "tianditu": _main()._get_map_provider_runtime_config(config, provider="tianditu"),
-                        "baidu": _main()._get_map_provider_runtime_config(config, provider="baidu"),
+                        "amap": _main()._get_map_provider_admin_config(config, provider="amap"),
+                        "tencent": _main()._get_map_provider_admin_config(config, provider="tencent"),
+                        "tianditu": _main()._get_map_provider_admin_config(config, provider="tianditu"),
+                        "baidu": _main()._get_map_provider_admin_config(config, provider="baidu"),
                     },
                 },
                 "IP_Location": {
@@ -8549,6 +8605,11 @@ def start_web_server(args_param):
             else:
                 config = _main()._get_default_config()
 
+            try:
+                map_updates = _main().merge_map_settings(config, data["Map"]) if "Map" in data else None
+            except ValueError as error:
+                return _main().jsonify({"success": False, "message": str(error)}), 400
+
             def ensure_section(cfg, section_name):
                 if not cfg.has_section(section_name):
                     cfg.add_section(section_name)
@@ -8651,47 +8712,15 @@ def start_web_server(args_param):
                         "login_log_retention_days",
                         str(security_data["login_log_retention_days"]),
                     )
-            if "Map" in data and "provider" in data["Map"]:
+            if map_updates is not None:
                 ensure_section(config, "Map")
-                config.set("Map", "provider", _main()._normalize_map_provider(data["Map"].get("provider")))
-                providers = data["Map"].get("providers") or {}
-                amap_provider = providers.get("amap") or {}
-                tencent_provider = providers.get("tencent") or {}
-                tianditu_provider = providers.get("tianditu") or {}
-                baidu_provider = providers.get("baidu") or {}
+                config.set("Map", "provider", _main()._normalize_map_provider(map_updates["provider"]))
+                config.set("Map", "backend_page_origin", map_updates["backend_page_origin"])
+                config.set("Map", "frontend_proxy_enabled", str(map_updates["frontend_proxy_enabled"]).lower())
                 config.set(
                     "Map",
                     "providers",
-                    {
-                        "amap": {
-                            "js_key": str(
-                                amap_provider.get(
-                                    "js_key", data["Map"].get("amap_js_key", "")
-                                )
-                            ).strip(),
-                        },
-                        "tencent": {
-                            "map_key": str(
-                                tencent_provider.get(
-                                    "map_key", data["Map"].get("tencent_map_key", "")
-                                )
-                            ).strip(),
-                        },
-                        "tianditu": {
-                            "token": str(
-                                tianditu_provider.get(
-                                    "token", data["Map"].get("tianditu_token", "")
-                                )
-                            ).strip(),
-                        },
-                        "baidu": {
-                            "ak": str(
-                                baidu_provider.get(
-                                    "ak", data["Map"].get("baidu_map_ak", "")
-                                )
-                            ).strip(),
-                        },
-                    },
+                    json.dumps(map_updates["providers"], ensure_ascii=False) if isinstance(config, configparser.ConfigParser) else map_updates["providers"],
                 )
                 for legacy_key in [
                     "amap_js_key",
@@ -10828,6 +10857,7 @@ def start_web_server(args_param):
             "newbie_help_url": newbie_help_url,
             "map_provider": map_public_payload["map_provider"],
             "map_providers": map_public_payload["map_providers"],
+            "frontend_proxy_enabled": map_public_payload["frontend_proxy_enabled"],
             "map_provider_key_bundle": map_public_payload["map_provider_key_bundle"],
         }
 
@@ -13749,6 +13779,7 @@ def start_web_server(args_param):
                 "save_map_provider_key": "modify_params",
                 # ===== 地图查看权限 =====
                 "get_map_data": "view_map",
+                "get_task_map_snapshot": "view_map",
                 # ===== 用户信息权限 =====
                 "get_user_info": "view_user_details",
                 "on_user_selected": "view_user_details",
@@ -13821,6 +13852,16 @@ def start_web_server(args_param):
                     result = _project_admin_view_context(
                         result, session_id, admin_origin_session_id, request_token
                     )
+                    if isinstance(result, dict):
+                        try:
+                            map_runtime_config = _main()._read_config_ini(
+                                _main().CONFIG_FILE
+                            )
+                            result["frontend_proxy_enabled"] = _main()._get_map_provider_frontend_config(
+                                map_runtime_config
+                            )["frontend_proxy_enabled"]
+                        except Exception:
+                            result["frontend_proxy_enabled"] = False
 
                 if method == "on_user_selected" and result and isinstance(result, dict):
                     # 密码回传按可见级别控制：
@@ -27247,7 +27288,7 @@ def start_web_server(args_param):
             )
             log_msg = (
                 f"[请求开始] {request.method} {request.path} "
-                f"query={request.query_string.decode('utf-8', errors='ignore')[:512]}"
+                f"query={'<redacted>' if request.path.startswith('/map-proxy/') else request.query_string.decode('utf-8', errors='ignore')[:512]}"
             )
             if is_noisy_path:
                 logging.debug(log_msg)

@@ -922,7 +922,31 @@ function escapeHtml(text) {
   div.textContent = text;
   return div.innerHTML;
 }
+function normalizeBackendPageOrigin(value) {
+  const raw = String(value ?? "");
+  if (/[\x00-\x1f\x7f-\x9f\\]/.test(raw)) throw new Error("后端规划页面来源不能包含控制字符或反斜杠");
+  const input = raw.trim();
+  if (!input) return "";
+  try {
+    const authority = input.match(/^https?:\/\/([^/?#]+)/i)?.[1];
+    const url = new URL(input);
+    if (!authority || authority.endsWith(":") || authority.includes("@") || url.username || url.password ||
+        !["http:", "https:"].includes(url.protocol) || !url.hostname || url.port === "0") throw new Error();
+    return url.origin;
+  } catch {
+    throw new Error("后端规划页面来源无效，请输入不含账号密码的 HTTP/HTTPS 地址");
+  }
+}
+
+function useCurrentMapPageOrigin(button) {
+  const input = button.parentElement.querySelector("[data-map-origin]");
+  if (input) input.value = normalizeBackendPageOrigin(window.location.origin);
+}
+
 async function saveSystemConfig() {
+  const sourceButton = arguments[0] || null;
+  const panel = sourceButton?.closest('#admin-config-panel_modal, #mobile-admin-config-content-panel, #mobile-multi-admin-config-content, #mobile-admin-config-panel-panel') || document;
+  const $ = (id) => panel.querySelector(`[id="${id}"]`) || document.getElementById(id);
   if (!ensureConfigLoaded("system", "系统")) {
     return;
   }
@@ -1005,11 +1029,18 @@ async function saveSystemConfig() {
       },
       Map: {
         provider: $("config-Map-provider").value,
+        backend_page_origin: normalizeBackendPageOrigin($("config-Map-backend_page_origin").value),
+        frontend_proxy_enabled: $("config-Map-frontend_proxy_enabled").value === "true",
         providers: {
-          amap: { js_key: $("config-Map.providers.amap-js_key").value },
-          tencent: { map_key: $("config-Map.providers.tencent-map_key").value },
-          tianditu: { token: $("config-Map.providers.tianditu-token").value },
-          baidu: { ak: $("config-Map.providers.baidu-ak").value },
+          amap: { js_key: $("config-Map.providers.amap-js_key").value,
+            security_js_code: $("config-Map.providers.amap-security_js_code").value,
+            backend_page_origin: normalizeBackendPageOrigin($("config-Map.providers.amap-backend_page_origin").value) },
+          tencent: { map_key: $("config-Map.providers.tencent-map_key").value,
+            backend_page_origin: normalizeBackendPageOrigin($("config-Map.providers.tencent-backend_page_origin").value) },
+          tianditu: { token: $("config-Map.providers.tianditu-token").value,
+            backend_page_origin: normalizeBackendPageOrigin($("config-Map.providers.tianditu-backend_page_origin").value) },
+          baidu: { ak: $("config-Map.providers.baidu-ak").value,
+            backend_page_origin: normalizeBackendPageOrigin($("config-Map.providers.baidu-backend_page_origin").value) },
         },
       },
       IP_Location: {
@@ -1112,6 +1143,7 @@ async function saveSystemConfig() {
               ...(currentProviders[pKey] || {}),
               ...(savedProviders[pKey] || {}),
             };
+            delete directUpdate.map_providers[pKey].backend_page_origin;
           }
         }
         queuedMapProviderConfig = queuePendingMapProviderConfig(directUpdate);

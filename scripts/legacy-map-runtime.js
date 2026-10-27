@@ -338,6 +338,36 @@ async function ensureActiveMapProviderRuntimeIfNeeded(contextLabel = "地图") {
     return false;
   }
 
+  // 代理必须在任何供应商 SDK 注入前完成上下文认证，否则 SDK 会直接绕过
+  // 后端来源代理。认证失败时保持失败，不回退到真实供应商地址。
+  const proxy = window.ZXMapRequestProxy;
+  const appConfig = window.APP_CONFIG || {};
+  const proxyEnabled = appConfig.frontend_proxy_enabled === true;
+  if (proxy) {
+    try {
+      const sessionId = typeof getApiRequestSessionHeaderValue === "function"
+        ? getApiRequestSessionHeaderValue("get_initial_data") : "";
+      const originSessionId = typeof getAdminViewOriginSessionUUID === "function"
+        ? getAdminViewOriginSessionUUID(sessionId) : "";
+      await proxy.initialize({
+        enabled: proxyEnabled,
+        provider,
+        sessionId,
+        originSessionId,
+      });
+    } catch (error) {
+      if (typeof logMessage_Error === "function") {
+        logMessage_Error(`[地图] 后端地图代理初始化失败（${contextLabel}）：${error.message || error}`);
+      }
+      return false;
+    }
+  } else if (proxyEnabled) {
+    if (typeof logMessage_Error === "function") {
+      logMessage_Error("[地图] 地图代理脚本未加载，拒绝直接加载供应商 SDK。");
+    }
+    return false;
+  }
+
   if (provider !== "amap") {
     await loadActiveMapProviderRuntime(provider);
     logMessage_Info(
@@ -359,15 +389,31 @@ function loadScriptOnce(scriptSelector, scriptUrl, onBeforeAppend, errorMessage)
     }
 
     const script = document.createElement("script");
+    let settled = false;
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      script.onerror = null;
+      if (error) {
+        script.remove();
+        reject(error);
+      } else {
+        resolve(value);
+      }
+    };
+    const timeoutId = window.setTimeout(() => {
+      finish(new Error(`${errorMessage || "地图脚本加载失败"}（SDK 加载超时）`));
+    }, 20000);
     script.src = scriptUrl;
     script.async = true;
     script.defer = true;
     if (typeof onBeforeAppend === "function") {
-      onBeforeAppend(script, resolve, reject);
+      onBeforeAppend(script, (value) => finish(null, value), (error) => finish(error));
     } else {
-      script.onload = () => resolve();
+      script.onload = () => finish();
     }
-    script.onerror = () => reject(new Error(errorMessage || "地图脚本加载失败"));
+    script.onerror = () => finish(new Error(errorMessage || "地图脚本加载失败"));
     document.head.appendChild(script);
   });
 }
@@ -427,14 +473,14 @@ function loadTianDiTuMapOnce(token) {
 }
 
 function loadBaiduMapOnce(ak) {
-  if (window.BMapGL && typeof window.BMapGL.Map === "function") {
-    return Promise.resolve(window.BMapGL);
+  if (window.BMap && typeof window.BMap.Map === "function") {
+    return Promise.resolve(window.BMap);
   }
   if (baiduMapLoadingPromise) return baiduMapLoadingPromise;
 
   baiduMapLoadingPromise = loadScriptOnce(
     'script[data-baidu-map-api="true"]',
-    `https://api.map.baidu.com/api?v=1.0&type=webgl&ak=${encodeURIComponent(ak)}&callback=__onBaiduMapApiLoaded`,
+    `https://api.map.baidu.com/api?v=4.0&ak=${encodeURIComponent(ak)}&callback=__onBaiduMapApiLoaded`,
     (script, resolve, reject) => {
       script.dataset.baiduMapApi = "true";
       window.__onBaiduMapApiLoaded = function () {
@@ -443,8 +489,8 @@ function loadBaiduMapOnce(ak) {
         } catch (_) {
           window.__onBaiduMapApiLoaded = undefined;
         }
-        if (window.BMapGL && typeof window.BMapGL.Map === "function") {
-          resolve(window.BMapGL);
+        if (window.BMap && typeof window.BMap.Map === "function") {
+          resolve(window.BMap);
           return;
         }
         reject(new Error("百度地图脚本加载完成但运行时不可用，请检查 AK、域名白名单或网络连接。"));
@@ -561,6 +607,13 @@ function destroyProviderMapInstance(containerId) {
   const instance = providerMapInstances[containerId];
   if (!instance) return;
   try {
+    if (taskMapAutoResetContainerId === containerId) clearTaskMapAutoResetTimer();
+    if (typeof instance.__providerRightDragCleanup === "function") instance.__providerRightDragCleanup();
+    (instance.__providerSdkBindings || []).forEach(({ eventName, handler, usesOn }) => {
+      if (usesOn && typeof instance.off === "function") instance.off(eventName, handler);
+      else if (typeof instance.removeEventListener === "function") instance.removeEventListener(eventName, handler);
+    });
+    instance.__providerSdkBindings = [];
     if (typeof instance.destroy === "function") {
       instance.destroy();
     } else if (typeof instance.remove === "function") {
@@ -692,8 +745,8 @@ function applyProviderMapDefaultView(containerId) {
       instance.centerAndZoom(new T.LngLat(providerCenter.lng, providerCenter.lat), zoom);
       return true;
     }
-    if (provider === "baidu" && window.BMapGL && typeof instance.centerAndZoom === "function") {
-      instance.centerAndZoom(new BMapGL.Point(providerCenter.lng, providerCenter.lat), zoom);
+    if (provider === "baidu" && window.BMap && typeof instance.centerAndZoom === "function") {
+      instance.centerAndZoom(new BMap.Point(providerCenter.lng, providerCenter.lat), zoom);
       applyProviderMapDefaultOrientation(containerId);
       return true;
     }
@@ -707,8 +760,8 @@ function addBaiduProvider3DControl(instance) {
   if (
     !instance ||
     instance.__provider3DControlAdded ||
-    !window.BMapGL ||
-    typeof BMapGL.NavigationControl3D !== "function" ||
+    !window.BMap ||
+    typeof BMap.NavigationControl3D !== "function" ||
     typeof instance.addControl !== "function"
   ) {
     return false;
@@ -717,11 +770,11 @@ function addBaiduProvider3DControl(instance) {
   if (typeof BMAP_ANCHOR_TOP_LEFT !== "undefined") {
     options.anchor = BMAP_ANCHOR_TOP_LEFT;
   }
-  if (typeof BMapGL.Size === "function") {
-    options.offset = new BMapGL.Size(12, 12);
+  if (typeof BMap.Size === "function") {
+    options.offset = new BMap.Size(12, 12);
   }
   try {
-    instance.addControl(new BMapGL.NavigationControl3D(options));
+    instance.addControl(new BMap.NavigationControl3D(options));
     instance.__provider3DControlAdded = true;
     return true;
   } catch (e) {
@@ -956,10 +1009,12 @@ function bindProviderMapZoomEvent(instance, eventName, handler) {
   }
   if (typeof instance.on === "function") {
     instance.on(eventName, handler);
+    (instance.__providerSdkBindings ||= []).push({ eventName, handler, usesOn: true });
     return true;
   }
   if (typeof instance.addEventListener === "function") {
     instance.addEventListener(eventName, handler);
+    (instance.__providerSdkBindings ||= []).push({ eventName, handler, usesOn: false });
     return true;
   }
   return false;
@@ -1031,16 +1086,16 @@ function enableTianDiTuRightDragPan(containerId, instance) {
   let lastX = 0;
   let lastY = 0;
 
-  surface.addEventListener("mousedown", (event) => {
+  const onMouseDown = (event) => {
     if (getActiveMapProvider() !== "tianditu" || !event || event.button !== 2) return;
     dragging = true;
     lastX = Number(event.clientX) || 0;
     lastY = Number(event.clientY) || 0;
     if (typeof event.preventDefault === "function") event.preventDefault();
     if (typeof event.stopPropagation === "function") event.stopPropagation();
-  });
+  };
 
-  document.addEventListener("mousemove", (event) => {
+  const onMouseMove = (event) => {
     if (!dragging || !event) return;
     const currentX = Number(event.clientX) || lastX;
     const currentY = Number(event.clientY) || lastY;
@@ -1055,15 +1110,25 @@ function enableTianDiTuRightDragPan(containerId, instance) {
     }
     if (typeof event.preventDefault === "function") event.preventDefault();
     if (typeof event.stopPropagation === "function") event.stopPropagation();
-  });
+  };
 
-  document.addEventListener("mouseup", (event) => {
+  const onMouseUp = (event) => {
     if (!dragging) return;
     dragging = false;
     if (event && typeof event.preventDefault === "function") event.preventDefault();
     if (event && typeof event.stopPropagation === "function") event.stopPropagation();
-  });
+  };
 
+  surface.addEventListener("mousedown", onMouseDown);
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mouseup", onMouseUp);
+  instance.__providerRightDragCleanup = () => {
+    dragging = false;
+    surface.removeEventListener("mousedown", onMouseDown);
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+    surface._providerTianDiTuRightDragBound = false;
+  };
   surface._providerTianDiTuRightDragBound = true;
 }
 
@@ -1242,7 +1307,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
         instance.setZoom(zoom);
       }
       if (!providerMapEventsBound[containerId] && typeof instance.on === "function") {
-        instance.on("click", (event) => {
+        bindProviderMapZoomEvent(instance, "click", (event) => {
           const latLng = event && event.latLng ? event.latLng : null;
           if (!latLng) return;
           const lat = typeof latLng.getLat === "function" ? latLng.getLat() : latLng.lat;
@@ -1261,22 +1326,22 @@ function initProviderMap(containerId, isMultiAccount = false) {
         applyTianDiTuDefaultMapType(instance);
       }
       if (!providerMapEventsBound[containerId] && typeof instance.addEventListener === "function") {
-        instance.addEventListener("click", (event) => {
+        bindProviderMapZoomEvent(instance, "click", (event) => {
           const lngLat = event && event.lnglat ? event.lnglat : null;
           if (!lngLat) return;
           const lng = typeof lngLat.getLng === "function" ? lngLat.getLng() : lngLat.lng;
           const lat = typeof lngLat.getLat === "function" ? lngLat.getLat() : lngLat.lat;
-          logMessage_Info(`[地图] 天地图点击坐标: ${Number(lng).toFixed(6)}, ${Number(lat).toFixed(6)}`);
+          const coord = convertMapCoordinatesToGcj02("tianditu", { lng, lat });
+          logMessage_Info(`[地图] 天地图点击坐标 (GCJ-02): ${coord.lng.toFixed(6)}, ${coord.lat.toFixed(6)}`);
         });
         providerMapEventsBound[containerId] = true;
       }
     } else if (provider === "baidu") {
-      if (!window.BMapGL || typeof window.BMapGL.Map !== "function") {
+      if (!window.BMap || typeof window.BMap.Map !== "function") {
         throw new Error("百度地图运行时未加载");
       }
       if (!instance) {
-        instance = new BMapGL.Map(surface.id, {
-          forceRenderType: "webgl",
+        instance = new BMap.Map(surface.id, {
           showControls: false,
           enableIconClick: false,
           enableDragging: true,
@@ -1293,10 +1358,11 @@ function initProviderMap(containerId, isMultiAccount = false) {
         providerMapInstances[containerId] = instance;
       }
       if (!providerMapEventsBound[containerId] && typeof instance.addEventListener === "function") {
-        instance.addEventListener("click", (event) => {
-          const point = event && event.point ? event.point : null;
+        bindProviderMapZoomEvent(instance, "click", (event) => {
+          const point = event && (event.latLng || event.point);
           if (!point) return;
-          logMessage_Info(`[地图] 百度地图点击坐标: ${Number(point.lng).toFixed(6)}, ${Number(point.lat).toFixed(6)}`);
+          const coord = convertMapCoordinatesToGcj02("baidu", point);
+          logMessage_Info(`[地图] 百度地图点击坐标 (GCJ-02): ${coord.lng.toFixed(6)}, ${coord.lat.toFixed(6)}`);
         });
         providerMapEventsBound[containerId] = true;
       }

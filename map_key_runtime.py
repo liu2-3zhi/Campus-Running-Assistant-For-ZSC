@@ -257,6 +257,18 @@ def _get_map_key_runtime_context_for_request(require_session_header=False):
     if not session_exists:
         return None
 
+    origin_session_id = main_module.request.headers.get(
+        main_module.ADMIN_ORIGIN_SESSION_HEADER, ""
+    )
+    if origin_session_id:
+        origin_context = main_module.resolve_admin_origin_session_context(
+            session_id,
+            origin_session_id,
+            main_module.request.cookies.get("auth_token", ""),
+        )
+        if not origin_context:
+            return None
+
     session_context = main_module._get_map_key_runtime_context_for_session(
         session_id,
         username,
@@ -454,4 +466,16 @@ def _decrypt_map_provider_key_bundle(key_bundle, runtime_context):
             type(exc).__name__,
         )
         return {}
-    return {provider: {field_name: plain_text}}
+    decrypted = {field_name: plain_text}
+    extras = secret_info.get("extra_fields")
+    if provider == "amap" and isinstance(extras, dict) and extras.get("security_js_code"):
+        try:
+            decrypted["security_js_code"] = private_key.decrypt(
+                _base64.b64decode(str(extras["security_js_code"])),
+                padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                             algorithm=hashes.SHA256(), label=None),
+            ).decode("utf-8")
+        except Exception:
+            logging.warning("[MapKeyRuntime] 安全密钥密文解密失败: provider=%s", provider)
+            return {}
+    return {provider: decrypted}

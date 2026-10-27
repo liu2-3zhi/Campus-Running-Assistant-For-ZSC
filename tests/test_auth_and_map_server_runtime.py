@@ -89,14 +89,14 @@ class TestMapServerRuntime(unittest.TestCase):
             )
             self.assertFalse(main._is_map_runtime_request_authorized(""))
 
-    def test_provider_runtime_stops_when_backend_origin_navigation_fails(self):
-        class FailingPage:
+    def test_provider_runtime_queues_origin_instead_of_navigating_with_session(self):
+        class Page:
             def goto(self, *_args, **_kwargs):
-                raise RuntimeError("导航失败: Page.goto: net::ERR_CERT_DATE_INVALID")
+                raise AssertionError("来源准备必须由 execute_js 队列任务执行")
 
         class FakeChromePool:
             def get_context(self, _session_id):
-                return {"page": FailingPage()}
+                return {"page": Page()}
 
         provider_plan = {"provider": "tencent", "notices": ["provider notice"]}
         with patch.object(main, "chrome_pool", FakeChromePool(), create=True), patch.object(
@@ -104,8 +104,8 @@ class TestMapServerRuntime(unittest.TestCase):
         ), patch.object(
             main,
             "_plan_route_path_with_tencent_runtime",
-            side_effect=AssertionError("provider runtime should not run after origin navigation failure"),
-        ):
+            return_value={"error": "来源准备失败"},
+        ) as execute:
             result = main._plan_route_path_with_provider_runtime(
                 "session-1",
                 [{"lng": 113.1, "lat": 22.1}, {"lng": 113.2, "lat": 22.2}],
@@ -113,7 +113,11 @@ class TestMapServerRuntime(unittest.TestCase):
                 app_base_url="http://guangzhou.zelly.cn",
             )
 
-        self.assertIn("后端地图页面来源初始化失败", result["error"])
+        execution_plan = execute.call_args.args[3]
+        self.assertEqual("http://guangzhou.zelly.cn", execution_plan["_runtime_page_origin"])
+        self.assertEqual("request", execution_plan["_diagnostic_context"]["origin_source"])
+        self.assertIsInstance(execution_plan["_deadline_epoch_ms"], (float, int))
+        self.assertIn("来源准备失败", result["error"])
         self.assertEqual("tencent", result["provider"])
         self.assertEqual(provider_plan, result["provider_plan"])
         self.assertEqual(["provider notice"], result["notices"])

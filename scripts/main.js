@@ -512,9 +512,12 @@ async function hydrateMapProviderSecretsForLegacy(initialData, explicitSessionId
     throw new Error("地图密钥运行时不可用");
   }
 
+  const runtimeHeaders = {};
+  addAdminViewOriginSessionHeader(runtimeHeaders, runtimeSessionId);
   const decryptedProviders = await runtime.decryptMapProviderKeys(
     keyBundle,
     runtimeSessionId,
+    runtimeHeaders["X-Admin-Origin-Session-ID"] || "",
   );
   const nextProviders = { ...(initialData.map_providers || {}) };
   Object.entries(decryptedProviders || {}).forEach(([provider, secrets]) => {
@@ -542,6 +545,8 @@ function createLegacyPublicConfigSnapshot(config) {
     "js_key",
     "token",
     "ak",
+    "security_js_code",
+    "backend_page_origin",
   ].forEach((field) => {
     delete snapshot[field];
   });
@@ -552,7 +557,7 @@ function createLegacyPublicConfigSnapshot(config) {
   snapshot.map_providers = {};
   Object.entries(providers).forEach(([provider, value]) => {
     const safeValue = { ...(value || {}) };
-    ["js_key", "map_key", "token", "ak"].forEach((field) => {
+    ["js_key", "map_key", "token", "ak", "security_js_code", "backend_page_origin"].forEach((field) => {
       delete safeValue[field];
     });
     snapshot.map_providers[provider] = safeValue;
@@ -2621,6 +2626,9 @@ function setActiveLegacySession(sessionId, options = {}) {
   const normalized = String(sessionId || "").trim();
   if (!isUsableClientSessionUUID(normalized)) {
     return "";
+  }
+  if (sessionUUID !== normalized && typeof resetLegacyRunnerExecution === "function") {
+    resetLegacyRunnerExecution();
   }
   sessionUUID = normalized;
   if (options.promoteAuth !== false && !getAdminViewOriginSessionUUID(normalized)) {
@@ -6466,6 +6474,7 @@ async function handleAuthLogin(isMobile_use = false) {
         );
       } else if (result.auth_session_id) {
         authSessionUUID = result.auth_session_id;
+        if (typeof resetLegacyRunnerExecution === "function") resetLegacyRunnerExecution();
         sessionUUID = null;
         clearAdminReturnOriginState("重新登录");
         logMessage_Info(
@@ -6936,6 +6945,7 @@ async function handle2FAVerify() {
         );
       } else if (result.auth_session_id) {
         authSessionUUID = result.auth_session_id;
+        if (typeof resetLegacyRunnerExecution === "function") resetLegacyRunnerExecution();
         sessionUUID = null;
         clearAdminReturnOriginState("2FA验证成功，重新登录");
         logMessage_Info(
@@ -7855,11 +7865,13 @@ if (typeof window !== "undefined") {
             if (!response.ok || !result.success) {
               throw new Error(result.message || "访客会话退出失败");
             }
+            resetLegacyRunnerExecution();
             showSessionMissingOverlay();
             return;
           }
           const result = await callPythonAPI_raw("/api/shutdown", "POST");
           if (!result?.success) throw new Error(result?.message || "退出登录失败");
+          resetLegacyRunnerExecution();
           showSessionMissingOverlay();
         } catch (error) {
           console.error("[退出应用] 调用shutdown API失败:", error);
@@ -15393,6 +15405,12 @@ function loadAMapOnce() {
     showMissingMapProviderKeyModal("amap");
     return Promise.reject("API Key is missing.");
   }
+  const securityJsCode = String(getMapProviderConfig("amap").security_js_code || "").trim();
+  if (securityJsCode) {
+    window._AMapSecurityConfig = { securityJsCode };
+  } else if (window._AMapSecurityConfig) {
+    delete window._AMapSecurityConfig.securityJsCode;
+  }
   amapLoadingPromise = AMapLoader.load({
     key: AMAP_API_KEY,
     version: "2.0",
@@ -16599,6 +16617,7 @@ async function onLogin() {
 
 async function onLogout() {
   await callPythonAPI("logout");
+  resetLegacyRunnerExecution();
   currentSessionUA = "";
   resetUI();
 
@@ -19200,13 +19219,10 @@ function updateTaskProgressSegmentsInPlace(data) {
   if (typeof updateProviderRouteProgressSegmentsInPlace !== "function") {
     return false;
   }
-  let updated = false;
-  getSingleProviderMapContainerIds().forEach((containerId) => {
-    if (updateProviderRouteProgressSegmentsInPlace(containerId, data)) {
-      updated = true;
-    }
-  });
-  return updated;
+  const results = getSingleProviderMapContainerIds().map((containerId) =>
+    updateProviderRouteProgressSegmentsInPlace(containerId, data),
+  );
+  return results.length > 0 && results.every(Boolean);
 }
 
 function drawOnMap_signature(options = {}) {
@@ -19965,6 +19981,7 @@ async function pollBackgroundTaskStatus() {
     );
     if (result.success && result.task_status) {
       const status = result.task_status;
+      if (!acceptLegacyRunnerExecution(status, true)) return;
       if (status.status === "stopped") {
         activeTaskMapProviderLock = null;
         clearTaskMapAutoResetTimer();
@@ -20145,6 +20162,7 @@ async function checkBackgroundTaskOnLoad() {
 
     if (result.success && result.task_status) {
       const status = result.task_status;
+      if (!acceptLegacyRunnerExecution(status, true)) return false;
       if (status.status === "running") {
         activeTaskMapProviderLock =
           normalizeSupportedMapProvider(status.map_provider) ||
@@ -20298,6 +20316,49 @@ function ensureRunnerMarker() {
     zIndex: 200,
   });
   map.add(runnerMarker);
+}
+const legacyRunnerExecutionState = { id: "", startedAt: 0, taskIndex: null, retired: new Set() };
+function resetLegacyRunnerExecution() {
+  if (legacyRunnerExecutionState.id) legacyRunnerExecutionState.retired.add(legacyRunnerExecutionState.id);
+  while (legacyRunnerExecutionState.retired.size > 32) {
+    legacyRunnerExecutionState.retired.delete(legacyRunnerExecutionState.retired.values().next().value);
+  }
+  legacyRunnerExecutionState.id = "";
+  legacyRunnerExecutionState.startedAt = 0;
+  legacyRunnerExecutionState.taskIndex = null;
+}
+function acceptLegacyRunnerExecution(data, allowStart = false) {
+  if (!data?.execution_id) return !legacyRunnerExecutionState.id || allowStart;
+  const id = String(data.execution_id);
+  if (legacyRunnerExecutionState.retired.has(id)) return false;
+  const startedAt = Number(data.execution_started_at || 0);
+  const taskIndex = data.task_index ?? data.active_task_index;
+  const changed = id !== legacyRunnerExecutionState.id;
+  if (changed) {
+    if (!allowStart && legacyRunnerExecutionState.id) return false;
+    if (legacyRunnerExecutionState.id && startedAt <= legacyRunnerExecutionState.startedAt) return false;
+  }
+  if (changed || (allowStart && Number.isInteger(taskIndex) && taskIndex !== legacyRunnerExecutionState.taskIndex)) {
+    if (changed && legacyRunnerExecutionState.id) {
+      legacyRunnerExecutionState.retired.add(legacyRunnerExecutionState.id);
+      while (legacyRunnerExecutionState.retired.size > 32) {
+        legacyRunnerExecutionState.retired.delete(legacyRunnerExecutionState.retired.values().next().value);
+      }
+    }
+    legacyRunnerExecutionState.id = id;
+    legacyRunnerExecutionState.startedAt = Math.max(startedAt, legacyRunnerExecutionState.startedAt);
+    legacyRunnerExecutionState.taskIndex = taskIndex ?? null;
+    if (typeof singleProcessedPoints !== "undefined") singleProcessedPoints = 0;
+    if (typeof runAccumulatedMs !== "undefined") runAccumulatedMs = 0;
+    if (typeof currentRunData !== "undefined" && currentRunData && (taskIndex == null || currentRunData.task_index === taskIndex)) {
+      currentRunData.current_point_index = 0;
+      currentRunData.point_index = 0;
+      currentRunData.distance_covered_m = 0;
+      currentRunData.target_sequence = 0;
+      delete currentRunData.current_position;
+    }
+  }
+  return id === legacyRunnerExecutionState.id;
 }
 function updateRunnerPosition(
   lon,
@@ -21173,7 +21234,12 @@ function displayRoutePlanningFailures(failures) {
     if (!failure?.diagnostic_id || typeof failure.message !== "string") continue;
     const previous = routeDiagnosticMessages.get(failure.diagnostic_id);
     if (previous?.detailed) continue;
-    const context = [failure.segment != null ? `路段：${failure.segment}` : "", failure.error_code != null && failure.error_code !== "" ? `错误码：${failure.error_code}` : ""].filter(Boolean).join("；");
+    const context = [
+      failure.segment != null ? `路段：${failure.segment}` : "",
+      failure.error_code != null && failure.error_code !== "" ? `错误码：${failure.error_code}` : "",
+      failure.error_explanation && !failure.message.includes(failure.error_explanation) ? failure.error_explanation : "",
+      failure.error_hint && !failure.message.includes(failure.error_hint) ? `建议：${failure.error_hint}` : "",
+    ].filter(Boolean).join("；");
     const message = `[${failure.provider || "地图服务"}] ${context ? context + "；" : ""}${failure.message}（诊断编号：${failure.diagnostic_id}）`;
     let replaced = false;
     if (previous) {
@@ -23374,6 +23440,7 @@ async function exitMobileSingleAccount() {
       return;
     }
     console.log("[移动端] 退出单账号模式成功，开始切换界面...");
+    resetLegacyRunnerExecution();
     if (typeof destroyMobileSingleMap === "function") {
       destroyMobileSingleMap();
       console.log("[退出单账号] 移动端：已销毁单账号地图");
@@ -23843,6 +23910,7 @@ async function mobileLogout() {
 }
 function performMobileLogout() {
   showMobileConfirm("退出登录", "确定要退出登录吗？", () => {
+    resetLegacyRunnerExecution();
     const mobileMainApp = document.getElementById("mobile-main-app");
     if (mobileMainApp) {
       mobileMainApp.classList.add("hidden");
@@ -25882,6 +25950,12 @@ async function loadSystemConfig() {
           <input type="hidden" id="config-${section}-${key}" value="${currentOrder.join(",")}" />
         </div>
       `;
+      } else if (type === "origin") {
+        const escapedValue = String(value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+        inputHtml = `<div class="flex flex-col sm:flex-row gap-2"><input type="text" id="config-${section}-${key}" value="${escapedValue}" data-map-origin class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm" placeholder="https://example.com"><button type="button" onclick="useCurrentMapPageOrigin(this)" data-use-map-origin="config-${section}-${key}" class="px-3 py-2 border border-slate-200 rounded-lg text-sm whitespace-nowrap">使用当前页面来源</button></div>`;
+      } else if (type === "password") {
+        const escapedValue = String(value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+        inputHtml = `<input type="password" autocomplete="off" id="config-${section}-${key}" value="${escapedValue}" class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm">`;
       } else {
         inputHtml = `<input type="text" id="config-${section}-${key}" value="${value || ""}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300" placeholder="${options.placeholder || ""}">`;
       }
@@ -26120,6 +26194,12 @@ async function loadSystemConfig() {
       "text",
       "主配置改为 provider 嵌套字段；Map.amap_js_key 仅作为兼容读取来源。",
     );
+    html += createInput("Map.providers.amap", "security_js_code", "高德安全密钥（选填）", "password", "需与高德 JS Key 配套；旧 Key 可留空。");
+    html += createInput("Map", "backend_page_origin", "后端规划页面来源（选填）", "origin", "留空自动使用应用请求来源；粘贴完整 URL 后仅保留协议、域名和端口。");
+    html += createInput("Map", "frontend_proxy_enabled", "启用地图请求后端代理", "boolean", "仅代理白名单内的地图 SDK、服务与瓦片域名。");
+    for (const [provider, label] of [["amap", "高德"], ["tencent", "腾讯"], ["tianditu", "天地图"], ["baidu", "百度"]]) {
+      html += createInput(`Map.providers.${provider}`, "backend_page_origin", `${label}规划来源（选填）`, "origin", "留空继承全局后端规划页面来源。");
+    }
     html += createInput(
       "Map.providers.tencent",
       "map_key",
@@ -26276,6 +26356,12 @@ async function loadSystemConfig() {
     );
 
     formContainer.innerHTML = html;
+    formContainer.querySelectorAll("[data-map-origin]").forEach((input) => {
+      input.addEventListener("blur", () => {
+        try { input.value = normalizeBackendPageOrigin(input.value); input.setCustomValidity(""); }
+        catch (error) { input.setCustomValidity(error.message); input.reportValidity(); }
+      });
+    });
     
     // ==================== 初始化 SortableJS 拖拽排序 ====================
     // 为 IP 归属地查询顺序的拖拽列表初始化 SortableJS

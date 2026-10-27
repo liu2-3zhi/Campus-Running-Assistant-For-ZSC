@@ -9,11 +9,13 @@ import os
 import random
 import string
 import threading
+import uuid
 import time
 
 
 from main_runtime import _main
 from route_diagnostics import build_route_failure_summary, generic_route_failure_message, sanitize_diagnostic
+from map_runtime_origin import MAP_RUNTIME_MARKER, MAP_RUNTIME_PAGE_HTML, MAP_RUNTIME_PATH, normalize_backend_page_origin
 
 
 class BackgroundTaskManager:
@@ -34,8 +36,20 @@ class BackgroundTaskManager:
     def begin_route_planning_batch(self, session_id, task_status=None):
         execution_id = object()
         with self.lock:
-            self.route_failure_batches[session_id] = (execution_id, [], copy.deepcopy(task_status or {}))
+            status = copy.deepcopy(task_status or {})
+            status.setdefault("execution_id", uuid.uuid4().hex)
+            status.setdefault("execution_started_at", time.time())
+            self.route_failure_batches[session_id] = (execution_id, [], status)
         return execution_id
+
+    def get_route_planning_execution(self, session_id, execution_id):
+        """Return the non-sensitive public batch token for a current execution."""
+        with self.lock:
+            batch = self.route_failure_batches.get(session_id)
+            if not batch or batch[0] is not execution_id:
+                return "", 0.0
+            status = batch[2] or {}
+            return str(status.get("execution_id") or ""), float(status.get("execution_started_at") or 0.0)
 
     def update_route_planning_batch_status(self, session_id, execution_id, task_status):
         """更新仅驻留内存的队列状态，忽略已被替换的执行批次。"""
@@ -306,7 +320,15 @@ class BackgroundTaskManager:
             self.tasks[session_id] = task_state
             self.execution_tokens[session_id] = execution_token
             execution_id = object()
-            self.route_failure_batches[session_id] = (execution_id, [], {})
+            self.route_failure_batches[session_id] = (
+                execution_id,
+                [],
+                {
+                    "execution_id": uuid.uuid4().hex,
+                    "execution_started_at": time.time(),
+                    "active_task_index": None,
+                },
+            )
             self.save_task_state(session_id, task_state)
             thread = threading.Thread(
                 target=self._execute_tasks_background,
@@ -368,6 +390,30 @@ class BackgroundTaskManager:
                 with self.lock:
                     if not is_current_batch():
                         return
+                    if type(task_idx) is not int or not 0 <= task_idx < len(api_instance.all_run_data):
+                        logging.error("[后台任务] 任务索引 %r 超出范围，跳过此任务", task_idx)
+                        continue
+                    run_data = api_instance.all_run_data[task_idx]
+                    run_data.current_point_index = 0
+                    run_data.distance_covered_m = 0.0
+                    run_data.target_sequence = 0
+                    run_data.is_in_target_zone = False
+                    run_data.suppress_last_target_until_finish = True
+                    for field in ("current_position", "run_coords", "recommended_coords", "target_points", "target_point_names"):
+                        task_state.pop(field, None)
+                    task_state.update({
+                        "current_task_progress": 0,
+                        "singleProcessedPoints": 0,
+                        "singleTotalPoints": len(run_data.run_coords or []),
+                        "current_distance_m": 0.0,
+                        "elapsed_time_s": 0,
+                        "checked_targets_count": 0,
+                    })
+                    self.route_failure_batches[session_id][2].update({
+                        "active_task_index": task_idx,
+                        "route_ready": bool(run_data.run_coords),
+                        "last_update": time.time(),
+                    })
                     task_state["current_task_index"] = i
                     task_state["last_update"] = time.time()
                     self.save_task_state(session_id, task_state)
@@ -375,14 +421,6 @@ class BackgroundTaskManager:
                     f"正在执行后台任务 {i+1}/{len(task_indices)}，会话ID前缀: {session_id[:8]}"
                 )
 
-                # [修正] 添加索引边界检查，防止列表变化导致越界崩溃
-                if task_idx < 0 or task_idx >= len(api_instance.all_run_data):
-                    error_msg = f"任务索引 {task_idx} 超出范围 (任务列表长度: {len(api_instance.all_run_data)})，跳过此任务"
-                    logging.error(f"[后台任务] {error_msg}")
-                    # 可选：更新任务状态为错误（视需求而定，这里选择仅跳过以保持队列继续）
-                    continue
-
-                run_data = api_instance.all_run_data[task_idx]
                 if auto_generate and not run_data.run_coords:
                     logging.info(
                         f"正在为任务自动生成路径: 任务名称={run_data.run_name}"
@@ -552,9 +590,17 @@ class BackgroundTaskManager:
                         run_data.is_in_target_zone = False
                         if hasattr(api_instance, "stop_run_flag"):
                             api_instance.stop_run_flag.clear()
+                        self.route_failure_batches[session_id][2].update({
+                            "active_task_index": task_idx,
+                            "route_ready": bool(run_data.run_coords),
+                            "last_update": time.time(),
+                        })
+                        batch = self.route_failure_batches.get(session_id)
+                        progress_execution_id = str((batch[2] or {}).get("execution_id", "")) if batch else ""
                         thread = threading.Thread(
                             target=api_instance._run_submission_thread,
-                            args=(run_data, task_idx, api_instance.api_client, False, finished_event),
+                            args=(run_data, task_idx, api_instance.api_client, False, finished_event,
+                                  progress_execution_id, execution_id),
                             daemon=True,
                         )
                         thread.start()
@@ -712,19 +758,63 @@ class BackgroundTaskManager:
 
     def get_task_status(self, session_id, include_route_failures=False):
         """返回独立快照；详细失败摘要只在调用方已鉴权时附加。"""
+        loaded_state = None
         with self.lock:
             batch = self.route_failure_batches.get(session_id)
-            task_state = copy.deepcopy(batch[2] if batch and batch[2] else self.tasks.get(session_id))
+            has_state = bool(batch and "status" in batch[2]) or self.tasks.get(session_id) is not None
+        if not has_state:
+            loaded_state = self.load_task_state(session_id)
+        session_api = (getattr(_main(), "web_sessions", {}) or {}).get(session_id)
+        with self.lock:
+            # 磁盘读取期间可能启动了新批次；始终优先当前内存状态。
+            batch = self.route_failure_batches.get(session_id)
+            source = batch[2] if batch and "status" in batch[2] else self.tasks.get(session_id)
+            task_state = copy.deepcopy(source if source is not None else loaded_state)
             failures = copy.deepcopy(batch[1]) if batch else []
-        if task_state is None:
-            task_state = self.load_task_state(session_id)
             if task_state is None:
                 return None
-            task_state = copy.deepcopy(task_state)
             task_state.pop("route_planning_failures", None)
-            with self.lock:
-                self.tasks.setdefault(session_id, copy.deepcopy(task_state))
-        task_state.pop("route_planning_failures", None)
+            if batch and batch[2]:
+                task_state["execution_id"] = str(batch[2].get("execution_id", ""))
+                task_state["execution_started_at"] = batch[2].get("execution_started_at", 0.0)
+                if "active_task_index" in batch[2]:
+                    task_state["active_task_index"] = batch[2]["active_task_index"]
+                if "route_ready" in batch[2]:
+                    task_state["route_ready"] = bool(batch[2]["route_ready"])
+            indices = task_state.get("task_indices") or []
+            active_index = task_state.get("active_task_index")
+            if "active_task_index" not in task_state and isinstance(indices, (list, tuple)):
+                queue_index = task_state.get("current_task_index", 0)
+                if type(queue_index) is int and 0 <= queue_index < len(indices):
+                    active_index = indices[queue_index]
+            tasks = getattr(session_api, "all_run_data", [])
+            valid_index = type(active_index) is int and isinstance(tasks, (list, tuple)) and 0 <= active_index < len(tasks)
+            run_data = tasks[active_index] if valid_index else None
+            task_state["active_task_index"] = active_index if type(active_index) is int and active_index >= 0 and (valid_index or session_api is None) else None
+            if run_data is not None:
+                coords = getattr(run_data, "run_coords", []) or []
+                task_state["route_ready"] = bool(coords)
+                point_index = getattr(run_data, "current_point_index", 0)
+                point_index = max(0, min(len(coords), point_index)) if type(point_index) is int else 0
+                task_state.pop("current_position", None)
+                task_state["singleProcessedPoints"] = point_index
+                task_state["singleTotalPoints"] = len(coords)
+                task_state["current_distance_m"] = getattr(run_data, "distance_covered_m", 0)
+                if point_index > 0:
+                    coord = coords[point_index - 1]
+                    if isinstance(coord, (list, tuple)) and len(coord) >= 2:
+                        task_state["current_position"] = {
+                            "lon": coord[0], "lat": coord[1], "point_index": point_index,
+                            "distance": getattr(run_data, "distance_covered_m", 0),
+                            "target_sequence": getattr(run_data, "target_sequence", 0),
+                        }
+            elif session_api is not None:
+                task_state["route_ready"] = False
+                task_state.pop("current_position", None)
+                task_state["singleProcessedPoints"] = 0
+                task_state["singleTotalPoints"] = 0
+            else:
+                task_state["route_ready"] = bool(task_state.get("route_ready", task_state.get("run_coords")))
         if task_state.get("status") == "error" and failures and not task_state.get("error"):
             task_state["error"] = generic_route_failure_message(failures[-1]["diagnostic_id"])
         if task_state.get("error"):
@@ -737,7 +827,7 @@ class BackgroundTaskManager:
         """停止后台任务"""
         with self.lock:
             batch = self.route_failure_batches.get(session_id)
-            if batch and batch[2]:
+            if batch and "status" in batch[2]:
                 batch[2]["status"] = "stopped"
                 return {"success": True, "message": "后台任务已停止"}
             if session_id in self.tasks:
@@ -1134,6 +1224,8 @@ class ChromeBrowserPool:
                         args.get("script"),
                         args.get("js_args", []),
                         diagnostic_context=args.get("diagnostic_context"),
+                        runtime_page_origin=args.get("runtime_page_origin"),
+                        deadline_epoch_ms=args.get("deadline_epoch_ms"),
                     )
                 elif operation == "close_context":
                     # 关闭指定会话的上下文
@@ -1253,6 +1345,7 @@ class ChromeBrowserPool:
                     viewport={"width": 1920, "height": 1080},
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                     ignore_https_errors=True,
+                    service_workers="block",
                 )
                 # 在上下文中创建新页面（标签页）
                 page = context.new_page()
@@ -1313,7 +1406,39 @@ class ChromeBrowserPool:
         page.on("dialog", dialog_opened)
         entry["route_listeners_installed"] = True
 
-    def _do_execute_js(self, session_id, script, js_args, diagnostic_context=None):
+    def _prepare_map_runtime_page(self, page, runtime_page_origin, deadline_epoch_ms=None):
+        origin = normalize_backend_page_origin(runtime_page_origin)
+        if not origin:
+            raise ValueError("后端规划页面来源不能为空")
+        runtime_url = origin + MAP_RUNTIME_PATH
+        remaining_ms = 15000 if deadline_epoch_ms is None else min(15000, deadline_epoch_ms - time.time() * 1000)
+        if remaining_ms <= 0:
+            raise TimeoutError("后端路径规划总时限已耗尽")
+
+        def prevent_external_navigation(route):
+            if route.request.is_navigation_request():
+                route.abort()
+            else:
+                route.continue_()
+
+        def serve_runtime(route):
+            route.fulfill(status=200, content_type="text/html; charset=utf-8", body=MAP_RUNTIME_PAGE_HTML,
+                          headers={"Cache-Control": "no-store", "Referrer-Policy": "strict-origin"})
+
+        # A second guard prevents redirects/HSTS upgrades from reaching an external document.
+        page.route("**/*", prevent_external_navigation)
+        page.route(runtime_url, serve_runtime)
+        try:
+            page.goto(runtime_url, wait_until="domcontentloaded", timeout=max(1, int(remaining_ms)))
+            verified = page.evaluate("""() => ({origin: location.origin,
+                marker: document.querySelector('meta[name="zx-map-runtime"]')?.content})""")
+            if page.url != runtime_url or not isinstance(verified, dict) or verified.get("origin") != origin or verified.get("marker") != MAP_RUNTIME_MARKER:
+                raise RuntimeError("后端规划页面来源校验失败")
+        finally:
+            page.unroute(runtime_url, serve_runtime)
+            page.unroute("**/*", prevent_external_navigation)
+
+    def _do_execute_js(self, session_id, script, js_args, diagnostic_context=None, runtime_page_origin=None, deadline_epoch_ms=None):
         """
         在专用线程中执行 JavaScript 代码。
 
@@ -1325,6 +1450,8 @@ class ChromeBrowserPool:
         返回:
             dict: 包含 success 标志和执行结果的结果字典
         """
+        if deadline_epoch_ms is not None and time.time() * 1000 >= deadline_epoch_ms:
+            return {"success": False, "error": "后端路径规划总时限已耗尽，已取消排队任务"}
         # 确保上下文存在
         ctx_result = self._do_get_context(session_id)
         if not ctx_result.get("success"):
@@ -1340,8 +1467,23 @@ class ChromeBrowserPool:
         try:
             # 获取页面对象
             page = self._contexts[session_id]["page"]
+            if runtime_page_origin is not None:
+                self._prepare_map_runtime_page(page, runtime_page_origin, deadline_epoch_ms)
             # 执行 JavaScript 代码
-            result = page.evaluate(script, js_args)
+            if deadline_epoch_ms is None:
+                result = page.evaluate(script, js_args)
+            else:
+                remaining_ms = deadline_epoch_ms - time.time() * 1000
+                if remaining_ms <= 0:
+                    raise TimeoutError("后端路径规划总时限已耗尽")
+                result = page.evaluate("""async ([source, args, remaining]) => {
+                    let timer;
+                    try {
+                        const execute = (0, eval)('(' + source + ')');
+                        return await Promise.race([Promise.resolve().then(() => execute(args)),
+                            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('后端路径规划总时限已耗尽')), remaining); })]);
+                    } finally { clearTimeout(timer); }
+                }""", [script, js_args, remaining_ms])
             if active and isinstance(result, dict):
                 if not isinstance(result.get("diagnostic"), dict):
                     result["diagnostic"] = {}
@@ -1350,6 +1492,11 @@ class ChromeBrowserPool:
                     result["diagnostic"]["browser_events_dropped"] = active["events_dropped"]
             return {"success": True, "result": result}
         except Exception as e:
+            if deadline_epoch_ms is not None:
+                try:
+                    entry["page"].goto("about:blank", wait_until="commit", timeout=1000)
+                except Exception:
+                    pass
             if active:
                 error = sanitize_diagnostic(e, sensitive_values=active.get("sensitive_values", ()))
                 logging.debug("[路径诊断] id=%s JavaScript异常=%s", active.get("diagnostic_id"), error)
@@ -1633,7 +1780,7 @@ class ChromeBrowserPool:
             "page": PlaywrightPageProxy(session_id, self),
         }
 
-    def execute_js(self, session_id, script, *args, diagnostic_context=None):
+    def execute_js(self, session_id, script, *args, diagnostic_context=None, runtime_page_origin=None, deadline_epoch_ms=None):
         """
         在指定会话的Chrome中执行JavaScript代码（通过专用线程执行）。
 
@@ -1654,7 +1801,10 @@ class ChromeBrowserPool:
                     "script": script,
                     "js_args": list(args),
                     "diagnostic_context": diagnostic_context,
+                    "runtime_page_origin": runtime_page_origin,
+                    "deadline_epoch_ms": deadline_epoch_ms,
                 },
+                timeout=max(0, (deadline_epoch_ms - time.time() * 1000) / 1000) + 1 if deadline_epoch_ms is not None else None,
             )
 
             if result.get("success"):

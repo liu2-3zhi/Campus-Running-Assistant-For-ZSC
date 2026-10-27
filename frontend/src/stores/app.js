@@ -6,10 +6,14 @@ export const useAppStore = defineStore('app', () => {
   const isLoading = ref(true)
   const currentView = ref('login') // 'login' | 'main' | 'multi'
   const isMultiMode = ref(false)
+  const businessSession = ref('')
 
   // 任务相关
   const tasks = ref([])
   const selectedTaskIndex = ref(-1)
+  const activeTaskIndex = ref(null)
+  const activeExecutionId = ref('')
+  const activeExecutionStartedAt = ref(0)
   const isRunning = ref(false)
   const runData = ref(null)
 
@@ -69,7 +73,8 @@ export const useAppStore = defineStore('app', () => {
       const existing = logs.value.find(entry => entry.diagnostic_id === failure.diagnostic_id)
       if (existing?.route_detail) continue
       const context = [failure.segment != null ? `路段：${failure.segment}` : '', failure.error_code != null && failure.error_code !== '' ? `错误码：${failure.error_code}` : ''].filter(Boolean).join('；')
-      const msg = `[${failure.provider || '地图服务'}] ${context ? context + '；' : ''}${failure.message}（诊断编号：${failure.diagnostic_id}）`
+      const readable = [failure.error_explanation, failure.error_hint].filter(value => typeof value === 'string' && value && !failure.message.includes(value))
+      const msg = `[${failure.provider || '地图服务'}] ${context ? context + '；' : ''}${failure.message}${readable.length ? '；' + readable.join('；') : ''}（诊断编号：${failure.diagnostic_id}）`
       if (existing) {
         Object.assign(existing, { msg, level: 'ERROR', source: 'Backend', route_detail: true })
       } else {
@@ -81,6 +86,24 @@ export const useAppStore = defineStore('app', () => {
 
   function clearLogs() {
     logs.value = []
+  }
+
+  function bindBusinessSession(session) {
+    if (businessSession.value && businessSession.value !== session) {
+      tasks.value = []
+      users.value = []
+      selectedTaskIndex.value = -1
+      activeTaskIndex.value = null
+      activeExecutionId.value = ''
+      activeExecutionStartedAt.value = 0
+      runData.value = null
+      isRunning.value = false
+      multiAccounts.value = []
+      multiPositions.value = {}
+      multiStatus.value = {}
+      clearLogs()
+    }
+    businessSession.value = session
   }
 
   function handleMultiStatusUpdate(data) {
@@ -111,18 +134,50 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  function beginRunnerExecution(data) {
+    if (!data?.execution_id) return true
+    const id = String(data.execution_id)
+    const startedAt = Number(data.execution_started_at || 0)
+    if (id !== activeExecutionId.value && activeExecutionId.value && startedAt <= activeExecutionStartedAt.value) return false
+    if (id === activeExecutionId.value && (data.task_index == null || data.task_index === activeTaskIndex.value)) return true
+    activeExecutionId.value = id
+    activeExecutionStartedAt.value = Math.max(startedAt, activeExecutionStartedAt.value)
+    if (Number.isInteger(data.task_index)) {
+      activeTaskIndex.value = data.task_index
+      selectedTaskIndex.value = data.task_index
+      const previous = runData.value?.task_index === data.task_index ? runData.value : {}
+      runData.value = {
+        ...previous, task_index: data.task_index, status: 'running', execution_id: id,
+        current_point_index: 0, point_index: 0, current_distance: 0, live_distance: 0,
+        duration: 0, elapsed_time: 0, live_time: 0, target_sequence: 1,
+      }
+      for (const field of ['current_position', 'current_lon', 'current_lat', 'lat', 'lng', 'latitude', 'longitude']) delete runData.value[field]
+    }
+    return true
+  }
+
   function handlePositionUpdate(data) {
     if (!data) return
+    if (data.execution_id) {
+      if (!activeExecutionId.value) beginRunnerExecution(data)
+      if (String(data.execution_id) !== activeExecutionId.value) return
+    } else if (activeExecutionId.value) return
+    if (isRunning.value && activeTaskIndex.value != null && data.task_index != null && data.task_index !== activeTaskIndex.value) return
 
     if (data.task_index !== undefined && data.task_index !== selectedTaskIndex.value) {
       selectedTaskIndex.value = data.task_index
+      runData.value = { task_index: data.task_index }
       addLog(`任务切换: 正在执行任务 #${data.task_index}`, 'INFO', 'System')
     }
 
     const rd = runData.value || {}
-    rd.current_distance = data.distance || rd.current_distance || 0
+    const pointIndex = data.point_index ?? data.current_point_index
+    if (pointIndex != null && Number(pointIndex) < Number(rd.current_point_index ?? -1)) return
+    if (pointIndex != null) { rd.current_point_index = Number(pointIndex); rd.point_index = Number(pointIndex) }
+    rd.task_index = data.task_index ?? selectedTaskIndex.value
+    rd.current_distance = data.distance ?? rd.current_distance ?? 0
     rd.live_distance = rd.current_distance
-    rd.duration = (rd.duration || 0) + (data.duration || 0)
+    rd.duration = data.elapsed_time != null ? Number(data.elapsed_time) : (rd.duration || 0) + (data.duration || 0)
     rd.live_time = rd.duration
     rd.elapsed_time = rd.duration
     rd.lat = data.lat
@@ -131,6 +186,7 @@ export const useAppStore = defineStore('app', () => {
     rd.longitude = data.lon
     rd.current_lon = data.lon
     rd.current_lat = data.lat
+    rd.current_position = { lon: data.lon, lat: data.lat }
     rd.target_sequence = data.target_sequence != null ? data.target_sequence + 1 : rd.target_sequence
     if (rd.total_distance && rd.current_distance) {
       rd.progress = Math.min(100, (rd.current_distance / rd.total_distance) * 100)
@@ -139,6 +195,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function handleTaskCompleted(data) {
+    if (data?.execution_id && data.execution_id !== activeExecutionId.value) return
     if (data && typeof data.task_index !== 'undefined') {
       const idx = data.task_index
       if (tasks.value[idx]) {
@@ -149,7 +206,8 @@ export const useAppStore = defineStore('app', () => {
     addLog('任务已完成', 'INFO', 'System')
   }
 
-  function handleRunStopped() {
+  function handleRunStopped(data) {
+    if (data?.execution_id && data.execution_id !== activeExecutionId.value) return
     isRunning.value = false
     addLog('运行已停止', 'INFO', 'System')
   }
@@ -188,13 +246,14 @@ export const useAppStore = defineStore('app', () => {
 
   return {
     isMobile, isLoading, currentView, isMultiMode,
-    tasks, selectedTaskIndex, selectedTask, isRunning, runData,
+    businessSession, bindBusinessSession,
+    tasks, selectedTaskIndex, activeTaskIndex, activeExecutionId, activeExecutionStartedAt, selectedTask, isRunning, runData,
     users, multiAccounts, multiStatus, multiGlobalButtons, multiPositions,
     logs, notifications, unreadCount, verificationCodes,
     pythonParams, beianData,
     detectMobile, addLog, clearLogs, addRoutePlanningFailures,
     handleMultiStatusUpdate, handleAccountsUpdated,
-    handleGlobalButtonsUpdate, handlePositionUpdate,
+    handleGlobalButtonsUpdate, handlePositionUpdate, beginRunnerExecution,
     handleTaskCompleted, handleRunStopped,
     handleNotificationsUpdated, handleVerificationCodesUpdated,
     handleMultiPositionUpdate, refreshVerificationCodes,

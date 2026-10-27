@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 
 let socket = null
+let socketSession = ''
 let heartbeatTimer = null
 const connectionListeners = new Set()
 let socketConnected = false
@@ -51,10 +52,12 @@ function stopHeartbeat() {
 }
 
 export function connectWebSocket() {
-  if (socket?.connected) return socket
-
   const auth = useAuthStore()
   if (!auth.sessionUUID) return null
+  if (socket?.connected && socketSession === auth.sessionUUID) return socket
+  if (socket) disconnectWebSocket()
+  const connectionSession = auth.sessionUUID
+  socketSession = connectionSession
 
   socket = io({
     autoConnect: false,
@@ -65,85 +68,95 @@ export function connectWebSocket() {
     pingTimeout: 60000,
     pingInterval: 25000,
   })
+  const connection = socket
+  const on = (event, callback) => connection.on(event, (...args) => {
+    if (connection !== socket || connectionSession !== auth.sessionUUID) return
+    callback(...args)
+  })
 
   socket.connect()
 
-  socket.on('connect', () => {
+  on('connect', () => {
     notifyConnectionState(true)
     console.info('[WS] 连接成功, SID:', socket.id)
     socket.emit('join', { session_id: auth.sessionUUID, admin_origin_session_id: auth.getAdminOriginHeaderValue?.(auth.sessionUUID) || '' })
     startHeartbeat()
     import('@/services/api').then(({ callAPI }) => {
       callAPI('get_initial_data').then(data => {
+        if (connection !== socket || connectionSession !== auth.sessionUUID) return
         if (data) {
           const app = useAppStore()
           if (data.users) app.users = data.users
           if (data.tasks) app.tasks = data.tasks
-          if (data.run_data) app.runData = data.run_data
           if (data.is_running != null) app.isRunning = data.is_running
         }
       }).catch(() => {})
     })
   })
 
-  socket.on('disconnect', (reason) => {
+  on('disconnect', (reason) => {
     notifyConnectionState(false)
     console.info('[WS] 断开连接:', reason)
     stopHeartbeat()
   })
 
-  socket.on('connect_error', (err) => {
+  on('connect_error', (err) => {
     notifyConnectionState(false)
     console.warn('[WS] 连接错误:', err.message)
   })
 
-  socket.on('heartbeat_ack', () => {})
+  on('heartbeat_ack', () => {})
 
-  socket.on('log_message', (data) => {
+  on('log_message', (data) => {
     if (data?.msg) {
       const app = useAppStore()
       app.addLog(data.msg, data.level || 'INFO', 'Backend', data.diagnostic_id || '')
     }
   })
 
-  socket.on('multi_status_update', (data) => {
+  on('multi_status_update', (data) => {
     const app = useAppStore()
     app.handleMultiStatusUpdate(data)
   })
 
-  socket.on('accounts_updated', (data) => {
+  on('accounts_updated', (data) => {
     const app = useAppStore()
     app.handleAccountsUpdated(data)
   })
 
-  socket.on('multi_global_buttons_update', (data) => {
+  on('multi_global_buttons_update', (data) => {
     const app = useAppStore()
     app.handleGlobalButtonsUpdate(data)
   })
 
-  socket.on('runner_position_update_new', (data) => {
+  on('runner_execution_started', (data) => {
+    const app = useAppStore()
+    app.beginRunnerExecution?.(data)
+  })
+
+  on('runner_position_update_new', (data) => {
     const app = useAppStore()
     app.handlePositionUpdate(data)
   })
 
-  socket.on('multi_position_update', (data) => {
+  on('multi_position_update', (data) => {
     if (data?.username && typeof data.lon === 'number' && typeof data.lat === 'number') {
       const app = useAppStore()
       app.handleMultiPositionUpdate(data)
     }
   })
 
-  socket.on('task_completed', (data) => {
+  on('task_completed', (data) => {
     const app = useAppStore()
     app.handleTaskCompleted(data)
   })
 
-  socket.on('run_stopped', () => {
+  on('run_stopped', (data) => {
     const app = useAppStore()
-    app.handleRunStopped()
+    app.handleRunStopped(data)
   })
 
-  socket.on('onNotificationsUpdated', (data) => {
+  on('onNotificationsUpdated', (data) => {
     const app = useAppStore()
     app.handleNotificationsUpdated(data)
     import('@/stores/notification').then(({ useNotificationStore }) => {
@@ -152,7 +165,7 @@ export function connectWebSocket() {
     })
   })
 
-  socket.on('auto_attendance_updated', (data) => {
+  on('auto_attendance_updated', (data) => {
     if (data?.enabled !== false) return
     const app = useAppStore()
     app.pythonParams = {
@@ -162,7 +175,7 @@ export function connectWebSocket() {
     app.addLog('自动签到已完成设定次数，已自动关闭', 'INFO', 'Backend')
   })
 
-  socket.on('verification_codes_updated', () => {
+  on('verification_codes_updated', () => {
     const app = useAppStore()
     app.handleVerificationCodesUpdated()
   })
@@ -177,6 +190,7 @@ export function disconnectWebSocket() {
     if (socket.connected) socket.disconnect()
     socket = null
   }
+  socketSession = ''
   notifyConnectionState(false)
 }
 

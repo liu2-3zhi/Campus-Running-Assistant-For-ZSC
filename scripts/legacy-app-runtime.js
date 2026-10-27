@@ -909,6 +909,7 @@ async function restoreMobileTaskState() {
 
     if (statusRes.success && statusRes.task_status) {
       const status = statusRes.task_status;
+      if (!acceptLegacyRunnerExecution(status, true)) return;
       if (status.status === "running" || status.status === "paused") {
         logMessage_Info("[移动端状态恢复] 检测到后端任务正在执行，恢复状态...");
         if (status.task_indices && status.current_task_index !== undefined) {
@@ -1083,9 +1084,13 @@ function connectWebSocket() {
     }
   });
 
+  socket.on("runner_execution_started", (data) => {
+    acceptLegacyRunnerExecution(data, true);
+  });
+
   socket.on("runner_position_update_new", (data) => {
     logMessage_Debug("[Socket] 收到 runner_position_update 事件");
-    if (data) {
+    if (data && acceptLegacyRunnerExecution(data)) {
       if (
         data.task_index !== undefined &&
         data.task_index !== selectedTaskIndex
@@ -1096,12 +1101,13 @@ function connectWebSocket() {
         renderTaskList();
       }
 
+      if (data.elapsed_time != null) runAccumulatedMs = Math.max(0, Number(data.elapsed_time) * 1000);
       updateRunnerPosition(
         data.lon,
         data.lat,
         data.distance,
         data.target_sequence,
-        data.duration,
+        data.elapsed_time != null ? 0 : data.duration,
         data.center_now,
         data.point_index,
       );
@@ -1112,12 +1118,13 @@ function connectWebSocket() {
   });
 
   socket.on("task_completed", (data) => {
-    if (data && typeof data.task_index !== "undefined") {
+    if (data && acceptLegacyRunnerExecution(data) && typeof data.task_index !== "undefined") {
       onTaskCompleted(data.task_index);
     }
   });
 
-  socket.on("run_stopped", () => {
+  socket.on("run_stopped", (data) => {
+    if (data?.execution_id && !acceptLegacyRunnerExecution(data)) return;
     onRunStopped();
   });
   socket.on("onNotificationsUpdated", (data) => {

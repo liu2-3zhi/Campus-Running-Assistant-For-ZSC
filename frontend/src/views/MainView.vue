@@ -95,7 +95,6 @@ async function loadInitialData() {
         notifStore.unreadCount = data.unreadCount ?? data.unread_count ?? 0
       }
       if (data.params) app.pythonParams = data.params
-      if (data.run_data) app.runData = data.run_data
       if (data.is_running != null) app.isRunning = data.is_running
       if (data.selected_task_index != null) app.selectedTaskIndex = data.selected_task_index
       if (data.isLoggedIn && !data.tasks) {
@@ -112,12 +111,14 @@ async function loadInitialData() {
       const mapConfig = {}
       const providers = data.map_providers || {}
       if (providers.amap?.js_key) mapConfig.amapKey = providers.amap.js_key
-      if (providers.amap?.security_key) mapConfig.amapSecurityKey = providers.amap.security_key
+      if (providers.amap) mapConfig.amapSecurityJsCode = providers.amap.security_js_code || ''
       if (providers.tencent?.map_key) mapConfig.tencentKey = providers.tencent.map_key
       if (providers.tianditu?.token) mapConfig.tiandituKey = providers.tianditu.token
       if (providers.baidu?.ak) mapConfig.baiduKey = providers.baidu.ak
+      mapConfig.frontendProxyEnabled = data.frontend_proxy_enabled === true
       if (Object.keys(mapConfig).length > 0) mapStore.setConfig(mapConfig)
       if (data.map_provider) mapStore.setProvider(data.map_provider)
+      if (data.task_status) await backgroundTask.applyStatus(data.task_status)
 
       if (data.beian) app.beianData = data.beian
 
@@ -147,7 +148,7 @@ async function refreshUsers() {
       app.addRoutePlanningFailures(data.route_planning_failures)
       if (data.users) app.users = data.users
       if (data.tasks) app.tasks = data.tasks
-      if (data.run_data) app.runData = data.run_data
+      if (data.task_status) await backgroundTask.applyStatus(data.task_status)
       if (data.is_running != null) app.isRunning = data.is_running
     }
   } catch {
@@ -211,6 +212,7 @@ async function handleBack() {
 // ── Lifecycle ──
 onMounted(() => {
   viewMounted = true
+  app.bindBusinessSession(auth.sessionUUID)
   app.detectMobile()
   loadInitialData()
   backgroundTask.startPolling()

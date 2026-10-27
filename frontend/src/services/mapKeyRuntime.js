@@ -3,7 +3,8 @@ import { useAuthStore } from '@/stores/auth'
 const RUNTIME_NAMESPACE = '__MAP_KEY_RUNTIME__'
 
 let runtimeLoadPromise = null
-let runtimeLoadVersion = ''
+let runtimeLoadContext = ''
+let runtimeLoadGeneration = 0
 
 function getRuntimeScriptUrl(scriptUrl, runtimeVersion, sessionId) {
   const baseUrl = scriptUrl || '/api/map_key_runtime.js'
@@ -19,9 +20,10 @@ function getRuntimeScriptUrl(scriptUrl, runtimeVersion, sessionId) {
   return `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${params.join('&')}`
 }
 
-function loadRuntimeScript(scriptUrl, runtimeVersion, sessionId) {
+function loadRuntimeScript(scriptUrl, runtimeVersion, sessionId, originSessionId, assertCurrentContext) {
   const expectedVersion = String(runtimeVersion || '').trim()
-  if (runtimeLoadPromise && runtimeLoadVersion === expectedVersion) {
+  const contextKey = JSON.stringify([expectedVersion, sessionId, originSessionId])
+  if (runtimeLoadPromise && runtimeLoadContext === contextKey) {
     return runtimeLoadPromise
   }
 
@@ -30,39 +32,41 @@ function loadRuntimeScript(scriptUrl, runtimeVersion, sessionId) {
     return Promise.resolve()
   }
 
-  runtimeLoadVersion = expectedVersion
-  runtimeLoadPromise = new Promise((resolve, reject) => {
-    const scripts = Array.from(document.querySelectorAll('script[data-map-key-runtime="1"]'))
-    const existing = scripts.find((script) => (
-      String(script.dataset.mapKeyRuntimeVersion || '') === expectedVersion
-    ))
-    if (existing) {
-      if (!expectedVersion || window[RUNTIME_NAMESPACE]?.version === expectedVersion) {
-        resolve()
-      } else {
-        existing.remove()
-      }
-      if (!expectedVersion || window[RUNTIME_NAMESPACE]?.version === expectedVersion) {
-        return
-      }
+  runtimeLoadContext = contextKey
+  const generation = ++runtimeLoadGeneration
+  runtimeLoadPromise = (async () => {
+    const headers = { 'X-Session-ID': sessionId }
+    if (originSessionId) headers['X-Admin-Origin-Session-ID'] = originSessionId
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15000)
+    let scriptText
+    try {
+      const response = await fetch(getRuntimeScriptUrl(scriptUrl, expectedVersion, sessionId), {
+        credentials: 'include', cache: 'no-store', headers, signal: controller.signal,
+      })
+      if (!response.ok) throw new Error('地图密钥运行时脚本加载失败')
+      scriptText = await response.text()
+    } finally {
+      clearTimeout(timeout)
     }
+    assertCurrentContext()
+    if (generation !== runtimeLoadGeneration) throw new Error('地图密钥运行时会话已切换')
+    const scripts = Array.from(document.querySelectorAll('script[data-map-key-runtime="1"]'))
+    scripts.forEach((script) => script.remove())
     const script = document.createElement('script')
-    script.src = getRuntimeScriptUrl(scriptUrl, expectedVersion, sessionId)
-    script.async = true
+    script.textContent = scriptText
     script.dataset.mapKeyRuntime = '1'
     script.dataset.mapKeyRuntimeVersion = expectedVersion
-    script.onload = () => {
-      if (expectedVersion && window[RUNTIME_NAMESPACE]?.version !== expectedVersion) {
-        reject(new Error('地图密钥运行时版本不匹配'))
-        return
-      }
-      resolve()
-    }
-    script.onerror = () => reject(new Error('地图密钥运行时脚本加载失败'))
     document.head.appendChild(script)
-  }).catch((error) => {
-    runtimeLoadPromise = null
-    runtimeLoadVersion = ''
+    if (expectedVersion && window[RUNTIME_NAMESPACE]?.version !== expectedVersion) {
+      script.remove()
+      throw new Error('地图密钥运行时版本不匹配')
+    }
+  })().catch((error) => {
+    if (generation === runtimeLoadGeneration) {
+      runtimeLoadPromise = null
+      runtimeLoadContext = ''
+    }
     throw error
   })
   return runtimeLoadPromise
@@ -75,17 +79,29 @@ export async function hydrateMapProviderSecrets(initialData) {
   if (keyBundle.available === false) return initialData
 
   const auth = useAuthStore()
+  const getBusinessSession = () => auth.getSessionHeaderValue?.('get_initial_data') || auth.getAuthenticatedSessionHeaderValue()
+  const sessionId = getBusinessSession()
+  const originSessionId = auth.getAdminOriginHeaderValue?.(sessionId) || ''
+  const assertCurrentContext = () => {
+    if (getBusinessSession() !== sessionId || (auth.getAdminOriginHeaderValue?.(sessionId) || '') !== originSessionId) {
+      throw new Error('地图密钥运行时会话已切换')
+    }
+  }
   await loadRuntimeScript(
     keyBundle.runtime_script,
     keyBundle.runtime_version,
-    auth.getAuthenticatedSessionHeaderValue(),
+    sessionId,
+    originSessionId,
+    assertCurrentContext,
   )
+  assertCurrentContext()
   const runtime = window[RUNTIME_NAMESPACE]
   if (!runtime || typeof runtime.decryptMapProviderKeys !== 'function') {
     throw new Error('地图密钥运行时不可用')
   }
 
-  const decryptedProviders = await runtime.decryptMapProviderKeys(keyBundle)
+  const decryptedProviders = await runtime.decryptMapProviderKeys(keyBundle, sessionId, originSessionId)
+  assertCurrentContext()
   const nextProviders = { ...(initialData.map_providers || {}) }
   Object.entries(decryptedProviders || {}).forEach(([provider, secrets]) => {
     const current = nextProviders[provider]

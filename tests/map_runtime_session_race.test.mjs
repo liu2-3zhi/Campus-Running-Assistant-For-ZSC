@@ -21,6 +21,7 @@ function createLegacyRuntimeHarness({
   activeSessionId = '',
   storedSessionId = '',
   urlSessionId = '',
+  adminOriginSessionId = '',
 } = {}) {
   const appendedScripts = []
   const windowObject = {
@@ -88,6 +89,7 @@ function createLegacyRuntimeHarness({
       return urlSessionId
     },
     addAdminViewOriginSessionHeader(headers) {
+      if (adminOriginSessionId) headers['X-Admin-Origin-Session-ID'] = adminOriginSessionId
       return headers
     },
   })
@@ -128,6 +130,7 @@ test('legacy runtime loader fetches script with explicit session header before h
   const sessionId = '41473ebe-61ff-4f71-aa13-2620c13057a4'
   const fetchCalls = []
   const { api, window } = createLegacyRuntimeHarness({
+    adminOriginSessionId: 'admin-origin',
     fetchImpl: async (url, options) => {
       fetchCalls.push({ url, options })
       return {
@@ -136,8 +139,9 @@ test('legacy runtime loader fetches script with explicit session header before h
         text: async () => `
 window.__MAP_KEY_RUNTIME__ = Object.freeze({
   version: 'runtime-v1',
-  decryptMapProviderKeys: async function (_bundle, explicitSessionId) {
+  decryptMapProviderKeys: async function (_bundle, explicitSessionId, originSessionId) {
     window.__decryptSessionId = explicitSessionId;
+    window.__decryptOriginSessionId = originSessionId;
     return { amap: { js_key: 'decrypted-key' } };
   },
 });
@@ -162,7 +166,9 @@ window.__MAP_KEY_RUNTIME__ = Object.freeze({
   assert.equal(fetchCalls[0].options.credentials, 'include')
   assert.equal(fetchCalls[0].options.cache, 'no-store')
   assert.equal(fetchCalls[0].options.headers['X-Session-ID'], sessionId)
+  assert.equal(fetchCalls[0].options.headers['X-Admin-Origin-Session-ID'], 'admin-origin')
   assert.equal(window.__decryptSessionId, sessionId)
+  assert.equal(window.__decryptOriginSessionId, 'admin-origin')
   assert.equal(hydrated.map_providers.amap.js_key, 'decrypted-key')
 })
 

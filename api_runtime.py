@@ -3627,6 +3627,34 @@ class Api:
 
         return "进行中"
 
+    def get_task_map_snapshot(self, index):
+        """Return copied map data without selecting a task or fetching its details."""
+        if isinstance(index, bool) or not isinstance(index, int) or not (0 <= index < len(self.all_run_data)):
+            return {"success": False, "message": "无效的任务索引"}
+        run = self.all_run_data[index]
+        fields = (
+            "run_name", "target_points", "target_point_names", "draft_coords",
+            "recommended_coords", "run_coords", "current_point_index", "target_sequence",
+            "checked_targets_count", "total_run_distance_m", "total_run_time_s",
+            "current_distance", "elapsed_time", "duration", "current_position",
+            "current_lon", "current_lat", "status", "distance_covered_m",
+        )
+        details = {name: copy.deepcopy(getattr(run, name)) for name in fields if hasattr(run, name)}
+        details["task_index"] = index
+        details["target_range_m"] = getattr(self, "target_range_m", 0)
+        if "distance_covered_m" in details:
+            details["current_distance"] = details["distance_covered_m"]
+        coords = details.get("run_coords") or []
+        try:
+            processed = max(0, min(len(coords), int(details.get("current_point_index", 0) or 0)))
+        except (TypeError, ValueError, OverflowError):
+            processed = 0
+        if processed and not details.get("current_position"):
+            point = coords[processed - 1]
+            if isinstance(point, (list, tuple)) and len(point) >= 2:
+                details["current_position"] = {"lon": point[0], "lat": point[1]}
+        return {"success": True, "task_index": index, "route_ready": bool(coords), "details": details}
+
     def get_task_details(self, index):
         """获取指定任务的详细信息"""
         logging.info(f"API调用: get_task_details - 获取任务详细信息，任务索引: {index}")
@@ -4109,6 +4137,8 @@ class Api:
 
             self.stop_run_flag.clear()
             run_data = self.all_run_data[self.current_run_idx]
+            self._active_execution_id = uuid.uuid4().hex
+            self._active_execution_started_at = time.time()
             run_data.target_sequence = 0
             run_data.is_in_target_zone = False
             self._first_center_done = False
@@ -4119,7 +4149,8 @@ class Api:
                 args=(
                     execution_token,
                     self._run_submission_thread,
-                    (run_data, self.current_run_idx, self.api_client, False),
+                    (run_data, self.current_run_idx, self.api_client, False, None,
+                     self._active_execution_id),
                 ),
                 daemon=True,
             )
@@ -4373,6 +4404,7 @@ class Api:
         client: _main().ApiClient,
         school_username: str = None,
         auth_username: str = None,
+        execution_id: str = None,
     ) -> bool:
         """
         在所有数据提交后，查询服务器确认任务是否已标记为完成。
@@ -4492,7 +4524,7 @@ class Api:
                             logging.info(f"[SocketIO Emit] Sending 'task_completed' from Thread[{current_thread.name}, id={current_thread.ident}]")
                             _main().socketio.emit(
                                 "task_completed",
-                                {"task_index": task_index},
+                                {"task_index": task_index, **({"execution_id": execution_id} if execution_id else {})},
                                 room=session_id,
                             )
                             logging.info(f"[SocketIO Emit] 'task_completed' sent successfully")
@@ -4508,6 +4540,30 @@ class Api:
         logging.warning(f"任务完成状态确认失败: 任务名称={run_data.run_name}")
         return False
 
+    def _is_current_runner_execution(self, session_id, execution_id, batch_token=None):
+        if batch_token is not None:
+            manager = getattr(_main(), "background_task_manager", None)
+            batch = manager.route_failure_batches.get(session_id) if manager and session_id else None
+            return bool(batch and batch[0] is batch_token)
+        return getattr(self, "_active_execution_id", execution_id) == execution_id
+
+    def _emit_runner_execution_started(self, session_id, task_index, execution_id, started_at, batch_token=None):
+        if not session_id or not self._is_current_runner_execution(session_id, execution_id, batch_token):
+            return False
+        return self._safe_socketio_emit("runner_execution_started", {
+            "execution_id": execution_id,
+            "execution_started_at": started_at,
+            "task_index": task_index,
+        }, room=session_id)
+
+    def _emit_runner_position_update(self, session_id, payload, batch_token=None):
+        execution_id = str(payload.get("execution_id") or "")
+        if not session_id or not execution_id or not self._is_current_runner_execution(
+            session_id, execution_id, batch_token
+        ):
+            return False
+        return self._safe_socketio_emit("runner_position_update_new", payload, room=session_id)
+
     def _run_submission_thread(
         self,
         run_data: _main().RunData,
@@ -4515,6 +4571,8 @@ class Api:
         client: _main().ApiClient,
         is_all: bool,
         finished_event: threading.Event | None = None,
+        execution_id: str | None = None,
+        execution_batch_token=None,
     ):
         """模拟跑步和提交数据的主线程函数"""
         # 记录线程信息
@@ -4539,11 +4597,24 @@ class Api:
         logging.info(f"[SocketIO Check] SocketIO object available: {sio is not None}")
 
         session_id = getattr(self, "_web_session_id", None)
+        execution_id = execution_id or getattr(self, "_active_execution_id", None) or uuid.uuid4().hex
+        execution_started_at = float(getattr(self, "_active_execution_started_at", 0.0) or time.time())
+        if execution_batch_token is not None:
+            manager = getattr(_main(), "background_task_manager", None)
+            batch = manager.route_failure_batches.get(session_id) if manager and session_id else None
+            if batch and batch[0] is execution_batch_token:
+                execution_started_at = float((batch[2] or {}).get("execution_started_at", execution_started_at))
         logging.info(f"[Session Check] Session ID: {session_id}")
         last_auto_save_time = time.time()
 
         try:
             log_func("开始执行任务。")
+            submission_successful = False
+            if not self._is_current_runner_execution(session_id, execution_id, execution_batch_token):
+                return
+            self._emit_runner_execution_started(
+                session_id, task_index, execution_id, execution_started_at, execution_batch_token
+            )
             logging.info(f"任务提交线程已启动: 任务名称={run_data.run_name} in Thread[{current_thread.name}]")
 
             run_data.trid = f"{user_data.student_id}{int(time.time() * 1000)}"
@@ -4583,6 +4654,9 @@ class Api:
                 chunk = run_data.run_coords[i: i + 5]
 
                 for lon, lat, dur_ms in chunk:
+                    if not self._is_current_runner_execution(session_id, execution_id, execution_batch_token):
+                        submission_successful = False
+                        return
                     _elapsed_real_s = time.time() - _exec_start_real
                     _elapsed_real_min = _elapsed_real_s / 60.0
                     _actual_sleep_s = dur_ms / 1000.0
@@ -4657,6 +4731,9 @@ class Api:
                     if stop_flag.wait(timeout=_actual_sleep_s):
                         logging.debug("等待下一个坐标点时被停止信号中断")
                         break
+                    if not self._is_current_runner_execution(session_id, execution_id, execution_batch_token):
+                        submission_successful = False
+                        return
 
                     run_data.distance_covered_m += self._calculate_distance_m(
                         last_point_gps[0], last_point_gps[1], lon, lat
@@ -4703,6 +4780,24 @@ class Api:
                     if sio and current_session_id:
                         should_emit = True
 
+                    if sio and current_session_id and should_emit:
+                        try:
+                            self._emit_runner_position_update(current_session_id, {
+                                    "lon": lon,
+                                    "lat": lat,
+                                    "distance": run_data.distance_covered_m,
+                                    "target_sequence": run_data.target_sequence,
+                                    "duration": dur_ms,
+                                    "elapsed_time": time.time() - _exec_start_real,
+                                    "center_now": False,
+                                    "point_index": point_index,
+                                    "task_index": task_index,
+                                    "execution_id": execution_id,
+                                    "execution_started_at": execution_started_at,
+                                }, execution_batch_token)
+                        except Exception:
+                            logging.debug("发送跑步位置事件失败", exc_info=True)
+
                 if stop_flag.is_set():
                     break
 
@@ -4733,7 +4828,7 @@ class Api:
                 log_func("任务执行完毕，等待确认...")
                 logging.info("任务运行执行完毕，等待最终确认")
                 time.sleep(3)
-                self._finalize_run(run_data, task_index, client)
+                self._finalize_run(run_data, task_index, client, execution_id=execution_id)
 
                 if session_id:
                     try:
@@ -4753,7 +4848,7 @@ class Api:
                         logging.error(f"任务完成后保存会话失败: {e}")
 
         finally:
-            if not is_all:
+            if not is_all and self._is_current_runner_execution(session_id, execution_id, execution_batch_token):
                 if not submission_successful or stop_flag.is_set():
                     self.stop_run_flag.set()
                     logging.info(f"任务停止或失败，设置停止标志")
@@ -4766,7 +4861,7 @@ class Api:
                     try:
                         current_thread = threading.current_thread()
                         logging.info(f"[SocketIO Emit] Sending 'run_stopped' from Thread[{current_thread.name}, id={current_thread.ident}]")
-                        sio.emit("run_stopped", {}, room=session_id)
+                        sio.emit("run_stopped", {"execution_id": execution_id}, room=session_id)
                         logging.info(f"[SocketIO Emit] 'run_stopped' sent successfully")
                     except Exception as e:
                         current_thread = threading.current_thread()
@@ -6082,7 +6177,8 @@ class Api:
             route_session_id = getattr(self, "_web_session_id", "")
             diagnostic_execution_id = task_manager.begin_route_planning_batch(
                 route_session_id,
-                task_status={"status": "running", "total_tasks": len(queue), "start_time": time.time()},
+                task_status={"status": "running", "total_tasks": len(queue), "start_time": time.time(),
+                             "map_provider": getattr(_main(), "_get_active_map_provider", lambda: None)()},
             ) if task_manager and route_session_id else None
             run_all_thread = threading.Thread(
                 target=self._run_with_single_school_account_execution,
@@ -6112,7 +6208,8 @@ class Api:
         if execution_id is None and manager and session_id:
             execution_id = manager.begin_route_planning_batch(
                 session_id,
-                task_status={"status": "running", "total_tasks": len(queue), "start_time": time.time()},
+                task_status={"status": "running", "total_tasks": len(queue), "start_time": time.time(),
+                             "map_provider": getattr(_main(), "_get_active_map_provider", lambda: None)()},
             )
         status = "error"
         try:
@@ -6159,6 +6256,17 @@ class Api:
             idx = queue.popleft()
             run_data = self.all_run_data[idx]
             self.current_run_idx = idx
+            # Publish a fresh execution, never the previous run's completed progress.
+            run_data.current_point_index = 0
+            run_data.distance_covered_m = 0.0
+            run_data.target_sequence = 0
+            run_data.is_in_target_zone = False
+            run_data.suppress_last_target_until_finish = True
+            if manager and execution_id is not None:
+                manager.update_route_planning_batch_status(session_id, execution_id, {
+                    "active_task_index": idx, "route_ready": bool(run_data.run_coords),
+                    "last_update": time.time(),
+                })
 
             if self.window:
                 self.window.evaluate_js(f"selectTaskFromBackend({idx})")
@@ -6243,6 +6351,11 @@ class Api:
                     continue
 
                 self.log_and_notify_frontend("路径已生成，正在更新界面...")
+                if manager and execution_id is not None:
+                    manager.update_route_planning_batch_status(session_id, execution_id, {
+                        "active_task_index": idx, "route_ready": bool(run_data.run_coords),
+                        "last_update": time.time(),
+                    })
                 if self.window:
                     self.window.evaluate_js(f"forceRefreshTaskUI({idx})")
                 time.sleep(1.0)
@@ -6268,8 +6381,20 @@ class Api:
             run_data.target_sequence, run_data.is_in_target_zone = 0, False
             self._first_center_done = False
             task_finished_event = threading.Event()
+            manager = getattr(_main(), "background_task_manager", None)
+            public_execution_id = ""
+            if manager and execution_id is not None:
+                manager.update_route_planning_batch_status(session_id, execution_id, {
+                    "active_task_index": idx,
+                    "route_ready": bool(run_data.run_coords),
+                    "last_update": time.time(),
+                })
+                public_execution_id, _ = manager.get_route_planning_execution(
+                    getattr(self, "_web_session_id", ""), execution_id
+                )
             self._run_submission_thread(
-                run_data, idx, self.api_client, True, task_finished_event
+                run_data, idx, self.api_client, True, task_finished_event,
+                public_execution_id or None, execution_id,
             )
             task_finished_event.wait()
 

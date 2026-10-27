@@ -13,6 +13,8 @@
     [endif]-->
     <!-- IE 浏览器检测脚本：同步加载以确保在页面渲染前完成检测 -->
     <script src="/scripts/ie_detect.js"></script>
+    <!-- 地图供应商资源代理（按系统配置启用，必须早于地图 SDK 加载） -->
+    <script src="/scripts/map-request-proxy.js"></script>
     <script src="/scripts/load_amap_watermark.js"></script>
     <!-- <script src="/scripts/Remove_watermark_from_Amap_Map.js"></script> -->
     <script src="/api/frontend_config.js"></script>
@@ -16790,7 +16792,7 @@
                 <button
                   id="admin-save-config_modal"
                   class="btn btn-primary !py-1 !px-2"
-                  onclick="saveSystemConfig()"
+                    onclick="saveSystemConfig(this)"
                 >
                   保存配置
                 </button>

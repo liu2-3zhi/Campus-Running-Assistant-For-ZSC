@@ -81,6 +81,9 @@ function createExitHarness(shutdownResult, isGuest = false) {
   let promptCount = 0
   let stopCount = 0
   const exitButton = { addEventListener(_name, handler) { exitHandler = handler } }
+  const executionStart = mainSource.indexOf('const legacyRunnerExecutionState =')
+  const executionEnd = mainSource.indexOf('function acceptLegacyRunnerExecution(', executionStart)
+  assert.ok(executionStart >= 0 && executionEnd > executionStart)
   const start = mainSource.indexOf('    const exitAppBtn = $("exit-app-btn");')
   const end = mainSource.indexOf('    const modalAdminPanel =', start)
   assert.ok(start >= 0 && end > start)
@@ -98,7 +101,7 @@ function createExitHarness(shutdownResult, isGuest = false) {
     console: { error() {} },
     window: { location: { href: '' } },
   })
-  vm.runInContext(mainSource.slice(start, end), context)
+  vm.runInContext(`${mainSource.slice(executionStart, executionEnd)}\n${mainSource.slice(start, end)}`, context)
   return { click: () => exitHandler({ preventDefault() {}, stopPropagation() {} }), notices, get promptCount() { return promptCount }, get stopCount() { return stopCount } }
 }
 

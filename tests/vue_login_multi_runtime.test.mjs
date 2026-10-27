@@ -20,7 +20,7 @@ function setupComponent(path, overrides = {}, props = {}) {
   const mounted = []
   const emitted = []
   const calls = []
-  const app = { users: [], multiAccounts: [], multiStatus: {}, multiPositions: {}, logs: [], pythonParams: {}, multiGlobalButtons: {}, addLog(msg, level) { this.logs.push({ msg, level }) } }
+  const app = { users: [], multiAccounts: [], multiStatus: {}, multiPositions: {}, logs: [], pythonParams: {}, multiGlobalButtons: {}, bindBusinessSession(session) { this.businessSession = session }, addLog(msg, level) { this.logs.push({ msg, level }) } }
   const auth = { sessionUUID: 'session-id', isAuthenticated: false, getAuthenticatedSessionHeaderValue: () => 'session-id', setLoginResult() {} }
   const dependencies = {
     ...vue,

@@ -246,6 +246,9 @@ function fitProviderMapToCoordinates(containerId, coords, overlay = null) {
   const provider = getActiveMapProvider();
   const instance = getProviderMapInstance(containerId);
   if (!instance || !Array.isArray(coords) || coords.length === 0) return;
+  const providerCoords = normalizeRouteCoords(coords).map((coord) =>
+    convertGcj02ToProviderCoordinates(provider, coord),
+  );
   try {
     if (provider === "amap") {
       const overlays = Array.isArray(overlay)
@@ -259,9 +262,9 @@ function fitProviderMapToCoordinates(containerId, coords, overlay = null) {
       coords.forEach((coord) => bounds.extend(new TMap.LatLng(coord.lat, coord.lng)));
       instance.fitBounds(bounds, { padding: 60 });
     } else if (provider === "tianditu" && typeof instance.setViewport === "function") {
-      instance.setViewport(coords.map((coord) => new T.LngLat(coord.lng, coord.lat)));
-    } else if (provider === "baidu" && typeof instance.setViewport === "function" && window.BMapGL) {
-      instance.setViewport(coords.map((coord) => new BMapGL.Point(coord.lng, coord.lat)));
+      instance.setViewport(providerCoords.map((coord) => new T.LngLat(coord.lng, coord.lat)));
+    } else if (provider === "baidu" && typeof instance.setViewport === "function" && window.BMap) {
+      instance.setViewport(providerCoords.map((coord) => new BMap.Point(coord.lng, coord.lat)));
     }
   } catch (e) {
     logMessage_Warning(`[地图] 调整${containerId}视野失败:`, e);
@@ -495,11 +498,11 @@ function addProviderMarker(containerId, coord, options = {}) {
         markerOptions,
       );
       instance.addOverLay(marker);
-    } else if (provider === "baidu" && window.BMapGL) {
+    } else if (provider === "baidu" && window.BMap) {
       const label = normalizeProviderMarkerLabel(options);
       const markerKind = options.markerKind || (options.anchor === "center" ? "runner" : "label");
-      marker = new BMapGL.Marker(
-        new BMapGL.Point(providerCoord.lng, providerCoord.lat),
+      marker = new BMap.Marker(
+        new BMap.Point(providerCoord.lng, providerCoord.lat),
         {
           title: options.title || label || "",
           zIndex: options.zIndex || 100,
@@ -508,15 +511,16 @@ function addProviderMarker(containerId, coord, options = {}) {
       if (
         label &&
         markerKind !== "runner" &&
-        typeof BMapGL.Label === "function" &&
-        typeof BMapGL.Size === "function" &&
+        typeof BMap.Label === "function" &&
+        typeof BMap.Size === "function" &&
         typeof marker.setLabel === "function"
       ) {
-        marker.setLabel(
-          new BMapGL.Label(label, {
-            offset: new BMapGL.Size(12, -24),
-          }),
-        );
+        const markerLabel = new BMap.Label(label, { offset: new BMap.Size(12, -24) });
+        marker.__providerLabel = markerLabel;
+        marker.setLabel(markerLabel);
+        if (typeof markerLabel.setStyle === "function") {
+          markerLabel.setStyle({ backgroundColor: resolveProviderMarkerColor(options), color: "#ffffff", border: "0", borderRadius: "12px", padding: "4px 8px" });
+        }
       }
       instance.addOverlay(marker);
     }
@@ -526,7 +530,7 @@ function addProviderMarker(containerId, coord, options = {}) {
       }
       if (options.trackFit !== false) {
         const fitCoords = providerMapLastFitCoords[containerId] || [];
-        fitCoords.push(providerCoord);
+        fitCoords.push(cloneMapCoordinate(coord));
         providerMapLastFitCoords[containerId] = fitCoords;
       }
     }
@@ -591,12 +595,12 @@ function updateProviderRunnerMarker(containerId, coord, options = {}) {
   if (
     previousMarker &&
     provider === "baidu" &&
-    window.BMapGL &&
+    window.BMap &&
     typeof previousMarker.setPosition === "function"
   ) {
     try {
       const providerCoord = convertGcj02ToProviderCoordinates(provider, normalized);
-      previousMarker.setPosition(new BMapGL.Point(providerCoord.lng, providerCoord.lat));
+      previousMarker.setPosition(new BMap.Point(providerCoord.lng, providerCoord.lat));
       return previousMarker;
     } catch (e) {
       logMessage_Warning(`[地图] 更新${containerId}百度标记失败，将重建标记:`, e);
@@ -667,8 +671,7 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
       convertGcj02ToProviderCoordinates(provider, coord),
     ),
   }));
-  const providerCoords = providerSegments.flatMap((segment) => segment.coords);
-  providerMapLastFitCoords[containerId] = providerCoords;
+  providerMapLastFitCoords[containerId] = gcjCoords.map(cloneMapCoordinate);
   const bucket = getProviderOverlayBucket(containerId);
   let line = null;
   let fitOverlay = null;
@@ -722,13 +725,8 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
         },
       };
       const styles = {};
-      providerSegments.forEach((segment) => {
-        const styleId = segment.styleId || "route";
-        if (!styles[styleId]) {
-          styles[styleId] = new TMap.PolylineStyle(
-            styleConfigs[styleId] || styleConfigs.route,
-          );
-        }
+      Object.keys(styleConfigs).forEach((styleId) => {
+        styles[styleId] = new TMap.PolylineStyle(styleConfigs[styleId]);
       });
       line = new TMap.MultiPolyline({
         id: `provider-route-${containerId}`,
@@ -762,15 +760,15 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
         bucket.push(polyline);
         return polyline;
       });
-    } else if (provider === "baidu" && window.BMapGL) {
+    } else if (provider === "baidu" && window.BMap) {
       line = providerSegments.map((segment) => {
         const segmentColor = resolveProviderRouteSegmentColor(
           segment.styleId,
           color,
           options,
         );
-        const polyline = new BMapGL.Polyline(
-          segment.coords.map((coord) => new BMapGL.Point(coord.lng, coord.lat)),
+        const polyline = new BMap.Polyline(
+          segment.coords.map((coord) => new BMap.Point(coord.lng, coord.lat)),
           {
             strokeColor: segmentColor,
             strokeWeight: weight,
@@ -803,12 +801,13 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
       // 记住分段折线，供运行中就地更新颜色（不再整图重绘）
       rememberProviderRouteSegmentOverlays(
         containerId,
-        Array.isArray(line) ? line : [],
+        line,
         routeSegments,
+        { routeCoords: normalizeRouteCoords(coords), options },
       );
       // preserveView：进度推进时不要重新适配视野，避免地图被复位
       if (options.preserveView !== true) {
-        fitProviderMapToCoordinates(containerId, providerCoords, fitOverlay);
+        fitProviderMapToCoordinates(containerId, gcjCoords, fitOverlay);
       }
     }
     return line;
@@ -1011,6 +1010,17 @@ function resolveProviderRouteSegmentColor(styleId, fallbackColor, options = {}) 
 
 function appendProviderRouteProgressSegment(segments, coords, styleId) {
   const normalizedCoords = normalizeRouteCoords(coords);
+  if (normalizedCoords.some(isRouteSegmentSeparator)) {
+    let start = 0;
+    normalizedCoords.forEach((coord, index) => {
+      if (isRouteSegmentSeparator(coord)) {
+        appendProviderRouteProgressSegment(segments, normalizedCoords.slice(start, index), styleId);
+        start = index + 1;
+      }
+    });
+    appendProviderRouteProgressSegment(segments, normalizedCoords.slice(start), styleId);
+    return;
+  }
   if (normalizedCoords.length < 2) return;
   const lastSegment = segments[segments.length - 1];
   if (lastSegment && lastSegment.styleId === styleId) {
@@ -1019,10 +1029,10 @@ function appendProviderRouteProgressSegment(segments, coords, styleId) {
     const connects =
       Math.abs(lastCoord.lng - firstCoord.lng) <= 1e-7 &&
       Math.abs(lastCoord.lat - firstCoord.lat) <= 1e-7;
-    lastSegment.coords = lastSegment.coords.concat(
-      connects ? normalizedCoords.slice(1) : normalizedCoords,
-    );
-    return;
+    if (connects) {
+      lastSegment.coords = lastSegment.coords.concat(normalizedCoords.slice(1));
+      return;
+    }
   }
   segments.push({ styleId, coords: normalizedCoords });
 }
@@ -1226,6 +1236,9 @@ function drawProviderTaskOnMap(containerId, data) {
       : data.recommended_coords || [];
   if (routeCoords.length > 0) {
     const activeProgress = !!(data.run_coords?.length && hasActiveRouteProgress(data));
+    if (activeProgress && updateProviderRouteProgressSegmentsInPlace(containerId, data)) {
+      return;
+    }
     drawProviderRouteOnMap(containerId, routeCoords, {
       strokeColor: data.run_coords?.length ? "#ef4444" : "#10b981",
       strokeWeight: data.run_coords?.length ? 5 : 4,
@@ -1241,6 +1254,13 @@ function drawProviderTaskOnMap(containerId, data) {
   } else {
     clearProviderMapOverlays(containerId);
   }
+  syncProviderTaskCheckpointMarkers(containerId, data, routeCoords);
+}
+
+function syncProviderTaskCheckpointMarkers(containerId, data, routeCoords) {
+  const cached = providerRouteSegmentOverlays[containerId];
+  const previous = cached?.checkpointMarkers || [];
+  const next = [];
   if (Array.isArray(data.target_points)) {
     const sequence = resolveVisualTaskProgressSequence(data, routeCoords);
     const names = (data.target_point_names || "").split("|");
@@ -1275,7 +1295,7 @@ function drawProviderTaskOnMap(containerId, data) {
                 index === 0 || index === data.target_points.length - 1,
             })
           : coord;
-        addProviderMarker(containerId, markerCoord, {
+        const options = {
           title: pointName,
           label: pointName,
           content: markerContent,
@@ -1283,9 +1303,47 @@ function drawProviderTaskOnMap(containerId, data) {
           zIndex,
           markerColor,
           markerStatus,
-        });
+        };
+        const key = `${markerCoord.lng},${markerCoord.lat}:${pointName}`;
+        let marker = previous[index]?.key === key ? previous[index].marker : null;
+        if (marker && previous[index].status !== markerStatus && !updateProviderCheckpointMarkerStyle(marker, options)) {
+          marker = null;
+        }
+        if (!marker) marker = addProviderMarker(containerId, markerCoord, options);
+        if (marker) next[index] = { key, marker, status: markerStatus };
       }
     });
+  }
+  previous.forEach((entry, index) => {
+    if (entry && entry.marker !== next[index]?.marker) {
+      removeProviderOverlayFromMap(containerId, entry.marker);
+      providerMapOverlays[containerId] = getProviderOverlayBucket(containerId).filter((overlay) => overlay !== entry.marker);
+    }
+  });
+  if (cached) cached.checkpointMarkers = next;
+}
+
+function updateProviderCheckpointMarkerStyle(marker, options) {
+  const provider = getActiveMapProvider();
+  try {
+    if (provider === "tencent" && window.TMap && typeof marker.setStyles === "function") {
+      marker.setStyles({ marker: new TMap.MarkerStyle(createTencentMarkerStyleOptions(options.label, options)) });
+    } else if (provider === "tianditu" && window.T && typeof marker.setIcon === "function" && typeof T.Icon === "function") {
+      const icon = createProviderLabelMarkerSvgOptions(options.label, options);
+      const point = (x, y) => typeof T.Point === "function" ? new T.Point(x, y) : [x, y];
+      marker.setIcon(new T.Icon({ iconUrl: icon.src, iconSize: point(icon.width, icon.height), iconAnchor: point(icon.anchor.x, icon.anchor.y) }));
+    } else if (provider === "baidu" && typeof marker.__providerLabel?.setStyle === "function") {
+      marker.__providerLabel.setStyle({ backgroundColor: options.markerColor });
+    } else if (provider === "amap" && typeof marker.setContent === "function") {
+      marker.setContent(options.content);
+    } else {
+      return false;
+    }
+    if (typeof marker.setZIndex === "function") marker.setZIndex(options.zIndex);
+    return true;
+  } catch (error) {
+    logMessage_Warning(`[地图] 更新检查点状态失败:`, error);
+    return false;
   }
 }
 
@@ -1303,7 +1361,7 @@ function updateProviderRouteProgressSegmentsInPlace(containerId, data) {
     return false;
   }
   const cached = providerRouteSegmentOverlays[containerId];
-  if (!cached || !Array.isArray(cached.lines) || cached.lines.length === 0) {
+  if (!cached || !cached.lines || (Array.isArray(cached.lines) && cached.lines.length === 0)) {
     return false;
   }
   if (!hasActiveRouteProgress(data)) {
@@ -1312,6 +1370,12 @@ function updateProviderRouteProgressSegmentsInPlace(containerId, data) {
 
   const provider = providerMapInstanceProviders[containerId] || getActiveMapProvider();
   const route = normalizeRouteCoords(data.run_coords);
+  if (cached.routeCoords && (
+    cached.routeCoords.length !== route.length ||
+    cached.routeCoords.some((coord, index) => coord.lng !== route[index].lng || coord.lat !== route[index].lat)
+  )) {
+    return false;
+  }
   const segments = buildProviderRouteProgressSegmentsByProgress(route, data);
   if (!Array.isArray(segments) || segments.length === 0) {
     return false;
@@ -1319,34 +1383,49 @@ function updateProviderRouteProgressSegmentsInPlace(containerId, data) {
   const signature = segments
     .map((segment) => `${segment.styleId}:${segment.coords.length}`)
     .join("|");
-  const color = "#ef4444";
+  const color = cached.options?.strokeColor || cached.options?.color || "#ef4444";
 
   try {
     if (provider === "amap" || provider === "tianditu" || provider === "baidu") {
-      if (segments.length !== cached.lines.length) {
+      if (!Array.isArray(cached.lines)) {
         return false;
+      }
+      const pathSetter = provider === "tianditu" ? "setLngLats" : "setPath";
+      const colorSetter = provider === "tianditu" ? "setColor" : provider === "baidu" ? "setStrokeColor" : "setOptions";
+      if (cached.lines.some((line) => typeof line?.[pathSetter] !== "function" || typeof line?.[colorSetter] !== "function")) {
+        return false;
+      }
+      while (cached.lines.length < segments.length) {
+        const segment = segments[cached.lines.length];
+        const line = createProviderProgressPolyline(containerId, provider, segment, cached.options || {});
+        if (!line) return false;
+        cached.lines.push(line);
+      }
+      while (cached.lines.length > segments.length) {
+        const line = cached.lines.pop();
+        removeProviderOverlayFromMap(containerId, line);
+        providerMapOverlays[containerId] = getProviderOverlayBucket(containerId).filter((overlay) => overlay !== line);
       }
       segments.forEach((segment, index) => {
         const line = cached.lines[index];
-        if (!line) return;
         const segmentColor = resolveProviderRouteSegmentColor(
           segment.styleId,
           color,
-          {},
+          cached.options || {},
         );
-        if (typeof line.setPath === "function") {
-          line.setPath(
-            segment.coords.map((coord) =>
-              provider === "baidu"
-                ? new BMapGL.Point(coord.lng, coord.lat)
-                : provider === "tianditu"
-                  ? new T.LngLat(coord.lng, coord.lat)
-                  : new AMapInstance.LngLat(coord.lng, coord.lat),
-            ),
-          );
-        }
-        if (typeof line.setOptions === "function") {
-          line.setOptions({ strokeColor: segmentColor, color: segmentColor });
+        const path = segment.coords.map((coord) => {
+          const point = convertGcj02ToProviderCoordinates(provider, coord);
+          return provider === "baidu"
+            ? new BMap.Point(point.lng, point.lat)
+            : provider === "tianditu"
+              ? new T.LngLat(point.lng, point.lat)
+              : new AMapInstance.LngLat(point.lng, point.lat);
+        });
+        line[pathSetter](path);
+        if (provider === "amap") {
+          line.setOptions({ strokeColor: segmentColor });
+        } else {
+          line[colorSetter](segmentColor);
         }
       });
     } else if (provider === "tencent" && window.TMap) {
@@ -1355,7 +1434,7 @@ function updateProviderRouteProgressSegmentsInPlace(containerId, data) {
       }
       cached.lines.setGeometries(
         segments.map((segment, index) => ({
-          id: `route-seg-${index}`,
+          id: `route-${index}`,
           styleId: segment.styleId || "route",
           paths: segment.coords.map((coord) => new TMap.LatLng(coord.lat, coord.lng)),
         })),
@@ -1369,21 +1448,53 @@ function updateProviderRouteProgressSegmentsInPlace(containerId, data) {
   }
 
   cached.signature = signature;
+  syncProviderTaskCheckpointMarkers(containerId, data, route);
   return true;
 }
 
 /** 记录分段折线对象，供 updateProviderRouteProgressSegmentsInPlace 复用。 */
-function rememberProviderRouteSegmentOverlays(containerId, lines, segments) {
-  if (!Array.isArray(lines) || lines.length === 0) {
+function rememberProviderRouteSegmentOverlays(containerId, lines, segments, details = {}) {
+  if (!lines || (Array.isArray(lines) && lines.length === 0)) {
     delete providerRouteSegmentOverlays[containerId];
     return;
   }
   providerRouteSegmentOverlays[containerId] = {
     lines,
+    routeCoords: details.routeCoords,
+    options: details.options,
     signature: (segments || [])
       .map((segment) => `${segment.styleId}:${segment.coords.length}`)
       .join("|"),
   };
+}
+
+function createProviderProgressPolyline(containerId, provider, segment, options = {}) {
+  const instance = getProviderMapInstance(containerId);
+  const coords = segment.coords.map((coord) => convertGcj02ToProviderCoordinates(provider, coord));
+  const color = resolveProviderRouteSegmentColor(segment.styleId, options.strokeColor || options.color || "#ef4444", options);
+  const weight = options.strokeWeight || options.weight || 5;
+  const opacity = options.strokeOpacity ?? 0.85;
+  let line;
+  if (provider === "tianditu" && window.T) {
+    line = new T.Polyline(coords.map((coord) => new T.LngLat(coord.lng, coord.lat)), {
+      color, weight, opacity, lineStyle: options.strokeStyle === "dashed" ? "dashed" : "solid",
+    });
+    instance.addOverLay(line);
+  } else if (provider === "baidu" && window.BMap) {
+    line = new BMap.Polyline(coords.map((coord) => new BMap.Point(coord.lng, coord.lat)), {
+      strokeColor: color, strokeWeight: weight, strokeOpacity: opacity,
+    });
+    instance.addOverlay(line);
+  } else if (provider === "amap" && AMapInstance) {
+    line = new AMapInstance.Polyline({
+      path: coords.map((coord) => new AMapInstance.LngLat(coord.lng, coord.lat)),
+      strokeColor: color, strokeWeight: weight, strokeOpacity: opacity,
+      zIndex: options.zIndex || 50,
+    });
+    instance.add(line);
+  }
+  if (line) getProviderOverlayBucket(containerId).push(line);
+  return line || null;
 }
 
 function forgetProviderRouteSegmentOverlays(containerId) {

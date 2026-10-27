@@ -101,12 +101,17 @@ def build_route_failure_summary(result):
         "provider": sanitize_diagnostic(result.get("provider") or "unknown", 40),
         "message": sanitize_diagnostic(result.get("error") or result.get("message") or "路径规划失败", 1200),
     }
-    for name in ("segment", "error_code"):
+    for name in ("segment", "error_code", "http_status", "api_type", "stage", "error_explanation", "error_hint"):
         value = result.get(name, diagnostic.get(name))
         if value is not None:
-            summary[name] = value if isinstance(value, (int, float)) else sanitize_diagnostic(value, 80)
+            limit = 240 if name in ("error_explanation", "error_hint") else 80
+            summary[name] = value if isinstance(value, (int, float)) else sanitize_diagnostic(value, limit)
     while max(len(json.dumps(summary, ensure_ascii=ascii_only).encode("utf-8")) for ascii_only in (False, True)) > 2048:
-        summary["message"] = _bounded(summary["message"], max(0, len(summary["message"].encode("utf-8")) // 2))
+        field = next((name for name in ("message", "error_hint", "error_explanation", "stage", "api_type", "error_code", "provider")
+                      if isinstance(summary.get(name), str) and summary[name]), None)
+        if field is None:
+            break
+        summary[field] = _bounded(summary[field], len(summary[field].encode("utf-8")) // 2)
     return summary
 
 
@@ -120,6 +125,10 @@ def detailed_route_failure_message(summary):
         fields.append("路段：%s" % sanitize_diagnostic(summary["segment"], 80))
     if summary.get("error_code") not in (None, ""):
         fields.append("错误码：%s" % sanitize_diagnostic(summary["error_code"], 80))
+    if summary.get("error_explanation"):
+        fields.append(sanitize_diagnostic(summary["error_explanation"], 240))
+    if summary.get("error_hint"):
+        fields.append("建议：%s" % sanitize_diagnostic(summary["error_hint"], 240))
     context = "；".join(fields)
     return "[%s] %s%s（诊断编号：%s）" % (
         summary["provider"], (context + "；") if context else "", summary["message"], summary["diagnostic_id"],

@@ -38,8 +38,15 @@ export function wgs84ToGcj02(lng, lat) {
 
 export function gcj02ToWgs84(lng, lat) {
   if (outOfChina(lng, lat)) return { lng, lat }
-  const gcj = wgs84ToGcj02(lng, lat)
-  return { lng: lng * 2 - gcj.lng, lat: lat * 2 - gcj.lat }
+  let result = { lng, lat }
+  for (let i = 0; i < 10; i++) {
+    const gcj = wgs84ToGcj02(result.lng, result.lat)
+    const dLng = gcj.lng - lng
+    const dLat = gcj.lat - lat
+    result = { lng: result.lng - dLng, lat: result.lat - dLat }
+    if (Math.abs(dLng) < 1e-9 && Math.abs(dLat) < 1e-9) break
+  }
+  return result
 }
 
 export function gcj02ToBd09(lng, lat) {

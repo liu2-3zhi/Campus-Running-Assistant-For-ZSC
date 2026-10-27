@@ -67,7 +67,7 @@ def test_superseded_generation_cannot_mutate_run_or_submit_old_task():
     batch = instance.begin_route_planning_batch("session")
     run = SimpleNamespace(run_name="task", details_fetched=True, run_coords=[], target_points=[(1, 2), (3, 4)])
     api = SimpleNamespace(all_run_data=[run], params={}, stop_run_flag=threading.Event(), api_client=Mock(), log_and_notify_frontend=Mock())
-    api._run_submission_thread = Mock(side_effect=lambda *args: args[-1].set())
+    api._run_submission_thread = Mock(side_effect=lambda *args: args[4].set())
     def generate(*_args, **_kwargs):
         instance.begin_route_planning_batch("session")
         instance.tasks["session"] = {"status": "running", "marker": "new"}

@@ -644,10 +644,11 @@ async function loadMapProviderConfig() {
     const mapConfig = {}
     const providers = data?.map_providers || {}
     if (providers.amap?.js_key) mapConfig.amapKey = providers.amap.js_key
-    if (providers.amap?.security_key) mapConfig.amapSecurityKey = providers.amap.security_key
+    if (providers.amap) mapConfig.amapSecurityJsCode = providers.amap.security_js_code || ''
     if (providers.tencent?.map_key) mapConfig.tencentKey = providers.tencent.map_key
     if (providers.tianditu?.token) mapConfig.tiandituKey = providers.tianditu.token
     if (providers.baidu?.ak) mapConfig.baiduKey = providers.baidu.ak
+    mapConfig.frontendProxyEnabled = data?.frontend_proxy_enabled === true
     if (Object.keys(mapConfig).length > 0) mapStore.setConfig(mapConfig)
     if (data?.map_provider) mapStore.setProvider(data.map_provider)
   } catch (error) {
@@ -658,6 +659,7 @@ async function loadMapProviderConfig() {
 // --- Lifecycle ---
 onMounted(async () => {
   viewMounted = true
+  appStore.bindBusinessSession(authStore.sessionUUID)
   appStore.currentView = 'multi'
   appStore.isMultiMode = true
   try {
@@ -697,19 +699,30 @@ onUnmounted(() => {
 })
 
 const multiMapRef = ref(null)
+let accountMarkers = new Map()
+let markerMap = null
 
-watch(() => appStore.multiPositions, (positions) => {
+watch([() => appStore.multiPositions, () => mapStore.isMapReady, () => mapStore.mapInstance], ([positions]) => {
   const mapComp = multiMapRef.value
-  if (!mapComp) return
-  mapComp.clearOverlays()
+  if (!mapComp || !mapStore.isMapReady) return
+  if (markerMap !== mapStore.mapInstance) { accountMarkers = new Map(); markerMap = mapStore.mapInstance }
+  const previousIds = [...accountMarkers.keys()].sort().join('|')
+  for (const [username, marker] of accountMarkers) {
+    if (!positions[username]) { mapComp.removeOverlay(marker); accountMarkers.delete(username) }
+  }
   const coords = []
   for (const [username, pos] of Object.entries(positions)) {
     if (pos.lon != null && pos.lat != null) {
-      mapComp.addMarker([pos.lon, pos.lat], { title: pos.name || username })
+      const opts = { id: username, title: pos.name || username }
+      if (accountMarkers.has(username)) mapComp.updateMarker(accountMarkers.get(username), [pos.lon, pos.lat], opts)
+      else {
+        const marker = mapComp.addMarker([pos.lon, pos.lat], opts)
+        if (marker) accountMarkers.set(username, marker)
+      }
       coords.push([pos.lon, pos.lat])
     }
   }
-  if (coords.length > 0) {
+  if (coords.length > 0 && previousIds !== [...accountMarkers.keys()].sort().join('|')) {
     mapComp.fitView(coords)
   }
 }, { deep: true })
