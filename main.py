@@ -3665,6 +3665,7 @@ API_METHOD_ALLOWLIST = {
     "get_session_mode_info",
     "get_task_details",
     "get_task_history",
+    "get_task_map_snapshot",
     "get_theme_config",
     "get_theme_styles",
     "get_user_sessions",
