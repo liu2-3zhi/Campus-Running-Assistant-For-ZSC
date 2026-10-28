@@ -39,6 +39,9 @@ let licenseTimer = null
 let mapHost = null
 let pendingDestruction = null
 let disposing = false
+let cancelReadiness = null
+const tencentLabelStates = new WeakMap()
+const pendingLabelReleases = new Set()
 const hostPrefix = Math.random().toString(36).slice(2, 10)
 const DEFAULT_CENTER = [113.390342, 22.527403]
 const DEFAULT_ZOOM = 17
@@ -95,6 +98,26 @@ function sdkDeadline(promise) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('地图 SDK 初始化超时')), 20000)
     Promise.resolve(promise).then(resolve, reject).finally(() => clearTimeout(timer))
+  })
+}
+
+function waitForTencentIdle(instance, generation) {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = error => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      instance.off('idle', onIdle)
+      if (cancelReadiness === cancel) cancelReadiness = null
+      if (error) reject(error)
+      else resolve()
+    }
+    const onIdle = () => { if (ownsMap(instance, generation)) finish() }
+    const cancel = () => finish(new Error('地图初始化已取消'))
+    const timer = setTimeout(() => finish(new Error('腾讯地图初始化超时，请重试')), 5000)
+    cancelReadiness = cancel
+    instance.on('idle', onIdle)
   })
 }
 
@@ -233,10 +256,14 @@ async function initTencent() {
     }
     map.on('zoom', zoomHandler)
 
-    zoomLevel.value = Math.round(map.getZoom())
-    mapStore.setMapInstance(map)
+    await waitForTencentIdle(instance, generation)
+    if (!ownsMap(instance, generation)) return
+    zoomLevel.value = Math.round(instance.getZoom())
+    mapStore.setMapInstance(instance)
     mapReady.value = true
   } catch (e) {
+    if (disposed || generation !== initialization) return
+    try { await destroyMap() } catch (_) {}
     if (disposed || generation !== initialization) return
     console.error('[MapContainer] 腾讯地图加载失败:', e)
     placeholderError.value = e.message || '腾讯地图加载失败'
@@ -415,6 +442,7 @@ async function initMap() {
 }
 
 function destroyMap() {
+  cancelReadiness?.()
   if (!map) return pendingDestruction || Promise.resolve()
   disposing = true
   mapReady.value = false
@@ -446,7 +474,7 @@ function destroyMap() {
   displayedTask = null
   let released = false
   let promise
-  promise = new Promise((resolve, reject) => {
+  const releaseNative = () => new Promise((resolve, reject) => {
     let settled = false
     let timer
     const finish = error => {
@@ -470,10 +498,20 @@ function destroyMap() {
       timer = setTimeout(() => finish(new Error('地图释放超时，请重试')), 5000)
     }
     try {
+      if (provider === 'tianditu') instance.clearOverLays?.()
       instance.destroy?.()
       if (!waitForDestroyed) finish()
     } catch (error) { finish(error) }
   })
+  const labels = [...pendingLabelReleases]
+  if (labels.length) {
+    // Report the deadline without cancelling the late SDK cleanup.
+    const releasing = Promise.all(labels).then(releaseNative)
+    promise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('腾讯地图文字图层释放超时，请重试')), 5000)
+      releasing.then(value => { clearTimeout(timer); resolve(value) }, error => { clearTimeout(timer); reject(error) })
+    })
+  } else promise = releaseNative()
   pendingDestruction = promise
   promise.then(() => { if (pendingDestruction === promise) pendingDestruction = null }, () => {})
   return promise
@@ -552,6 +590,7 @@ function addMarker(pos, opts = {}) {
         styles: { name: new TMap.LabelStyle({ color: '#ffffff', backgroundColor: opts.color || '#059669', padding: '4px 8px', borderRadius: 12, offset: { x: 0, y: -35 } }) },
         geometries: [{ id: labelGeometryId, styleId: 'name', position: new TMap.LatLng(pos[1], pos[0]), content: opts.title }],
       })
+      trackTencentLabel(marker.__label)
       markers.push(marker.__label)
     }
   } else if (provider === 'tianditu') {
@@ -762,6 +801,8 @@ function updateMarker(marker, point, opts = {}) {
     const geometryId = opts.id || marker.__geometryId || 'position'
     const geometry = { id: geometryId, position: new window.TMap.LatLng(pos[1], pos[0]) }
     marker.setGeometries?.([geometry])
+    const state = tencentLabelStates.get(marker.__label)
+    if (state) state.pending = true
     marker.__label?.setGeometries?.([{ ...geometry, id: opts.id ? `${opts.id}-name` : marker.__labelGeometryId || `${geometryId}-name`, styleId: 'name', content: opts.title || '' }])
   } else if (provider === 'tianditu') {
     marker.setLngLat?.(new window.T.LngLat(...pos))
@@ -825,7 +866,40 @@ function extractClickLngLat(provider, e) {
 }
 
 // 移除单个 overlay（草稿折线），并从 polylines 跟踪数组中剔除，避免累积。
+function trackTencentLabel(label) {
+  if (typeof label.on !== 'function') return
+  const state = { pending: true, release: null, finish: null }
+  const processed = () => {
+    state.pending = false
+    state.finish?.()
+  }
+  label.on('geometry_processed', processed)
+  state.processed = processed
+  tencentLabelStates.set(label, state)
+}
+
+function releaseTencentLabel(label, state) {
+  if (state.release) return
+  // A pending glyph atlas still belongs to the map, even after a task switch.
+  label.setVisible?.(false)
+  let finish
+  const release = new Promise((resolve, reject) => {
+    finish = () => {
+      label.off('geometry_processed', state.processed)
+      state.finish = null
+      try { label.destroy(); resolve() } catch (error) { reject(error) }
+    }
+    state.finish = finish
+  })
+  state.release = release
+  pendingLabelReleases.add(release)
+  release.then(() => pendingLabelReleases.delete(release), () => {})
+  if (!state.pending) finish()
+}
+
 function releaseTencentOverlay(overlay) {
+  const label = tencentLabelStates.get(overlay)
+  if (label) { releaseTencentLabel(overlay, label); return }
   if (overlay instanceof window.TMap.MultiMarker) { overlay.stopMove?.(); overlay.setMap(null) }
   else if (typeof overlay.destroy === 'function') overlay.destroy()
   else overlay.setMap(null)

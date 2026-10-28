@@ -6,7 +6,7 @@ import { ref, shallowRef, markRaw, computed } from '../frontend/node_modules/vue
 import * as coordinates from '../frontend/src/utils/coordinates.js'
 import * as routeProgress from '../frontend/src/utils/routeProgress.js'
 
-function createRuntime({ proxyInitialize, documentOverride, provider = 'baidu', deferredDestroy = false, timers = {}, browserWindow } = {}) {
+function createRuntime({ proxyInitialize, documentOverride, provider = 'baidu', deferredDestroy = false, deferredTencentIdle = false, timers = {}, browserWindow } = {}) {
   const created = []
   const removed = []
   const listeners = new Map()
@@ -47,6 +47,12 @@ function createRuntime({ proxyInitialize, documentOverride, provider = 'baidu', 
     off(event, callback) { if (this.events.get(event) === callback) this.events.delete(event) }
     fitBounds(bounds, options) { this.fitOptions = options }
     destroy() { lifecycle.push('destroy-map'); this.destroyed = true; if (!deferredDestroy) this.events.get('destroyed')?.() }
+  }
+  class TencentMapInstance extends MapInstance {
+    constructor(...args) {
+      super(...args)
+      if (!deferredTencentIdle) queueMicrotask(() => this.events.get('idle')?.())
+    }
   }
   sdk.Map = MapInstance
   const app = {
@@ -93,7 +99,7 @@ function createRuntime({ proxyInitialize, documentOverride, provider = 'baidu', 
     ref, shallowRef, markRaw, watch() {}, onMounted() {}, onBeforeUnmount(callback) { beforeUnmount.push(callback); unmount.push(callback) }, onUnmounted(callback) { unmount.push(callback) }, nextTick: async () => {},
     useMapStore: () => store, useAppStore: () => app, useAuthStore: () => auth,
     MapPlaceholder: {}, MapControls: {}, window: browserWindow || { BMap: sdk, BMAP_COORD_GCJ02: 2,
-      TMap: { Map: MapInstance, LatLng: class { constructor(lat, lng) { this.lat = lat; this.lng = lng } },
+      TMap: { Map: TencentMapInstance, LatLng: class { constructor(lat, lng) { this.lat = lat; this.lng = lng } },
         LatLngBounds: class { extend() {} }, MultiMarker: TencentMarker, MultiPolyline: TencentLine, PolylineStyle: class {} },
       ...(proxyInitialize ? { ZXMapRequestProxy: { initialize: proxyInitialize } } : {}),
     },
@@ -104,7 +110,7 @@ function createRuntime({ proxyInitialize, documentOverride, provider = 'baidu', 
   }
   const setup = new Function(...Object.keys(dependencies), `${script.replace(/^import .*$/gm, '')}\nreturn component.setup`)(...Object.values(dependencies))
   const panel = setup({ containerId: 'map', isMultiAccount: false }, { expose() {} })
-  return { panel, app, store, sdk, created, removed, listeners, unmount, beforeUnmount, mapInstances, lifecycle, window: dependencies.window }
+  return { panel, app, store, sdk, created, removed, listeners, unmount, beforeUnmount, mapInstances, lifecycle, elements, window: dependencies.window }
 }
 
 test('map cleanup begins before the native host is removed and late events cannot read another instance', async () => {
@@ -121,7 +127,6 @@ test('map cleanup begins before the native host is removed and late events canno
 
 test('Tencent recreation waits for destroyed and uses a distinct native host', async () => {
   const runtime = createRuntime({ provider: 'tencent', deferredDestroy: true })
-  runtime.window.TMap.Map = runtime.sdk.Map
   await runtime.panel.initTencent()
   const oldMap = runtime.store.map
   const next = runtime.panel.initMap()
@@ -137,6 +142,60 @@ test('Tencent recreation waits for destroyed and uses a distinct native host', a
   currentMap.events.get('destroyed')?.()
 })
 
+test('Tencent map is not ready until the SDK emits its public idle event', async () => {
+  const runtime = createRuntime({ provider: 'tencent', deferredTencentIdle: true })
+  const initializing = runtime.panel.initTencent()
+  for (let i = 0; i < 5; i++) await Promise.resolve()
+  const map = runtime.mapInstances[0]
+  assert.ok(map)
+  assert.equal(runtime.store.map, null)
+  assert.equal(runtime.panel.mapReady.value, false)
+  for (let i = 0; i < 10; i++) {
+    runtime.app.runData.point_index = i % 5
+    runtime.panel.renderTask()
+  }
+  assert.equal(runtime.created.length, 0, 'progress must not create native layers before idle')
+  map.events.get('idle')?.()
+  await initializing
+  assert.equal(runtime.store.map, map)
+  assert.equal(runtime.panel.mapReady.value, true)
+  runtime.panel.renderTask()
+  assert.ok(runtime.created.length > 0)
+  assert.equal(map.events.has('idle'), false)
+  await runtime.panel.destroyMap()
+})
+
+test('Tencent idle timeout releases the instance and exposes a retryable error', async () => {
+  let expire
+  const runtime = createRuntime({ provider: 'tencent', deferredTencentIdle: true,
+    timers: { setTimeout(callback, delay) { if (delay === 5000) expire = callback; return 1 }, clearTimeout() {} },
+  })
+  const initializing = runtime.panel.initTencent()
+  for (let i = 0; i < 5; i++) await Promise.resolve()
+  const instance = runtime.mapInstances[0]
+  expire()
+  await initializing
+  assert.equal(runtime.store.map, null)
+  assert.equal(runtime.panel.mapReady.value, false)
+  assert.match(runtime.panel.placeholderError.value, /初始化超时/)
+  assert.equal(instance.destroyed, true)
+  assert.equal(instance.events.has('idle'), false)
+})
+
+test('Tencent unmount cancels pending idle and a late callback cannot mark it ready', async () => {
+  const runtime = createRuntime({ provider: 'tencent', deferredTencentIdle: true })
+  const initializing = runtime.panel.initTencent()
+  for (let i = 0; i < 5; i++) await Promise.resolve()
+  const instance = runtime.mapInstances[0]
+  const lateIdle = instance.events.get('idle')
+  runtime.beforeUnmount[0]()
+  await initializing
+  lateIdle?.()
+  assert.equal(runtime.store.map, null)
+  assert.equal(runtime.panel.mapReady.value, false)
+  assert.equal(instance.events.has('idle'), false)
+})
+
 test('Tencent owned lines are destroyed, markers are stopped and detached, and automatic fit has no animation', async () => {
   const runtime = createRuntime({ provider: 'tencent' })
   await runtime.panel.initTencent()
@@ -148,6 +207,30 @@ test('Tencent owned lines are destroyed, markers are stopped and detached, and a
   assert.ok(runtime.lifecycle.includes('destroy-line'))
   assert.ok(runtime.lifecycle.includes('stop-marker'))
   assert.ok(runtime.lifecycle.indexOf('destroy-line') < runtime.lifecycle.indexOf('destroy-map'))
+})
+
+test('Tencent teardown waits for pending label geometry before destroying the native map', async () => {
+  const runtime = createRuntime({ provider: 'tencent' })
+  const labels = []
+  runtime.window.TMap.LabelStyle = class {}
+  runtime.window.TMap.MultiLabel = class {
+    constructor() { this.events = new Map(); labels.push(this) }
+    on(name, callback) { this.events.set(name, callback) }
+    off(name) { this.events.delete(name) }
+    setVisible() {}
+    destroy() { this.destroyed = true }
+  }
+  await runtime.panel.initTencent()
+  const native = runtime.store.map
+  runtime.panel.addMarker([113.39, 22.52], { id: 'runner', title: '当前位置' })
+  const releasing = runtime.panel.destroyMap()
+  assert.notEqual(native.destroyed, true, 'glyph processing still uses the map atlas')
+  assert.notEqual(labels[0].destroyed, true)
+  labels[0].events.get('geometry_processed')?.()
+  await releasing
+  assert.equal(labels[0].destroyed, true)
+  assert.equal(native.destroyed, true)
+  assert.equal(labels[0].events.size, 0)
 })
 
 test('Tencent destruction timeout blocks recreation and retains the old host until destroyed', async () => {
@@ -172,6 +255,37 @@ test('Tencent destruction timeout blocks recreation and retains the old host unt
   const current = runtime.store.map
   runtime.beforeUnmount[0]()
   current.events.get('destroyed')?.()
+})
+
+test('Tencent label timeout still completes native cleanup after late geometry and permits retry', async () => {
+  let expire
+  const runtime = createRuntime({ provider: 'tencent',
+    timers: { setTimeout(callback) { expire = callback; return 1 }, clearTimeout() {} },
+  })
+  let label
+  runtime.window.TMap.LabelStyle = class {}
+  runtime.window.TMap.MultiLabel = class {
+    constructor() { this.events = new Map(); label = this }
+    on(name, callback) { this.events.set(name, callback) }
+    off(name) { this.events.delete(name) }
+    setVisible() {}
+    destroy() { this.destroyed = true }
+  }
+  await runtime.panel.initTencent()
+  const native = runtime.store.map
+  runtime.panel.addMarker([113.39, 22.52], { title: '当前位置' })
+  const next = runtime.panel.initMap()
+  expire()
+  await next
+  assert.match(runtime.panel.placeholderError.value, /释放超时/)
+  assert.notEqual(native.destroyed, true)
+  label.events.get('geometry_processed')?.()
+  for (let i = 0; i < 12; i++) await Promise.resolve()
+  assert.equal(label.destroyed, true)
+  assert.equal(native.destroyed, true, 'a reported timeout must not cancel eventual native cleanup')
+  await runtime.panel.initMap()
+  assert.equal(runtime.mapInstances.length, 2)
+  await runtime.panel.destroyMap()
 })
 
 test('late drawing events from a disposed map cannot add points to a new task', async () => {
@@ -252,6 +366,65 @@ test('Tianditu checkpoint titles do not require a nonexistent Marker.setTitle me
   store.map.addOverLay = store.map.addOverlay
   assert.doesNotThrow(() => panel.addMarker([113.39, 22.52], { title: '检查点' }))
   assert.equal(marker.options.title, '检查点')
+})
+
+test('Tianditu cleanup uses clearOverLays when the SDK has no destroy or remove method', async () => {
+  const runtime = createRuntime({ provider: 'tianditu' })
+  await runtime.panel.initBaidu()
+  const native = runtime.store.map
+  let cleared = false
+  native.destroy = undefined
+  native.clearOverLays = () => { cleared = true }
+  const zoom = runtime.listeners.get('zoomend')
+  await runtime.panel.destroyMap()
+  assert.equal(cleared, true)
+  assert.equal(runtime.elements.get(native.host).parentNode, null)
+  assert.equal(runtime.listeners.size, 0)
+  assert.doesNotThrow(() => zoom())
+})
+
+test('Tianditu deterministic resources survive three progress, task-switch and immediate rebuild cycles', async () => {
+  const runtime = createRuntime({ provider: 'tianditu' })
+  runtime.store.mapConfig.tiandituKey = 'test-token'
+  runtime.elements.set('tianditu-map-sdk', { src: 'https://api.tianditu.gov.cn/api?v=4.0&tk=test-token', dataset: { loaded: 'true' } })
+  runtime.window.T = {
+    Map: class extends runtime.sdk.Map {
+      constructor(...args) { super(...args); this.destroy = undefined }
+      addOverLay(value) { this.addOverlay(value) }
+      removeOverLay(value) { this.removeOverlay(value) }
+      clearOverLays() { this.cleared = true; this.clearOverlays() }
+    },
+    LngLat: runtime.sdk.Point,
+    Marker: class extends runtime.sdk.Marker { setLngLat(value) { this.point = value } },
+    Polyline: class extends runtime.sdk.Polyline {
+      setLngLats(value) { this.path = value }
+      setColor(value) { this.options.color = value }
+    },
+  }
+  const oldHosts = new Set()
+  for (let cycle = 0; cycle < 3; cycle++) {
+    await runtime.panel.initMap()
+    const native = runtime.store.map
+    assert.ok(native && !oldHosts.has(native.host))
+    oldHosts.add(native.host)
+    runtime.app.isRunning = true
+    runtime.panel.renderTask()
+    for (let index = 0; index < 10; index++) {
+      runtime.app.runData.current_point_index = index % 5
+      runtime.app.runData.current_location = { lng: 113.39 + index % 5 * .001, lat: 22.52 }
+      runtime.panel.renderTask()
+    }
+    assert.ok(native.overlays.length > 0)
+    runtime.app.runData.task_index++
+    runtime.panel.renderTask()
+    const lateZoom = runtime.listeners.get('zoomend')
+    await runtime.panel.destroyMap()
+    assert.equal(native.cleared, true)
+    assert.equal(native.overlays.length, 0)
+    assert.equal(runtime.elements.get(native.host).parentNode, null)
+    assert.equal(runtime.listeners.size, 0)
+    assert.doesNotThrow(() => lateZoom())
+  }
 })
 
 test('Baidu v4 keeps default BD09 and converts business coordinates once at SDK boundary', async () => {
