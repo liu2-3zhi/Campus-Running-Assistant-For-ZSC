@@ -46,6 +46,40 @@ def test_auth_message_without_explicit_vendor_code_remains_unknown(message):
     assert "error_explanation" not in result
 
 
+@pytest.mark.parametrize("scheme", ["http", "https"])
+def test_real_missing_app_dialog_uses_official_console_url_without_guessing_a_code(scheme):
+    message = ("APP不存在，AK有误请检查再重试，详情查看："
+               + scheme + "://lbsyun.baidu.com/apiconsole/key?<redacted>")
+    result = extract(message)
+    assert result is not None
+    assert result["message"] == message
+    assert result["api_type"] == "baidu_jsapi_auth"
+    assert result["stage"] == "sdk_auth"
+    assert result["source"] == "dialog"
+    assert "error_code" not in result
+    assert "error_explanation" not in result
+
+
+@pytest.mark.parametrize("url", [
+    "http://lbsyun.baidu.com.evil.invalid/apiconsole/key",
+    "http://evil.invalid/lbsyun.baidu.com/apiconsole/key",
+    "http://lbsyun.baidu.com@evil.invalid/apiconsole/key",
+    "http://lbsyun.baidu.com/apiconsole/key-other",
+    "http://lbsyun.baidu.com:1234/apiconsole/key",
+])
+def test_missing_app_dialog_rejects_untrusted_console_urls(url):
+    assert extract("APP不存在，AK有误请检查再重试，详情查看：" + url) is None
+
+
+@pytest.mark.parametrize("message,provider,kind", [
+    ("详情查看：http://lbsyun.baidu.com/apiconsole/key", "baidu", "dialog"),
+    ("APP不存在，AK有误：http://lbsyun.baidu.com/apiconsole/key", "tencent", "dialog"),
+    ("APP不存在，AK有误：http://lbsyun.baidu.com/apiconsole/key", "baidu", "console"),
+])
+def test_console_url_only_recognizes_explicit_baidu_authentication_dialogs(message, provider, kind):
+    assert extract(message, provider, kind) is None
+
+
 def test_unknown_explicit_code_is_retained_without_a_guessed_explanation():
     result = extract("百度地图 API 认证失败，错误码：999999")
     assert result["error_code"] == 999999

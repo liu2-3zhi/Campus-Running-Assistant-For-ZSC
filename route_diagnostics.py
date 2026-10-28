@@ -18,7 +18,7 @@ _TEXT_SECRET = re.compile(
     r"signature|sign|cookie|authorization)[\"']?\s*[:=]\s*)"
     r"(?:\"[^\"]*\"|'[^']*'|[^\s,;&}\]]+)"
 )
-_URL = re.compile(r"https?://[^\s\"'<>]+", re.I)
+_URL = re.compile(r"https?://(?:<redacted>|[^\s\"'<>])+", re.I)
 
 
 def new_diagnostic_id():

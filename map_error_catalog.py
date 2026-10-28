@@ -6,6 +6,7 @@ observed Drive responses, not a claim of a complete public gateway contract.
 """
 
 import re
+from urllib.parse import urlsplit
 
 from route_diagnostics import sanitize_diagnostic
 
@@ -219,15 +220,32 @@ def normalize_map_error(provider, api_type, value, *, callback_status=None, http
     return result
 
 
+def _is_baidu_console_auth_dialog(message):
+    if not re.search(r'APP\s*不存在|AK\s*有误', message, re.I):
+        return False
+    for url in re.findall(r'https?://[^\s"\'<>]+', message, re.I):
+        try:
+            parsed = urlsplit(url)
+            default_port = 80 if parsed.scheme.lower() == 'http' else 443
+            if (parsed.hostname == 'lbsyun.baidu.com' and parsed.path == '/apiconsole/key'
+                    and parsed.username is None and parsed.password is None
+                    and parsed.port in (None, default_port)):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def extract_baidu_sdk_auth_error(event, *, provider, sensitive_values=()):
     """Recognize explicit SDK authentication dialogs, never incidental numbers."""
     if provider != 'baidu' or not isinstance(event, dict) or event.get('kind') != 'dialog':
         return None
     message = sanitize_diagnostic(event.get('detail', ''), 1024, sensitive_values)
-    if not re.search(r'百度(?:地图|LBS)|百度未授权使用地图\s*api|baidu\s*maps?\s*api', message, re.I):
+    console_auth = _is_baidu_console_auth_dialog(message)
+    if not console_auth and not re.search(r'百度(?:地图|LBS)|百度未授权使用地图\s*api|baidu\s*maps?\s*api', message, re.I):
         return None
-    if not re.search(r'认证|鉴权|未授权|authentication|authorization|'
-                     r'(?:AK|key|referer|域名|密钥).{0,20}(?:校验|无效|失败|invalid|denied)', message, re.I):
+    if not console_auth and not re.search(r'认证|鉴权|未授权|authentication|authorization|'
+                                         r'(?:AK|key|referer|域名|密钥).{0,20}(?:校验|无效|失败|invalid|denied)', message, re.I):
         return None
     # HTTP status, coordinates and elapsed times are not vendor authentication codes.
     match = re.search(r'(?<![A-Za-z0-9_])(?:错误码|error[\s_-]*code)\s*[：:=]\s*["\']?(\d{1,9})(?![\w.])', message, re.I)

@@ -36,6 +36,21 @@ class TestRouteDiagnosticSanitizer(unittest.TestCase):
         self.assertNotIn("bare-secret", text)
         self.assertNotIn("bare%2Fsecret", text)
 
+    def test_url_redaction_is_idempotent_in_repeated_diagnostic_layers(self):
+        messages = (
+            "APP不存在，AK有误：http://lbsyun.baidu.com/apiconsole/key?<redacted>",
+            "SDK https://alice:private-user@example.test/map?key=private-key&path=1,2#private-fragment",
+            "SDK https://example.test/session/private-session?token=private-token",
+            "SDK https://example.test/uuid=private-session?sign=private-signature",
+        )
+        for message in messages:
+            with self.subTest(message=message):
+                first = sanitize_diagnostic(message)
+                self.assertEqual(first, sanitize_diagnostic(first))
+                self.assertEqual(first, sanitize_diagnostic(sanitize_diagnostic(first)))
+                self.assertNotIn("private-", first)
+                self.assertNotIn("<redacted><redacted>", first)
+
     def test_bounds_utf8_after_redacting_and_handles_cycles(self):
         payload = {"message": "错误" * 20000}
         payload["cycle"] = payload
