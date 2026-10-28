@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
 import vm from 'node:vm'
 import test from 'node:test'
 
 const source = await readFile(new URL('../scripts/map-request-proxy.js', import.meta.url), 'utf8')
+const settle = () => new Promise(resolve => setImmediate(resolve))
 
 function createHarness() {
   class FakeXHR {
@@ -411,6 +413,168 @@ test('proxy bootstrap failure never falls back to direct vendor URLs', async () 
   assert.equal(api.getConfig().enabled, true)
   await window.fetch('https://webapi.amap.com/maps')
   assert.equal(calls.at(-1), '/map-proxy/amap/https/webapi.amap.com/maps')
+})
+
+for (const withAbortController of [true, false]) {
+  test(`context authentication times out a fetch ignoring cancellation (${withAbortController})`, async () => {
+    const { window, api, timers } = createHarness()
+    const calls = []
+    if (withAbortController) window.AbortController = AbortController
+    window.fetch = (url, options) => {
+      calls.push([url, options])
+      return url === '/api/map-proxy/context' ? new Promise(() => {}) : Promise.resolve('asset')
+    }
+    const pending = api.initialize({ enabled: true, provider: 'tencent', sessionId: 'target' })
+    const rejected = assert.rejects(pending, /认证.*超时.*重试/)
+    const deadline = [...timers.entries()].find(([, timer]) => timer.delay === 30000)
+    assert.ok(deadline, 'the whole context request needs a bounded deadline')
+    timers.delete(deadline[0])
+    deadline[1].callback()
+    await rejected
+    if (withAbortController) assert.equal(calls[0][1].signal.aborted, true)
+    assert.equal(api.getConfig().enabled, true)
+    await window.fetch('https://apis.map.qq.com/ws/test')
+    assert.equal(calls.at(-1)[0], '/map-proxy/tencent/https/apis.map.qq.com/ws/test')
+    assert.equal(timers.size, 1, 'authentication timeout schedules one bounded retry')
+    api.install({ enabled: false, provider: 'tencent' })
+    assert.equal(timers.size, 0)
+  })
+}
+
+test('context deadline remains active while a successful HTTP response body hangs', async () => {
+  const { window, api, timers } = createHarness()
+  let signal
+  let bodyStarted = false
+  window.AbortController = AbortController
+  window.fetch = async (_url, options) => {
+    signal = options.signal
+    return { ok: true, json: () => { bodyStarted = true; return new Promise(() => {}) } }
+  }
+  const pending = api.initialize({ enabled: true, provider: 'baidu', sessionId: 'target' })
+  const rejected = assert.rejects(pending, /认证.*超时.*重试/)
+  await settle()
+  assert.equal(bodyStarted, true)
+  const deadline = [...timers.entries()].find(([, timer]) => timer.delay === 30000)
+  assert.ok(deadline)
+  timers.delete(deadline[0])
+  deadline[1].callback()
+  await rejected
+  assert.equal(signal.aborted, true)
+  api.install({ enabled: false, provider: 'baidu' })
+  assert.equal(timers.size, 0)
+})
+
+test('disabling the proxy cancels an uncooperative context body and settles its initialization as stale', async () => {
+  const { window, api, timers } = createHarness()
+  let signal
+  let finishBody
+  window.AbortController = AbortController
+  window.fetch = async (_url, options) => {
+    signal = options.signal
+    return { ok: true, json: () => new Promise(resolve => { finishBody = resolve }) }
+  }
+  const pending = api.initialize({ enabled: true, provider: 'amap', sessionId: 'departed' })
+  await settle()
+  api.install({ enabled: false, provider: 'amap' })
+  assert.equal(signal.aborted, true, 'controller ownership must include body consumption')
+  assert.equal((await pending).stale, true)
+  assert.equal(timers.size, 0)
+  finishBody({ success: true, expires_in: 1 })
+  await settle()
+  assert.equal(timers.size, 0)
+})
+
+test('a cancelled old context body cannot clear the replacement controller or add refresh work', async () => {
+  const { window, api, timers } = createHarness()
+  const bodies = []
+  const signals = []
+  window.AbortController = AbortController
+  window.fetch = async (_url, options) => {
+    signals.push(options.signal)
+    return { ok: true, json: () => new Promise(resolve => { bodies.push(resolve) }) }
+  }
+  const old = api.initialize({ enabled: true, provider: 'amap', sessionId: 'old' })
+  await settle()
+  const replacement = api.initialize({ enabled: true, provider: 'tencent', sessionId: 'new' })
+  await settle()
+  assert.equal(signals[0].aborted, true)
+  assert.equal((await old).stale, true)
+  assert.equal(signals[1].aborted, false)
+  assert.equal(timers.size, 1)
+  api.install({ enabled: false, provider: 'tencent' })
+  assert.equal(signals[1].aborted, true)
+  assert.equal((await replacement).stale, true)
+  for (const finish of bodies) finish({ success: true, expires_in: 1 })
+  await settle()
+  assert.equal(timers.size, 0)
+})
+
+test('context renewal body timeout retains proxy hooks and schedules a retry without stale response work', async () => {
+  const { window, api, timers } = createHarness()
+  const calls = []
+  let finishBody
+  window.AbortController = AbortController
+  window.fetch = async (url, options) => {
+    calls.push([url, options])
+    if (url !== '/api/map-proxy/context') return 'asset'
+    return { ok: true, json: calls.length === 1
+      ? async () => ({ success: true, expires_in: 1 })
+      : () => new Promise(resolve => { finishBody = resolve }) }
+  }
+  await api.initialize({ enabled: true, provider: 'tianditu', sessionId: 'target' })
+  const [refreshId, refresh] = [...timers][0]
+  timers.delete(refreshId)
+  const refreshing = refresh.callback()
+  await settle()
+  const [deadlineId, deadline] = [...timers][0]
+  assert.equal(deadline.delay, 30000)
+  timers.delete(deadlineId)
+  deadline.callback()
+  await refreshing
+  assert.equal(calls[1][1].signal.aborted, true)
+  assert.equal(api.getConfig().enabled, true)
+  const retry = [...timers.entries()]
+  assert.equal(retry.length, 1)
+  assert.equal(retry[0][1].delay, 30000)
+  finishBody({ success: true, expires_in: 1 })
+  await settle()
+  assert.deepEqual([...timers.entries()], retry)
+  await window.fetch('https://api.tianditu.gov.cn/api')
+  assert.equal(calls.at(-1)[0], '/map-proxy/tianditu/https/api.tianditu.gov.cn/api')
+  api.install({ enabled: false, provider: 'tianditu' })
+  assert.equal(timers.size, 0)
+})
+
+test('proxy uninstall aborts a real context response while its JSON body is still streaming', async () => {
+  const { window, api, timers } = createHarness()
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' })
+    response.write('{"success":')
+  })
+  let headersReceived
+  const ready = new Promise(resolve => { headersReceived = resolve })
+  let signal
+  window.AbortController = AbortController
+  window.fetch = async (...args) => {
+    signal = args[1].signal
+    const response = await fetch(...args)
+    headersReceived()
+    return response
+  }
+  try {
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+    const pending = api.initialize({ enabled: true, provider: 'amap', sessionId: 'target', contextUrl: `http://127.0.0.1:${server.address().port}/context` })
+    await ready
+    await settle()
+    api.install({ enabled: false, provider: 'amap' })
+    assert.equal(signal.aborted, true)
+    assert.equal((await pending).stale, true)
+    assert.equal(timers.size, 0)
+  } finally {
+    server.closeAllConnections()
+    await new Promise(resolve => server.close(resolve))
+    assert.equal(server.listening, false)
+  }
 })
 
 test('proxy context renews before expiry and a renewal failure retains URL hooks', async () => {

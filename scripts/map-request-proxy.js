@@ -6,13 +6,14 @@
   "use strict";
 
   const DEFAULT_BASE_PATH = "/map-proxy";
+  const CONTEXT_TIMEOUT_MS = 30000;
   const HOST_RULES = Object.freeze({
     amap: [/^webapi\.amap\.com$/, /^restapi\.amap\.com$/, /^vdata\.amap\.com$/, /^a\.amap\.com$/, /^jsapi\.amap\.com$/, /^o4\.amap\.com$/, /^jsapi-data[1-5]\.amap\.com$/, /^(?:webrd|wprd|webst)0[1-4]\.is\.autonavi\.com$/],
     tencent: [/^map\.qq\.com$/, /^mapapi\.qq\.com$/, /^apis\.map\.qq\.com$/, /^pr\.map\.qq\.com$/, /^apikey\.map\.qq\.com$/, /^overseactrl\.map\.qq\.com$/, /^confinfo\.map\.qq\.com$/, /^vectorsdk\.map\.qq\.com$/, /^mapstyle\.qpic\.cn$/, /^(?:rt|p)[0-3]\.map\.gtimg\.com$/],
     baidu: [/^api\.map\.baidu\.com$/, /^(?:api|online|shangetu)[0-3]\.map\.bdimg\.com$/, /^apimaponline[0-3]\.bdimg\.com$/, /^maponline[0-3]\.bdimg\.com$/, /^d[0-3]\.map\.baidu\.com$/, /^(?:dlswbr|miao)\.baidu\.com$/, /^webmap0\.bdimg\.com$/],
     tianditu: [/^api\.tianditu\.gov\.cn$/, /^api\.tianditu\.com$/, /^t[0-7]\.tianditu\.gov\.cn$/, /^t[0-7]\.tianditu\.com$/],
   });
-  const state = { config: { enabled: false, provider: "amap", basePath: DEFAULT_BASE_PATH }, installed: false, restorers: [], contextGeneration: 0, refreshTimer: null, contextController: null, initializedMode: null, reloadRequired: false };
+  const state = { config: { enabled: false, provider: "amap", basePath: DEFAULT_BASE_PATH }, installed: false, restorers: [], contextGeneration: 0, refreshTimer: null, contextRequest: null, initializedMode: null, reloadRequired: false };
 
   function normalizeConfig(input) {
     const config = input || {};
@@ -221,11 +222,16 @@
     state.contextGeneration += 1;
     if (state.refreshTimer !== null) globalScope.clearTimeout?.(state.refreshTimer);
     state.refreshTimer = null;
-    state.contextController?.abort();
-    state.contextController = null;
+    cancelContextRequest();
     state.config = normalizeConfig(input);
     if (!state.config.enabled) restoreHooks(); else installHooks();
     return { ...state.config };
+  }
+
+  function cancelContextRequest() {
+    const pending = state.contextRequest;
+    state.contextRequest = null;
+    pending?.cancel(new Error('地图代理上下文认证已取消，请重试'));
   }
 
   function scheduleContextRefresh(input, generation, delay) {
@@ -247,28 +253,49 @@
     if (input.sessionId) headers['X-Session-ID'] = String(input.sessionId);
     if (input.originSessionId) headers['X-Admin-Origin-Session-ID'] = String(input.originSessionId);
     const controller = typeof globalScope.AbortController === 'function' ? new globalScope.AbortController() : null;
-    state.contextController = controller;
-    let response;
+    cancelContextRequest();
+    let rejectInterrupted;
+    const interrupted = new Promise((_, reject) => { rejectInterrupted = reject; });
+    const pending = {
+      deadline: null, failure: null,
+      cancel(error) {
+        if (pending.failure) return;
+        pending.failure = error;
+        if (pending.deadline !== null) globalScope.clearTimeout?.(pending.deadline);
+        rejectInterrupted(error);
+        controller?.abort();
+      },
+    };
+    state.contextRequest = pending;
+    const isCurrent = () => generation === state.contextGeneration && state.contextRequest === pending;
     try {
-      response = await globalScope.fetch(input.contextUrl || '/api/map-proxy/context', {
-        method: 'POST', credentials: 'include', cache: 'no-store', headers,
-        body: JSON.stringify({}), ...(controller ? { signal: controller.signal } : {}),
-      });
+      pending.deadline = globalScope.setTimeout(() => {
+        pending.cancel(new Error('地图代理上下文认证超时，请重试'));
+      }, CONTEXT_TIMEOUT_MS);
+      const payload = await Promise.race([
+        (async () => {
+          const response = await globalScope.fetch(input.contextUrl || '/api/map-proxy/context', {
+            method: 'POST', credentials: 'include', cache: 'no-store', headers,
+            body: JSON.stringify({}), ...(controller ? { signal: controller.signal } : {}),
+          });
+          if (!isCurrent()) return { stale: true };
+          if (!response || !response.ok) throw new Error(`地图代理上下文认证失败（HTTP ${response?.status || 0}）`);
+          try { return await response.json(); } catch (_) { return {}; }
+        })(),
+        interrupted,
+      ]);
+      if (!isCurrent()) return { stale: true };
+      if (payload?.success !== true) throw new Error('地图代理上下文认证失败');
+      const expiresIn = Math.max(1, Number(payload.expires_in) || 1800);
+      scheduleContextRefresh(input, generation, Math.max(500, Math.min(expiresIn * 800, 1440000)));
+      return payload;
     } catch (error) {
-      if (generation !== state.contextGeneration) return { stale: true };
-      throw error;
+      if (!isCurrent()) return { stale: true };
+      throw pending.failure || error;
     } finally {
-      if (state.contextController === controller) state.contextController = null;
+      if (pending.deadline !== null) globalScope.clearTimeout?.(pending.deadline);
+      if (state.contextRequest === pending) state.contextRequest = null;
     }
-    if (generation !== state.contextGeneration) return { stale: true };
-    if (!response || !response.ok) throw new Error(`地图代理上下文认证失败（HTTP ${response?.status || 0}）`);
-    let payload = {};
-    try { payload = await response.json(); } catch (_) {}
-    if (generation !== state.contextGeneration) return { stale: true };
-    if (payload.success !== true) throw new Error('地图代理上下文认证失败');
-    const expiresIn = Math.max(1, Number(payload.expires_in) || 1800);
-    scheduleContextRefresh(input, generation, Math.max(500, Math.min(expiresIn * 800, 1440000)));
-    return payload;
   }
 
   async function initialize(input = {}) {
