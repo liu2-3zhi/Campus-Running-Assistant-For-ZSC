@@ -193,6 +193,25 @@ test('Tencent removing one task line releases the native layer', async () => {
   await runtime.panel.destroyMap()
 })
 
+test('Tencent marker updates without a caller id reuse the geometry IDs assigned at creation', async () => {
+  const runtime = createRuntime({ provider: 'tencent' })
+  await runtime.panel.initTencent()
+  runtime.window.TMap.LabelStyle = class {}
+  runtime.window.TMap.MultiLabel = class {
+    constructor(options) { this.options = options; this.geometries = options.geometries }
+    setGeometries(value) { this.geometries = value }
+    setStyles() {}
+    destroy() {}
+  }
+  const marker = runtime.panel.addMarker([113.39, 22.52], { title: '当前位置' })
+  const markerId = marker.options.geometries[0].id
+  const labelId = marker.__label.options.geometries[0].id
+  runtime.panel.updateMarker(marker, [113.391, 22.52], { title: '当前位置' })
+  assert.equal(marker.options.geometries[0].id, markerId)
+  assert.equal(marker.__label.geometries[0].id, labelId)
+  assert.equal(labelId, `${markerId}-name`)
+})
+
 test('native map instances remain raw in the shared store', () => {
   const source = readFileSync(new URL('../frontend/src/stores/map.js', import.meta.url), 'utf8')
   const useStore = new Function('defineStore', 'ref', 'shallowRef', 'markRaw', 'computed',

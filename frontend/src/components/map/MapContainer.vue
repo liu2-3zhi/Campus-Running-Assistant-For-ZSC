@@ -535,18 +535,22 @@ function addMarker(pos, opts = {}) {
   } else if (provider === 'tencent') {
     const TMap = window.TMap
     if (!TMap) return null
+    const geometryId = opts.id || `marker_${Date.now()}`
+    const labelGeometryId = `${geometryId}-name`
     marker = new TMap.MultiMarker({
       map,
       geometries: [{
         position: new TMap.LatLng(pos[1], pos[0]),
-        id: opts.id || `marker_${Date.now()}`,
+        id: geometryId,
       }],
     })
+    marker.__geometryId = geometryId
+    marker.__labelGeometryId = labelGeometryId
     if (opts.title && TMap.MultiLabel && TMap.LabelStyle) {
       marker.__label = new TMap.MultiLabel({
         map,
         styles: { name: new TMap.LabelStyle({ color: '#ffffff', backgroundColor: opts.color || '#059669', padding: '4px 8px', borderRadius: 12, offset: { x: 0, y: -35 } }) },
-        geometries: [{ id: `${opts.id || 'marker'}-name`, styleId: 'name', position: new TMap.LatLng(pos[1], pos[0]), content: opts.title }],
+        geometries: [{ id: labelGeometryId, styleId: 'name', position: new TMap.LatLng(pos[1], pos[0]), content: opts.title }],
       })
       markers.push(marker.__label)
     }
@@ -755,9 +759,10 @@ function updateMarker(marker, point, opts = {}) {
   const provider = mapStore.activeProvider
   if (provider === 'amap') marker.setPosition?.(new window.AMap.LngLat(...pos))
   else if (provider === 'tencent') {
-    const geometry = { id: opts.id || 'position', position: new window.TMap.LatLng(pos[1], pos[0]) }
+    const geometryId = opts.id || marker.__geometryId || 'position'
+    const geometry = { id: geometryId, position: new window.TMap.LatLng(pos[1], pos[0]) }
     marker.setGeometries?.([geometry])
-    marker.__label?.setGeometries?.([{ ...geometry, id: `${opts.id || 'position'}-name`, styleId: 'name', content: opts.title || '' }])
+    marker.__label?.setGeometries?.([{ ...geometry, id: opts.id ? `${opts.id}-name` : marker.__labelGeometryId || `${geometryId}-name`, styleId: 'name', content: opts.title || '' }])
   } else if (provider === 'tianditu') {
     marker.setLngLat?.(new window.T.LngLat(...pos))
     marker.__label?.setLngLat?.(new window.T.LngLat(...pos))
