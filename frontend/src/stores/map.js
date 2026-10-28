@@ -1,10 +1,10 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, shallowRef, markRaw, computed } from 'vue'
 
 export const useMapStore = defineStore('map', () => {
   const activeProvider = ref('amap') // amap | tencent | tianditu | baidu
-  const mapInstance = ref(null)
-  const providerInstances = ref({})
+  const mapInstance = shallowRef(null)
+  const providerInstances = shallowRef({})
   const isMapReady = ref(false)
   const mapConfig = ref({
     amapKey: '',
@@ -74,7 +74,7 @@ export const useMapStore = defineStore('map', () => {
   }
 
   function setMapInstance(instance) {
-    mapInstance.value = instance
+    mapInstance.value = instance ? markRaw(instance) : null
     isMapReady.value = !!instance
   }
 

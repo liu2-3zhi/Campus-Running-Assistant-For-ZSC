@@ -4,6 +4,7 @@ defineProps({
   hasKey: { type: Boolean, default: false },
   errorReason: { type: String, default: '' },
 })
+defineEmits(['retry'])
 </script>
 
 <template>
@@ -15,7 +16,8 @@ defineProps({
       v-if="errorReason"
       class="max-w-xs rounded-lg border border-red-200 bg-red-50 p-4 text-center text-sm text-red-600"
     >
-      地图加载失败：{{ errorReason }}
+      <p>地图加载失败：{{ errorReason }}</p>
+      <button type="button" class="mt-3 rounded border border-red-300 px-3 py-1" @click="$emit('retry')">重试加载</button>
     </div>
   </div>
 </template>

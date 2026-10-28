@@ -297,6 +297,12 @@ function createTencentSdk(sdkOptions = {}) {
     on(eventName, handler) {
       this.events.push({ eventName, handler });
     }
+    off(eventName, handler) {
+      this.events = this.events.filter((event) => event.eventName !== eventName || event.handler !== handler);
+    }
+    emit(eventName, payload) {
+      this.events.filter((event) => event.eventName === eventName).slice().forEach((event) => event.handler(payload));
+    }
     getControl(id) {
       return this.controlMap.get(id) || null;
     }
@@ -317,7 +323,9 @@ function createTencentSdk(sdkOptions = {}) {
       this.zoomByCalls.push(delta);
     }
     destroy() {
+      if (sdkOptions.beforeDestroy) sdkOptions.beforeDestroy(this);
       this.destroyed = true;
+      if (!sdkOptions.deferDestroyed) this.emit('destroyed');
     }
   }
   class MultiMarker {
@@ -328,6 +336,9 @@ function createTencentSdk(sdkOptions = {}) {
     }
     setMap(map) {
       this.map = map;
+    }
+    stopMove() {
+      this.moveStopped = true;
     }
     setGeometries(geometries) {
       this.options.geometries = geometries;
@@ -341,7 +352,12 @@ function createTencentSdk(sdkOptions = {}) {
       this.options.styles = styles;
     }
   }
-  class MultiPolyline extends MultiMarker {}
+  class MultiPolyline extends MultiMarker {
+    destroy() { this.destroyed = true; this.map = null; }
+  }
+  class MultiLabel extends MultiMarker {
+    destroy() { this.destroyed = true; this.map = null; }
+  }
   class MarkerStyle {
     constructor(options) {
       this.options = options;
@@ -358,6 +374,7 @@ function createTencentSdk(sdkOptions = {}) {
     LatLngBounds,
     MultiMarker,
     MultiPolyline,
+    MultiLabel,
     MarkerStyle,
     PolylineStyle,
     constants: { DEFAULT_CONTROL_ID, CONTROL_POSITION },
@@ -410,8 +427,9 @@ function createTianDiTuSdk() {
     setMapType(mapType) {
       this.mapType = mapType;
     }
-    setViewport(points) {
+    setViewport(points, options) {
       this.setViewportCalls.push(points);
+      this.setViewportOptions = options;
     }
     zoomIn() {
       this.zoomInCalls += 1;
@@ -530,6 +548,9 @@ function createBaiduSdk() {
     on(eventName, handler) {
       this.addEventListener(eventName, handler);
     }
+    off(eventName, handler) {
+      this.events = this.events.filter((event) => event.eventName !== eventName || event.handler !== handler);
+    }
     getZoom() {
       return this.zoom;
     }
@@ -542,8 +563,9 @@ function createBaiduSdk() {
     removeOverlay(overlay) {
       this.overlays = this.overlays.filter((item) => item !== overlay);
     }
-    setViewport(points) {
+    setViewport(points, options) {
       this.setViewportCalls.push(points);
+      this.setViewportOptions = options;
     }
     zoomIn() {
       this.zoomInCalls += 1;
@@ -556,6 +578,7 @@ function createBaiduSdk() {
     clearOverlays() {
       this.overlays = [];
     }
+    destroy() { this.destroyed = true; }
   }
   class Marker {
     constructor(position, options = {}) {
@@ -571,6 +594,7 @@ function createBaiduSdk() {
     setLabel(label) {
       this.label = label;
     }
+    setAnimation(animation) { this.animation = animation; }
   }
   class Label {
     constructor(content, options = {}) {
@@ -712,6 +736,12 @@ function createRuntime(provider, options = {}) {
     'createTianDiTuTileLayer',
     'applyTianDiTuDefaultMapType',
     'destroyProviderMapInstance',
+    'isCurrentProviderMapInstance',
+    'waitForProviderMapDestruction',
+    'showProviderMapLifecycleError',
+    'rememberProviderMapRedraw',
+    'deferProviderMapInitialization',
+    'registerProviderMapInstance',
     'getProviderOverlayBucket',
     'clearProviderRunnerMarkers',
     'clearProviderMapOverlays',
@@ -871,6 +901,10 @@ function createRuntime(provider, options = {}) {
     let baiduMapLoadingPromise = null;
     let amapLoadingPromise = null;
     let providerMapInstances = {};
+    let sessionUUID = 'session-a';
+    const providerMapDestructions = {};
+    const providerMapPendingInitializations = {};
+    let providerMapSurfaceSequence = 0;
     let providerMapInstanceProviders = {};
     let providerMapEventsBound = {};
     let providerMapOverlays = {};
@@ -912,6 +946,8 @@ function createRuntime(provider, options = {}) {
     return {
       initProviderMap,
       destroyProviderMapInstance,
+      waitForProviderMapDestruction: typeof waitForProviderMapDestruction === 'function' ? waitForProviderMapDestruction : undefined,
+      getProviderMapSurface,
       addProviderMarker,
       drawProviderRouteOnMap,
       ensureActiveMapProviderRuntimeIfNeeded,
@@ -939,6 +975,7 @@ function createRuntime(provider, options = {}) {
       setCurrentRunData: (data) => {
         currentRunData = data;
       },
+      setSession: (session) => { sessionUUID = session; },
       setSingleRunProgressVisualActive: (active) => { singleRunProgressVisualActive = active; },
       getCurrentRunData: () => currentRunData,
       getPendingMapProviderRuntimeConfig: () => pendingMapProviderRuntimeConfig,
@@ -974,6 +1011,233 @@ function decodeTencentMarkerStyleSvg(marker) {
   assert.match(style.options.src, /^data:image\/svg\+xml;charset=UTF-8,/);
   return decodeURIComponent(style.options.src.split(',')[1] || '');
 }
+
+test('legacy destruction invalidates callbacks and detaches events before releasing Tencent resources', async () => {
+  let destroyObserved;
+  const runtime = createRuntime('tencent', {
+    tencentSdkOptions: {
+      beforeDestroy(instance) {
+        destroyObserved = {
+          disposed: instance.__providerDisposed,
+          businessEvents: instance.events.filter((event) => event.eventName !== 'destroyed'),
+          domEvents: runtime.getDocument().getElementById('map-container').events,
+        };
+      },
+    },
+  });
+  assert.equal(runtime.initProviderMap('map-container'), true);
+  const instance = runtime.getProviderMapInstance('map-container');
+  const staleDrag = instance.events.find((event) => event.eventName === 'dragend').handler;
+  const staleDom = runtime.getDocument().getElementById('map-container').events.find((event) => event.eventName === 'mousedown').handler;
+  runtime.setCurrentRunData({ status: 'running' });
+  const TMap = runtime.getWindow().TMap;
+  const line = new TMap.MultiPolyline({ map: instance });
+  const label = new TMap.MultiLabel({ map: instance });
+  const marker = new TMap.MultiMarker({ map: instance });
+  runtime.getState().providerMapOverlays['map-container'] = [line, label, marker];
+  runtime.destroyProviderMapInstance('map-container');
+  assert.equal(destroyObserved.disposed, true);
+  assert.equal(destroyObserved.businessEvents.length, 0);
+  assert.equal(destroyObserved.domEvents.length, 0);
+  assert.equal(line.destroyed, true);
+  assert.equal(label.destroyed, true);
+  assert.equal(marker.moveStopped, true);
+  assert.equal(marker.map, null);
+  staleDrag();
+  staleDom();
+  assert.equal(runtime.getScheduledTimeouts().filter((timer) => !timer.cleared && timer.delay === 120000).length, 0);
+  assert.equal(await runtime.waitForProviderMapDestruction('map-container'), true);
+});
+
+test('legacy Tencent rebuild waits for destroyed and gives every map a distinct native host', async () => {
+  const runtime = createRuntime('tencent', { strictDocumentIds: true, tencentSdkOptions: { deferDestroyed: true } });
+  assert.equal(runtime.initProviderMap('map-container'), true);
+  const old = runtime.getProviderMapInstance('map-container');
+  const oldSurface = runtime.getProviderMapSurface('map-container');
+  runtime.destroyProviderMapInstance('map-container');
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  assert.equal(runtime.getProviderMapInstance('map-container'), undefined);
+  assert.equal(oldSurface.parentNode, runtime.getDocument().getElementById('map-container'));
+  old.emit('destroyed');
+  assert.equal(await runtime.waitForProviderMapDestruction('map-container'), true);
+  await Promise.resolve();
+  const replacement = runtime.getProviderMapInstance('map-container');
+  assert.ok(replacement);
+  assert.notEqual(replacement, old);
+  assert.notEqual(runtime.getProviderMapSurface('map-container').id, oldSurface.id);
+  assert.equal(oldSurface.parentNode, null);
+});
+
+test('legacy Tencent destruction timeout keeps old host isolated and reports a retryable failure', async () => {
+  const runtime = createRuntime('tencent', { tencentSdkOptions: { deferDestroyed: true } });
+  runtime.initProviderMap('map-container');
+  const oldSurface = runtime.getProviderMapSurface('map-container');
+  runtime.destroyProviderMapInstance('map-container');
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  const deadline = runtime.getScheduledTimeouts().find((timer) => timer.delay === 5000 && !timer.cleared);
+  assert.ok(deadline);
+  deadline.handler();
+  assert.equal(await runtime.waitForProviderMapDestruction('map-container'), false);
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  assert.equal(runtime.getProviderMapSurface('map-container'), oldSurface);
+  assert.equal(oldSurface.parentNode, runtime.getDocument().getElementById('map-container'));
+  assert.match(runtime.getDocument().getElementById('map-container').__providerLifecycleError.textContent, /超时.*重试/);
+});
+
+test('legacy pending Tencent rebuild ignores a changed outer container or provider', async () => {
+  const runtime = createRuntime('tencent', { tencentSdkOptions: { deferDestroyed: true } });
+  runtime.initProviderMap('map-container');
+  const old = runtime.getProviderMapInstance('map-container');
+  runtime.destroyProviderMapInstance('map-container');
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  runtime.getWindow().APP_CONFIG.map_provider = 'baidu';
+  old.emit('destroyed');
+  await runtime.waitForProviderMapDestruction('map-container');
+  await Promise.resolve();
+  assert.equal(runtime.getProviderMapInstance('map-container'), undefined);
+  assert.equal(runtime.initProviderMap('map-container'), true);
+  assert.ok(runtime.getProviderMapInstance('map-container') instanceof runtime.getWindow().BMap.Map);
+});
+
+test('legacy pending Tencent rebuild ignores a changed session or replaced outer DOM', async () => {
+  for (const mutation of ['session', 'container']) {
+    const runtime = createRuntime('tencent', { tencentSdkOptions: { deferDestroyed: true } });
+    runtime.initProviderMap('map-container');
+    const old = runtime.getProviderMapInstance('map-container');
+    runtime.destroyProviderMapInstance('map-container');
+    assert.equal(runtime.initProviderMap('map-container'), false);
+    if (mutation === 'session') runtime.setSession('session-c');
+    else {
+      const document = runtime.getDocument();
+      const original = document.getElementById.bind(document);
+      const replacement = document.createElement('div');
+      replacement.id = 'map-container';
+      document.getElementById = (id) => id === 'map-container' ? replacement : original(id);
+    }
+    old.emit('destroyed');
+    await runtime.waitForProviderMapDestruction('map-container');
+    await Promise.resolve();
+    assert.equal(runtime.getProviderMapInstance('map-container'), undefined, mutation);
+  }
+});
+
+test('legacy repeated teardown cancels an already scheduled rebuild', async () => {
+  const runtime = createRuntime('tencent', { tencentSdkOptions: { deferDestroyed: true } });
+  runtime.initProviderMap('map-container');
+  const old = runtime.getProviderMapInstance('map-container');
+  runtime.destroyProviderMapInstance('map-container');
+  runtime.initProviderMap('map-container');
+  runtime.destroyProviderMapInstance('map-container');
+  old.emit('destroyed');
+  await runtime.waitForProviderMapDestruction('map-container');
+  await Promise.resolve();
+  assert.equal(runtime.getProviderMapInstance('map-container'), undefined);
+});
+
+test('legacy Tencent deferred rebuild restores the most recent route and ignores captured old callbacks', async () => {
+  const runtime = createRuntime('tencent', { tencentSdkOptions: { deferDestroyed: true } });
+  runtime.initProviderMap('map-container');
+  const old = runtime.getProviderMapInstance('map-container');
+  const oldZoom = old.events.find((event) => event.eventName === 'zoomend').handler;
+  runtime.drawProviderRouteOnMap('map-container', [[113.4, 22.5], [113.41, 22.51]]);
+  runtime.destroyProviderMapInstance('map-container');
+  runtime.initProviderMap('map-container');
+  runtime.drawProviderRouteOnMap('map-container', [[113.5, 22.6], [113.51, 22.61]]);
+  old.emit('destroyed');
+  await runtime.waitForProviderMapDestruction('map-container');
+  await Promise.resolve();
+  const replacement = runtime.getProviderMapInstance('map-container');
+  assert.notEqual(replacement, old);
+  const line = runtime.getState().providerMapOverlays['map-container'].find((overlay) => overlay instanceof runtime.getWindow().TMap.MultiPolyline);
+  assert.equal(line.options.geometries[0].paths[0].lng, 113.5);
+  const label = runtime.getDocument().getElementById('provider-map-zoom-level-map-container');
+  const previous = label.textContent;
+  replacement.zoom = 9;
+  oldZoom();
+  assert.equal(label.textContent, previous);
+});
+
+test('legacy automatic Tencent and Baidu route fits disable SDK animation', () => {
+  for (const provider of ['tencent', 'baidu']) {
+    const runtime = createRuntime(provider);
+    runtime.initProviderMap('map-container');
+    const instance = runtime.getProviderMapInstance('map-container');
+    runtime.fitProviderMapToCoordinates('map-container', [{ lng: 113.4, lat: 22.5 }, { lng: 113.41, lat: 22.51 }]);
+    if (provider === 'tencent') assert.equal(instance.fitBoundsCalls.at(-1).options.ease.duration, 0);
+    else assert.equal(instance.setViewportOptions.enableAnimation, false);
+  }
+});
+
+test('legacy map teardown and rebuild keeps route and runner updates isolated across desktop and mobile hosts', async () => {
+  const coordinates = Array.from({ length: 20 }, (_, index) => [113.4 + index * 0.0001, 22.5 + index * 0.0001]);
+  for (const provider of ['tencent', 'baidu']) {
+    for (const containerId of ['map-container', 'mobile-map-container', 'multi-map-container', 'mobile-track-map-container']) {
+      const runtime = createRuntime(provider, { strictDocumentIds: true });
+      const hostIds = new Set();
+      for (let round = 0; round < 3; round += 1) {
+        assert.equal(runtime.initProviderMap(containerId, containerId === 'multi-map-container'), true);
+        const instance = runtime.getProviderMapInstance(containerId);
+        const surface = runtime.getProviderMapSurface(containerId);
+        assert.equal(hostIds.has(surface.id), false);
+        hostIds.add(surface.id);
+        runtime.drawProviderRouteOnMap(containerId, coordinates);
+        const route = runtime.getState().providerMapOverlays[containerId][0];
+        for (let index = 0; index < 10; index += 1) {
+          const marker = runtime.updateProviderRunnerMarker(containerId, coordinates[index]);
+          assert.ok(marker);
+          assert.equal(runtime.getState().providerMapOverlays[containerId][0], route);
+        }
+        const runner = runtime.getState().providerRunnerMarkers[containerId];
+        runtime.destroyProviderMapInstance(containerId);
+        assert.equal(await runtime.waitForProviderMapDestruction(containerId), true);
+        assert.equal(instance.destroyed, true);
+        assert.equal(instance.events.length, 0);
+        assert.equal(surface.events.length, 0);
+        assert.equal(surface.parentNode, null);
+        assert.equal(runtime.getState().providerMapOverlays[containerId].length, 0);
+        assert.equal(runtime.getProviderMapInstance(containerId), undefined);
+        if (provider === 'baidu') assert.equal(runner.animation, null);
+        else assert.equal(runner.moveStopped, true);
+      }
+    }
+  }
+});
+
+test('legacy initialization failure releases the created SDK before replacing its native host with a placeholder', async () => {
+  let failedInstance;
+  const runtime = createRuntime('tencent', { tencentSdkOptions: { beforeDestroy: (instance) => { failedInstance = instance; } } });
+  const container = runtime.getDocument().getElementById('map-container');
+  const append = container.appendChild;
+  container.appendChild = function (child) {
+    if (child.dataset?.providerMapControlOverlay) throw new Error('isolated control creation failure');
+    return append.call(this, child);
+  };
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  await runtime.waitForProviderMapDestruction('map-container');
+  await Promise.resolve();
+  assert.ok(failedInstance?.destroyed);
+  assert.equal(failedInstance.__providerSurface.parentNode, null);
+  assert.equal(runtime.getProviderMapInstance('map-container'), undefined);
+  assert.match(container.innerHTML, /isolated control creation failure/);
+});
+
+test('legacy detached single and multi controls cannot change a replacement map', async () => {
+  for (const containerId of ['map-container', 'multi-map-container']) {
+    const runtime = createRuntime('tencent', { strictDocumentIds: true });
+    runtime.initProviderMap(containerId, containerId === 'multi-map-container');
+    const buttonId = containerId === 'map-container' ? 'zoom-in' : 'multi-zoom-in';
+    const oldButton = runtime.getDocument().getElementById(buttonId);
+    const oldClick = oldButton.events.find((event) => event.eventName === 'click').handler;
+    runtime.destroyProviderMapInstance(containerId);
+    await runtime.waitForProviderMapDestruction(containerId);
+    runtime.initProviderMap(containerId, containerId === 'multi-map-container');
+    const replacement = runtime.getProviderMapInstance(containerId);
+    const zoom = replacement.zoom;
+    oldClick();
+    assert.equal(replacement.zoom, zoom, containerId);
+    assert.equal(oldButton.events.length, 0, containerId);
+  }
+});
 
 function collectTencentMarkerSvgs(runtime, containerId) {
   return (runtime.getState().providerMapOverlays[containerId] || [])
@@ -1205,7 +1469,7 @@ test('tencent provider removes sdk zoom and scale controls while keeping native 
     runtime.getWindow().TMap.constants.CONTROL_POSITION.TOP_LEFT,
   );
 
-  const surface = doc.getElementById('map-container-provider-surface');
+  const surface = runtime.getProviderMapSurface('map-container');
   assert.deepEqual(
     surface.children
       .filter((child) => child.dataset?.tencentNativeControl)
@@ -1356,7 +1620,7 @@ test('provider maps initialize SDKs on an isolated surface below app controls', 
 
     assert.equal(runtime.initProviderMap('map-container', false), true, provider);
 
-    const surface = doc.getElementById('map-container-provider-surface');
+    const surface = runtime.getProviderMapSurface('map-container');
     assert.ok(surface, `${provider} should create an SDK-only map surface`);
     assert.equal(surface.parentNode, container, `${provider} surface should stay inside outer map container`);
     assert.match(surface.className, /absolute/, provider);
@@ -1396,7 +1660,7 @@ test('tencent provider keeps the sdk native rotation control at the top left', (
   assert.equal(instance.options.showControl, true);
   assert.equal(doc.getElementById('provider-3d-view-btn'), null);
 
-  const surface = doc.getElementById('map-container-provider-surface');
+  const surface = runtime.getProviderMapSurface('map-container');
   assert.deepEqual(
     surface.children
       .filter((child) => child.dataset?.tencentNativeControl)
@@ -1461,7 +1725,7 @@ test('tianditu provider supports right-button drag panning on the SDK surface', 
 
   assert.equal(runtime.initProviderMap('map-container', false), true);
 
-  const surface = doc.getElementById('map-container-provider-surface');
+  const surface = runtime.getProviderMapSurface('map-container');
   const instance = runtime.getProviderMapInstance('map-container');
   const down = surface.events.find((event) => event.eventName === 'mousedown');
   const move = doc.events.find((event) => event.eventName === 'mousemove');

@@ -131,7 +131,7 @@ for (const provider of ['amap', 'tencent', 'tianditu', 'baidu']) {
     const before = JSON.stringify(app.runData)
     const watched = []
     const panel = componentSetup('components/map/MapContainer.vue', {
-      ref, watch: (...args) => watched.push(args), onMounted() {}, onUnmounted() {}, nextTick: async () => {},
+      ref, watch: (...args) => watched.push(args), onMounted() {}, onBeforeUnmount() {}, nextTick: async () => {},
       useAppStore: () => app, useMapStore: () => ({ activeProvider: provider, isDrawing: false }), useAuthStore: () => auth,
       MapPlaceholder: {}, MapControls: {}, ...coordinates, ...routeProgress,
       window: { AMap: sdk, T: sdk, BMap: sdk, TMap: { LatLng, LatLngBounds: Bounds, MultiMarker: Overlay, MultiPolyline: Overlay, PolylineStyle: Overlay, MultiLabel: Overlay, LabelStyle: Overlay } },

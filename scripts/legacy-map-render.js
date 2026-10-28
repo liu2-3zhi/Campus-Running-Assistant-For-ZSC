@@ -239,7 +239,8 @@ function getProviderMapInstance(containerId) {
     }
     return map;
   }
-  return providerMapInstances[containerId];
+  const instance = providerMapInstances[containerId];
+  return isCurrentProviderMapInstance(containerId, instance) ? instance : undefined;
 }
 
 function fitProviderMapToCoordinates(containerId, coords, overlay = null) {
@@ -260,11 +261,11 @@ function fitProviderMapToCoordinates(containerId, coords, overlay = null) {
     } else if (provider === "tencent") {
       const bounds = new TMap.LatLngBounds();
       coords.forEach((coord) => bounds.extend(new TMap.LatLng(coord.lat, coord.lng)));
-      instance.fitBounds(bounds, { padding: 60 });
+      instance.fitBounds(bounds, { padding: 60, ease: { duration: 0 } });
     } else if (provider === "tianditu" && typeof instance.setViewport === "function") {
       instance.setViewport(providerCoords.map((coord) => new T.LngLat(coord.lng, coord.lat)));
     } else if (provider === "baidu" && typeof instance.setViewport === "function" && window.BMap) {
-      instance.setViewport(providerCoords.map((coord) => new BMap.Point(coord.lng, coord.lat)));
+      instance.setViewport(providerCoords.map((coord) => new BMap.Point(coord.lng, coord.lat)), { enableAnimation: false });
     }
   } catch (e) {
     logMessage_Warning(`[地图] 调整${containerId}视野失败:`, e);
@@ -542,6 +543,7 @@ function addProviderMarker(containerId, coord, options = {}) {
 }
 
 function updateProviderRunnerMarker(containerId, coord, options = {}) {
+  if (!getProviderMapInstance(containerId)) return null;
   const normalized = normalizeRouteCoord(coord);
   if (!Number.isFinite(normalized.lng) || !Number.isFinite(normalized.lat)) {
     return null;
@@ -646,6 +648,7 @@ function resolveRunnerTargetSequence(targetSequence, data = currentRunData) {
 }
 
 function drawProviderRouteOnMap(containerId, coords, options = {}) {
+  rememberProviderMapRedraw(containerId, () => drawProviderRouteOnMap(containerId, coords, options));
   const provider = getActiveMapProvider();
   const instance = getProviderMapInstance(containerId);
   const routeSegments = Array.isArray(options.routeSegments)
@@ -1229,6 +1232,8 @@ function buildProviderRouteProgressSegments(routeCoords, data) {
 
 function drawProviderTaskOnMap(containerId, data) {
   if (!data) return;
+  const redraw = () => drawProviderTaskOnMap(containerId, data);
+  rememberProviderMapRedraw(containerId, redraw);
   const routeCoords = data.run_coords?.length
     ? data.run_coords
     : data.draft_coords?.length
@@ -1255,6 +1260,7 @@ function drawProviderTaskOnMap(containerId, data) {
     clearProviderMapOverlays(containerId);
   }
   syncProviderTaskCheckpointMarkers(containerId, data, routeCoords);
+  rememberProviderMapRedraw(containerId, redraw);
 }
 
 function syncProviderTaskCheckpointMarkers(containerId, data, routeCoords) {
@@ -1357,6 +1363,7 @@ function updateProviderCheckpointMarkerStyle(marker, options) {
  * 导致用户的手动缩放/拖动被反复复位。
  */
 function updateProviderRouteProgressSegmentsInPlace(containerId, data) {
+  if (!getProviderMapInstance(containerId)) return false;
   if (!data || !Array.isArray(data.run_coords) || data.run_coords.length < 2) {
     return false;
   }

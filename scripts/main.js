@@ -15700,25 +15700,33 @@ function attachSingleControlHandlers() {
   const zi = document.getElementById("zoom-in");
   const zo = document.getElementById("zoom-out");
   const rv = document.getElementById("reset-view-btn");
-  if (zi && !zi._bound) {
-    zi.addEventListener("click", () => {
-      zoomProviderMap("map-container", 1);
-    });
-    zi._bound = true;
-  }
-  if (zo && !zo._bound) {
-    zo.addEventListener("click", () => {
-      zoomProviderMap("map-container", -1);
-    });
-    zo._bound = true;
-  }
-  if (rv && !rv._bound) {
-    rv.addEventListener("click", () => {
-      clearTaskMapAutoResetTimer();
-      resetTaskMapView("map-container");
-    });
-    rv._bound = true;
-  }
+  const provider = getActiveMapProvider();
+  const instance = getProviderMapInstance("map-container");
+  const bind = (button, action) => {
+    if (!button || button._bound) return;
+    const handler = () => {
+      if (provider !== "amap" && !isCurrentProviderMapInstance("map-container", instance)) return;
+      action();
+    };
+    button.addEventListener("click", handler);
+    button._bound = true;
+    if (provider !== "amap" && instance) {
+      (instance.__providerDomCleanups ||= []).push(() => {
+        button.removeEventListener("click", handler);
+        button._bound = false;
+      });
+    }
+  };
+  bind(zi, () => {
+    zoomProviderMap("map-container", 1);
+  });
+  bind(zo, () => {
+    zoomProviderMap("map-container", -1);
+  });
+  bind(rv, () => {
+    clearTaskMapAutoResetTimer();
+    resetTaskMapView("map-container");
+  });
 }
 
 function ensureMultiControls() {
@@ -15761,26 +15769,33 @@ function attachMultiControlHandlers() {
   const zi = document.getElementById("multi-zoom-in");
   const zo = document.getElementById("multi-zoom-out");
   const rv = document.getElementById("multi-reset-view-btn");
-
-  if (zi && !zi._bound) {
-    zi.addEventListener("click", () => {
-      zoomProviderMap("multi-map-container", 1);
-    });
-    zi._bound = true;
-  }
-  if (zo && !zo._bound) {
-    zo.addEventListener("click", () => {
-      zoomProviderMap("multi-map-container", -1);
-    });
-    zo._bound = true;
-  }
-  if (rv && !rv._bound) {
-    rv.addEventListener("click", () => {
-      clearTaskMapAutoResetTimer();
-      resetTaskMapView("multi-map-container");
-    });
-    rv._bound = true;
-  }
+  const provider = getActiveMapProvider();
+  const instance = getProviderMapInstance("multi-map-container");
+  const bind = (button, action) => {
+    if (!button || button._bound) return;
+    const handler = () => {
+      if (provider !== "amap" && !isCurrentProviderMapInstance("multi-map-container", instance)) return;
+      action();
+    };
+    button.addEventListener("click", handler);
+    button._bound = true;
+    if (provider !== "amap" && instance) {
+      (instance.__providerDomCleanups ||= []).push(() => {
+        button.removeEventListener("click", handler);
+        button._bound = false;
+      });
+    }
+  };
+  bind(zi, () => {
+    zoomProviderMap("multi-map-container", 1);
+  });
+  bind(zo, () => {
+    zoomProviderMap("multi-map-container", -1);
+  });
+  bind(rv, () => {
+    clearTaskMapAutoResetTimer();
+    resetTaskMapView("multi-map-container");
+  });
 }
 
 function removeAmapLicenseOverlay(containerId) {

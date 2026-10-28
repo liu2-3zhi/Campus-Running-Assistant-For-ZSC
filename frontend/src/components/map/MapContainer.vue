@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useMapStore } from '@/stores/map'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -36,9 +36,30 @@ let initialization = 0
 let disposed = false
 let licenseObserver = null
 let licenseTimer = null
+let mapHost = null
+let pendingDestruction = null
+let disposing = false
+const hostPrefix = Math.random().toString(36).slice(2, 10)
 const DEFAULT_CENTER = [113.390342, 22.527403]
 const DEFAULT_ZOOM = 17
 const BAIDU_DEFAULT_ZOOM = 18
+
+function nativeMapHost() {
+  if (mapHost) return mapHost
+  const container = document.getElementById(props.containerId)
+  if (!container) throw new Error('地图容器不存在')
+  const host = document.createElement('div')
+  host.id = `${props.containerId}-sdk-${hostPrefix}-${initialization}`
+  host.style.width = '100%'
+  host.style.height = '100%'
+  container.appendChild(host)
+  mapHost = host
+  return host
+}
+
+function ownsMap(instance, generation) {
+  return !disposed && !disposing && generation === initialization && map === instance
+}
 
 // --- 交互式绘制状态 ---
 let clickHandler = null       // 当前绑定的地图点击回调
@@ -123,6 +144,7 @@ async function initAmap() {
 
   try {
     await loadScript('https://webapi.amap.com/loader.js', 'amap-loader')
+    if (disposed || generation !== initialization) return
 
     const security = { ...(window._AMapSecurityConfig || {}) }
     if (config.amapSecurityJsCode) security.securityJsCode = config.amapSecurityJsCode
@@ -147,24 +169,21 @@ async function initAmap() {
     await nextTick()
     if (disposed || generation !== initialization) return
 
-    const container = document.getElementById(props.containerId)
-    if (!container) {
-      throw new Error('地图容器不存在')
-    }
-
-    map = new AMap.Map(props.containerId, {
+    const container = nativeMapHost()
+    map = new AMap.Map(container, {
       zoom: DEFAULT_ZOOM,
       center: DEFAULT_CENTER,
       resizeEnable: true,
     })
 
+    const instance = map
     completeHandler = () => {
-      removeAmapLicenseOverlay()
+      if (ownsMap(instance, generation)) removeAmapLicenseOverlay()
     }
     map.on('complete', completeHandler)
 
     zoomHandler = () => {
-      zoomLevel.value = Math.round(map.getZoom())
+      if (ownsMap(instance, generation)) zoomLevel.value = Math.round(instance.getZoom())
     }
     map.on('zoomchange', zoomHandler)
 
@@ -201,18 +220,16 @@ async function initTencent() {
       throw new Error('腾讯地图 SDK 未加载')
     }
 
-    const container = document.getElementById(props.containerId)
-    if (!container) {
-      throw new Error('地图容器不存在')
-    }
+    const container = nativeMapHost()
 
     map = new TMap.Map(container, {
       center: new TMap.LatLng(DEFAULT_CENTER[1], DEFAULT_CENTER[0]),
       zoom: DEFAULT_ZOOM,
     })
 
+    const instance = map
     zoomHandler = () => {
-      zoomLevel.value = Math.round(map.getZoom())
+      if (ownsMap(instance, generation)) zoomLevel.value = Math.round(instance.getZoom())
     }
     map.on('zoom', zoomHandler)
 
@@ -249,19 +266,16 @@ async function initTianditu() {
       throw new Error('天地图 SDK 未加载')
     }
 
-    const container = document.getElementById(props.containerId)
-    if (!container) {
-      throw new Error('地图容器不存在')
-    }
-
-    map = new T.Map(props.containerId)
+    const container = nativeMapHost()
+    map = new T.Map(container.id)
     map.centerAndZoom(
       new T.LngLat(...providerPoint(DEFAULT_CENTER)),
       DEFAULT_ZOOM,
     )
 
+    const instance = map
     zoomHandler = () => {
-      zoomLevel.value = map.getZoom()
+      if (ownsMap(instance, generation)) zoomLevel.value = instance.getZoom()
     }
     map.addEventListener('zoomend', zoomHandler)
 
@@ -291,7 +305,7 @@ async function initBaidu() {
         resolve()
         return
       }
-      const callbackName = `__baiduMapCallback_${generation}`
+      const callbackName = `__baiduMapCallback_${hostPrefix}_${generation}`
       const timer = setTimeout(() => { delete window[callbackName]; reject(new Error('百度地图 SDK 加载超时')) }, 20000)
       window[callbackName] = () => {
         clearTimeout(timer)
@@ -312,12 +326,8 @@ async function initBaidu() {
       throw new Error('百度地图 SDK 未加载')
     }
 
-    const container = document.getElementById(props.containerId)
-    if (!container) {
-      throw new Error('地图容器不存在')
-    }
-
-    map = new BMap.Map(props.containerId)
+    const container = nativeMapHost()
+    map = new BMap.Map(container.id)
     map.centerAndZoom(
       new BMap.Point(...providerPoint(DEFAULT_CENTER)),
       BAIDU_DEFAULT_ZOOM,
@@ -325,8 +335,9 @@ async function initBaidu() {
     map.enableScrollWheelZoom(true)
     if (BMap.NavigationControl3D) map.addControl(new BMap.NavigationControl3D())
 
+    const instance = map
     zoomHandler = () => {
-      zoomLevel.value = map.getZoom()
+      if (ownsMap(instance, generation)) zoomLevel.value = instance.getZoom()
     }
     map.addEventListener('zoomend', zoomHandler)
 
@@ -347,7 +358,17 @@ async function initMap() {
   mapReady.value = false
   showPlaceholder.value = false
   placeholderError.value = ''
-  destroyMap()
+  try {
+    await destroyMap()
+  } catch (error) {
+    if (!disposed && generation === initialization) {
+      placeholderError.value = error.message || '地图释放失败，请重试'
+      showPlaceholder.value = true
+    }
+    return
+  }
+  if (disposed || generation !== initialization) return
+  disposing = false
 
   const provider = mapStore.activeProvider
   boundProvider = provider
@@ -394,6 +415,12 @@ async function initMap() {
 }
 
 function destroyMap() {
+  if (!map) return pendingDestruction || Promise.resolve()
+  disposing = true
+  mapReady.value = false
+  const instance = map
+  const provider = boundProvider || mapStore.activeProvider
+  const host = mapHost
   unbindDrawingClick()
   if (map && zoomHandler) {
     try {
@@ -412,17 +439,44 @@ function destroyMap() {
   boundClickProvider = null
   draftPolyline = null
   setDrawingCursor(false)
-  if (map) {
-    try {
-      if (typeof map.destroy === 'function') {
-        map.destroy()
-      }
-    } catch (_) {}
-    map = null
-  }
-  mapStore.setMapInstance(null)
+  map = null
+  mapHost = null
+  if (mapStore.mapInstance === instance) mapStore.setMapInstance(null)
   lastFittedTask = null
   displayedTask = null
+  let released = false
+  let promise
+  promise = new Promise((resolve, reject) => {
+    let settled = false
+    let timer
+    const finish = error => {
+      if (released) return
+      clearTimeout(timer)
+      if (error) {
+        if (!settled) { settled = true; reject(error) }
+        // Keep the host and destroyed listener: a timeout is not a release.
+        return
+      }
+      released = true
+      if (provider === 'tencent') instance.off?.('destroyed', onDestroyed)
+      host?.remove()
+      if (pendingDestruction === promise) pendingDestruction = null
+      if (!settled) { settled = true; resolve() }
+    }
+    const onDestroyed = () => finish()
+    const waitForDestroyed = provider === 'tencent' && typeof instance.destroy === 'function' && typeof instance.on === 'function'
+    if (waitForDestroyed) {
+      instance.on('destroyed', onDestroyed)
+      timer = setTimeout(() => finish(new Error('地图释放超时，请重试')), 5000)
+    }
+    try {
+      instance.destroy?.()
+      if (!waitForDestroyed) finish()
+    } catch (error) { finish(error) }
+  })
+  pendingDestruction = promise
+  promise.then(() => { if (pendingDestruction === promise) pendingDestruction = null }, () => {})
+  return promise
 }
 
 // --- Public methods ---
@@ -441,7 +495,7 @@ function fitView(coords) {
     coords.forEach(c => {
       bounds.extend(new TMap.LatLng(c[1], c[0]))
     })
-    map.fitBounds(bounds)
+    map.fitBounds(bounds, { ease: { duration: 0 } })
   } else if (provider === 'tianditu') {
     const T = window.T
     if (!T) return
@@ -450,8 +504,7 @@ function fitView(coords) {
     const BMap = window.BMap
     if (!BMap) return
     const points = coords.map(c => new BMap.Point(c[0], c[1]))
-    const viewport = map.getViewport(points)
-    map.centerAndZoom(viewport.center, viewport.zoom)
+    map.setViewport(points, { enableAnimation: false })
   }
 }
 
@@ -597,8 +650,8 @@ function clearOverlays() {
     markers.forEach(m => { try { map.remove(m) } catch (_) {} })
     polylines.forEach(p => { try { map.remove(p) } catch (_) {} })
   } else if (provider === 'tencent') {
-    markers.forEach(m => { try { m.setMap(null) } catch (_) {} })
-    polylines.forEach(p => { try { p.setMap(null) } catch (_) {} })
+    markers.forEach(releaseTencentOverlay)
+    polylines.forEach(releaseTencentOverlay)
   } else if (provider === 'tianditu' && map) {
     markers.forEach(m => { try { map.removeOverLay(m) } catch (_) {} })
     polylines.forEach(p => { try { map.removeOverLay(p) } catch (_) {} })
@@ -764,12 +817,18 @@ function extractClickLngLat(provider, e) {
 }
 
 // 移除单个 overlay（草稿折线），并从 polylines 跟踪数组中剔除，避免累积。
+function releaseTencentOverlay(overlay) {
+  if (overlay instanceof window.TMap.MultiMarker) { overlay.stopMove?.(); overlay.setMap(null) }
+  else if (typeof overlay.destroy === 'function') overlay.destroy()
+  else overlay.setMap(null)
+}
+
 function removeSingleOverlay(overlay) {
   if (!overlay) return
   const provider = boundProvider || mapStore.activeProvider
   try {
     if (provider === 'amap' && map) map.remove(overlay)
-    else if (provider === 'tencent') overlay.setMap(null)
+    else if (provider === 'tencent') releaseTencentOverlay(overlay)
     else if (provider === 'tianditu' && map) map.removeOverLay(overlay)
     else if (provider === 'baidu' && map) map.removeOverlay(overlay)
   } catch (_) {}
@@ -799,9 +858,12 @@ function setDrawingCursor(on) {
 }
 
 function bindDrawingClick() {
-  if (!map || clickHandler) return
-  const provider = mapStore.activeProvider
+  if (!map || disposing || disposed || clickHandler) return
+  const provider = boundProvider || mapStore.activeProvider
+  const instance = map
+  const generation = initialization
   clickHandler = (e) => {
+    if (!ownsMap(instance, generation)) return
     let pt = extractClickLngLat(provider, e)
     if (!pt || pt.lng == null || pt.lat == null) return
     if (provider === 'baidu') pt = bd09ToGcj02(pt.lng, pt.lat)
@@ -925,18 +987,19 @@ onMounted(() => {
   initMap()
 })
 
-onUnmounted(() => {
+onBeforeUnmount(() => {
   disposed = true
   initialization++
   if (licenseObserver) {
     licenseObserver.disconnect()
     licenseObserver = null
   }
-  destroyMap()
+  destroyMap().catch(error => console.error('[MapContainer] 地图释放失败:', error))
 })
 
 // --- Expose public API ---
 defineExpose({
+  whenDisposed: () => pendingDestruction || Promise.resolve(),
   fitView,
   zoomIn: handleZoomIn,
   zoomOut: handleZoomOut,
@@ -974,6 +1037,7 @@ defineExpose({
       :provider-name="mapStore.displayName"
       :has-key="!!mapStore.getKeyRequirement().value"
       :error-reason="placeholderError"
+      @retry="initMap"
     />
   </div>
 </template>

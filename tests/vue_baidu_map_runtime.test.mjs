@@ -2,14 +2,16 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { parse, compileScript } from '../frontend/node_modules/@vue/compiler-sfc/dist/compiler-sfc.esm-browser.js'
-import { ref } from '../frontend/node_modules/vue/dist/vue.esm-browser.prod.js'
+import { ref, shallowRef, markRaw, computed } from '../frontend/node_modules/vue/dist/vue.esm-browser.prod.js'
 import * as coordinates from '../frontend/src/utils/coordinates.js'
 import * as routeProgress from '../frontend/src/utils/routeProgress.js'
 
-function createRuntime({ proxyInitialize, documentOverride } = {}) {
+function createRuntime({ proxyInitialize, documentOverride, provider = 'baidu', deferredDestroy = false, timers = {}, browserWindow } = {}) {
   const created = []
   const removed = []
   const listeners = new Map()
+  const mapInstances = []
+  const lifecycle = []
   class Point { constructor(lng, lat) { this.lng = lng; this.lat = lat } }
   class Label {
     constructor(content) { this.content = content }
@@ -30,17 +32,21 @@ function createRuntime({ proxyInitialize, documentOverride } = {}) {
   }
   const sdk = { Point, Marker, Polyline, Label, coordType: null }
   class MapInstance {
-    constructor() { this.overlays = []; this.coordTypeAtCreation = sdk.coordType; this.zoom = 18 }
+    constructor(host) { this.host = host; this.overlays = []; this.coordTypeAtCreation = sdk.coordType; this.zoom = 18; this.events = new Map(); mapInstances.push(this) }
     centerAndZoom(point, zoom) { this.center = point; this.zoom = zoom }
     enableScrollWheelZoom() {}
     addEventListener(event, callback) { listeners.set(event, callback) }
     removeEventListener(event, callback) { if (listeners.get(event) === callback) listeners.delete(event) }
     addOverlay(overlay) { this.overlays.push(overlay) }
-    removeOverlay(overlay) { removed.push(overlay); this.overlays = this.overlays.filter(value => value !== overlay) }
+    removeOverlay(overlay) { lifecycle.push('remove-overlay'); removed.push(overlay); this.overlays = this.overlays.filter(value => value !== overlay) }
     clearOverlays() { removed.push(...this.overlays); this.overlays = [] }
     getViewport(points) { return { center: points[0], zoom: this.zoom } }
+    setViewport(points, options) { this.viewportPoints = points; this.viewportOptions = options }
     getZoom() { return this.zoom }
-    destroy() { this.destroyed = true }
+    on(event, callback) { this.events.set(event, callback) }
+    off(event, callback) { if (this.events.get(event) === callback) this.events.delete(event) }
+    fitBounds(bounds, options) { this.fitOptions = options }
+    destroy() { lifecycle.push('destroy-map'); this.destroyed = true; if (!deferredDestroy) this.events.get('destroyed')?.() }
   }
   sdk.Map = MapInstance
   const app = {
@@ -52,7 +58,8 @@ function createRuntime({ proxyInitialize, documentOverride } = {}) {
       target_point_names: '起点|中点|终点',
     },
   }
-  const store = { activeProvider: 'baidu', mapConfig: { baiduKey: 'test-ak' }, isDrawing: false, draftPoints: [],
+  const store = { map: null, activeProvider: provider, mapConfig: { baiduKey: 'test-ak', tencentKey: 'test-key' }, isDrawing: false, draftPoints: [],
+    get mapInstance() { return this.map },
     setMapInstance(value) { this.map = value }, addDraftPoint(point) { this.draftPoints.push(point) },
   }
   const auth = {
@@ -61,24 +68,142 @@ function createRuntime({ proxyInitialize, documentOverride } = {}) {
     getAdminOriginHeaderValue() { return '' },
   }
   const unmount = []
+  const beforeUnmount = []
+  const elements = new Map()
+  const makeElement = () => ({ style: {}, children: [],
+    appendChild(child) { child.parentNode = this; this.children.push(child); elements.set(child.id, child) },
+    remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(child => child !== this); this.parentNode = null },
+  })
+  elements.set('map', makeElement())
+  elements.set('tencent-map-sdk', { src: 'https://map.qq.com/api/gljs?v=1.exp&key=test-key', dataset: { loaded: 'true' } })
+  class TencentMarker {
+    constructor(options) { this.options = options; this.map = options.map; created.push(this) }
+    stopMove() { lifecycle.push('stop-marker') }
+    setMap(value) { lifecycle.push('detach-marker'); this.map = value }
+  }
+  class TencentLine {
+    constructor(options) { this.options = options; this.map = options.map; created.push(this) }
+    setMap(value) { this.map = value }
+    destroy() { lifecycle.push('destroy-line'); this.map = null }
+  }
   const source = readFileSync(new URL('../frontend/src/components/map/MapContainer.vue', import.meta.url), 'utf8')
   const { descriptor } = parse(source)
   const script = compileScript(descriptor, { id: 'baidu-runtime', genDefaultAs: 'component' }).content
   const dependencies = {
-    ref, watch() {}, onMounted() {}, onUnmounted(callback) { unmount.push(callback) }, nextTick: async () => {},
+    ref, shallowRef, markRaw, watch() {}, onMounted() {}, onBeforeUnmount(callback) { beforeUnmount.push(callback); unmount.push(callback) }, onUnmounted(callback) { unmount.push(callback) }, nextTick: async () => {},
     useMapStore: () => store, useAppStore: () => app, useAuthStore: () => auth,
-    MapPlaceholder: {}, MapControls: {}, window: { BMap: sdk, BMAP_COORD_GCJ02: 2,
+    MapPlaceholder: {}, MapControls: {}, window: browserWindow || { BMap: sdk, BMAP_COORD_GCJ02: 2,
+      TMap: { Map: MapInstance, LatLng: class { constructor(lat, lng) { this.lat = lat; this.lng = lng } },
+        LatLngBounds: class { extend() {} }, MultiMarker: TencentMarker, MultiPolyline: TencentLine, PolylineStyle: class {} },
       ...(proxyInitialize ? { ZXMapRequestProxy: { initialize: proxyInitialize } } : {}),
     },
     BMAP_COORD_GCJ02: 2,
     ...coordinates, ...routeProgress,
-    document: documentOverride || { getElementById: () => ({ style: {} }), createElement: () => ({ textContent: '', outerHTML: '<span>点</span>' }) },
-    setTimeout, clearTimeout, console,
+    document: documentOverride || { getElementById: id => elements.get(id) || null, createElement: () => Object.assign(makeElement(), { textContent: '', outerHTML: '<span>点</span>' }) },
+    setTimeout, clearTimeout, ...timers, console,
   }
   const setup = new Function(...Object.keys(dependencies), `${script.replace(/^import .*$/gm, '')}\nreturn component.setup`)(...Object.values(dependencies))
   const panel = setup({ containerId: 'map', isMultiAccount: false }, { expose() {} })
-  return { panel, app, store, sdk, created, removed, listeners, unmount, window: dependencies.window }
+  return { panel, app, store, sdk, created, removed, listeners, unmount, beforeUnmount, mapInstances, lifecycle, window: dependencies.window }
 }
+
+test('map cleanup begins before the native host is removed and late events cannot read another instance', async () => {
+  const runtime = createRuntime()
+  await runtime.panel.initBaidu()
+  const map = runtime.store.map
+  const lateZoom = runtime.listeners.get('zoomend')
+  assert.equal(runtime.beforeUnmount.length, 1)
+  runtime.beforeUnmount[0]()
+  assert.equal(map.destroyed, true)
+  assert.doesNotThrow(() => lateZoom())
+  assert.equal(runtime.store.map, null)
+})
+
+test('Tencent recreation waits for destroyed and uses a distinct native host', async () => {
+  const runtime = createRuntime({ provider: 'tencent', deferredDestroy: true })
+  runtime.window.TMap.Map = runtime.sdk.Map
+  await runtime.panel.initTencent()
+  const oldMap = runtime.store.map
+  const next = runtime.panel.initMap()
+  await Promise.resolve()
+  assert.equal(runtime.mapInstances.length, 1, 'old native map must finish destruction first')
+  oldMap.events.get('destroyed')?.()
+  await next
+  assert.equal(runtime.mapInstances.length, 2)
+  assert.notEqual(runtime.mapInstances[0].host, runtime.mapInstances[1].host)
+  assert.notEqual(runtime.mapInstances[0].host.id, runtime.mapInstances[1].host.id)
+  const currentMap = runtime.store.map
+  runtime.beforeUnmount[0]?.()
+  currentMap.events.get('destroyed')?.()
+})
+
+test('Tencent owned lines are destroyed, markers are stopped and detached, and automatic fit has no animation', async () => {
+  const runtime = createRuntime({ provider: 'tencent' })
+  await runtime.panel.initTencent()
+  runtime.panel.drawPolyline([[113.39, 22.52], [113.40, 22.53]])
+  runtime.panel.addMarker([113.39, 22.52])
+  runtime.panel.fitView([[113.39, 22.52], [113.40, 22.53]])
+  assert.equal(runtime.store.map.fitOptions?.ease?.duration, 0)
+  await runtime.panel.destroyMap()
+  assert.ok(runtime.lifecycle.includes('destroy-line'))
+  assert.ok(runtime.lifecycle.includes('stop-marker'))
+  assert.ok(runtime.lifecycle.indexOf('destroy-line') < runtime.lifecycle.indexOf('destroy-map'))
+})
+
+test('Tencent destruction timeout blocks recreation and retains the old host until destroyed', async () => {
+  let deadline
+  const runtime = createRuntime({ provider: 'tencent', deferredDestroy: true,
+    timers: { setTimeout(callback) { deadline = callback; return 1 }, clearTimeout() {} },
+  })
+  await runtime.panel.initTencent()
+  const oldMap = runtime.store.map
+  const host = oldMap.host
+  const next = runtime.panel.initMap()
+  deadline()
+  await next
+  assert.match(runtime.panel.placeholderError.value, /释放超时/)
+  assert.ok(host.parentNode, 'a timed-out native host must remain attached')
+  await runtime.panel.initMap()
+  assert.equal(runtime.mapInstances.length, 1, 'timeout cannot enable another native map')
+  oldMap.events.get('destroyed')?.()
+  assert.equal(host.parentNode, null)
+  await runtime.panel.initMap()
+  assert.equal(runtime.mapInstances.length, 2)
+  const current = runtime.store.map
+  runtime.beforeUnmount[0]()
+  current.events.get('destroyed')?.()
+})
+
+test('late drawing events from a disposed map cannot add points to a new task', async () => {
+  const runtime = createRuntime()
+  await runtime.panel.initBaidu()
+  runtime.panel.bindDrawingClick()
+  const click = runtime.listeners.get('click')
+  await runtime.panel.destroyMap()
+  click({ latLng: { lng: 113.391, lat: 22.521 } })
+  assert.deepEqual(runtime.store.draftPoints, [])
+})
+
+test('Tencent removing one task line releases the native layer', async () => {
+  const runtime = createRuntime({ provider: 'tencent' })
+  await runtime.panel.initTencent()
+  const line = runtime.panel.drawPolyline([[113.39, 22.52], [113.40, 22.53]])
+  runtime.panel.removeSingleOverlay(line)
+  assert.ok(runtime.lifecycle.includes('destroy-line'))
+  await runtime.panel.destroyMap()
+})
+
+test('native map instances remain raw in the shared store', () => {
+  const source = readFileSync(new URL('../frontend/src/stores/map.js', import.meta.url), 'utf8')
+  const useStore = new Function('defineStore', 'ref', 'shallowRef', 'markRaw', 'computed',
+    source.replace(/^import .*$/gm, '').replace('export const useMapStore', 'const useMapStore') + '\nreturn useMapStore')(
+      (_id, setup) => setup, ref, shallowRef, markRaw, computed)
+  const store = useStore()
+  const native = { renderer: { mapping: new Map() } }
+  store.setMapInstance(native)
+  assert.equal(store.mapInstance.value, native)
+  assert.equal(store.mapInstance.value.renderer, native.renderer)
+})
 
 test('proxy-rewritten loader URL remains cached when the component remounts', async () => {
   let current, appended = 0
@@ -164,6 +289,7 @@ test('late proxy initialization cannot recreate a map after unmount or a newer i
     let resolveProxy
     const { panel, store, unmount } = createRuntime({ proxyInitialize: () => new Promise(resolve => { resolveProxy = resolve }) })
     const pending = panel.initMap()
+    await Promise.resolve()
     if (disposed) unmount[0]()
     else panel.initialization++
     resolveProxy()
@@ -171,4 +297,51 @@ test('late proxy initialization cannot recreate a map after unmount or a newer i
     assert.equal(store.map, null)
     assert.equal(panel.mapReady.value, false)
   }
+})
+
+test('a departed AMap loader cannot reset the SDK or replace the current security configuration', async () => {
+  let script, loads = 0, resets = 0
+  const browserWindow = { _AMapSecurityConfig: { securityJsCode: 'current-code' }, __appAmapSignature: 'current',
+    AMapLoader: { reset() { resets++ }, load() { loads++; return {} } },
+  }
+  const documentOverride = { getElementById() { return null }, createElement() { return { dataset: {} } },
+    head: { appendChild(value) { script = value } },
+  }
+  const runtime = createRuntime({ browserWindow, documentOverride, provider: 'amap' })
+  runtime.store.mapConfig.amapKey = 'departed-key'
+  runtime.store.mapConfig.amapSecurityJsCode = 'departed-code'
+  const pending = runtime.panel.initAmap()
+  runtime.beforeUnmount[0]()
+  script.onload()
+  await pending
+  assert.equal(browserWindow._AMapSecurityConfig.securityJsCode, 'current-code')
+  assert.equal(loads, 0)
+  assert.equal(resets, 0)
+})
+
+test('Baidu SDK callbacks are unique across components with the same initialization generation', async () => {
+  const browserWindow = {}
+  const scripts = []
+  const documentOverride = { getElementById() { return null }, createElement() { return { dataset: {} } },
+    head: { appendChild(script) { scripts.push(script) } },
+  }
+  const first = createRuntime({ browserWindow, documentOverride })
+  const oldPending = first.panel.initBaidu()
+  const oldName = new URL(scripts[0].src).searchParams.get('callback')
+  const oldCallback = browserWindow[oldName]
+  first.beforeUnmount[0]()
+  const second = createRuntime({ browserWindow, documentOverride })
+  const newPending = second.panel.initBaidu()
+  const newName = new URL(scripts[1].src).searchParams.get('callback')
+  const newCallback = browserWindow[newName]
+  second.beforeUnmount[0]()
+  oldCallback()
+  try {
+    assert.equal(browserWindow[newName], newCallback, 'old callback must not delete the current loader')
+  } finally {
+    newCallback()
+    scripts.forEach(script => script.onload?.())
+    await Promise.all([oldPending, newPending])
+  }
+  assert.notEqual(oldName, newName)
 })

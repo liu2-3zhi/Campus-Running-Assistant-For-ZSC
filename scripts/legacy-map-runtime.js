@@ -93,6 +93,9 @@ let activeTaskMapProviderLock = null;
 const TASK_MAP_AUTO_RESET_IDLE_MS = 120000;
 let taskMapAutoResetTimer = null;
 let taskMapAutoResetContainerId = "";
+const providerMapDestructions = {};
+const providerMapPendingInitializations = {};
+let providerMapSurfaceSequence = 0;
 
 function createMapProviderRuntimeConfigSnapshot(data) {
   if (!data || typeof data !== "object") {
@@ -216,7 +219,12 @@ function scheduleTaskMapAutoResetAfterUserInteraction(containerId = "map-contain
       ? timerHost.setTimeout.bind(timerHost)
       : setTimeout;
   taskMapAutoResetContainerId = containerId || "map-container";
+  const scheduledInstance = getProviderMapInstance(containerId);
+  const scheduledProvider = getActiveMapProvider();
   taskMapAutoResetTimer = setTimer(() => {
+    if (getActiveMapProvider() !== scheduledProvider || (scheduledInstance &&
+        (scheduledProvider === "amap" ? getProviderMapInstance(containerId) !== scheduledInstance :
+          !isCurrentProviderMapInstance(containerId, scheduledInstance)))) return;
     const resetContainerId = taskMapAutoResetContainerId || containerId || "map-container";
     taskMapAutoResetTimer = null;
     taskMapAutoResetContainerId = "";
@@ -529,7 +537,8 @@ async function loadActiveMapProviderRuntime(provider = getActiveMapProvider()) {
 }
 
 function getProviderMapSurfaceId(containerId) {
-  return `${containerId}-provider-surface`;
+  const container = document.getElementById(containerId);
+  return container?.dataset?.providerMapSurfaceId || `${containerId}-provider-surface`;
 }
 
 function getProviderMapSurface(containerId) {
@@ -563,7 +572,8 @@ function ensureProviderMapSurface(containerId, shouldReset = false) {
   if (shouldReset || !surface || surface.parentNode !== container) {
     clearProviderMapContainerChildren(container);
     surface = document.createElement("div");
-    surface.id = getProviderMapSurfaceId(containerId);
+    surface.id = `${containerId}-provider-surface-${++providerMapSurfaceSequence}`;
+    container.dataset.providerMapSurfaceId = surface.id;
     surface.className = "absolute inset-0 w-full h-full";
     surface.style.position = "absolute";
     surface.style.inset = "0";
@@ -609,35 +619,98 @@ function removeElementOrParentOverlay(element) {
   }
 }
 
+function isCurrentProviderMapInstance(containerId, instance) {
+  return !!instance && !instance.__providerDisposed &&
+    providerMapInstances[containerId] === instance &&
+    document.getElementById(containerId) === instance.__providerContainer &&
+    getActiveMapProvider() === instance.__providerName &&
+    (typeof sessionUUID === "undefined" ? null : sessionUUID) === instance.__providerSession;
+}
+
+function waitForProviderMapDestruction(containerId) {
+  return providerMapDestructions[containerId]?.promise || Promise.resolve(true);
+}
+
+function showProviderMapLifecycleError(containerId, message) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let notice = container.__providerLifecycleError;
+  if (!notice || notice.parentNode !== container) {
+    notice = document.createElement("div");
+    notice.className = "absolute inset-0 z-20 flex items-center justify-center bg-slate-50/90 text-sm text-red-500 p-4";
+    container.appendChild(notice);
+    container.__providerLifecycleError = notice;
+  }
+  notice.textContent = message;
+}
+
 function destroyProviderMapInstance(containerId) {
-  clearProviderMapOverlays(containerId, { clearRunnerMarkers: true });
+  delete providerMapPendingInitializations[containerId];
   const instance = providerMapInstances[containerId];
-  if (!instance) return;
-  try {
-    if (taskMapAutoResetContainerId === containerId) clearTaskMapAutoResetTimer();
-    if (typeof instance.__providerRightDragCleanup === "function") instance.__providerRightDragCleanup();
-    (instance.__providerSdkBindings || []).forEach(({ eventName, handler, usesOn }) => {
+  if (!instance || instance.__providerDisposed) return waitForProviderMapDestruction(containerId);
+  instance.__providerDisposed = true;
+  if (taskMapAutoResetContainerId === containerId) clearTaskMapAutoResetTimer();
+  const provider = providerMapInstanceProviders[containerId] || instance.__providerName;
+  const surface = instance.__providerSurface || getProviderMapSurface(containerId);
+  const detach = (cleanup) => {
+    try { cleanup(); } catch (error) { logMessage_Warning(`[地图] 清理${containerId}地图资源失败:`, error); }
+  };
+  if (typeof instance.__providerRightDragCleanup === "function") detach(instance.__providerRightDragCleanup);
+  (instance.__providerDomCleanups || []).forEach(detach);
+  instance.__providerDomCleanups = [];
+  (instance.__providerSdkBindings || []).forEach(({ eventName, handler, usesOn }) => {
+    detach(() => {
       if (usesOn && typeof instance.off === "function") instance.off(eventName, handler);
       else if (typeof instance.removeEventListener === "function") instance.removeEventListener(eventName, handler);
     });
-    instance.__providerSdkBindings = [];
-    if (typeof instance.destroy === "function") {
-      instance.destroy();
-    } else if (typeof instance.remove === "function") {
-      instance.remove();
-    } else if (typeof instance.clearOverLays === "function") {
-      instance.clearOverLays();
-    } else if (typeof instance.clearOverlays === "function") {
-      instance.clearOverlays();
-    }
-  } catch (e) {
-    logMessage_Warning(`[地图] 销毁${containerId}供应商地图实例失败:`, e);
-  }
+  });
+  instance.__providerSdkBindings = [];
+  clearProviderMapOverlays(containerId, { clearRunnerMarkers: true });
+  if (provider === "baidu" && typeof instance.clearOverlays === "function") detach(() => instance.clearOverlays());
   delete providerMapInstances[containerId];
   delete providerMapInstanceProviders[containerId];
   delete providerMapEventsBound[containerId];
   delete providerMapLastFitCoords[containerId];
   delete providerRunnerMarkers[containerId];
+  let complete;
+  const state = { pending: true, error: null, redraw: instance.__providerRedraw, promise: new Promise((resolve) => { complete = resolve; }) };
+  providerMapDestructions[containerId] = state;
+  let deadline;
+  const timerHost = typeof window !== "undefined" ? window : globalThis;
+  const onDestroyed = () => {
+    if (deadline !== undefined) timerHost.clearTimeout(deadline);
+    if (typeof instance.off === "function") instance.off("destroyed", onDestroyed);
+    if (surface?.parentNode) surface.parentNode.removeChild(surface);
+    state.pending = false;
+    state.error = null;
+    complete(true);
+  };
+  try {
+    if (provider === "tencent" && typeof instance.on === "function" && typeof instance.destroy === "function") {
+      instance.on("destroyed", onDestroyed);
+      deadline = timerHost.setTimeout(() => {
+        state.pending = false;
+        state.error = new Error("地图销毁超时，请刷新页面后重试");
+        logMessage_Error(`[地图] ${containerId}:`, state.error);
+        showProviderMapLifecycleError(containerId, state.error.message);
+        complete(false);
+      }, 5000);
+      instance.destroy();
+    } else {
+      if (typeof instance.destroy === "function") instance.destroy();
+      else if (typeof instance.remove === "function") instance.remove();
+      else if (typeof instance.clearOverLays === "function") instance.clearOverLays();
+      onDestroyed();
+    }
+  } catch (error) {
+    if (deadline !== undefined) timerHost.clearTimeout(deadline);
+    state.pending = false;
+    state.error = error;
+    logMessage_Error(`[地图] 销毁${containerId}地图实例失败:`, error);
+    showProviderMapLifecycleError(containerId, "地图清理失败，请刷新页面后重试");
+    complete(false);
+  }
+  return state.promise;
 }
 
 function getProviderOverlayBucket(containerId) {
@@ -675,9 +748,19 @@ function clearProviderMapOverlays(containerId, options = {}) {
 function removeProviderOverlayFromMap(containerId, overlay) {
   if (!overlay) return false;
   const provider = providerMapInstanceProviders[containerId] || getActiveMapProvider();
-  const instance = getProviderMapInstance(containerId);
+  const instance = providerMapInstances[containerId];
   try {
-    if (provider === "tencent" && typeof overlay.setMap === "function") {
+    if (provider === "tencent") {
+      const sdk = window.TMap || {};
+      if ((typeof sdk.MultiPolyline === "function" && overlay instanceof sdk.MultiPolyline) ||
+          (typeof sdk.MultiLabel === "function" && overlay instanceof sdk.MultiLabel)) {
+        if (typeof overlay.destroy === "function") {
+          overlay.destroy();
+          return true;
+        }
+      }
+      if (typeof overlay.stopMove === "function") overlay.stopMove();
+      if (typeof overlay.setMap !== "function") return false;
       overlay.setMap(null);
       return true;
     }
@@ -686,6 +769,7 @@ function removeProviderOverlayFromMap(containerId, overlay) {
       return true;
     }
     if (provider === "baidu" && instance && typeof instance.removeOverlay === "function") {
+      if (typeof overlay.setAnimation === "function") overlay.setAnimation(null);
       instance.removeOverlay(overlay);
       return true;
     }
@@ -1014,14 +1098,17 @@ function bindProviderMapZoomEvent(instance, eventName, handler) {
   if (!instance || !eventName || typeof handler !== "function") {
     return false;
   }
+  const guardedHandler = (...args) => {
+    if (isCurrentProviderMapInstance(instance.__providerContainerId, instance)) handler(...args);
+  };
   if (typeof instance.on === "function") {
-    instance.on(eventName, handler);
-    (instance.__providerSdkBindings ||= []).push({ eventName, handler, usesOn: true });
+    instance.on(eventName, guardedHandler);
+    (instance.__providerSdkBindings ||= []).push({ eventName, handler: guardedHandler, usesOn: true });
     return true;
   }
   if (typeof instance.addEventListener === "function") {
-    instance.addEventListener(eventName, handler);
-    (instance.__providerSdkBindings ||= []).push({ eventName, handler, usesOn: false });
+    instance.addEventListener(eventName, guardedHandler);
+    (instance.__providerSdkBindings ||= []).push({ eventName, handler: guardedHandler, usesOn: false });
     return true;
   }
   return false;
@@ -1074,12 +1161,19 @@ function bindTaskMapUserInteractionTracking(containerId, target) {
   if (!target || target.__taskMapAutoResetDomBound || typeof target.addEventListener !== "function") {
     return false;
   }
+  const instance = getProviderMapInstance(containerId);
+  if (!instance) return false;
   const handler = () => {
+    if (!isCurrentProviderMapInstance(containerId, instance)) return;
     scheduleTaskMapAutoResetAfterUserInteraction(containerId);
   };
   ["mousedown", "pointerdown", "touchstart", "wheel"].forEach((eventName) => {
     const options = eventName === "wheel" ? { passive: true } : true;
     target.addEventListener(eventName, handler, options);
+    (instance.__providerDomCleanups ||= []).push(() => {
+      target.removeEventListener(eventName, handler, options);
+      target.__taskMapAutoResetDomBound = false;
+    });
   });
   target.__taskMapAutoResetDomBound = true;
   return true;
@@ -1094,6 +1188,7 @@ function enableTianDiTuRightDragPan(containerId, instance) {
   let lastY = 0;
 
   const onMouseDown = (event) => {
+    if (!isCurrentProviderMapInstance(containerId, instance)) return;
     if (getActiveMapProvider() !== "tianditu" || !event || event.button !== 2) return;
     dragging = true;
     lastX = Number(event.clientX) || 0;
@@ -1103,6 +1198,7 @@ function enableTianDiTuRightDragPan(containerId, instance) {
   };
 
   const onMouseMove = (event) => {
+    if (!isCurrentProviderMapInstance(containerId, instance)) return;
     if (!dragging || !event) return;
     const currentX = Number(event.clientX) || lastX;
     const currentY = Number(event.clientY) || lastY;
@@ -1110,9 +1206,8 @@ function enableTianDiTuRightDragPan(containerId, instance) {
     const dy = currentY - lastY;
     lastX = currentX;
     lastY = currentY;
-    const activeInstance = getProviderMapInstance(containerId);
-    if (activeInstance && typeof activeInstance.panBy === "function" && (dx || dy)) {
-      activeInstance.panBy(dx, dy);
+    if (typeof instance.panBy === "function" && (dx || dy)) {
+      instance.panBy(dx, dy);
       scheduleTaskMapAutoResetAfterUserInteraction(containerId);
     }
     if (typeof event.preventDefault === "function") event.preventDefault();
@@ -1120,6 +1215,7 @@ function enableTianDiTuRightDragPan(containerId, instance) {
   };
 
   const onMouseUp = (event) => {
+    if (!isCurrentProviderMapInstance(containerId, instance)) return;
     if (!dragging) return;
     dragging = false;
     if (event && typeof event.preventDefault === "function") event.preventDefault();
@@ -1217,13 +1313,21 @@ function enableProviderMapInteractions(containerId, provider, instance) {
 function ensureProviderMapContextMenuGuard(containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
+  const instance = getProviderMapInstance(containerId);
+  if (!instance) return;
   const bindGuard = (target) => {
     if (!target || target._providerMapContextMenuGuardBound) return;
-    target.addEventListener("contextmenu", (event) => {
+    const handler = (event) => {
+      if (!isCurrentProviderMapInstance(containerId, instance)) return;
       if (getActiveMapProvider() !== "amap" && event && typeof event.preventDefault === "function") {
         event.preventDefault();
       }
-    }, true);
+    };
+    target.addEventListener("contextmenu", handler, true);
+    (instance.__providerDomCleanups ||= []).push(() => {
+      target.removeEventListener("contextmenu", handler, true);
+      target._providerMapContextMenuGuardBound = false;
+    });
     target._providerMapContextMenuGuardBound = true;
   };
   bindGuard(container);
@@ -1260,6 +1364,42 @@ function applyTianDiTuDefaultMapType(instance) {
   }
 }
 
+function rememberProviderMapRedraw(containerId, redraw) {
+  const instance = getProviderMapInstance(containerId);
+  if (instance) instance.__providerRedraw = redraw;
+  else if (providerMapDestructions[containerId]?.pending) providerMapDestructions[containerId].redraw = redraw;
+}
+
+function deferProviderMapInitialization(containerId, isMultiAccount, container, provider) {
+  const state = providerMapDestructions[containerId];
+  if (!state?.pending) {
+    if (state?.error) showProviderMapLifecycleError(containerId,
+      state.error.message === "地图销毁超时，请刷新页面后重试" ? state.error.message : "地图清理未完成，请刷新页面后重试");
+    return !!state?.error;
+  }
+  const request = { container, provider, session: typeof sessionUUID === "undefined" ? null : sessionUUID };
+  providerMapPendingInitializations[containerId] = request;
+  state.promise.then((success) => {
+    if (providerMapPendingInitializations[containerId] !== request) return;
+    delete providerMapPendingInitializations[containerId];
+    if (!success || getActiveMapProvider() !== provider || document.getElementById(containerId) !== container ||
+        (typeof sessionUUID === "undefined" ? null : sessionUUID) !== request.session) return;
+    if (initProviderMap(containerId, isMultiAccount) && typeof state.redraw === "function") state.redraw();
+  });
+  return true;
+}
+
+function registerProviderMapInstance(containerId, instance, provider, container, surface) {
+  instance.__providerContainerId = containerId;
+  instance.__providerContainer = container;
+  instance.__providerSurface = surface;
+  instance.__providerName = provider;
+  instance.__providerSession = typeof sessionUUID === "undefined" ? null : sessionUUID;
+  instance.__providerDisposed = false;
+  providerMapInstances[containerId] = instance;
+  providerMapInstanceProviders[containerId] = provider;
+}
+
 function initProviderMap(containerId, isMultiAccount = false) {
   applyPendingMapProviderConfigIfAny();
   const provider = getActiveMapProvider();
@@ -1276,7 +1416,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
   const providerCenter = convertGcj02ToProviderCoordinates(provider, center);
   const zoom = getProviderMapDefaultZoom(provider);
   let instance = providerMapInstances[containerId];
-  if (instance && providerMapInstanceProviders[containerId] !== provider) {
+  if (instance && !isCurrentProviderMapInstance(containerId, instance)) {
     destroyProviderMapInstance(containerId);
     instance = null;
   }
@@ -1285,6 +1425,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
     destroyProviderMapInstance(containerId);
     instance = null;
   }
+  if (deferProviderMapInitialization(containerId, isMultiAccount, container, provider)) return false;
   surface = ensureProviderMapSurface(containerId, !instance);
   if (!surface) {
     return false;
@@ -1308,7 +1449,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
           rotatable: true,
           showControl: true,
         });
-        providerMapInstances[containerId] = instance;
+        registerProviderMapInstance(containerId, instance, provider, container, surface);
       } else {
         instance.setCenter(new TMap.LatLng(providerCenter.lat, providerCenter.lng));
         instance.setZoom(zoom);
@@ -1329,7 +1470,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
       }
       if (!instance) {
         instance = new T.Map(surface.id);
-        providerMapInstances[containerId] = instance;
+        registerProviderMapInstance(containerId, instance, provider, container, surface);
         applyTianDiTuDefaultMapType(instance);
       }
       if (!providerMapEventsBound[containerId] && typeof instance.addEventListener === "function") {
@@ -1362,7 +1503,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
             building: true,
           },
         });
-        providerMapInstances[containerId] = instance;
+        registerProviderMapInstance(containerId, instance, provider, container, surface);
       }
       if (!providerMapEventsBound[containerId] && typeof instance.addEventListener === "function") {
         bindProviderMapZoomEvent(instance, "click", (event) => {
@@ -1395,7 +1536,18 @@ function initProviderMap(containerId, isMultiAccount = false) {
     return true;
   } catch (error) {
     logMessage_Error(`[地图] ${getMapProviderDisplayName(provider)}前端地图初始化失败:`, error);
-    renderMapProviderFrontendPlaceholder(containerId, isMultiAccount, error.message || "初始化失败");
+    const failedInstance = providerMapInstances[containerId];
+    if (failedInstance) {
+      const failedSession = failedInstance.__providerSession;
+      destroyProviderMapInstance(containerId).then((success) => {
+        if (success && !providerMapInstances[containerId] && document.getElementById(containerId) === container &&
+            getActiveMapProvider() === provider && (typeof sessionUUID === "undefined" ? null : sessionUUID) === failedSession) {
+          renderMapProviderFrontendPlaceholder(containerId, isMultiAccount, error.message || "初始化失败");
+        }
+      });
+    } else {
+      renderMapProviderFrontendPlaceholder(containerId, isMultiAccount, error.message || "初始化失败");
+    }
     return false;
   }
 }
