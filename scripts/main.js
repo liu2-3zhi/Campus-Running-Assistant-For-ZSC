@@ -26244,7 +26244,7 @@ async function loadSystemConfig() {
     );
     html += createInput("Map.providers.amap", "security_js_code", "高德安全密钥（选填）", "password", "需与高德 JS Key 配套；旧 Key 可留空。");
     html += createInput("Map", "backend_page_origin", "后端规划页面来源（选填）", "origin", "留空自动使用应用请求来源；粘贴完整 URL 后仅保留协议、域名和端口。");
-    html += createInput("Map", "frontend_proxy_enabled", "启用地图请求后端代理", "boolean", "仅代理白名单内的地图 SDK、服务与瓦片域名。");
+    html += createInput("Map", "frontend_proxy_enabled", "启用地图请求后端代理", "boolean", "默认关闭。开启由服务器转发地图请求并使用配置来源；关闭由浏览器直连地图服务，使用当前页面来源。保存后刷新页面生效；已加载地图时，下次加载切换模式会自动刷新页面。");
     for (const [provider, label] of [["amap", "高德"], ["tencent", "腾讯"], ["tianditu", "天地图"], ["baidu", "百度"]]) {
       html += createInput(`Map.providers.${provider}`, "backend_page_origin", `${label}规划来源（选填）`, "origin", "留空继承全局后端规划页面来源。");
     }

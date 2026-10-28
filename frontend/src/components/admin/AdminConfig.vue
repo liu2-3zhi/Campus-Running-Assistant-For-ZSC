@@ -81,7 +81,7 @@ const sections = [
         { value: 'tianditu', label: '天地图' }, { value: 'baidu', label: '百度地图' },
       ] },
       { key: 'backend_page_origin', label: '后端规划页面来源', type: 'origin', hint: '选填；留空自动使用应用请求来源。仅保留协议、域名和端口。' },
-      { key: 'frontend_proxy_enabled', label: '启用地图请求后端代理', type: 'boolean', hint: '仅代理白名单内的地图 SDK、服务与瓦片域名；来源按供应商覆盖、全局来源、当前页面来源顺序选择。' },
+      { key: 'frontend_proxy_enabled', label: '启用地图请求后端代理', type: 'boolean', hint: '默认关闭。开启由服务器转发地图请求并使用配置来源；关闭由浏览器直连地图服务，使用当前页面来源。保存后刷新页面生效；已加载地图时，下次加载切换模式会自动刷新页面。' },
       { key: 'providers.amap.js_key', label: '高德 JS Key', type: 'password' },
       { key: 'providers.amap.security_js_code', label: '高德安全密钥（选填）', type: 'password' },
       { key: 'providers.amap.backend_page_origin', label: '高德规划来源', type: 'origin', hint: '留空继承全局来源。' },

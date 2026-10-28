@@ -12,7 +12,7 @@
     baidu: [/^api\.map\.baidu\.com$/, /^(?:api|online|shangetu)[0-3]\.map\.bdimg\.com$/, /^apimaponline[0-3]\.bdimg\.com$/, /^maponline[0-3]\.bdimg\.com$/, /^d[0-3]\.map\.baidu\.com$/, /^(?:dlswbr|miao)\.baidu\.com$/, /^webmap0\.bdimg\.com$/],
     tianditu: [/^api\.tianditu\.gov\.cn$/, /^api\.tianditu\.com$/, /^t[0-7]\.tianditu\.gov\.cn$/, /^t[0-7]\.tianditu\.com$/],
   });
-  const state = { config: { enabled: false, provider: "amap", basePath: DEFAULT_BASE_PATH }, installed: false, restorers: [], contextGeneration: 0, refreshTimer: null, contextController: null };
+  const state = { config: { enabled: false, provider: "amap", basePath: DEFAULT_BASE_PATH }, installed: false, restorers: [], contextGeneration: 0, refreshTimer: null, contextController: null, initializedMode: null, reloadRequired: false };
 
   function normalizeConfig(input) {
     const config = input || {};
@@ -273,8 +273,25 @@
 
   async function initialize(input = {}) {
     const config = normalizeConfig(input);
+    const modeChanged = state.initializedMode !== null && state.initializedMode !== config.enabled;
+    const sdkLoaded = ["AMap", "TMap", "T", "BMap"].some((name) => typeof globalScope?.[name]?.Map === "function");
+    // Executed SDKs and their workers retain rewritten URLs after hooks are removed.
+    if (state.reloadRequired || (modeChanged && sdkLoaded)) {
+      if (!state.reloadRequired) {
+        state.reloadRequired = true;
+        if (typeof globalScope?.location?.reload !== "function") {
+          throw new Error("地图代理模式已更改，无法自动刷新页面，请手动刷新当前页面后重试。");
+        }
+        try { globalScope.location.reload(); }
+        catch (error) {
+          throw new Error("地图代理模式已更改，自动刷新失败，请手动刷新当前页面后重试。", { cause: error });
+        }
+      }
+      throw new Error("地图代理模式已更改，需要刷新当前页面后生效；如未自动刷新，请手动刷新后重试。");
+    }
     // Install first so failed reauthentication cannot restore direct vendor requests.
     install(config);
+    state.initializedMode = config.enabled;
     if (!config.enabled) return { ...config };
     const generation = state.contextGeneration;
     const contextInput = { sessionId: input.sessionId, originSessionId: input.originSessionId, contextUrl: input.contextUrl };

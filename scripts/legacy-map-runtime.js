@@ -99,6 +99,9 @@ function createMapProviderRuntimeConfigSnapshot(data) {
     return null;
   }
   const snapshot = {};
+  if (typeof data.frontend_proxy_enabled === "boolean") {
+    snapshot.frontend_proxy_enabled = data.frontend_proxy_enabled;
+  }
   const provider = normalizeSupportedMapProvider(data.map_provider);
   if (provider) {
     snapshot.map_provider = provider;
@@ -250,6 +253,10 @@ function syncMapProviderConfigFromInitialData(data) {
       ...(currentConfig.map_providers || {}),
     },
   };
+
+  if (typeof data.frontend_proxy_enabled === "boolean") {
+    nextConfig.frontend_proxy_enabled = data.frontend_proxy_enabled;
+  }
 
   if (runningTaskProvider) {
     nextConfig.map_provider = runningTaskProvider;

@@ -102,6 +102,7 @@
 - 代理凭证须在过期前续签；鉴权失败不能恢复直连。初始化和续签要隔离旧会话响应，成功鉴权只维持真实调用者的内存活跃时间，不新增每瓦片 Token 保存。
 - Nginx 必须保留请求 Host 的非默认端口，且包括 HTTP 重定向在内的访问/错误日志不能记录地图代理查询串。Python 的统一脱敏还必须覆盖 `ak`、`tk`、`jscode`、`securityJsCode`，包括 urllib3 DEBUG 记录。
 - `tests/browser_map_proxy_smoke.py` 是显式启用的真实后端代理验收，凭据只从环境变量进入内存；不得把真实 Key、Token、原始响应或完整路线写入脚本、配置或验收记录。
+- 地图请求代理开关 `Map.frontend_proxy_enabled` 默认关闭，旧版运行时快照和初始化合并都要传递显式 `true/false`，缺字段保留现值；管理员保存后的前端配置读取失败时，回退更新也要保留开关。已执行 SDK/Worker 中的代理 URL 不能靠卸载请求 hooks 逆转，模式切换须在下次加载地图时整页重载，不能复用另一模式的 SDK 缓存。
 - 后台任务启动、状态、停止接口都须验证真实调用者及显式管理员来源，再按调用者权限执行；游客同时核对 Token 索引与实体文件且不增加轮询写入。旧版路线快照按会话/执行批次/任务合并进行中的请求，不能因下一次 3 秒轮询到来持续作废慢快照。返回时合并更晚 WebSocket 位置；新批次、路线未就绪、任务切换和停止必须使旧请求失效。相关回归见 `tests/test_background_task_route_auth.py`、`tests/legacy_task_map_restore.test.mjs`。
 
 ## 坐标转换踩坑

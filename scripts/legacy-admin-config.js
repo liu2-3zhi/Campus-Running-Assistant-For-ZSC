@@ -1134,7 +1134,11 @@ async function saveSystemConfig() {
         );
         queuedMapProviderConfig = queuePendingMapProviderConfig(freshConfig);
       } catch (_syncErr) {
-        const directUpdate = { map_provider: newProvider, map_providers: {} };
+        const directUpdate = {
+          map_provider: newProvider,
+          frontend_proxy_enabled: configData.Map.frontend_proxy_enabled,
+          map_providers: {},
+        };
         if (configData.Map && configData.Map.providers) {
           const savedProviders = configData.Map.providers;
           const currentProviders = (window.APP_CONFIG || {}).map_providers || {};

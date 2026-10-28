@@ -1283,6 +1283,34 @@ test('running background tasks lock map provider and defer newer provider config
   assert.equal(getAppConfig().map_provider, 'baidu');
 });
 
+test('legacy initialization accepts either proxy state and preserves it when omitted', () => {
+  const runtime = createRuntime('tencent');
+  const config = runtime.getWindow().APP_CONFIG;
+  runtime.syncMapProviderConfigFromInitialData({ frontend_proxy_enabled: true });
+  assert.equal(runtime.getWindow().APP_CONFIG.frontend_proxy_enabled, true);
+  runtime.syncMapProviderConfigFromInitialData({ map_provider: 'tencent' });
+  assert.equal(runtime.getWindow().APP_CONFIG.frontend_proxy_enabled, true);
+  runtime.syncMapProviderConfigFromInitialData({ frontend_proxy_enabled: false });
+  assert.equal(runtime.getWindow().APP_CONFIG.frontend_proxy_enabled, false);
+  assert.equal(runtime.getWindow().APP_CONFIG.map_providers.tencent.map_key, config.map_providers.tencent.map_key);
+});
+
+test('a proxy-only configuration change waits for the running map and retains explicit false', () => {
+  const runtime = createRuntime('tencent');
+  runtime.getWindow().APP_CONFIG.frontend_proxy_enabled = false;
+  assert.equal(runtime.queuePendingMapProviderConfig({ frontend_proxy_enabled: true }), true);
+  runtime.setSingleRunProgressVisualActive(true);
+  assert.equal(runtime.applyPendingMapProviderConfigIfAny(), false);
+  assert.equal(runtime.getWindow().APP_CONFIG.frontend_proxy_enabled, false);
+  runtime.setSingleRunProgressVisualActive(false);
+  assert.equal(runtime.applyPendingMapProviderConfigIfAny(), true);
+  assert.equal(runtime.getWindow().APP_CONFIG.frontend_proxy_enabled, true);
+  assert.equal(runtime.queuePendingMapProviderConfig({ frontend_proxy_enabled: false }), true);
+  assert.equal(runtime.getPendingMapProviderRuntimeConfig().frontend_proxy_enabled, false);
+  assert.equal(runtime.applyPendingMapProviderConfigIfAny(), true);
+  assert.equal(runtime.getWindow().APP_CONFIG.frontend_proxy_enabled, false);
+});
+
 test('syncing sanitized provider config preserves an already hydrated map key', () => {
   const runtime = createRuntime('tencent');
   const getAppConfig = () => runtime.getWindow().APP_CONFIG;

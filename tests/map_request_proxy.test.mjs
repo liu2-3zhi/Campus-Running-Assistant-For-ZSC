@@ -295,6 +295,114 @@ test('enabled proxy bootstraps an authenticated context and installs URL hooks',
   assert.equal(api.rewriteUrl('https://api.map.baidu.com/api?v=4.0', api.getConfig()), '/map-proxy/baidu/https/api.map.baidu.com/api?v=4.0')
 })
 
+for (const sdk of ['AMap', 'TMap', 'T', 'BMap']) {
+  for (const initialMode of [true, false]) {
+    test(`${sdk} mode changes reload once without replacing the active hooks or context (${initialMode})`, async () => {
+      const { window, document, api, timers } = createHarness()
+      const calls = []
+      const originalUrl = 'https://app.example.test/?uuid=target-session#map'
+      window.location.href = originalUrl
+      let reloads = 0
+      window.location.reload = function () { assert.equal(this, window.location); reloads++ }
+      document.cookie = 'auth_token=unchanged; session_id=administrator-origin'
+      window.fetch = async (...args) => {
+        calls.push(args)
+        return { ok: true, json: async () => ({ success: true, expires_in: 1800 }) }
+      }
+      await api.initialize({ enabled: initialMode, provider: 'baidu', sessionId: 'target-session', originSessionId: 'administrator-origin' })
+      window[sdk] = { Map: class Map {} }
+      const activeFetch = window.fetch
+      const activeTimer = [...timers.entries()]
+      const contextCalls = calls.length
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await assert.rejects(api.initialize({ enabled: !initialMode, provider: 'baidu', sessionId: 'other-session' }), /模式.*刷新/)
+      }
+      await assert.rejects(api.initialize({ enabled: initialMode, provider: 'baidu', sessionId: 'target-session' }), /刷新/)
+      assert.equal(reloads, 1)
+      assert.equal(api.getConfig().enabled, initialMode)
+      assert.equal(window.fetch, activeFetch)
+      assert.deepEqual([...timers.entries()], activeTimer)
+      assert.equal(calls.length, contextCalls, 'changing mode must not bootstrap a different context before reload')
+      assert.equal(window.location.href, originalUrl)
+      assert.equal(document.cookie, 'auth_token=unchanged; session_id=administrator-origin')
+      await window.fetch('https://api.map.baidu.com/tile')
+      assert.equal(calls.at(-1)[0], initialMode ? '/map-proxy/baidu/https/api.map.baidu.com/tile' : 'https://api.map.baidu.com/tile')
+    })
+  }
+}
+
+test('first initialization and changes before a Map constructor loads do not reload', async () => {
+  const { window, api, timers } = createHarness()
+  let reloads = 0
+  window.location.reload = () => { reloads++ }
+  window.fetch = async () => ({ ok: true, json: async () => ({ success: true, expires_in: 1800 }) })
+  window.BMap = { loading: true }
+  await api.initialize({ enabled: false, provider: 'baidu' })
+  await api.initialize({ enabled: true, provider: 'baidu', sessionId: 'target' })
+  await api.initialize({ enabled: false, provider: 'baidu' })
+  assert.equal(reloads, 0)
+  assert.equal(api.getConfig().enabled, false)
+  assert.equal(timers.size, 0)
+
+  const another = createHarness()
+  another.window.BMap = { Map: class Map {} }
+  const first = await another.api.initialize({ enabled: false, provider: 'baidu' })
+  assert.equal(first.enabled, false, 'a preexisting SDK does not turn the first initialization into a mode change')
+})
+
+test('an unchanged enabled mode allows loaded SDK session changes without reload', async () => {
+  const { window, api } = createHarness()
+  const calls = []
+  let reloads = 0
+  window.location.reload = () => { reloads++ }
+  window.TMap = { Map: class Map {} }
+  window.fetch = async (...args) => {
+    calls.push(args)
+    return { ok: true, json: async () => ({ success: true, expires_in: 1800 }) }
+  }
+  for (const sessionId of ['administrator-origin', 'target-B', 'target-C']) {
+    await api.initialize({ enabled: true, provider: 'tencent', sessionId, originSessionId: 'administrator-origin' })
+  }
+  assert.equal(reloads, 0)
+  assert.deepEqual(calls.map(([_url, options]) => options.headers['X-Session-ID']), ['administrator-origin', 'target-B', 'target-C'])
+  assert.ok(calls.every(([_url, options]) => options.headers['X-Admin-Origin-Session-ID'] === 'administrator-origin'))
+})
+
+for (const reloadFailure of ['missing', 'throws']) {
+  test(`a loaded SDK mode change fails clearly when reload ${reloadFailure}`, async () => {
+    const { window, api } = createHarness()
+    const nativeFetch = window.fetch
+    await api.initialize({ enabled: false, provider: 'tencent' })
+    window.TMap = { Map: class Map {} }
+    if (reloadFailure === 'throws') window.location.reload = () => { throw new Error('navigation unavailable') }
+    await assert.rejects(api.initialize({ enabled: true, provider: 'tencent' }), /刷新.*手动刷新/)
+    assert.equal(api.getConfig().enabled, false)
+    assert.equal(window.fetch, nativeFetch)
+  })
+}
+
+test('a rejected mode change leaves the existing context request active and standalone uninstall available', async () => {
+  const { window, api, timers } = createHarness()
+  let completeContext
+  let contextSignal
+  window.AbortController = AbortController
+  window.location.reload = () => {}
+  const nativeFetch = window.fetch = (_url, options) => {
+    contextSignal = options.signal
+    return new Promise(resolve => { completeContext = resolve })
+  }
+  const active = api.initialize({ enabled: true, provider: 'amap', sessionId: 'administrator-origin' })
+  window.AMap = { Map: class Map {} }
+  await assert.rejects(api.initialize({ enabled: false, provider: 'amap' }), /刷新/)
+  assert.equal(contextSignal.aborted, false)
+  completeContext({ ok: true, json: async () => ({ success: true, expires_in: 1800 }) })
+  await active
+  assert.equal(timers.size, 1)
+  api.install({ enabled: false, provider: 'amap' })
+  assert.equal(window.fetch, nativeFetch)
+  assert.equal(timers.size, 0)
+})
+
 test('proxy bootstrap failure never falls back to direct vendor URLs', async () => {
   const { window, api } = createHarness()
   const calls = []
