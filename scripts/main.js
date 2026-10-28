@@ -26235,6 +26235,7 @@ async function loadSystemConfig() {
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">地图配置</h5>';
+    html += '<p class="text-sm text-slate-600 mb-4">后端路径规划与前端地图代理共用以下页面来源。前端启用后端代理后使用配置来源；关闭代理时使用当前页面来源。各地图的来源优先于全局来源。</p>';
     html += createInput(
       "Map",
       "provider",
@@ -26258,10 +26259,10 @@ async function loadSystemConfig() {
       "主配置改为 provider 嵌套字段；Map.amap_js_key 仅作为兼容读取来源。",
     );
     html += createInput("Map.providers.amap", "security_js_code", "高德安全密钥（选填）", "password", "需与高德 JS Key 配套；旧 Key 可留空。");
-    html += createInput("Map", "backend_page_origin", "后端规划页面来源（选填）", "origin", "留空自动使用应用请求来源；粘贴完整 URL 后仅保留协议、域名和端口。");
+    html += createInput("Map", "backend_page_origin", "地图页面来源（选填）", "origin", "用于后端路径规划和前端地图代理。留空自动使用应用请求来源；粘贴完整 URL 后仅保留协议、域名和端口。");
     html += createInput("Map", "frontend_proxy_enabled", "启用地图请求后端代理", "boolean", "默认关闭。开启由服务器转发地图请求并使用配置来源；关闭由浏览器直连地图服务，使用当前页面来源。保存后刷新页面生效；已加载地图时，下次加载切换模式会自动刷新页面。");
-    for (const [provider, label] of [["amap", "高德"], ["tencent", "腾讯"], ["tianditu", "天地图"], ["baidu", "百度"]]) {
-      html += createInput(`Map.providers.${provider}`, "backend_page_origin", `${label}规划来源（选填）`, "origin", "留空继承全局后端规划页面来源。");
+    for (const [provider, label] of [["amap", "高德地图"], ["tencent", "腾讯地图"], ["tianditu", "天地图"], ["baidu", "百度地图"]]) {
+      html += createInput(`Map.providers.${provider}`, "backend_page_origin", `${label}页面来源（选填）`, "origin", "同时用于该地图的后端规划和前端代理；留空继承全局来源。");
     }
     html += createInput(
       "Map.providers.tencent",

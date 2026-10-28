@@ -75,22 +75,23 @@ const sections = [
   },
   {
     save: 'Map', load: 'Map', label: '地图配置',
+    description: '后端路径规划与前端地图代理共用以下页面来源。前端启用后端代理后使用配置来源；关闭代理时使用当前页面来源。各地图的来源优先于全局来源。',
     fields: [
       { key: 'provider', label: '地图提供方', type: 'select', options: [
         { value: 'amap', label: '高德地图' }, { value: 'tencent', label: '腾讯地图' },
         { value: 'tianditu', label: '天地图' }, { value: 'baidu', label: '百度地图' },
       ] },
-      { key: 'backend_page_origin', label: '后端规划页面来源', type: 'origin', hint: '选填；留空自动使用应用请求来源。仅保留协议、域名和端口。' },
+      { key: 'backend_page_origin', label: '地图页面来源（选填）', type: 'origin', hint: '用于后端路径规划和前端地图代理。留空自动使用应用请求来源；仅保留协议、域名和端口。' },
       { key: 'frontend_proxy_enabled', label: '启用地图请求后端代理', type: 'boolean', hint: '默认关闭。开启由服务器转发地图请求并使用配置来源；关闭由浏览器直连地图服务，使用当前页面来源。保存后刷新页面生效；已加载地图时，下次加载切换模式会自动刷新页面。' },
       { key: 'providers.amap.js_key', label: '高德 JS Key', type: 'password' },
       { key: 'providers.amap.security_js_code', label: '高德安全密钥（选填）', type: 'password' },
-      { key: 'providers.amap.backend_page_origin', label: '高德规划来源', type: 'origin', hint: '留空继承全局来源。' },
+      { key: 'providers.amap.backend_page_origin', label: '高德地图页面来源（选填）', type: 'origin', hint: '同时用于高德后端规划和前端代理；留空继承全局来源。' },
       { key: 'providers.tencent.map_key', label: '腾讯地图 Key', type: 'password' },
-      { key: 'providers.tencent.backend_page_origin', label: '腾讯规划来源', type: 'origin', hint: '留空继承全局来源。' },
+      { key: 'providers.tencent.backend_page_origin', label: '腾讯地图页面来源（选填）', type: 'origin', hint: '同时用于腾讯后端规划和前端代理；留空继承全局来源。' },
       { key: 'providers.tianditu.token', label: '天地图 Token', type: 'password' },
-      { key: 'providers.tianditu.backend_page_origin', label: '天地图规划来源', type: 'origin', hint: '留空继承全局来源。' },
+      { key: 'providers.tianditu.backend_page_origin', label: '天地图页面来源（选填）', type: 'origin', hint: '同时用于天地图后端规划和前端代理；留空继承全局来源。' },
       { key: 'providers.baidu.ak', label: '百度地图 AK', type: 'password' },
-      { key: 'providers.baidu.backend_page_origin', label: '百度规划来源', type: 'origin', hint: '留空继承全局来源。' },
+      { key: 'providers.baidu.backend_page_origin', label: '百度地图页面来源（选填）', type: 'origin', hint: '同时用于百度后端规划和前端代理；留空继承全局来源。' },
     ],
   },
   {
@@ -147,9 +148,9 @@ for (const s of sections) {
 /* ── snapshot of original config for dirty detection ── */
 let originalSnapshot = ''
 
-/* ── expanded sections（首个默认展开） ── */
+/* ── expanded sections ── */
 const expandedSections = reactive({})
-sections.forEach((s, i) => { expandedSections[s.save] = i === 0 })
+sections.forEach((s, i) => { expandedSections[s.save] = i === 0 || s.save === 'Map' })
 
 /* ── helpers ── */
 function clearMessages() { error.value = ''; success.value = '' }
@@ -290,12 +291,14 @@ onMounted(loadConfig)
       <div v-for="section in sections" :key="section.save" class="panel p-4 mb-4">
         <button
           @click="toggleSection(section.save)"
+          :aria-expanded="expandedSections[section.save]"
           class="w-full flex items-center justify-between text-left font-medium text-[var(--ink)]"
         >
           <span>{{ section.label }}</span>
-          <span class="text-[var(--ink-muted)] transition-transform duration-200" :class="expandedSections[section.save] ? '' : '-rotate-90'">&#9660;</span>
+          <span aria-hidden="true" class="text-[var(--ink-muted)] transition-transform duration-200" :class="expandedSections[section.save] ? '' : '-rotate-90'">&#9660;</span>
         </button>
         <div v-show="expandedSections[section.save]" class="mt-4 space-y-3">
+          <p v-if="section.description" class="text-sm text-[var(--ink-secondary)]">{{ section.description }}</p>
           <div
             v-for="field in section.fields"
             :key="field.key"
@@ -305,18 +308,26 @@ onMounted(loadConfig)
 
             <!-- boolean toggle -->
             <template v-if="field.type === 'boolean'">
-              <button
-                type="button"
-                class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0"
-                :class="configForm[section.save]?.[field.key] ? 'bg-[var(--accent)]' : 'bg-gray-300'"
-                @click="configForm[section.save][field.key] = !configForm[section.save][field.key]"
-              >
-                <span
-                  class="inline-block h-4 w-4 rounded-full bg-white transition-transform"
-                  :class="configForm[section.save]?.[field.key] ? 'translate-x-6' : 'translate-x-1'"
-                />
-              </button>
-              <span class="text-xs text-[var(--ink-muted)]">{{ configForm[section.save]?.[field.key] ? '已启用' : '已禁用' }}</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    role="switch"
+                    :aria-label="field.label"
+                    :aria-checked="configForm[section.save]?.[field.key]"
+                    class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0"
+                    :class="configForm[section.save]?.[field.key] ? 'bg-[var(--accent)]' : 'bg-gray-300'"
+                    @click="configForm[section.save][field.key] = !configForm[section.save][field.key]"
+                  >
+                    <span
+                      class="inline-block h-4 w-4 rounded-full bg-white transition-transform"
+                      :class="configForm[section.save]?.[field.key] ? 'translate-x-6' : 'translate-x-1'"
+                    />
+                  </button>
+                  <span class="text-xs text-[var(--ink-muted)]">{{ configForm[section.save]?.[field.key] ? '已启用' : '已禁用' }}</span>
+                </div>
+                <p v-if="field.hint" class="text-xs text-[var(--ink-muted)] mt-1">{{ field.hint }}</p>
+              </div>
             </template>
 
             <!-- select -->
