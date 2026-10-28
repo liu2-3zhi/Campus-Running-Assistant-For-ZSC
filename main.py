@@ -2624,8 +2624,25 @@ def _build_multi_account_completion_status(total_tasks, successful_tasks):
 
 
 def _bounded_route_runtime_diagnostic(diagnostic, sensitive_values):
-    def fits(value):
-        return max(len(json.dumps(value, ensure_ascii=ascii_only).encode("utf-8")) for ascii_only in (False, True)) <= 4096
+    def fits(value, limit=4096):
+        return max(len(json.dumps(value, ensure_ascii=ascii_only).encode("utf-8")) for ascii_only in (False, True)) <= limit
+
+    sdk_auth_error = diagnostic.get("sdk_auth_error")
+    if isinstance(sdk_auth_error, dict):
+        diagnostic = dict(diagnostic)
+        diagnostic["sdk_auth_error"] = {
+            field: value if isinstance(value, (bool, int, float)) else sanitize_diagnostic(value, 256, sensitive_values)
+            for field in ("api_type", "stage", "error_code", "message", "source", "error_explanation", "error_hint", "retryable")
+            if (value := sdk_auth_error.get(field)) is not None
+        }
+        bounded_auth = diagnostic["sdk_auth_error"]
+        while not fits(bounded_auth, 1024):
+            strings = [field for field, value in bounded_auth.items() if isinstance(value, str) and value]
+            if not strings:
+                diagnostic.pop("sdk_auth_error")
+                break
+            field = max(strings, key=lambda name: len(bounded_auth[name].encode("utf-8")))
+            bounded_auth[field] = sanitize_diagnostic(bounded_auth[field], len(bounded_auth[field].encode("utf-8")) // 2, sensitive_values)
 
     try:
         safe = json.loads(sanitize_diagnostic(diagnostic, 4096, sensitive_values))
@@ -2642,6 +2659,10 @@ def _bounded_route_runtime_diagnostic(diagnostic, sensitive_values):
         for field in ("guard_label", "actual_mode", "waypoint_count", "segment", "error_code", "http_status", "api_type", "stage", "error_explanation", "error_hint", "origin_source", "runtime_page_origin", "waves", "elapsed_ms")
         if field in diagnostic
     }
+    if isinstance(diagnostic.get("sdk_auth_error"), dict):
+        compact["sdk_auth_error"] = diagnostic["sdk_auth_error"]
+    if "runtime_error" in diagnostic:
+        compact["runtime_error"] = scalar(diagnostic["runtime_error"], 256)
     if "failed_endpoints" in diagnostic:
         compact["failed_endpoints"] = json.loads(sanitize_diagnostic(diagnostic["failed_endpoints"], 400, sensitive_values))
     segments = diagnostic.get("segments")
@@ -2671,8 +2692,10 @@ def _bounded_route_runtime_diagnostic(diagnostic, sensitive_values):
             segment["callbacks_dropped"] = segment.get("callbacks_dropped", 0) + 1
         elif segment:
             compact.pop("segments", None)
+        elif "runtime_error" in compact:
+            compact.pop("runtime_error")
         else:
-            return {field: compact[field] for field in ("guard_label", "actual_mode", "waypoint_count", "segment") if field in compact}
+            return {field: compact[field] for field in ("guard_label", "actual_mode", "waypoint_count", "segment", "sdk_auth_error") if field in compact}
     return compact
 
 
@@ -2780,9 +2803,31 @@ def _plan_route_path_with_provider_runtime(
         for field in ("error_code", "http_status"):
             if field in failed:
                 diagnostic[field] = failed[field]
+            elif diagnostic.get(field) in (None, "") and result.get(field) not in (None, ""):
+                diagnostic[field] = result[field]
+        sdk_auth_error = diagnostic.get("sdk_auth_error")
+        if provider == "baidu" and isinstance(sdk_auth_error, dict) and sdk_auth_error.get("api_type") == "baidu_jsapi_auth" and sdk_auth_error.get("source") == "dialog":
+            sdk_auth_error = normalize_map_error("baidu", "baidu_jsapi_auth", {
+                "message": sanitize_diagnostic(sdk_auth_error.get("message", ""), 256, sensitive_values),
+                "error_code": sdk_auth_error.get("error_code"),
+            }, stage="sdk_auth")
+            sdk_auth_error["source"] = "dialog"
+            diagnostic["sdk_auth_error"] = sdk_auth_error
+            route_code = diagnostic.get("error_code")
+            if route_code in (None, ""):
+                route_code = result.get("error_code")
+            if route_code in (None, "", 0, "0"):
+                diagnostic["runtime_error"] = sanitize_diagnostic(result["error"], 512, sensitive_values)
+                result["error"] = sdk_auth_error["message"]
+                diagnostic["api_type"], diagnostic["stage"] = "baidu_jsapi_auth", "sdk_auth"
+                diagnostic.pop("error_code", None)
+                if "error_code" in sdk_auth_error:
+                    diagnostic["error_code"] = sdk_auth_error["error_code"]
+                for field in ("error_code", "error_explanation", "error_hint", "retryable"):
+                    result.pop(field, None)
         normalized_error = normalize_map_error(provider, diagnostic["api_type"], {
             "message": result["error"], "error_code": diagnostic.get("error_code"),
-        }, http_status=diagnostic.get("http_status"), stage=diagnostic["stage"])
+        }, http_status=diagnostic.get("http_status") if diagnostic["api_type"] != "baidu_jsapi_auth" else None, stage=diagnostic["stage"])
         for field in ("api_type", "stage", "error_code", "http_status", "error_explanation", "error_hint", "retryable"):
             if field in normalized_error:
                 diagnostic[field] = normalized_error[field]

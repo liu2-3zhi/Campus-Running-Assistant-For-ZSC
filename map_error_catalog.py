@@ -7,6 +7,8 @@ observed Drive responses, not a claim of a complete public gateway contract.
 
 import re
 
+from route_diagnostics import sanitize_diagnostic
+
 
 def _entry(explanation, hint, retryable=False):
     return {'error_explanation': explanation, 'error_hint': hint, 'retryable': retryable}
@@ -214,6 +216,26 @@ def normalize_map_error(provider, api_type, value, *, callback_status=None, http
         result['http_status'] = http_status
         if 'error_explanation' not in result:
             result.update(describe_map_error(provider, 'http', http_status, stage))
+    return result
+
+
+def extract_baidu_sdk_auth_error(event, *, provider, sensitive_values=()):
+    """Recognize explicit SDK authentication dialogs, never incidental numbers."""
+    if provider != 'baidu' or not isinstance(event, dict) or event.get('kind') != 'dialog':
+        return None
+    message = sanitize_diagnostic(event.get('detail', ''), 1024, sensitive_values)
+    if not re.search(r'百度(?:地图|LBS)|百度未授权使用地图\s*api|baidu\s*maps?\s*api', message, re.I):
+        return None
+    if not re.search(r'认证|鉴权|未授权|authentication|authorization|'
+                     r'(?:AK|key|referer|域名|密钥).{0,20}(?:校验|无效|失败|invalid|denied)', message, re.I):
+        return None
+    # HTTP status, coordinates and elapsed times are not vendor authentication codes.
+    match = re.search(r'(?<![A-Za-z0-9_])(?:错误码|error[\s_-]*code)\s*[：:=]\s*["\']?(\d{1,9})(?![\w.])', message, re.I)
+    value = {'message': sanitize_diagnostic(message, 256, sensitive_values)}
+    if match:
+        value['error_code'] = int(match.group(1))
+    result = normalize_map_error('baidu', 'baidu_jsapi_auth', value, stage='sdk_auth')
+    result['source'] = 'dialog'
     return result
 
 

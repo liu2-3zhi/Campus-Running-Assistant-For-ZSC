@@ -1362,6 +1362,7 @@ class ChromeBrowserPool:
     def _install_route_page_diagnostics(self, entry):
         """Install once on the real, worker-owned page; scope events to a command."""
         from route_diagnostics import sanitize_diagnostic
+        from map_error_catalog import extract_baidu_sdk_auth_error
 
         if entry.get("route_listeners_installed"):
             return
@@ -1369,8 +1370,15 @@ class ChromeBrowserPool:
 
         def capture(kind, value):
             active = entry.get("route_diagnostic_context")
-            if not active:
+            if not active or active.get("sdk_auth_capture_enabled") is False:
                 return
+            candidate = extract_baidu_sdk_auth_error(
+                {"kind": kind, "detail": value}, provider=active.get("provider"),
+                sensitive_values=active.get("sensitive_values", ()),
+            )
+            previous = active.get("sdk_auth_error")
+            if candidate and (not previous or (previous.get("error_code") is None and candidate.get("error_code") is not None)):
+                active["sdk_auth_error"] = candidate
             if len(active["events"]) >= 12:
                 active["events_dropped"] = active.get("events_dropped", 0) + 1
                 return
@@ -1463,12 +1471,17 @@ class ChromeBrowserPool:
         active = dict(diagnostic_context) if diagnostic_context else None
         if active is not None:
             active["events"] = []
+            active.pop("sdk_auth_error", None)
+            # Navigation discards the previous JS realm; its late dialogs belong to no new command.
+            active["sdk_auth_capture_enabled"] = runtime_page_origin is None
         entry["route_diagnostic_context"] = active
         try:
             # 获取页面对象
             page = self._contexts[session_id]["page"]
             if runtime_page_origin is not None:
                 self._prepare_map_runtime_page(page, runtime_page_origin, deadline_epoch_ms)
+            if active is not None:
+                active["sdk_auth_capture_enabled"] = True
             # 执行 JavaScript 代码
             if deadline_epoch_ms is None:
                 result = page.evaluate(script, js_args)
@@ -1488,10 +1501,15 @@ class ChromeBrowserPool:
                 if not isinstance(result.get("diagnostic"), dict):
                     result["diagnostic"] = {}
                 result["diagnostic"]["browser_events"] = active["events"]
+                result["diagnostic"].pop("sdk_auth_error", None)
+                if active.get("sdk_auth_error"):
+                    result["diagnostic"]["sdk_auth_error"] = active["sdk_auth_error"]
                 if active.get("events_dropped"):
                     result["diagnostic"]["browser_events_dropped"] = active["events_dropped"]
             return {"success": True, "result": result}
         except Exception as e:
+            if active is not None:
+                active["sdk_auth_capture_enabled"] = False
             if deadline_epoch_ms is not None:
                 try:
                     entry["page"].goto("about:blank", wait_until="commit", timeout=1000)
@@ -1500,8 +1518,10 @@ class ChromeBrowserPool:
             if active:
                 error = sanitize_diagnostic(e, sensitive_values=active.get("sensitive_values", ()))
                 logging.debug("[路径诊断] id=%s JavaScript异常=%s", active.get("diagnostic_id"), error)
-                return {"success": False, "error": error,
-                        "diagnostic": {"browser_events": active["events"]}}
+                diagnostic = {"browser_events": active["events"]}
+                if active.get("sdk_auth_error"):
+                    diagnostic["sdk_auth_error"] = active["sdk_auth_error"]
+                return {"success": False, "error": error, "diagnostic": diagnostic}
             logging.error(f"执行 JS 失败 (session={session_id}): {e}", exc_info=True)
             return {"success": False, "error": str(e)}
         finally:
