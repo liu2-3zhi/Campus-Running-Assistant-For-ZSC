@@ -10,6 +10,7 @@ env:
   IMAGE_NAME: campus-running-assistant-for-zsc
   REGISTRY: docker.io
   REGISTRY_PREFIX: docker.io/${{ secrets.DOCKER_USERNAME }}
+  DOCKER_FILE_PATH: Dockerfile
 
 jobs:
   build-and-push:
@@ -20,7 +21,7 @@ jobs:
         run: sudo timedatectl set-timezone Asia/Shanghai
 
       - name: 拉取仓库代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: true   # 拉取子模块
           fetch-depth: 0     # 保证能获取完整历史，避免浅克隆
@@ -33,19 +34,19 @@ jobs:
           echo "生成的时间标签: $TAG"
 
       - name: 初始化 Buildx（container driver）
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           driver: docker-container
 
       - name: 登录 Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: docker.io
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: 恢复 GHA 构建缓存
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /tmp/.buildx-cache
           key: Docker-image-build-latest
@@ -60,14 +61,18 @@ jobs:
 
       - name: 拉取基础镜像
         run: |
-          BASE_IMAGE=$(grep -i '^FROM ' Dockerfile | head -n1 | awk '{print $2}')
+          BASE_IMAGE=$(grep -i '^FROM ' ${{ env.DOCKER_FILE_PATH }} | head -n1 | awk '{print $2}')
           echo "基础镜像: $BASE_IMAGE"
           docker pull "$BASE_IMAGE" || true
 
       - name: 构建并推送镜像（使用 GHA + Registry 双缓存）
-        uses: docker/build-push-action@v5
+        id: build
+        uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: "false"
         with:
           context: .
+          file: ${{ env.DOCKER_FILE_PATH }}
           push: true
 
           tags: |
@@ -83,7 +88,65 @@ jobs:
             type=registry,ref=${{ env.REGISTRY_PREFIX }}/${{ env.IMAGE_NAME }}:cache,mode=max
 
       - name: 保存 GHA 构建缓存
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /tmp/.buildx-cache
           key: Docker-image-build-latest
+
+      # 关闭默认摘要后，单独保留可导入 Docker Desktop 的构建记录。
+      - name: 导出 Docker 构建记录
+        id: export_record
+        if: always() && steps.build.outcome != 'skipped' && steps.build.outcome != ''
+        continue-on-error: true
+        run: docker buildx history export --finalize --all --output "$RUNNER_TEMP/docker-build-record.dockerbuild"
+
+      - name: 上传 Docker 构建记录
+        id: upload_record
+        if: always() && steps.export_record.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-build-${{ github.run_id }}-${{ github.run_attempt }}.dockerbuild
+          path: ${{ runner.temp }}/docker-build-record.dockerbuild
+
+      - name: 输出中文 Docker 构建摘要
+        if: always()
+        shell: bash
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          IMAGE_TAG: ${{ steps.time.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_ID: ${{ steps.build.outputs.imageid }}
+          BUILD_RECORD_URL: ${{ steps.upload_record.outputs.artifact-url }}
+        run: |
+          case "$BUILD_OUTCOME" in
+            success) BUILD_STATUS="成功（镜像已推送）" ;;
+            failure) BUILD_STATUS="失败" ;;
+            cancelled) BUILD_STATUS="已取消" ;;
+            *) BUILD_STATUS="未执行" ;;
+          esac
+
+          IMAGE="${REGISTRY_PREFIX}/${IMAGE_NAME}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          {
+            echo '## Docker 构建摘要'
+            echo
+            echo '| 项目 | 内容 |'
+            echo '| --- | --- |'
+            printf '| 构建结果 | %s |\n' "$BUILD_STATUS"
+            printf '| 构建文件 | `%s` |\n' "$DOCKER_FILE_PATH"
+            if [ -n "$IMAGE_TAG" ]; then
+              printf '| 目标镜像标签 | `%s:%s` |\n' "$IMAGE" "$IMAGE_TAG"
+            fi
+            printf '| 最新镜像标签 | `%s:latest` |\n' "$IMAGE"
+            printf '| 镜像摘要 | `%s` |\n' "${IMAGE_DIGEST:-未生成}"
+            printf '| 镜像 ID | `%s` |\n' "${IMAGE_ID:-未生成}"
+            printf '| 代码提交 | `%s` |\n' "$GITHUB_SHA"
+            echo
+            printf '[查看构建日志](%s)\n' "$RUN_URL"
+            if [ -n "$BUILD_RECORD_URL" ]; then
+              echo
+              printf '[下载构建记录（可导入 Docker Desktop）](%s)\n' "$BUILD_RECORD_URL"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
