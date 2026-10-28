@@ -15,7 +15,7 @@ _GEOMETRY_KEYS = {"path", "routes", "polyline", "waypoints", "target_points", "r
 _TEXT_SECRET = re.compile(
     r"(?i)([\"']?\b(?:api[_-]?key|map[_-]?key|js[_-]?key|apikey|key|ak|tk|"
     r"token|password|secret|security[_-]?(?:js[_-]?)?code|session[_-]?id|uuid|"
-    r"signature|sign|cookie|authorization)[\"']?\s*[:=]\s*)"
+    r"signature|sign|sig|sn|cookie|authorization)[\"']?\s*[:=]\s*)"
     r"(?:\"[^\"]*\"|'[^']*'|[^\s,;&}\]]+)"
 )
 _URL = re.compile(r"https?://(?:<redacted>|[^\s\"'<>])+", re.I)
@@ -73,7 +73,7 @@ def sanitize_diagnostic(value, max_bytes=4096, sensitive_values=()):
                     for key, child in list(item.items())[:40]:
                         key = str(key)
                         normalized = key.lower().replace("-", "_")
-                        if _SECRET_KEY.search(key) or normalized in {"ak", "tk"}:
+                        if _SECRET_KEY.search(key) or normalized in {"ak", "tk", "sign", "sig", "sn"}:
                             result[key] = _REDACTED
                         elif normalized in _GEOMETRY_KEYS:
                             result[key] = "<omitted>"

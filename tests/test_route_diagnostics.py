@@ -36,6 +36,35 @@ class TestRouteDiagnosticSanitizer(unittest.TestCase):
         self.assertNotIn("bare-secret", text)
         self.assertNotIn("bare%2Fsecret", text)
 
+    def test_signature_aliases_are_redacted_in_nested_objects(self):
+        for alias in ("sign", "sig", "sn", "SIGN", "Sig", "Sn"):
+            with self.subTest(alias=alias):
+                payload = {"nested": [{alias: {"raw": "private-signature"}}], "info": "INVALID_USER_SCODE"}
+                text = sanitize_diagnostic(payload)
+                self.assertNotIn("private-signature", text)
+                self.assertEqual(json.loads(text)["nested"][0][alias], "<redacted>")
+                self.assertIn("INVALID_USER_SCODE", text)
+
+    def test_signature_aliases_are_redacted_in_text_urls_and_summaries(self):
+        for alias in ("sign", "sig", "sn", "SIGN", "Sig", "Sn"):
+            for message in (
+                f"SDK rejected {alias}=private-signature; reason=INVALID_USER_SCODE",
+                f'SDK response {{"{alias}": "private-signature", "reason": "INVALID_USER_SCODE"}}',
+                f"SDK https://example.test/maps?{alias}=private-signature&from=1,2 INVALID_USER_SCODE",
+            ):
+                with self.subTest(alias=alias, message=message):
+                    text = sanitize_diagnostic(message)
+                    self.assertNotIn("private-signature", text)
+                    self.assertIn("INVALID_USER_SCODE", text)
+                    summary = build_route_failure_summary({"error": message})
+                    self.assertNotIn("private-signature", summary["message"])
+
+    def test_signature_aliases_do_not_redact_similar_ordinary_fields(self):
+        payload = {"signal": "strong", "assigned": "worker", "design": "route", "sign_count": 3, "snapped": "road"}
+        self.assertEqual(json.loads(sanitize_diagnostic(payload)), payload)
+        message = "signal=strong assigned=worker design=route sign_count=3 snapped=road"
+        self.assertEqual(sanitize_diagnostic(message), message)
+
     def test_url_redaction_is_idempotent_in_repeated_diagnostic_layers(self):
         messages = (
             "APP不存在，AK有误：http://lbsyun.baidu.com/apiconsole/key?<redacted>",
