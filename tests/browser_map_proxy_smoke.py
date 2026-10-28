@@ -70,6 +70,192 @@ def browser_step(page, source, args=None, timeout_ms=30000):
     }""", {"source": source, "args": args, "timeoutMs": timeout_ms})
 
 
+def evaluate_acceptance(row):
+    """Keep transport/rendering and teardown outcomes separate, and require both."""
+    rounds = row.get("rounds", [])
+    functional = bool(row.get("route_success") and row.get("route_points", 0) >= 2
+                      and row.get("map_ready") and not row.get("map_error")
+                      and row.get("ui_verified", True) and row.get("legacy_ui_verified", True)
+                      and not row.get("proxy_failures") and not row.get("upstream_failures")
+                      and not (row.get("proxy_enabled", True) and row.get("direct_requests"))
+                      and all(item.get("functional_pass", False) for item in rounds))
+    lifecycle = not bool(row.get("script_errors") or row.get("unhandled_rejections")
+                         or row.get("console_error_messages")) and all(
+                             item.get("lifecycle_pass", False) for item in rounds)
+    return {**row, "functional_pass": functional, "lifecycle_pass": lifecycle,
+            "passed": functional and lifecycle}
+
+
+def smoke_results_passed(rows):
+    return bool(rows) and all(evaluate_acceptance(row)["passed"] for row in rows)
+
+
+def summarize_upstream_attempts(rows, provider):
+    attempts = [row for row in rows if row['provider'] == provider]
+    failed = lambda row: row.get('status', 0) >= 300 or bool(row.get('error_type'))
+    grouped = {}
+    for index, row in enumerate(attempts):
+        grouped.setdefault(row.get('request_id', ('untracked', index)), []).append(row)
+    return {
+        'upstream_attempt_failures': [row for row in attempts if failed(row)],
+        'upstream_failures': [group[-1] for group in grouped.values() if failed(group[-1])],
+        'recovered_upstream_requests': sum(len(group) > 1 and any(failed(row) for row in group[:-1])
+                                           and not failed(group[-1]) for group in grouped.values()),
+    }
+
+
+class MapNetworkProbe:
+    """Observe browser network phases without replacing SDK/proxy fetch hooks."""
+
+    def __init__(self):
+        self.contexts = {}
+        self.proxies = {}
+        self.counts = {"context_started": 0, "context_headers": 0, "context_finished": 0,
+                       "context_failed": 0, "context_last_status": 0}
+
+    def request_started(self, request):
+        path = urlsplit(request.url).path
+        if path == "/api/map-proxy/context":
+            self.contexts[id(request)] = request
+            self.counts["context_started"] += 1
+        elif path.startswith("/map-proxy/"):
+            self.proxies[id(request)] = request
+
+    def response_received(self, response):
+        if id(response.request) in self.contexts:
+            self.counts["context_headers"] += 1
+            self.counts["context_last_status"] = response.status
+
+    def request_finished(self, request):
+        if self.contexts.pop(id(request), None) is not None:
+            self.counts["context_finished"] += 1
+        self.proxies.pop(id(request), None)
+
+    def request_failed(self, request):
+        if self.contexts.pop(id(request), None) is not None:
+            self.counts["context_failed"] += 1
+        self.proxies.pop(id(request), None)
+
+    def snapshot(self):
+        timing = []
+        for request in list(self.contexts.values())[:5]:
+            try:
+                timing.append({field: request.timing.get(field, -1) for field in ("requestStart", "responseStart", "responseEnd")})
+            except Exception:
+                timing.append({"unavailable": True})
+        types = {}
+        for request in self.proxies.values():
+            types[request.resource_type] = types.get(request.resource_type, 0) + 1
+        return {**self.counts, "context_pending": len(self.contexts),
+                "context_pending_timing": timing, "proxy_pending": len(self.proxies), "proxy_pending_types": types}
+
+    def attach(self, page):
+        if not hasattr(page, "on"):
+            return
+        for event, callback in self.bindings():
+            page.on(event, callback)
+
+    def detach(self, page):
+        if not hasattr(page, "remove_listener"):
+            return
+        for event, callback in self.bindings():
+            page.remove_listener(event, callback)
+
+    def bindings(self):
+        return (("request", self.request_started), ("response", self.response_received),
+                ("requestfinished", self.request_finished), ("requestfailed", self.request_failed))
+
+
+def _safe_map_debug_state(value, credentials):
+    if not isinstance(value, dict):
+        return None
+    fields = ("map_ready", "active_provider", "map_instance_present", "placeholder_visible",
+              "placeholder_text", "container_width", "container_height", "sdk_t_present",
+              "native_destroy_type", "native_remove_type", "native_clear_overlays_type", "destroyed",
+              "proxy_initialize_started", "proxy_initialize_completed", "proxy_initialize_rejected",
+              "proxy_initialize_pending", "proxy_initialize_last_error")
+    return {field: value[field] if isinstance(value[field], (bool, int, float)) else safe_error(value[field], credentials)
+            for field in fields if field in value and isinstance(value[field], (str, bool, int, float))}
+
+
+def exercise_map_lifecycle(page, provider, credential, *, session_id, render_ui,
+                           errors, rejections, console, proxy_enabled=True,
+                           script_base="/legacy-scripts/", rounds=None):
+    """Run the same production UI lifecycle in direct and proxy browser contexts."""
+    rounds = rounds if rounds is not None else (3 if provider in {"tencent", "baidu"} else 1)
+    assert 1 <= rounds <= 10
+    fixture = "mapAcceptance" if render_ui else "legacyMapAcceptance"
+    mount = "mountMapAcceptance" if render_ui else "mountLegacyMapAcceptance"
+    rows = []
+    network = MapNetworkProbe()
+    network.attach(page)
+    for mobile in (False, True):
+        page.set_viewport_size({"width": 390 if mobile else 1280, "height": 844 if mobile else 800})
+        args = {"provider": provider, "key": credential["key"],
+                "securityJsCode": credential.get("securityJsCode", ""),
+                "sessionId": session_id, "mobile": mobile,
+                "frontendProxyEnabled": proxy_enabled, "scriptBase": script_base}
+        for index in range(rounds):
+            baseline = (len(errors), len(rejections), len(console))
+            row = {"viewport": "mobile" if mobile else "desktop", "round": index + 1,
+                   "progress_updates": 0, "functional_pass": False, "lifecycle_pass": False}
+            try:
+                browser_step(page, f"args => {mount}(args)", args)
+                page.wait_for_function(f"window.{fixture}?.ready()", timeout=30000)
+                initial = browser_step(page, f"() => {fixture}.seed(0,0)")
+                row["initial_snapshot"] = _safe_map_debug_state(initial, {provider: credential}) if isinstance(initial, dict) else initial
+                assert initial["lines"], "initial task route missing"
+                for update in range(10):
+                    point_index = update // 2 + 1
+                    progress = browser_step(page, f"index => {fixture}.progress(index)", point_index)
+                    assert progress["lines"] and not progress.get("renderErrors"), "route disappeared on progress"
+                    expected = progress["expectedRunner"]
+                    assert any(point and all(value is not None for value in point)
+                               and max(abs(a - b) for a, b in zip(point, expected)) < 1e-6
+                               for point in progress["points"]), "runner SDK coordinate mismatch"
+                    expected_business = [[116.397128, 39.916527], [116.397428, 39.916527],
+                                         [116.397728, 39.916527], [116.398128, 39.916527],
+                                         [116.398528, 39.916527]][point_index - 1]
+                    assert max(abs(a - b) for a, b in zip(progress["businessPoint"], expected_business)) < 1e-10, "business coordinates mutated"
+                    assert initial["cameraWrites"] == progress["cameraWrites"], "progress reset viewport"
+                    row["progress_updates"] += 1
+                browser_step(page, f"() => {fixture}.finish()")
+                switched = browser_step(page, f"() => {fixture}.seed(1,1)")
+                assert switched["lines"], "task switch lost route"
+                released = browser_step(page, f"() => {fixture}.destroy()")
+                assert released and released["instrumentation_restored"], "fixture instrumentation was not restored"
+                browser_step(page, f"args => {mount}(args)", args)
+                page.wait_for_function(f"window.{fixture}?.ready()", timeout=30000)
+                restored = browser_step(page, f"() => {fixture}.seed(1,2)")
+                assert restored["lines"], "remount lost restored route"
+                released = browser_step(page, f"() => {fixture}.destroy()")
+                assert released and released["instrumentation_restored"]
+                row["functional_pass"] = True
+            except Exception as error:
+                row["error"] = safe_error(error, {provider: credential})
+                row["network_debug"] = network.snapshot()
+                try:
+                    debug = browser_step(page, f"() => window.{fixture}?.debugState?.() || null", timeout_ms=1000)
+                    safe_debug = _safe_map_debug_state(debug, {provider: credential})
+                    if safe_debug is not None:
+                        row["debug_state"] = safe_debug
+                except Exception as debug_error:
+                    row["debug_error"] = safe_error(debug_error, {provider: credential})
+                try:
+                    browser_step(page, f"() => window.{fixture}?.destroy()")
+                except Exception as cleanup_error:
+                    row["cleanup_error"] = safe_error(cleanup_error, {provider: credential})
+            # Observe queued SDK callbacks after teardown; this is not a delay before cleanup.
+            page.wait_for_timeout(500)
+            row["script_errors"] = len(errors) - baseline[0]
+            row["unhandled_rejections"] = len(rejections) - baseline[1]
+            row["console_errors"] = len(console) - baseline[2]
+            row["lifecycle_pass"] = not any(row[name] for name in ("script_errors", "unhandled_rejections", "console_errors")) and not row.get("cleanup_error")
+            rows.append(row)
+    network.detach(page)
+    return rows
+
+
 MAP_CHECK = """async ({provider,key}) => {
     if(provider==='tencent' && !window.TMap) await new Promise((resolve,reject)=>{
         const script=document.createElement('script');script.onload=resolve;script.onerror=()=>reject(Error('SDK load failed'));
@@ -141,7 +327,10 @@ def run(credentials, *, render_ui=False, render_legacy=False):
         provider = next(name for name, hosts in PROXY_HOSTS.items() if parsed.hostname in hosts)
         expected = config["Map"]["providers"][provider]["backend_page_origin"]
         assert headers["Origin"] == expected and headers["Referer"] == expected + "/"
-        row = {"provider": provider, "host": parsed.hostname, "path": safe_error(parsed.path, credentials)}
+        if not getattr(g, 'map_smoke_request_id', None):
+            g.map_smoke_request_id = secrets.token_hex(6)
+        row = {"provider": provider, "host": parsed.hostname, "path": safe_error(parsed.path, credentials),
+               "request_id": g.map_smoke_request_id}
         outbound.append(row)
         try:
             response = _MapProxy._request_upstream(method, url, headers=headers, body=body, timeout=timeout)
@@ -210,6 +399,9 @@ def run(credentials, *, render_ui=False, render_legacy=False):
                         failures = []
                         runtime_errors = []
                         console_errors = []
+                        unhandled_rejections = []
+                        page.expose_function("recordSmokeRejection", lambda value: unhandled_rejections.append(safe_error(value, credentials)))
+                        page.add_init_script("addEventListener('unhandledrejection', event => { window.recordSmokeRejection(String(event.reason?.stack || event.reason || 'unhandled rejection')); });")
                         def record_request(req):
                             parsed = urlsplit(req.url)
                             if parsed.hostname and parsed.hostname != "127.0.0.1":
@@ -241,6 +433,7 @@ def run(credentials, *, render_ui=False, render_legacy=False):
                         started = time.monotonic()
                         map_ready = False
                         route = {}
+                        lifecycle_rounds = []
                         try:
                             route = page.evaluate("""async ({source,args}) => {
                                 let timer;
@@ -252,28 +445,11 @@ def run(credentials, *, render_ui=False, render_legacy=False):
                                 # A backend planner has its own page in production. Do not mix its
                                 # direct SDK loader with the frontend component's SDK loader.
                                 page.goto(app_origin, wait_until="domcontentloaded")
-                                browser_step(page, "args => mountMapAcceptance(args)", {"provider": provider, "key": credential["key"], "securityJsCode": credential.get("securityJsCode", ""), "sessionId": session_id})
-                                page.wait_for_function("window.mapAcceptance?.ready()", timeout=30000)
-                                initial = page.evaluate("mapAcceptance.seed()")
-                                progress = page.evaluate("mapAcceptance.progress(2)")
-                                assert initial["lines"] and progress["lines"], "route disappeared on progress"
-                                expected = progress["expectedRunner"]
-                                assert any(point and point[0] is not None and point[1] is not None and abs(point[0] - expected[0]) < 1e-6 and abs(point[1] - expected[1]) < 1e-6 for point in progress["points"]), f"runner SDK coordinate mismatch: expected {expected}, actual {progress['points']}"
-                                assert progress["businessPoint"] == [116.397428, 39.916527], "business coordinates mutated"
-                                assert initial["cameraWrites"] == progress["cameraWrites"], "progress reset viewport"
-                                page.evaluate("mapAcceptance.progress(4)")
-                                page.evaluate("mapAcceptance.finish()")
-                                switched = page.evaluate("mapAcceptance.seed(1, 1)")
-                                assert switched["lines"], "task switch lost route"
-                                page.evaluate("mapAcceptance.destroy()")
-                                page.evaluate("args => mountMapAcceptance(args)", {"provider": provider, "key": credential["key"], "securityJsCode": credential.get("securityJsCode", ""), "sessionId": session_id})
-                                page.wait_for_function("window.mapAcceptance?.ready()", timeout=30000)
-                                restored = page.evaluate("mapAcceptance.seed(1, 2)")
-                                assert restored["lines"], "remount lost restored route"
-                                page.set_viewport_size({"width": 390, "height": 844})
-                                page.wait_for_timeout(400)
-                                map_ready = page.evaluate("mapAcceptance.ready()")
-                                route["ui_verified"] = True
+                                lifecycle_rounds = exercise_map_lifecycle(
+                                    page, provider, credential, session_id=session_id, render_ui=True,
+                                    errors=runtime_errors, rejections=unhandled_rejections, console=console_errors)
+                                map_ready = all(row["functional_pass"] for row in lifecycle_rounds)
+                                route["ui_verified"] = map_ready
                             elif not render_legacy:
                                 map_ready = page.evaluate(MAP_CHECK, {"provider": provider, "key": credential["key"]})
                             if render_legacy:
@@ -284,35 +460,25 @@ def run(credentials, *, render_ui=False, render_legacy=False):
                                 browser_step(page, "async ({source,args}) => (0,eval)('('+source+')')(args)", {"source": production_planner(provider), "args": args}, timeout_ms=60000)
                                 page.evaluate("() => document.getElementById('map')?.remove()")
                                 page.add_script_tag(url=app_origin + "/legacy-fixture.js")
-                                for mobile in (False, True):
-                                    page.set_viewport_size({"width": 390 if mobile else 1280, "height": 844 if mobile else 800})
-                                    browser_step(page, "args => mountLegacyMapAcceptance(args)", {"provider": provider, "key": credential["key"], "securityJsCode": credential.get("securityJsCode", ""), "sessionId": session_id, "mobile": mobile})
-                                    page.wait_for_function("window.legacyMapAcceptance?.ready()")
-                                    initial = browser_step(page, "() => legacyMapAcceptance.seed()")
-                                    progress = browser_step(page, "() => legacyMapAcceptance.progress(2)")
-                                    assert initial["lines"] and progress["lines"] and not progress["renderErrors"], "legacy route rendering failed"
-                                    expected = progress["expectedRunner"]
-                                    assert progress["runner"] and max(abs(a - b) for a, b in zip(progress["runner"], expected)) < 1e-7, "legacy runner SDK coordinate mismatch"
-                                    moved = browser_step(page, "() => legacyMapAcceptance.moveView()")
-                                    continued = browser_step(page, "() => legacyMapAcceptance.progress(4)")
-                                    assert moved["cameraWrites"] == continued["cameraWrites"], "legacy progress reset viewport"
-                                    browser_step(page, "() => legacyMapAcceptance.finish()")
-                                    switched = browser_step(page, "() => legacyMapAcceptance.seed(1,1)")
-                                    assert switched["lines"] and switched["taskIndex"] == 1, "legacy task switch lost route"
-                                    page.evaluate("legacyMapAcceptance.destroy()")
-                                route["legacy_ui_verified"] = True
-                                map_ready = True
+                                lifecycle_rounds = exercise_map_lifecycle(
+                                    page, provider, credential, session_id=session_id, render_ui=False,
+                                    errors=runtime_errors, rejections=unhandled_rejections, console=console_errors)
+                                map_ready = all(row["functional_pass"] for row in lifecycle_rounds)
+                                route["legacy_ui_verified"] = map_ready
                         except Exception as error:
                             route["error" if not route else "map_error"] = safe_error(error, credentials)
                         page.wait_for_timeout(2000)
                         result = {"provider": provider, "origin": config["Map"]["providers"][provider]["backend_page_origin"],
+                                  "proxy_enabled": True, "rounds": lifecycle_rounds,
                                   "route_points": len(route.get("path", [])), "route_success": not bool(route.get("error")),
                                   "map_ready": map_ready,
                                   "elapsed_ms": round((time.monotonic() - started) * 1000),
                                   "proxy_requests": sum(item["provider"] == provider for item in outbound),
-                                  "upstream_failures": [item for item in outbound if item["provider"] == provider and (item.get("status", 0) >= 300 or item.get("error_type"))],
+                                  **summarize_upstream_attempts(outbound, provider),
                                   "direct_requests": direct, "proxy_failures": failures, "script_errors": len(runtime_errors),
+                                  "unhandled_rejections": len(unhandled_rejections),
                                   "script_error_messages": list(dict.fromkeys(runtime_errors))[:5]}
+                        result["unhandled_rejection_messages"] = list(dict.fromkeys(unhandled_rejections))[:5]
                         result["console_error_messages"] = list(dict.fromkeys(console_errors))[:8]
                         if render_ui:
                             result["ui_verified"] = route.get("ui_verified", False)
@@ -322,6 +488,7 @@ def run(credentials, *, render_ui=False, render_legacy=False):
                             result["error"] = safe_error(route["error"], credentials)
                         if route.get("map_error"):
                             result["map_error"] = route["map_error"]
+                        result = evaluate_acceptance(result)
                         results.append(result)
                         if os.environ.get("MAP_SMOKE_PROGRESS") == "1":
                             print(json.dumps(result, ensure_ascii=True), file=sys.stderr, flush=True)
@@ -345,7 +512,4 @@ if __name__ == "__main__":
         print(json.dumps({"error": safe_error(error, credentials)}, ensure_ascii=True))
         raise SystemExit(1) from None
     print(json.dumps(results, ensure_ascii=True, indent=2))
-    raise SystemExit(0 if all(row["route_success"] and row["route_points"] >= 2 and row["map_ready"]
-                             and not row.get("map_error") and row.get("ui_verified", True)
-                             and row.get("legacy_ui_verified", True)
-                             and not row["direct_requests"] and not row["proxy_failures"] for row in results) else 1)
+    raise SystemExit(0 if smoke_results_passed(results) else 1)

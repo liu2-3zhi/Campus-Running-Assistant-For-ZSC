@@ -30,14 +30,14 @@
   }
 
   window.mountLegacyMapAcceptance = async function (options) {
-    if (window.legacyMapAcceptance) window.legacyMapAcceptance.destroy();
-    const {provider, key, securityJsCode = "", sessionId, mobile = false} = options;
+    if (window.legacyMapAcceptance) await window.legacyMapAcceptance.destroy();
+    const {provider, key, securityJsCode = "", sessionId, mobile = false, frontendProxyEnabled = true} = options;
     if (!["amap", "tencent", "baidu", "tianditu"].includes(provider)) {
       throw new Error("Unsupported legacy fixture provider");
     }
     const keyField = {amap: "js_key", tencent: "map_key", baidu: "ak", tianditu: "token"}[provider];
     window.APP_CONFIG = {
-      map_provider: provider, frontend_proxy_enabled: true,
+      map_provider: provider, frontend_proxy_enabled: frontendProxyEnabled,
       map_providers: {[provider]: {[keyField]: key, security_js_code: securityJsCode}},
     };
     Object.assign(window, {
@@ -182,17 +182,28 @@
         return snapshot();
       },
       snapshot, expectedPoint,
-      destroy: () => {
+      destroy: async () => {
         if (destroyed) return;
         destroyed = true;
         clearTaskMapAutoResetTimer();
-        if (provider === "amap") {
-          clearProviderMapOverlays(containerId, {clearRunnerMarkers: true});
-          nativeMap.destroy();
-          window.map = null;
-        } else destroyProviderMapInstance(containerId);
-        for (const [name, original] of originals) nativeMap[name] = original;
-        host.remove();
+        let released = false;
+        try {
+          if (provider === "amap") {
+            clearProviderMapOverlays(containerId, {clearRunnerMarkers: true});
+            nativeMap.destroy();
+            window.map = null;
+          } else {
+            if (await destroyProviderMapInstance(containerId) === false) throw new Error("Legacy SDK destruction failed");
+            if (typeof waitForProviderMapDestruction === "function" && await waitForProviderMapDestruction(containerId) === false) {
+              throw new Error("Legacy SDK destruction failed");
+            }
+          }
+          released = true;
+        } finally {
+          for (const [name, original] of originals) nativeMap[name] = original;
+          if (released) host.remove();
+        }
+        return {instrumentation_restored: true};
       },
     };
     await frame();
