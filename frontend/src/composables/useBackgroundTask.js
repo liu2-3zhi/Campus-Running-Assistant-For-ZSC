@@ -15,6 +15,7 @@ export function useBackgroundTask() {
   let inFlight = null
   let latestStatusTimestamp = 0
   let disposed = false
+  let updatingRunningFromStatus = false
   const mapRestorer = createTaskMapRestorer({ app, loadSnapshot: index => callAPI('get_task_map_snapshot', index), getSession: () => auth.sessionUUID })
 
   function isObsoleteExecution(status) {
@@ -31,8 +32,13 @@ export function useBackgroundTask() {
     if (timestamp) latestStatusTimestamp = timestamp
     taskStatus.value = status
     app.addRoutePlanningFailures(status.route_planning_failures)
-    if (['running', 'paused'].includes(status.status)) app.isRunning = true
-    else if (['completed', 'stopped', 'error'].includes(status.status)) app.isRunning = false
+    updatingRunningFromStatus = true
+    try {
+      if (['running', 'paused'].includes(status.status)) app.isRunning = true
+      else if (['completed', 'stopped', 'error'].includes(status.status)) app.isRunning = false
+    } finally {
+      updatingRunningFromStatus = false
+    }
     // Geometry has its own generation guards and must not hold up status polling.
     try { Promise.resolve(mapRestorer.apply(status)).catch(() => {}) } catch (_) {}
     return !disposed && !isObsoleteExecution(status)
@@ -117,10 +123,12 @@ export function useBackgroundTask() {
     return startTime ? Date.now() - startTime : 0
   }
 
+  // Sync watching preserves the status-backfill guard until this callback runs.
   watch(() => app.isRunning, running => {
+    if (updatingRunningFromStatus) return
     if (running) startPolling()
     else if (isPolling.value) pollStatus()
-  })
+  }, { flush: 'sync' })
   watch(() => auth.sessionUUID, () => {
     mapRestorer.reset()
     latestStatusTimestamp = 0

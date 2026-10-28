@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { createRequire } from 'node:module'
 import test from 'node:test'
 import vm from 'node:vm'
 import { createTaskMapRestorer } from '../frontend/src/utils/taskMapRestore.js'
+
+const vue = createRequire(new URL('../frontend/package.json', import.meta.url))('vue')
 
 const settle = () => new Promise(resolve => setImmediate(resolve))
 
@@ -37,18 +40,23 @@ function createClock() {
   }
 }
 
-function createPolling({ loadSnapshot = async () => ({ success: false }), ignoreAbort = false } = {}) {
+function createPolling({ loadSnapshot = async () => ({ success: false }), ignoreAbort = false, reactiveWatchers = false, initiallyRunning = true } = {}) {
   const clock = createClock()
   const requests = []
   const watchers = []
   let unmount
-  const auth = { sessionUUID: 'B', adminOriginSession: 'A' }
-  const app = { isRunning: true, addRoutePlanningFailures(rows) { this.failures = rows } }
-  const bg = loadSource('frontend/src/composables/useBackgroundTask.js', {
+  const makeReactive = reactiveWatchers ? vue.reactive : value => value
+  const auth = makeReactive({ sessionUUID: 'B', adminOriginSession: 'A' })
+  const app = makeReactive({ isRunning: initiallyRunning, addRoutePlanningFailures(rows) { this.failures = rows } })
+  const scope = reactiveWatchers ? vue.effectScope() : null
+  const initialize = () => loadSource('frontend/src/composables/useBackgroundTask.js', {
     AbortController,
     Date,
-    ref: value => ({ value }),
-    watch: (source, callback) => watchers.push({ source, callback }),
+    ref: reactiveWatchers ? vue.ref : value => ({ value }),
+    watch: (source, callback, options) => {
+      watchers.push({ source, callback })
+      if (reactiveWatchers) return vue.watch(source, callback, options)
+    },
     onUnmounted: callback => { unmount = callback },
     useAuthStore: () => auth,
     useAppStore: () => app,
@@ -64,7 +72,8 @@ function createPolling({ loadSnapshot = async () => ({ success: false }), ignore
     setInterval: (callback, delay) => clock.setTimeout(function repeat() { callback(); clock.setTimeout(repeat, delay) }, delay),
     clearInterval: clock.clearTimeout,
   }, 'useBackgroundTask()')
-  return { bg, clock, requests, auth, app, watchers, unmount: () => unmount() }
+  const bg = scope ? scope.run(initialize) : initialize()
+  return { bg, clock, requests, auth, app, watchers, unmount: () => { unmount(); scope?.stop() } }
 }
 
 const response = (status = 'running', last_update = 1, extra = {}) => ({ success: true, task_status: { status, last_update, ...extra } })
@@ -80,6 +89,58 @@ test('manual status queries share one request and do not start a polling loop', 
   assert.equal(bg.taskStatus.value.last_update, 1)
   assert.equal(bg.isPolling.value, false)
   assert.equal(clock.timers.size, 0)
+})
+
+test('a manual running status backfill does not activate the real Vue running watcher', async () => {
+  const { bg, requests, app, clock, unmount } = createPolling({ reactiveWatchers: true, initiallyRunning: false })
+  try {
+    const pending = bg.pollStatus()
+    requests[0].resolve(response('running', 1))
+    await pending
+    await vue.nextTick()
+    assert.equal(app.isRunning, true, 'the manual query must still update the displayed execution state')
+    assert.equal(bg.isPolling.value, false)
+    assert.equal(requests.length, 1)
+    await clock.tick(6000)
+    assert.equal(requests.length, 1)
+    assert.equal(clock.timers.size, 0)
+  } finally {
+    unmount()
+  }
+})
+
+test('real Vue external execution changes can restart polling after manual backfill and a terminal batch', async () => {
+  const { bg, requests, app, unmount } = createPolling({ reactiveWatchers: true, initiallyRunning: false })
+  try {
+    const pending = bg.pollStatus()
+    requests[0].resolve(response('running', 1))
+    await pending
+    await vue.nextTick()
+    assert.equal(bg.isPolling.value, false)
+    app.isRunning = false
+    await vue.nextTick()
+    app.activeExecutionId = 'batch-a'
+    app.activeExecutionStartedAt = 2
+    app.isRunning = true
+    await vue.nextTick()
+    assert.equal(bg.isPolling.value, true)
+    assert.equal(requests.length, 2)
+    requests[1].resolve(response('completed', 3, { execution_id: 'batch-a', execution_started_at: 2 }))
+    await settle()
+    await vue.nextTick()
+    assert.equal(bg.isPolling.value, false)
+    app.activeExecutionId = 'batch-b'
+    app.activeExecutionStartedAt = 4
+    app.isRunning = true
+    await vue.nextTick()
+    assert.equal(bg.isPolling.value, true)
+    assert.equal(requests.length, 3)
+    requests[2].resolve(response('running', 5, { execution_id: 'batch-b', execution_started_at: 4 }))
+    await settle()
+    assert.equal(bg.taskStatus.value.execution_id, 'batch-b')
+  } finally {
+    unmount()
+  }
 })
 
 test('a slow status response is applied before scheduling the next query three seconds later', async () => {
