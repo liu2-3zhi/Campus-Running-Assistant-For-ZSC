@@ -141,6 +141,12 @@ for (const provider of ['amap', 'tencent', 'tianditu', 'baidu']) {
     panel.mapReady.value = true
     panel.renderTask()
     assert.ok(added.length >= 4, 'two recommended segments, the generated route and checkpoint must be visible')
+    if (provider === 'tencent') {
+      const lineIds = [...panel.taskLines.values()].map(line => line.args?.[0]?.geometries?.[0]?.id)
+      assert.ok(lineIds.length > 0 && lineIds.every(Boolean), 'Tencent route geometries need stable ids')
+      const namedMarker = [...panel.taskMarkers.values()].find(marker => marker.__label)
+      assert.equal(namedMarker.__label.args?.[0]?.geometries?.[0]?.id, `${namedMarker.args?.[0]?.geometries?.[0]?.id}-name`)
+    }
     const paths = added.map(overlay => Array.isArray(overlay.args[0])
       ? overlay.args[0]
       : overlay.args[0]?.path || overlay.args[0]?.geometries?.[0]?.paths).filter(Boolean)

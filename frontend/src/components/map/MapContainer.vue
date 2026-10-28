@@ -608,6 +608,7 @@ function drawPolyline(path, opts = {}) {
   } else if (provider === 'tencent') {
     const TMap = window.TMap
     if (!TMap) return null
+    const geometryId = opts.id || `polyline_${Date.now()}_${polylines.length}`
     polyline = new TMap.MultiPolyline({
       map,
       styles: {
@@ -617,10 +618,12 @@ function drawPolyline(path, opts = {}) {
         }),
       },
       geometries: [{
+        id: geometryId,
         styleId: 'style',
         paths: path.map(p => new TMap.LatLng(p[1], p[0])),
       }],
     })
+    polyline.__geometryId = geometryId
   } else if (provider === 'tianditu') {
     const T = window.T
     if (!T) return null
@@ -719,7 +722,7 @@ function renderTask() {
     }
     flush()
   }
-  syncTaskOverlays(taskLines, lineSpecs, spec => drawPolyline(spec.coords, { color: spec.color, weight: 6 }), (overlay, spec) => updatePolyline(overlay, spec.coords, spec.color))
+  syncTaskOverlays(taskLines, lineSpecs, spec => drawPolyline(spec.coords, { id: spec.id, color: spec.color, weight: 6 }), (overlay, spec) => updatePolyline(overlay, spec.coords, spec.color, spec.id))
   const markerSpecs = presentation.checkpoints.map(spec => ({ ...spec, color: spec.role === 'remaining' ? '#10b981' : ROUTE_COLORS[spec.role] }))
   if (presentation.runner) markerSpecs.push({ id: 'runner', coords: presentation.runner, title: '当前位置', color: '#2563eb' })
   syncTaskOverlays(taskMarkers, markerSpecs, spec => addMarker(spec.coords, { id: spec.id, title: spec.title, color: spec.color }), (overlay, spec) => updateMarker(overlay, spec.coords, spec))
@@ -754,7 +757,7 @@ function updateMarker(marker, point, opts = {}) {
   else if (provider === 'tencent') {
     const geometry = { id: opts.id || 'position', position: new window.TMap.LatLng(pos[1], pos[0]) }
     marker.setGeometries?.([geometry])
-    marker.__label?.setGeometries?.([{ ...geometry, styleId: 'name', content: opts.title || '' }])
+    marker.__label?.setGeometries?.([{ ...geometry, id: `${opts.id || 'position'}-name`, styleId: 'name', content: opts.title || '' }])
   } else if (provider === 'tianditu') {
     marker.setLngLat?.(new window.T.LngLat(...pos))
     marker.__label?.setLngLat?.(new window.T.LngLat(...pos))
@@ -766,11 +769,11 @@ function updateMarker(marker, point, opts = {}) {
   if (provider === 'tencent' && marker.__label && window.TMap.LabelStyle) marker.__label.setStyles?.({ name: new window.TMap.LabelStyle({ color: '#fff', backgroundColor: opts.color || '#059669', offset: { x: 0, y: -35 } }) })
 }
 
-function updatePolyline(polyline, path, color) {
+function updatePolyline(polyline, path, color, id) {
   const coords = path.map(providerPoint).filter(Boolean)
   const provider = mapStore.activeProvider
   if (provider === 'amap') { polyline.setPath?.(coords); polyline.setOptions?.({ strokeColor: color }) }
-  else if (provider === 'tencent') polyline.setGeometries?.([{ styleId: 'style', paths: coords.map(p => new window.TMap.LatLng(p[1], p[0])) }])
+  else if (provider === 'tencent') polyline.setGeometries?.([{ id: id || polyline.__geometryId || 'route', styleId: 'style', paths: coords.map(p => new window.TMap.LatLng(p[1], p[0])) }])
   else if (provider === 'tianditu') { polyline.setLngLats?.(coords.map(p => new window.T.LngLat(...p))); polyline.setColor?.(color) }
   else if (provider === 'baidu') { polyline.setPath?.(coords.map(p => new window.BMap.Point(...p))); polyline.setStrokeColor?.(color) }
 }
