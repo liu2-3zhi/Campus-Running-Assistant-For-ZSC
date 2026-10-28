@@ -9,6 +9,7 @@ const MAP_COORD_EE = 0.00669342162296594323;
 // 用途：进度推进时只更新分段几何/颜色，不重建覆盖物、不重新 fitView，
 // 避免地图在每次 GPS 点更新时被复位。
 const providerRouteSegmentOverlays = {};
+let providerMarkerSequence = 0;
 
 function isCoordinateOutOfChina(lng, lat) {
   return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
@@ -246,6 +247,7 @@ function getProviderMapInstance(containerId) {
 function fitProviderMapToCoordinates(containerId, coords, overlay = null) {
   const provider = getActiveMapProvider();
   const instance = getProviderMapInstance(containerId);
+  const BMap = getProviderBaiduSdk(instance);
   if (!instance || !Array.isArray(coords) || coords.length === 0) return;
   const providerCoords = normalizeRouteCoords(coords).map((coord) =>
     convertGcj02ToProviderCoordinates(provider, coord),
@@ -264,7 +266,7 @@ function fitProviderMapToCoordinates(containerId, coords, overlay = null) {
       instance.fitBounds(bounds, { padding: 60, ease: { duration: 0 } });
     } else if (provider === "tianditu" && typeof instance.setViewport === "function") {
       instance.setViewport(providerCoords.map((coord) => new T.LngLat(coord.lng, coord.lat)));
-    } else if (provider === "baidu" && typeof instance.setViewport === "function" && window.BMap) {
+    } else if (provider === "baidu" && typeof instance.setViewport === "function" && BMap) {
       instance.setViewport(providerCoords.map((coord) => new BMap.Point(coord.lng, coord.lat)), { enableAnimation: false });
     }
   } catch (e) {
@@ -441,6 +443,7 @@ function createProviderLabelMarkerSvgOptions(label, options = {}) {
 function addProviderMarker(containerId, coord, options = {}) {
   const provider = getActiveMapProvider();
   const instance = getProviderMapInstance(containerId);
+  const BMap = getProviderBaiduSdk(instance);
   if (!instance || !coord) return null;
   const providerCoord = convertGcj02ToProviderCoordinates(provider, coord);
   const bucket = getProviderOverlayBucket(containerId);
@@ -458,15 +461,16 @@ function addProviderMarker(containerId, coord, options = {}) {
       const label = normalizeProviderMarkerLabel(options);
       const markerStyleOptions = createTencentMarkerStyleOptions(label, options);
       const styleId = "marker";
+      const markerId = `provider-marker-${containerId}-${++providerMarkerSequence}`;
       marker = new TMap.MultiMarker({
-        id: `provider-marker-${containerId}-${Date.now()}-${bucket.length}`,
+        id: markerId,
         map: instance,
         zIndex: options.zIndex || 100,
         styles: {
           [styleId]: new TMap.MarkerStyle(markerStyleOptions),
         },
         geometries: [{
-          id: options.geometryId || `marker-${Date.now()}-${bucket.length}`,
+          id: options.geometryId || options.markerKey || markerId,
           styleId,
           position: new TMap.LatLng(providerCoord.lat, providerCoord.lng),
           rank: options.zIndex || 100,
@@ -499,7 +503,7 @@ function addProviderMarker(containerId, coord, options = {}) {
         markerOptions,
       );
       instance.addOverLay(marker);
-    } else if (provider === "baidu" && window.BMap) {
+    } else if (provider === "baidu" && BMap) {
       const label = normalizeProviderMarkerLabel(options);
       const markerKind = options.markerKind || (options.anchor === "center" ? "runner" : "label");
       marker = new BMap.Marker(
@@ -543,7 +547,11 @@ function addProviderMarker(containerId, coord, options = {}) {
 }
 
 function updateProviderRunnerMarker(containerId, coord, options = {}) {
-  if (!getProviderMapInstance(containerId)) return null;
+  const BMap = getProviderBaiduSdk(getProviderMapInstance(containerId));
+  if (!getProviderMapInstance(containerId)) {
+    rememberProviderRunnerUpdate?.(containerId, coord, options);
+    return null;
+  }
   const normalized = normalizeRouteCoord(coord);
   if (!Number.isFinite(normalized.lng) || !Number.isFinite(normalized.lat)) {
     return null;
@@ -597,7 +605,7 @@ function updateProviderRunnerMarker(containerId, coord, options = {}) {
   if (
     previousMarker &&
     provider === "baidu" &&
-    window.BMap &&
+    BMap &&
     typeof previousMarker.setPosition === "function"
   ) {
     try {
@@ -651,6 +659,7 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
   rememberProviderMapRedraw(containerId, () => drawProviderRouteOnMap(containerId, coords, options));
   const provider = getActiveMapProvider();
   const instance = getProviderMapInstance(containerId);
+  const BMap = getProviderBaiduSdk(instance);
   const routeSegments = Array.isArray(options.routeSegments)
     ? options.routeSegments
         .map((segment) => ({
@@ -763,7 +772,7 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
         bucket.push(polyline);
         return polyline;
       });
-    } else if (provider === "baidu" && window.BMap) {
+    } else if (provider === "baidu" && BMap) {
       line = providerSegments.map((segment) => {
         const segmentColor = resolveProviderRouteSegmentColor(
           segment.styleId,
@@ -1363,7 +1372,9 @@ function updateProviderCheckpointMarkerStyle(marker, options) {
  * 导致用户的手动缩放/拖动被反复复位。
  */
 function updateProviderRouteProgressSegmentsInPlace(containerId, data) {
-  if (!getProviderMapInstance(containerId)) return false;
+  const instance = getProviderMapInstance(containerId);
+  if (!instance) return false;
+  const BMap = getProviderBaiduSdk(instance);
   if (!data || !Array.isArray(data.run_coords) || data.run_coords.length < 2) {
     return false;
   }
@@ -1477,6 +1488,7 @@ function rememberProviderRouteSegmentOverlays(containerId, lines, segments, deta
 
 function createProviderProgressPolyline(containerId, provider, segment, options = {}) {
   const instance = getProviderMapInstance(containerId);
+  const BMap = getProviderBaiduSdk(instance);
   const coords = segment.coords.map((coord) => convertGcj02ToProviderCoordinates(provider, coord));
   const color = resolveProviderRouteSegmentColor(segment.styleId, options.strokeColor || options.color || "#ef4444", options);
   const weight = options.strokeWeight || options.weight || 5;
@@ -1487,7 +1499,7 @@ function createProviderProgressPolyline(containerId, provider, segment, options 
       color, weight, opacity, lineStyle: options.strokeStyle === "dashed" ? "dashed" : "solid",
     });
     instance.addOverLay(line);
-  } else if (provider === "baidu" && window.BMap) {
+  } else if (provider === "baidu" && BMap) {
     line = new BMap.Polyline(coords.map((coord) => new BMap.Point(coord.lng, coord.lat)), {
       strokeColor: color, strokeWeight: weight, strokeOpacity: opacity,
     });

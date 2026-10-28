@@ -115,6 +115,7 @@ for (const provider of ['amap', 'tencent', 'tianditu', 'baidu']) {
       setFitView() { fits++ }, fitBounds() { fits++ }, setViewport() { fits++ },
       getViewport: () => ({ center: new Point(120, 30), zoom: 17 }), centerAndZoom() { fits++ },
     }
+    if (provider === 'baidu') map.__baiduRealm = { sdk }
     const app = makeApp()
     const auth = {
       sessionUUID: '11111111-1111-4111-8111-111111111111',

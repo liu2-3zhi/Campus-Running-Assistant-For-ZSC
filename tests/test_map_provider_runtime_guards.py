@@ -259,8 +259,9 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("腾讯地图脚本加载完成但运行时不可用", runtime_source)
         self.assertIn("window.T && window.T.Map", runtime_source)
         self.assertIn("天地图脚本加载完成但运行时不可用", runtime_source)
-        self.assertIn('window.BMap && typeof window.BMap.Map === "function"', runtime_source)
-        self.assertIn("百度地图脚本加载完成但运行时不可用", runtime_source)
+        self.assertIn('typeof window.ZXMapRequestProxy?.createBaiduMapFrame !== "function"', runtime_source)
+        self.assertIn("function getProviderBaiduSdk(instance)", runtime_source)
+        self.assertIn("instance?.__baiduRealm?.sdk || null", runtime_source)
 
     def test_provider_map_reinit_uses_isolated_sdk_surface(self):
         source = (
@@ -271,6 +272,10 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         provider_map_source = source[
             source.index("function initProviderMap("):
             source.index("function renderMapProviderFrontendPlaceholder(", source.index("function initProviderMap("))
+        ]
+        baidu_init_source = source[
+            source.index("function initializeBaiduProviderMap("):
+            source.index("function initProviderMap(", source.index("function initializeBaiduProviderMap("))
         ]
         surface_source = source[
             source.index("function ensureProviderMapSurface("):
@@ -286,7 +291,11 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("surface = ensureProviderMapSurface(containerId, !instance);", provider_map_source)
         self.assertIn("new TMap.Map(surface,", provider_map_source)
         self.assertIn("new T.Map(surface.id)", provider_map_source)
-        self.assertIn("new BMap.Map(surface.id,", provider_map_source)
+        self.assertIn("return initializeBaiduProviderMap(containerId, isMultiAccount, container, surface);", provider_map_source)
+        self.assertIn("window.ZXMapRequestProxy?.createBaiduMapFrame", baidu_init_source)
+        self.assertIn("new BMap.Map(realm.container,", baidu_init_source)
+        self.assertIn("instance.__baiduRealm = realm;", baidu_init_source)
+        self.assertIn("realm.dispose();", baidu_init_source)
 
     def test_provider_map_instances_are_recreated_when_provider_changes(self):
         source = (
@@ -310,11 +319,16 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             source.index("function clearProviderRunnerMarkers("):
             source.index("function clearProviderMapOverlays(", source.index("function clearProviderRunnerMarkers("))
         ]
+        register_source = source[
+            source.index("function registerProviderMapInstance("):
+            source.index("function finishProviderMapInitialization(", source.index("function registerProviderMapInstance("))
+        ]
 
         self.assertIn("let providerMapInstanceProviders = {};", source)
-        self.assertIn("providerMapInstanceProviders[containerId]", provider_map_source)
         self.assertIn("destroyProviderMapInstance(containerId);", provider_map_source)
-        self.assertIn("providerMapInstanceProviders[containerId] = provider;", provider_map_source)
+        self.assertIn("registerProviderMapInstance(containerId, instance, provider, container, surface);", provider_map_source)
+        self.assertIn("providerMapInstances[containerId] = instance;", register_source)
+        self.assertIn("providerMapInstanceProviders[containerId] = provider;", register_source)
         self.assertIn("delete providerMapInstanceProviders[containerId];", destroy_source)
         self.assertIn("providerMapInstanceProviders[containerId] || getActiveMapProvider()", clear_source)
         self.assertIn("clearProviderMapOverlays(containerId, { clearRunnerMarkers: true });", destroy_source)
@@ -606,6 +620,14 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             source.index("function initProviderMap("):
             source.index("const MAP_COORD_PI", source.index("function initProviderMap("))
         ]
+        baidu_init_source = source[
+            source.index("function initializeBaiduProviderMap("):
+            source.index("function initProviderMap(", source.index("function initializeBaiduProviderMap("))
+        ]
+        finish_init_source = source[
+            source.index("function finishProviderMapInitialization("):
+            source.index("function isCurrentBaiduInitialization(", source.index("function finishProviderMapInitialization("))
+        ]
 
         self.assertIn("function applyProviderMapDefaultView(", source)
         self.assertIn("function applyProviderMapDefaultOrientation(", source)
@@ -613,13 +635,15 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("function addBaiduProvider3DControl(", source)
         self.assertIn('showControl: true', init_provider_source)
         self.assertIn("function configureTencentNativeViewControls(", source)
-        self.assertIn('new BMap.Map(surface.id,', init_provider_source)
-        self.assertIn('showControls: false', init_provider_source)
+        self.assertIn("return initializeBaiduProviderMap(containerId, isMultiAccount, container, surface);", init_provider_source)
+        self.assertIn("new BMap.Map(realm.container,", baidu_init_source)
+        self.assertIn("instance.__baiduRealm = realm;", baidu_init_source)
+        self.assertIn('showControls: false', baidu_init_source)
         self.assertIn("enableRotateGestures", source)
         self.assertIn("enableTiltGestures", source)
         self.assertIn("NavigationControl3D", source)
-        self.assertIn("ensureProviderMapContextMenuGuard(containerId);", init_provider_source)
-        self.assertIn("applyProviderMapDefaultView(containerId);", init_provider_source)
+        self.assertIn("ensureProviderMapContextMenuGuard(containerId);", finish_init_source)
+        self.assertIn("applyProviderMapDefaultView(containerId);", finish_init_source)
         self.assertIn("z-[1000]", source)
 
     def test_saving_provider_key_refreshes_non_amap_map_instances(self):

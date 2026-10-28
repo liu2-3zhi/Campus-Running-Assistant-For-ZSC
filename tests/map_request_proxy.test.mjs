@@ -168,6 +168,19 @@ test('fetch handles strings, URL objects, and Request objects without losing ini
   assert.equal(await requests[2][0].text(), 'payload')
 })
 
+test('srcdoc maps resolve Request proxy paths against their inherited document base', async () => {
+  const { window, document, requests, api } = createHarness()
+  window.location = { href: 'about:srcdoc', origin: 'null' }
+  document.baseURI = 'https://app.example.test/uuid=private-session'
+  api.install({ enabled: true, provider: 'baidu' })
+  await window.fetch(new Request('https://api.map.baidu.com/route', {
+    method: 'POST', body: 'payload', headers: { 'x-test': 'yes' },
+  }))
+  assert.equal(requests[0][0].url, 'https://app.example.test/map-proxy/baidu/https/api.map.baidu.com/route')
+  assert.equal(await requests[0][0].text(), 'payload')
+  assert.equal(api.rewriteUrl('/api/local'), '/api/local')
+})
+
 test('XHR, script/image/link setters, setAttribute, Worker and document.write are narrowly rewritten', () => {
   const { window, document, api, FakeXHR, FakeScript, FakeImage, FakeLink, FakeWorker } = createHarness()
   api.install({ enabled: true, provider: 'tianditu', basePath: '/map-proxy' })

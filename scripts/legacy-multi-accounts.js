@@ -1644,6 +1644,9 @@ function resolveMultiAccountRunnerColor(username) {
 
 function multi_removeRunnerMarker(username) {
   const providerMarkerKey = `multi-map-container:${username}`;
+  if (typeof clearPendingProviderRunnerUpdate === "function") {
+    clearPendingProviderRunnerUpdate("multi-map-container", providerMarkerKey);
+  }
   if (providerRunnerMarkers[providerMarkerKey]) {
     removeProviderOverlayFromMap("multi-map-container", providerRunnerMarkers[providerMarkerKey]);
     delete providerRunnerMarkers[providerMarkerKey];

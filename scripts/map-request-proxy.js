@@ -14,6 +14,83 @@
     tianditu: [/^api\.tianditu\.gov\.cn$/, /^api\.tianditu\.com$/, /^t[0-7]\.tianditu\.gov\.cn$/, /^t[0-7]\.tianditu\.com$/],
   });
   const state = { config: { enabled: false, provider: "amap", basePath: DEFAULT_BASE_PATH }, installed: false, restorers: [], contextGeneration: 0, refreshTimer: null, contextRequest: null, initializedMode: null, reloadRequired: false };
+  const baiduFrames = new Set();
+
+  function createBaiduMapFrame({ host, key }) {
+    if (!host || !key) throw new Error("百度地图容器或 AK 未配置");
+    let frame = globalScope.document.createElement("iframe");
+    frame.title = "百度地图";
+    frame.referrerPolicy = "origin";
+    frame.dataset.baiduMapRealm = "true";
+    frame.style.cssText = "display:block;width:100%;height:100%;border:0";
+    const realm = { frame, window: null, container: null, sdk: null, ready: null, dispose: null };
+    const config = { ...state.config };
+    let stopped = false, settled = false, timer, rejectReady;
+    const clear = () => {
+      globalScope.clearTimeout(timer);
+      frame.onload = null;
+      if (realm.window) delete realm.window.__zxBaiduReady;
+    };
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      clear();
+      rejectReady(error);
+      realm.dispose();
+    };
+    realm.dispose = () => {
+      if (stopped) return;
+      stopped = true;
+      if (!settled) fail(new Error("百度地图初始化已取消"));
+      clear();
+      frame.remove();
+      frame = null;
+      realm.frame = null;
+      baiduFrames.delete(realm);
+      realm.sdk = null;
+      realm.container = null;
+      realm.window = null;
+    };
+    realm.ready = new Promise((resolve, reject) => {
+      rejectReady = reject;
+      timer = globalScope.setTimeout(() => fail(new Error("百度地图 SDK 加载超时，请重试")), 20000);
+      frame.onload = () => {
+        if (stopped || settled) return;
+        frame.onload = null;
+        try {
+          const win = realm.window = frame.contentWindow;
+          realm.container = win.document.getElementById("baidu-map");
+          const proxy = win.document.createElement("script");
+          proxy.src = new URL("/scripts/map-request-proxy.js", globalScope.location.href).href;
+          proxy.onerror = () => fail(new Error("百度地图隔离运行时加载失败"));
+          proxy.onload = () => {
+            if (stopped || settled) return;
+            try {
+              win.ZXMapRequestProxy.install(config);
+              win.__zxBaiduReady = () => {
+                if (stopped || settled) return;
+                if (typeof win.BMap?.Map !== "function") { fail(new Error("百度地图 SDK 不可用")); return; }
+                realm.sdk = win.BMap;
+                settled = true;
+                clear();
+                resolve(realm);
+              };
+              const sdk = win.document.createElement("script");
+              sdk.onerror = () => fail(new Error("百度地图 SDK 脚本加载失败"));
+              sdk.src = `https://api.map.baidu.com/api?v=4.0&ak=${encodeURIComponent(key)}&callback=__zxBaiduReady`;
+              win.document.head.appendChild(sdk);
+            } catch (error) { fail(error); }
+          };
+          win.document.head.appendChild(proxy);
+        } catch (error) { fail(error); }
+      };
+    });
+    // Removing the browsing context cancels SDK-owned callbacks and network work.
+    frame.srcdoc = '<!doctype html><meta name="referrer" content="origin"><meta charset="utf-8"><style>html,body,#baidu-map{width:100%;height:100%;margin:0;overflow:hidden}</style><div id="baidu-map"></div>';
+    baiduFrames.add(realm);
+    host.appendChild(frame);
+    return realm;
+  }
 
   function normalizeConfig(input) {
     const config = input || {};
@@ -39,12 +116,19 @@
     return normalized === basePath || normalized.startsWith(`${basePath}/`);
   }
 
+  function resourceBaseUrl() {
+    const inheritedBase = globalScope?.document?.baseURI;
+    if (/^https?:\/\//.test(inheritedBase || "")) return inheritedBase;
+    return globalScope?.location?.href || `${globalScope?.location?.origin || "http://localhost"}/`;
+  }
+
   function rewriteUrl(input, config = state.config) {
     const effective = normalizeConfig(config);
     if (!effective.enabled || typeof input !== "string") return input;
-    const appOrigin = globalScope?.location?.origin || "";
+    const sourceUrl = resourceBaseUrl();
+    const appOrigin = /^https?:\/\//.test(globalScope?.location?.origin || "")
+      ? globalScope.location.origin : new URL(sourceUrl).origin;
     const workerContext = !globalScope?.document && /^https?:\/\//.test(appOrigin);
-    const sourceUrl = globalScope?.location?.href || `${appOrigin || "http://localhost"}/`;
     const base = workerContext && sourceUrl.startsWith("blob:") ? `${appOrigin}/` : sourceUrl;
     let parsed;
     try { parsed = new URL(input, base); } catch (_) { return input; }
@@ -103,7 +187,7 @@
         const RequestType = win.Request;
         if (input && RequestType && input instanceof RequestType) {
           const rewritten = rewriteUrl(input.url, state.config);
-          const base = win.location?.href || `${win.location?.origin || "http://localhost"}/`;
+          const base = resourceBaseUrl();
           return original.call(this, rewritten === input.url ? input : new RequestType(new URL(rewritten, base).href, input), init);
         }
         return original.call(this, input, init);
@@ -301,7 +385,7 @@
   async function initialize(input = {}) {
     const config = normalizeConfig(input);
     const modeChanged = state.initializedMode !== null && state.initializedMode !== config.enabled;
-    const sdkLoaded = ["AMap", "TMap", "T", "BMap"].some((name) => typeof globalScope?.[name]?.Map === "function");
+    const sdkLoaded = baiduFrames.size > 0 || ["AMap", "TMap", "T", "BMap"].some((name) => typeof globalScope?.[name]?.Map === "function");
     // Executed SDKs and their workers retain rewritten URLs after hooks are removed.
     if (state.reloadRequired || (modeChanged && sdkLoaded)) {
       if (!state.reloadRequired) {
@@ -331,5 +415,5 @@
       throw error;
     }
   }
-  return { initialize, install, rewriteUrl, getConfig: () => ({ ...state.config }) };
+  return { initialize, install, rewriteUrl, createBaiduMapFrame, getConfig: () => ({ ...state.config }) };
 });

@@ -40,6 +40,7 @@ let mapHost = null
 let pendingDestruction = null
 let disposing = false
 let cancelReadiness = null
+let baiduRealm = null
 const tencentLabelStates = new WeakMap()
 const pendingLabelReleases = new Set()
 const hostPrefix = Math.random().toString(36).slice(2, 10)
@@ -325,36 +326,18 @@ async function initBaidu() {
     return
   }
 
+  let realm
   try {
-    // Baidu map requires a callback
-    await new Promise((resolve, reject) => {
-      if (window.BMap) {
-        resolve()
-        return
-      }
-      const callbackName = `__baiduMapCallback_${hostPrefix}_${generation}`
-      const timer = setTimeout(() => { delete window[callbackName]; reject(new Error('百度地图 SDK 加载超时')) }, 20000)
-      window[callbackName] = () => {
-        clearTimeout(timer)
-        resolve()
-        delete window[callbackName]
-      }
-      loadScript(
-        `https://api.map.baidu.com/api?v=4.0&ak=${config.baiduKey}&callback=${callbackName}`,
-        'baidu-map-sdk'
-      ).catch(error => { clearTimeout(timer); delete window[callbackName]; reject(error) })
-    })
-
     await nextTick()
     if (disposed || generation !== initialization) return
-
-    const BMap = window.BMap
-    if (!BMap) {
-      throw new Error('百度地图 SDK 未加载')
-    }
-
-    const container = nativeMapHost()
-    map = new BMap.Map(container.id)
+    if (!window.ZXMapRequestProxy?.createBaiduMapFrame) throw new Error('百度地图隔离运行时未加载')
+    realm = window.ZXMapRequestProxy.createBaiduMapFrame({ host: nativeMapHost(), key: config.baiduKey })
+    baiduRealm = realm
+    await realm.ready
+    if (disposed || generation !== initialization || baiduRealm !== realm) { realm.dispose(); return }
+    const BMap = realm.sdk
+    map = new BMap.Map(realm.container)
+    map.__baiduRealm = realm
     map.centerAndZoom(
       new BMap.Point(...providerPoint(DEFAULT_CENTER)),
       BAIDU_DEFAULT_ZOOM,
@@ -372,7 +355,9 @@ async function initBaidu() {
     mapStore.setMapInstance(map)
     mapReady.value = true
   } catch (e) {
+    realm?.dispose()
     if (disposed || generation !== initialization) return
+    await destroyMap()
     console.error('[MapContainer] 百度地图加载失败:', e)
     placeholderError.value = e.message || '百度地图加载失败'
     showPlaceholder.value = true
@@ -443,12 +428,20 @@ async function initMap() {
 
 function destroyMap() {
   cancelReadiness?.()
-  if (!map) return pendingDestruction || Promise.resolve()
+  if (!map) {
+    baiduRealm?.dispose()
+    baiduRealm = null
+    mapHost?.remove()
+    mapHost = null
+    return pendingDestruction || Promise.resolve()
+  }
   disposing = true
   mapReady.value = false
   const instance = map
   const provider = boundProvider || mapStore.activeProvider
   const host = mapHost
+  const realm = baiduRealm
+  baiduRealm = null
   unbindDrawingClick()
   if (map && zoomHandler) {
     try {
@@ -499,7 +492,8 @@ function destroyMap() {
     }
     try {
       if (provider === 'tianditu') instance.clearOverLays?.()
-      instance.destroy?.()
+      if (realm) realm.dispose()
+      else instance.destroy?.()
       if (!waitForDestroyed) finish()
     } catch (error) { finish(error) }
   })
@@ -539,7 +533,7 @@ function fitView(coords) {
     if (!T) return
     map.setViewport(coords.map(c => new T.LngLat(c[0], c[1])))
   } else if (provider === 'baidu') {
-    const BMap = window.BMap
+    const BMap = map.__baiduRealm?.sdk
     if (!BMap) return
     const points = coords.map(c => new BMap.Point(c[0], c[1]))
     map.setViewport(points, { enableAnimation: false })
@@ -608,7 +602,7 @@ function addMarker(pos, opts = {}) {
       }
     }
   } else if (provider === 'baidu') {
-    const BMap = window.BMap
+    const BMap = map.__baiduRealm?.sdk
     if (!BMap) return null
     marker = new BMap.Marker(new BMap.Point(pos[0], pos[1]))
     map.addOverlay(marker)
@@ -676,7 +670,7 @@ function drawPolyline(path, opts = {}) {
     )
     map.addOverLay(polyline)
   } else if (provider === 'baidu') {
-    const BMap = window.BMap
+    const BMap = map.__baiduRealm?.sdk
     if (!BMap) return null
     polyline = new BMap.Polyline(
       path.map(p => new BMap.Point(p[0], p[1])),
@@ -807,7 +801,7 @@ function updateMarker(marker, point, opts = {}) {
   } else if (provider === 'tianditu') {
     marker.setLngLat?.(new window.T.LngLat(...pos))
     marker.__label?.setLngLat?.(new window.T.LngLat(...pos))
-  } else if (provider === 'baidu') marker.setPosition?.(new window.BMap.Point(...pos))
+  } else if (provider === 'baidu') marker.setPosition?.(new map.__baiduRealm.sdk.Point(...pos))
   const label = marker.getLabel?.() || marker.__label
   label?.setStyle?.({ backgroundColor: opts.color, color: '#fff', borderColor: opts.color })
   label?.setBackgroundColor?.(opts.color)
@@ -821,7 +815,7 @@ function updatePolyline(polyline, path, color, id) {
   if (provider === 'amap') { polyline.setPath?.(coords); polyline.setOptions?.({ strokeColor: color }) }
   else if (provider === 'tencent') polyline.setGeometries?.([{ id: id || polyline.__geometryId || 'route', styleId: 'style', paths: coords.map(p => new window.TMap.LatLng(p[1], p[0])) }])
   else if (provider === 'tianditu') { polyline.setLngLats?.(coords.map(p => new window.T.LngLat(...p))); polyline.setColor?.(color) }
-  else if (provider === 'baidu') { polyline.setPath?.(coords.map(p => new window.BMap.Point(...p))); polyline.setStrokeColor?.(color) }
+  else if (provider === 'baidu') { polyline.setPath?.(coords.map(p => new map.__baiduRealm.sdk.Point(...p))); polyline.setStrokeColor?.(color) }
 }
 
 watch([() => app.runData, () => mapReady.value], renderTask, { deep: true })
@@ -1031,7 +1025,7 @@ function handleResetView() {
       )
     }
   } else if (provider === 'baidu') {
-    const BMap = window.BMap
+    const BMap = map.__baiduRealm?.sdk
     if (BMap) {
       map.centerAndZoom(
         new BMap.Point(...providerPoint(DEFAULT_CENTER)),

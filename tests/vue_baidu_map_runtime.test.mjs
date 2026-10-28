@@ -6,7 +6,7 @@ import { ref, shallowRef, markRaw, computed } from '../frontend/node_modules/vue
 import * as coordinates from '../frontend/src/utils/coordinates.js'
 import * as routeProgress from '../frontend/src/utils/routeProgress.js'
 
-function createRuntime({ proxyInitialize, documentOverride, provider = 'baidu', deferredDestroy = false, deferredTencentIdle = false, timers = {}, browserWindow } = {}) {
+function createRuntime({ proxyInitialize, baiduFrameFactory, documentOverride, provider = 'baidu', deferredDestroy = false, deferredTencentIdle = false, timers = {}, browserWindow } = {}) {
   const created = []
   const removed = []
   const listeners = new Map()
@@ -101,7 +101,12 @@ function createRuntime({ proxyInitialize, documentOverride, provider = 'baidu', 
     MapPlaceholder: {}, MapControls: {}, window: browserWindow || { BMap: sdk, BMAP_COORD_GCJ02: 2,
       TMap: { Map: TencentMapInstance, LatLng: class { constructor(lat, lng) { this.lat = lat; this.lng = lng } },
         LatLngBounds: class { extend() {} }, MultiMarker: TencentMarker, MultiPolyline: TencentLine, PolylineStyle: class {} },
-      ...(proxyInitialize ? { ZXMapRequestProxy: { initialize: proxyInitialize } } : {}),
+      ZXMapRequestProxy: { initialize: proxyInitialize || (async () => {}), createBaiduMapFrame: baiduFrameFactory || (({ host }) => {
+        const realm = { sdk, container: host.id, ready: Promise.resolve(),
+          dispose() { lifecycle.push('dispose-baidu-frame'); for (const native of mapInstances) if (native.host === host.id) native.destroyed = true },
+        }
+        return realm
+      }) },
     },
     BMAP_COORD_GCJ02: 2,
     ...coordinates, ...routeProgress,
@@ -511,29 +516,30 @@ test('a departed AMap loader cannot reset the SDK or replace the current securit
   assert.equal(resets, 0)
 })
 
-test('Baidu SDK callbacks are unique across components with the same initialization generation', async () => {
-  const browserWindow = {}
-  const scripts = []
-  const documentOverride = { getElementById() { return null }, createElement() { return { dataset: {} } },
-    head: { appendChild(script) { scripts.push(script) } },
-  }
-  const first = createRuntime({ browserWindow, documentOverride })
-  const oldPending = first.panel.initBaidu()
-  const oldName = new URL(scripts[0].src).searchParams.get('callback')
-  const oldCallback = browserWindow[oldName]
-  first.beforeUnmount[0]()
-  const second = createRuntime({ browserWindow, documentOverride })
-  const newPending = second.panel.initBaidu()
-  const newName = new URL(scripts[1].src).searchParams.get('callback')
-  const newCallback = browserWindow[newName]
-  second.beforeUnmount[0]()
-  oldCallback()
-  try {
-    assert.equal(browserWindow[newName], newCallback, 'old callback must not delete the current loader')
-  } finally {
-    newCallback()
-    scripts.forEach(script => script.onload?.())
-    await Promise.all([oldPending, newPending])
-  }
-  assert.notEqual(oldName, newName)
+test('Baidu uses its isolated SDK for construction and setters without touching the parent SDK', async () => {
+  const runtime = createRuntime()
+  runtime.window.BMap = { Map: class { constructor() { throw Error('parent SDK used') } } }
+  await runtime.panel.initBaidu()
+  assert.ok(runtime.store.map)
+  runtime.panel.renderTask()
+  runtime.panel.fitView([[113.39, 22.52], [113.40, 22.53]])
+  const marker = runtime.panel.addMarker([113.39, 22.52])
+  runtime.panel.updateMarker(marker, [113.40, 22.53])
+  await runtime.panel.destroyMap()
+  assert.ok(runtime.lifecycle.includes('dispose-baidu-frame'))
+  assert.ok(!runtime.lifecycle.includes('destroy-map'), 'remove the realm instead of leaving native callbacks in the parent')
+})
+
+test('Baidu unmount cancels a pending realm and a late SDK result cannot create a native map', async () => {
+  let resolve, disposed = false
+  const runtime = createRuntime({ baiduFrameFactory: () => ({ ready: new Promise(done => { resolve = done }),
+    dispose() { disposed = true },
+  }) })
+  const pending = runtime.panel.initBaidu()
+  for (let i = 0; i < 3; i++) await Promise.resolve()
+  runtime.beforeUnmount[0]()
+  resolve()
+  await pending
+  assert.equal(disposed, true)
+  assert.equal(runtime.mapInstances.length, 0)
 })

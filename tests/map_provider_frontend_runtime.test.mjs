@@ -724,6 +724,7 @@ function createRuntime(provider, options = {}) {
     'loadTencentMapOnce',
     'loadTianDiTuMapOnce',
     'loadBaiduMapOnce',
+    'getProviderBaiduSdk',
     'loadActiveMapProviderRuntime',
     'getProviderMapSurfaceId',
     'getProviderMapSurface',
@@ -738,10 +739,16 @@ function createRuntime(provider, options = {}) {
     'destroyProviderMapInstance',
     'isCurrentProviderMapInstance',
     'waitForProviderMapDestruction',
+    'waitForProviderMapReady',
     'showProviderMapLifecycleError',
     'rememberProviderMapRedraw',
+    'rememberProviderRunnerUpdate',
+    'clearPendingProviderRunnerUpdate',
     'deferProviderMapInitialization',
     'registerProviderMapInstance',
+    'finishProviderMapInitialization',
+    'isCurrentBaiduInitialization',
+    'initializeBaiduProviderMap',
     'getProviderOverlayBucket',
     'clearProviderRunnerMarkers',
     'clearProviderMapOverlays',
@@ -873,6 +880,26 @@ function createRuntime(provider, options = {}) {
     window.BMapGL = createBaiduSdk();
     window.AMap = createAmapSdk();
   }
+  window.__baiduFrames = [];
+  window.ZXMapRequestProxy = {
+    initialize() {},
+    createBaiduMapFrame({ host, key }) {
+      const container = document.createElement('div');
+      host.appendChild(container);
+      const realm = {
+        container, key, sdk: window.BMap,
+        window: { document: document.createElement('div'), BMAP_ANCHOR_TOP_LEFT: 'top-left' },
+        dispose() {
+          realm.disposed = true;
+          container.remove();
+        },
+      };
+      if (options.baiduFrameFactory) options.baiduFrameFactory(realm);
+      else realm.ready = Promise.resolve(realm);
+      window.__baiduFrames.push(realm);
+      return realm;
+    },
+  };
 
   const factory = Function('window', 'document', `
     const TMap = window.TMap;
@@ -904,11 +931,13 @@ function createRuntime(provider, options = {}) {
     let sessionUUID = 'session-a';
     const providerMapDestructions = {};
     const providerMapPendingInitializations = {};
+    const providerBaiduInitializations = {};
     let providerMapSurfaceSequence = 0;
     let providerMapInstanceProviders = {};
     let providerMapEventsBound = {};
     let providerMapOverlays = {};
     const providerRouteSegmentOverlays = {};
+    let providerMarkerSequence = 0;
     let providerMapLastFitCoords = {};
     let providerRunnerMarkers = {};
     let pendingMapProviderRuntimeConfig = null;
@@ -947,7 +976,9 @@ function createRuntime(provider, options = {}) {
       initProviderMap,
       destroyProviderMapInstance,
       waitForProviderMapDestruction: typeof waitForProviderMapDestruction === 'function' ? waitForProviderMapDestruction : undefined,
+      waitForProviderMapReady: typeof waitForProviderMapReady === 'function' ? waitForProviderMapReady : undefined,
       getProviderMapSurface,
+      rememberProviderMapRedraw,
       addProviderMarker,
       drawProviderRouteOnMap,
       ensureActiveMapProviderRuntimeIfNeeded,
@@ -1011,6 +1042,188 @@ function decodeTencentMarkerStyleSvg(marker) {
   assert.match(style.options.src, /^data:image\/svg\+xml;charset=UTF-8,/);
   return decodeURIComponent(style.options.src.split(',')[1] || '');
 }
+
+test('legacy Baidu uses its iframe SDK for map, overlays, controls and progress', async () => {
+  const frameSdk = createBaiduSdk();
+  const runtime = createRuntime('baidu', { baiduFrameFactory(realm) { realm.sdk = frameSdk; realm.ready = Promise.resolve(realm); } });
+  const parent = runtime.getWindow();
+  delete parent.BMap;
+  assert.equal(runtime.initProviderMap('map-container'), true);
+  const instance = runtime.getProviderMapInstance('map-container');
+  assert.ok(instance instanceof frameSdk.Map);
+  assert.equal(instance.__baiduRealm, parent.__baiduFrames[0]);
+  const route = [[113.39, 22.52], [113.391, 22.521], [113.392, 22.522]];
+  const line = runtime.drawProviderRouteOnMap('map-container', route, { showEndpoints: false });
+  assert.ok((Array.isArray(line) ? line[0] : line) instanceof frameSdk.Polyline);
+  assert.ok(runtime.addProviderMarker('map-container', route[0], { label: '测试' }) instanceof frameSdk.Marker);
+  runtime.updateProviderRunnerMarker('map-container', route[0]);
+  runtime.updateProviderRunnerMarker('map-container', route[1]);
+  assert.equal(runtime.fitProviderMapToLastRoute('map-container'), true);
+  assert.ok(instance.controls.some((control) => control instanceof frameSdk.NavigationControl3D));
+  const realm = instance.__baiduRealm;
+  assert.ok(realm.window.document.events.some((event) => event.eventName === 'contextmenu'));
+  assert.ok(realm.window.document.events.some((event) => event.eventName === 'wheel'));
+  await runtime.destroyProviderMapInstance('map-container');
+  assert.equal(realm.disposed, true);
+  assert.equal(instance.destroyed, undefined, 'realm disposal owns SDK cancellation instead of native destroy');
+  assert.equal(realm.window.document.events.length, 0);
+});
+
+test('legacy Baidu waits for iframe readiness and replays only the latest route', async () => {
+  let finish;
+  const runtime = createRuntime('baidu', { baiduFrameFactory(realm) {
+    realm.sdk = null;
+    realm.ready = new Promise((resolve) => { finish = () => { realm.sdk = createBaiduSdk(); resolve(realm); }; });
+  } });
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  assert.equal(runtime.getProviderMapInstance('map-container'), undefined);
+  runtime.drawProviderRouteOnMap('map-container', [[113.39, 22.52], [113.40, 22.53]], { showEndpoints: false });
+  const latest = [[113.41, 22.54], [113.42, 22.55]];
+  runtime.drawProviderRouteOnMap('map-container', latest, { showEndpoints: false });
+  assert.equal(runtime.getWindow().__baiduFrames.length, 1);
+  finish();
+  assert.equal(await runtime.waitForProviderMapReady('map-container'), true);
+  assert.ok(runtime.getProviderMapInstance('map-container'));
+  assert.deepEqual(runtime.getState().providerMapLastFitCoords['map-container'], latest.map(([lng, lat]) => ({ lng, lat })));
+});
+
+test('legacy Baidu retains the latest runner position until iframe readiness', async () => {
+  let finish;
+  const runtime = createRuntime('baidu', { baiduFrameFactory(realm) {
+    realm.sdk = null;
+    realm.ready = new Promise((resolve) => { finish = () => { realm.sdk = createBaiduSdk(); resolve(realm); }; });
+  } });
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  runtime.updateProviderRunnerMarker('map-container', [113.39, 22.52], { markerKey: 'runner' });
+  runtime.updateProviderRunnerMarker('map-container', [113.40, 22.53], { markerKey: 'runner' });
+  finish();
+  assert.equal(await runtime.waitForProviderMapReady('map-container'), true);
+  const marker = runtime.getState().providerRunnerMarkers.runner;
+  const expected = runtime.convertGcj02ToProviderCoordinates('baidu', { lng: 113.40, lat: 22.53 });
+  assert.equal(marker.position.lng, expected.lng);
+  assert.equal(marker.position.lat, expected.lat);
+});
+
+test('legacy Baidu keeps latest pending multi-account runners independently and removes stopped accounts', async () => {
+  let finish;
+  const runtime = createRuntime('baidu', { baiduFrameFactory(realm) {
+    realm.sdk = null;
+    realm.ready = new Promise((resolve) => { finish = () => { realm.sdk = createBaiduSdk(); resolve(realm); }; });
+  } });
+  assert.equal(runtime.initProviderMap('multi-map-container', true), false);
+  runtime.multi_updateRunnerPosition('alice', 113.39, 22.52, 'Alice');
+  runtime.multi_updateRunnerPosition('bob', 113.40, 22.53, 'Bob');
+  runtime.multi_updateRunnerPosition('alice', 113.41, 22.54, 'Alice');
+  runtime.multi_removeRunnerMarker('bob');
+
+  finish();
+  assert.equal(await runtime.waitForProviderMapReady('multi-map-container'), true);
+  const markers = runtime.getState().providerRunnerMarkers;
+  const aliceMarker = markers['multi-map-container:alice'];
+  assert.ok(aliceMarker);
+  assert.equal(markers['multi-map-container:bob'], undefined);
+  const expectedAlice = runtime.convertGcj02ToProviderCoordinates('baidu', { lng: 113.41, lat: 22.54 });
+  assert.equal(aliceMarker.position.lng, expectedAlice.lng);
+  assert.equal(aliceMarker.position.lat, expectedAlice.lat);
+});
+
+test('legacy Baidu redraw failure disposes its registered map and host', async () => {
+  let finish;
+  const runtime = createRuntime('baidu', { baiduFrameFactory(realm) {
+    realm.sdk = null;
+    realm.ready = new Promise((resolve) => { finish = () => { realm.sdk = createBaiduSdk(); resolve(realm); }; });
+  } });
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  const frame = runtime.getWindow().__baiduFrames[0];
+  const surface = runtime.getProviderMapSurface('map-container');
+  runtime.rememberProviderMapRedraw('map-container', () => { throw new Error('redraw failed'); });
+
+  finish();
+  assert.equal(await runtime.waitForProviderMapReady('map-container'), false);
+  assert.equal(runtime.getProviderMapInstance('map-container'), undefined);
+  assert.equal(runtime.getState().providerMapInstances['map-container'], undefined);
+  assert.equal(frame.disposed, true);
+  assert.equal(surface.parentNode, null);
+});
+
+test('legacy Baidu cancels an unready realm and ignores its late session callback', async () => {
+  const finishers = [];
+  const runtime = createRuntime('baidu', { baiduFrameFactory(realm) {
+    realm.sdk = null;
+    realm.ready = new Promise((resolve) => { finishers.push(() => { realm.sdk = createBaiduSdk(); resolve(realm); }); });
+  } });
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  const first = runtime.getWindow().__baiduFrames[0];
+  await runtime.destroyProviderMapInstance('map-container');
+  assert.equal(first.disposed, true);
+  runtime.setSession('session-b');
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  const ready = runtime.waitForProviderMapReady('map-container');
+  finishers[0]();
+  await Promise.resolve();
+  assert.equal(runtime.getProviderMapInstance('map-container'), undefined);
+  finishers[1]();
+  assert.equal(await ready, true);
+  assert.equal(runtime.getProviderMapInstance('map-container').__providerSession, 'session-b');
+});
+
+test('legacy Baidu stale readiness releases its generation before returning to the same session', async () => {
+  let finish;
+  const runtime = createRuntime('baidu', { baiduFrameFactory(realm) {
+    realm.sdk = null;
+    realm.ready = new Promise((resolve) => { finish = () => { realm.sdk = createBaiduSdk(); resolve(realm); }; });
+  } });
+  runtime.initProviderMap('map-container');
+  const first = runtime.getWindow().__baiduFrames[0];
+  const staleReady = runtime.waitForProviderMapReady('map-container');
+  runtime.setSession('session-b');
+  finish();
+  assert.equal(await staleReady, false);
+  assert.equal(first.disposed, true);
+  runtime.setSession('session-a');
+  runtime.initProviderMap('map-container');
+  assert.equal(runtime.getWindow().__baiduFrames.length, 2, 'returning to the original session must create a fresh realm');
+  finish();
+  assert.equal(await runtime.waitForProviderMapReady('map-container'), true);
+});
+
+test('legacy Baidu rejected SDK readiness stays failed and a new attempt may retry', async () => {
+  let settle;
+  const runtime = createRuntime('baidu', { baiduFrameFactory(realm) {
+    realm.sdk = null;
+    realm.ready = new Promise((resolve, reject) => { settle = { resolve: () => { realm.sdk = createBaiduSdk(); resolve(realm); }, reject }; });
+  } });
+  runtime.initProviderMap('map-container');
+  const first = runtime.getWindow().__baiduFrames[0];
+  const failed = runtime.waitForProviderMapReady('map-container');
+  settle.reject(new Error('SDK 加载超时'));
+  assert.equal(await failed, false);
+  assert.equal(first.disposed, true);
+  assert.equal(runtime.getProviderMapInstance('map-container'), undefined);
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  assert.equal(runtime.getWindow().__baiduFrames.length, 2);
+  settle.resolve();
+  assert.equal(await runtime.waitForProviderMapReady('map-container'), true);
+});
+
+test('legacy Tencent multi-account markers created in one millisecond have distinct layer and geometry IDs', () => {
+  const runtime = createRuntime('tencent');
+  runtime.initProviderMap('multi-map-container', true);
+  const originalNow = Date.now;
+  try {
+    Date.now = () => 123456;
+    const markers = ['account-a', 'account-b', 'account-c'].map((account) =>
+      runtime.updateProviderRunnerMarker('multi-map-container', [113.39, 22.52], { markerKey: `multi-map-container:${account}`, trackOverlay: false }));
+    assert.equal(new Set(markers.map((marker) => marker.options.id)).size, 3);
+    assert.equal(new Set(markers.map((marker) => marker.options.geometries[0].id)).size, 3);
+    const ids = markers.map((marker) => marker.options.geometries[0].id);
+    markers.forEach((marker, index) => {
+      const account = ['account-a', 'account-b', 'account-c'][index];
+      assert.equal(runtime.updateProviderRunnerMarker('multi-map-container', [113.391, 22.521], { markerKey: `multi-map-container:${account}`, trackOverlay: false }), marker);
+      assert.equal(marker.options.geometries[0].id, ids[index]);
+    });
+  } finally { Date.now = originalNow; }
+});
 
 test('legacy destruction invalidates callbacks and detaches events before releasing Tencent resources', async () => {
   let destroyObserved;
@@ -1190,7 +1403,8 @@ test('legacy map teardown and rebuild keeps route and runner updates isolated ac
         const runner = runtime.getState().providerRunnerMarkers[containerId];
         runtime.destroyProviderMapInstance(containerId);
         assert.equal(await runtime.waitForProviderMapDestruction(containerId), true);
-        assert.equal(instance.destroyed, true);
+        if (provider === 'baidu') assert.equal(instance.__baiduRealm.disposed, true);
+        else assert.equal(instance.destroyed, true);
         assert.equal(instance.events.length, 0);
         assert.equal(surface.events.length, 0);
         assert.equal(surface.parentNode, null);
@@ -1629,6 +1843,9 @@ test('provider maps initialize SDKs on an isolated surface below app controls', 
     const instance = runtime.getProviderMapInstance('map-container');
     if (provider === 'tencent') {
       assert.equal(instance.container, surface);
+    } else if (provider === 'baidu') {
+      assert.equal(instance.containerId, instance.__baiduRealm.container);
+      assert.equal(instance.__baiduRealm.container.parentNode, surface);
     } else {
       assert.equal(instance.containerId, surface.id);
     }
@@ -2588,19 +2805,16 @@ test('legacy baidu and tianditu checkpoints keep identity and update color when 
   }
 });
 
-test('legacy SDK loading times out and can be retried without accepting BMapGL as v4', async () => {
+test('legacy Baidu preflight requires iframe factory and never loads SDK in parent even with BMapGL', async () => {
   const runtime = createRuntime('baidu', { preloadSdks: false });
   runtime.getWindow().BMapGL = createBaiduSdk();
-  const first = runtime.loadActiveMapProviderRuntime('baidu');
-  assert.equal(runtime.getDocument().appendedScripts.length, 1);
-  const rejected = assert.rejects(first, /超时/);
-  runtime.runLastScheduledTimeout();
-  await rejected;
-  const second = runtime.loadActiveMapProviderRuntime('baidu');
-  assert.equal(runtime.getDocument().appendedScripts.length, 2);
-  runtime.getWindow().BMap = createBaiduSdk();
-  runtime.getWindow().__onBaiduMapApiLoaded();
-  assert.equal(await second, runtime.getWindow().BMap);
+  const factory = runtime.getWindow().ZXMapRequestProxy;
+  delete runtime.getWindow().ZXMapRequestProxy;
+  await assert.rejects(runtime.loadActiveMapProviderRuntime('baidu'), /隔离运行时未加载/);
+  runtime.getWindow().ZXMapRequestProxy = factory;
+  assert.equal(await runtime.loadActiveMapProviderRuntime('baidu'), factory);
+  assert.equal(runtime.getDocument().appendedScripts.length, 0);
+  assert.equal(runtime.getWindow().BMap, undefined);
 });
 
 test('legacy tianditu teardown removes document drag listeners before another SDK takes the surface', () => {
@@ -2638,18 +2852,6 @@ test('provider runtime loaders inject the active provider sdk script and resolve
         return window.T;
       },
     },
-    {
-      provider: 'baidu',
-      expectedSrc: 'https://api.map.baidu.com/api?v=4.0&ak=baidu-ak&callback=__onBaiduMapApiLoaded',
-      datasetKey: 'baiduMapApi',
-      installSdk(window) {
-        window.BMap = createBaiduSdk();
-      },
-      finish(window) {
-        window.__onBaiduMapApiLoaded();
-        return window.BMap;
-      },
-    },
   ];
 
   for (const item of cases) {
@@ -2658,6 +2860,7 @@ test('provider runtime loaders inject the active provider sdk script and resolve
     const document = runtime.getDocument();
 
     const runtimePromise = runtime.ensureActiveMapProviderRuntimeIfNeeded('loader-test');
+    await Promise.resolve();
     assert.equal(document.appendedScripts.length, 1, item.provider);
     const script = document.appendedScripts[0];
     assert.equal(script.src, item.expectedSrc, item.provider);
@@ -2687,13 +2890,6 @@ test('provider runtime loaders reject when sdk globals are missing after script 
         script.onload();
       },
     },
-    {
-      provider: 'baidu',
-      errorPattern: /百度地图脚本加载完成但运行时不可用/,
-      finish(window) {
-        window.__onBaiduMapApiLoaded();
-      },
-    },
   ];
 
   for (const item of cases) {
@@ -2702,6 +2898,7 @@ test('provider runtime loaders reject when sdk globals are missing after script 
     const window = runtime.getWindow();
 
     const runtimePromise = runtime.ensureActiveMapProviderRuntimeIfNeeded('loader-missing-sdk-test');
+    await Promise.resolve();
     assert.equal(document.appendedScripts.length, 1, item.provider);
     item.finish(window, document.appendedScripts[0]);
 
