@@ -289,3 +289,13 @@
 - 根因：公开主题读取路径被重复方法定义覆盖，未应用 UUID 对应 Bundle；登录响应的 `theme_background` 未接管前端状态，后续同步再次进入背景消耗流程。
 - 正确做法：公开 GET 只读取已有身份/访客绑定；登录和 2FA 响应统一返回并应用 Bundle，空背景不覆盖当前值，绑定完成后跳过重复消耗。
 - 相关测试：`tests/test_identity_bundle_runtime.py`、`tests/theme_background_sync.test.mjs`。
+
+### 离线调试、账单范围与地图瓦片缓存
+
+- 离线模式以成功鉴权响应的 `is_offline_mode` 为准；连接错误的 `offline` 不是执行模式。前端刷新、学校登录及导入均绑定业务会话和请求代次；失败在线登录不得改变原离线身份，验证使用独立网络客户端，执行中拒绝模式切换。
+- 欠费筛选必须区分未传范围与显式空范围。`NULL`、空数组或全部无效账号绝不扩大成全员查询；管理员查看态按目标业务会话检查离线模式和学校账号，来源会话只提供认证。账单读取只迁移返回副本，不写回历史文件。
+- 瓦片缓存复用 `cache/map_tiles`，供应商、主机、Key、路径、版本、样式、来源及响应差异均进入摘要；默认 20 天、总容量 10 GB，UI 仅在代理开启时显示。命中前仍鉴权；上游 `Set-Cookie` 或禁止缓存的响应只做在途合并，不落盘，不以过期瓦片掩盖上游错误。
+- JSON/JSONP 仅按确认的瓦片端点和结构校验，不把普通 JSON 错误当瓦片。已验证腾讯 batch 为 `datas/data` 的 base64 数组；百度当前 v4 的 PVD 是二进制，不能根据 JavaScript MIME 解码改写。未知 JSON/JSONP 结构透传，不扩张缓存范围。
+- JSONP callback 不属于瓦片内容；已确认端点对 callback 规范化后存严格 JSON，各响应使用自身 callback 并保留存在性 guard，防止卸载后回调异常。必须验证跨 callback 的并发合并和重启命中，拒绝重复字段、尾随脚本、未知字段和错误结果。
+- 减少超时应复用独占租约的 HTTP 连接，等待相同瓦片的 follower 不占上游许可；DNS 队列、瓦片重试和总截止时间都要有界。取消器必须先从连接解绑再释放租约，避免旧请求关闭后续请求正在复用的 socket。
+- 相关测试：`tests/test_offline_billing_http.py`、`tests/offline_frontend_state.test.mjs`、`tests/test_map_tile_cache.py`、`tests/test_map_tile_proxy.py`、`tests/test_map_proxy_transport.py`、`tests/test_map_proxy_deadline_reuse.py`、`tests/browser_map_cache_config_smoke.mjs`。
