@@ -25,6 +25,7 @@ PROXY_COOKIE_MAX_AGE = 30 * 60
 MAX_REQUEST_BODY_BYTES = 1024 * 1024
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 MAX_CONCURRENT_REQUESTS = 12
+QUEUE_WAIT_TIMEOUT = 3.0
 REQUEST_TIMEOUT = (3.05, 10)
 PROXY_HOSTS = {
     "amap": frozenset({
@@ -239,6 +240,8 @@ class _MapProxy:
         self.max_request_body_bytes = max_request_body_bytes
         self.max_response_bytes = max_response_bytes
         self.semaphore = threading.BoundedSemaphore(max_concurrent_requests)
+        # Bound active requests plus two waves waiting for an upstream slot.
+        self.admission_semaphore = threading.BoundedSemaphore(max_concurrent_requests * 3)
         self.serializer = URLSafeTimedSerializer(app.secret_key, salt="zx-map-proxy-context-v1")
 
     @staticmethod
@@ -374,10 +377,14 @@ class _MapProxy:
                 return make_response("", 414)
             if request.content_length and request.content_length > self.max_request_body_bytes:
                 return make_response("", 413)
-            if not self.semaphore.acquire(blocking=False):
+            if not self.admission_semaphore.acquire(blocking=False):
                 return make_response("", 429)
             upstream = None
+            active_acquired = False
             try:
+                active_acquired = self.semaphore.acquire(timeout=QUEUE_WAIT_TIMEOUT)
+                if not active_acquired:
+                    return make_response("", 429)
                 query = _strip_control_query(request.query_string.decode("latin-1"))
                 if query is None:
                     return make_response("", 400)
@@ -472,11 +479,17 @@ class _MapProxy:
                 logging.warning("[MapProxy] upstream failure provider=%s host=%s error=%s", provider, host, type(error).__name__)
                 return make_response("", 502)
             finally:
-                if upstream is not None:
-                    close = getattr(upstream, "close", None)
-                    if callable(close):
-                        close()
-                self.semaphore.release()
+                try:
+                    if upstream is not None:
+                        close = getattr(upstream, "close", None)
+                        if callable(close):
+                            close()
+                finally:
+                    try:
+                        if active_acquired:
+                            self.semaphore.release()
+                    finally:
+                        self.admission_semaphore.release()
 
 
 def _normalize_session_id(value):
