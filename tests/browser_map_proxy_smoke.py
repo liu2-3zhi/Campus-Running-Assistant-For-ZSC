@@ -366,6 +366,7 @@ def run(credentials, *, render_ui=False, render_legacy=False):
         return app.response_class('html,body,#map-ui{margin:0;width:100%;height:100%}.h-full{height:100%}.w-full{width:100%}.relative{position:relative}' + ui_bundle["css"], mimetype="text/css")
 
     @app.get("/proxy.js")
+    @app.get("/scripts/map-request-proxy.js")
     def proxy_script():
         return send_file(ROOT / "scripts" / "map-request-proxy.js", mimetype="application/javascript")
 

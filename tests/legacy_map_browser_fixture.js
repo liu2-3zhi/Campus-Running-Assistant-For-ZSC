@@ -84,8 +84,9 @@
       nativeMap = new AMap.Map(containerId, {center: baseCoords[0], zoom: 17, viewMode: "2D"});
       window.map = nativeMap;
     } else {
-      if (!initProviderMap(containerId)) throw new Error("Legacy native map initialization failed");
+      if (!initProviderMap(containerId)) await waitForProviderMapReady(containerId);
       nativeMap = getProviderMapInstance(containerId);
+      if (!nativeMap) throw new Error("Legacy native map initialization failed");
     }
     let cameraWrites = 0;
     const originals = new Map();
@@ -174,7 +175,7 @@
       moveView: async () => {
         const point = expectedPoint([baseCoords[0][0] + 0.004, baseCoords[0][1] + 0.003]);
         if (provider === "tencent") nativeMap.setCenter(new TMap.LatLng(point[1], point[0]));
-        else if (provider === "baidu") nativeMap.setCenter(new BMap.Point(...point));
+        else if (provider === "baidu") nativeMap.setCenter(new (getProviderBaiduSdk(nativeMap).Point)(...point));
         else if (provider === "tianditu") nativeMap.panTo(new T.LngLat(...point));
         else nativeMap.setCenter(point);
         nativeMap.setZoom(16);

@@ -42,12 +42,16 @@ def run(credentials, *, render_legacy=False):
                     def serve(route):
                         name = urlsplit(route.request.url).path.lstrip("/")
                         if name == "map-acceptance":
-                            script = '<script type="module" src="/map-ui.js"></script>' if bundle else ""
+                            script = '<script src="/scripts/map-request-proxy.js"></script>'
+                            if bundle:
+                                script += '<script type="module" src="/map-ui.js"></script>'
                             return route.fulfill(body='<!doctype html><style>html,body,#map-ui,.h-full{height:100%;margin:0}.w-full{width:100%}</style><div id="map-ui"></div><div id="map"></div>' + script, content_type="text/html")
                         if bundle and name in bundle["files"]:
                             return route.fulfill(body=bundle["files"][name], content_type="application/javascript")
                         if name == "legacy-fixture.js":
                             return route.fulfill(body=(ROOT / "tests" / "legacy_map_browser_fixture.js").read_text(encoding="utf-8"), content_type="application/javascript")
+                        if name == "scripts/map-request-proxy.js":
+                            return route.fulfill(body=(ROOT / "scripts" / "map-request-proxy.js").read_text(encoding="utf-8"), content_type="application/javascript")
                         if name in {"legacy-scripts/legacy-map-runtime.js", "legacy-scripts/legacy-map-render.js"}:
                             return route.fulfill(body=(ROOT / "scripts" / name.split("/")[-1]).read_text(encoding="utf-8"), content_type="application/javascript")
                         return route.fulfill(status=404, body="Not found", content_type="text/plain")
