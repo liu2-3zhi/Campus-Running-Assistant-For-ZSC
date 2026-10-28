@@ -11,7 +11,8 @@ from map_request_proxy import PROXY_COOKIE_NAME, PROXY_COOKIE_PATH, register_map
 
 
 SESSION_ID = "11111111-1111-4111-8111-111111111111"
-RESOURCE = "/map-proxy/tencent/https/rt0.map.gtimg.com/tile.png"
+# Capacity tests use an uncached resource; identical tile misses are coalesced.
+RESOURCE = "/map-proxy/tencent/https/rt0.map.gtimg.com/capacity-test-resource"
 
 
 class ObservedSemaphore:

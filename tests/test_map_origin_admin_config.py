@@ -82,6 +82,59 @@ class MapOriginAdminConfigTests(unittest.TestCase):
         response = self.client.post("/save", json={"Map": {"providers": {"amap": {"security_js_code": "replacement"}}}})
         self.assertEqual(response.status_code, 200, response.json)
 
+    def test_tile_cache_defaults_and_partial_updates(self):
+        defaults = main._get_default_config()
+        self.assertEqual(defaults.getint("Map", "tile_cache_ttl_days", fallback=-1), 20)
+        self.assertEqual(defaults.getfloat("Map", "tile_cache_max_size_gb", fallback=-1), 10)
+        response = self.client.post("/save", json={"Map": {
+            "tile_cache_ttl_days": 30, "tile_cache_max_size_gb": 2.5,
+        }})
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(self.config.getint("Map", "tile_cache_ttl_days"), 30)
+        self.assertEqual(self.config.getfloat("Map", "tile_cache_max_size_gb"), 2.5)
+        response = self.client.post("/save", json={"Map": {"frontend_proxy_enabled": False}})
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(self.config.getint("Map", "tile_cache_ttl_days"), 30)
+        self.assertEqual(self.config.getfloat("Map", "tile_cache_max_size_gb"), 2.5)
+        self.assertEqual(self.config.get("Map", "providers")["amap"]["js_key"], "test-key")
+
+    def test_invalid_tile_cache_settings_are_transactional(self):
+        invalid = (
+            ("tile_cache_ttl_days", 0), ("tile_cache_ttl_days", -1),
+            ("tile_cache_ttl_days", 1.5), ("tile_cache_ttl_days", True),
+            ("tile_cache_ttl_days", "nan"), ("tile_cache_ttl_days", ""),
+            ("tile_cache_max_size_gb", 0), ("tile_cache_max_size_gb", -1),
+            ("tile_cache_max_size_gb", "inf"), ("tile_cache_max_size_gb", True),
+            ("tile_cache_max_size_gb", 0.001),
+        )
+        for field, value in invalid:
+            with self.subTest(field=field, value=value):
+                before = copy.deepcopy(self.config._data)
+                self.write.reset_mock()
+                response = self.client.post("/save", json={"Map": {"provider": "tencent", field: value}})
+                self.assertEqual(response.status_code, 400, response.json)
+                self.assertEqual(self.config._data, before)
+                self.write.assert_not_called()
+
+    def test_tile_cache_settings_are_not_public_map_configuration(self):
+        self.config.set("Map", "tile_cache_ttl_days", "30")
+        self.config.set("Map", "tile_cache_max_size_gb", "2.5")
+        public = main._get_map_provider_frontend_config(self.config)
+        self.assertNotIn("tile_cache", repr(public))
+
+    def test_administrator_configuration_loads_saved_tile_cache_settings(self):
+        tree = ast.parse(Path("web_server.py").read_text(encoding="utf-8"))
+        function = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "admin_config_load")
+        map_payload = next(value for node in ast.walk(function) if isinstance(node, ast.Dict)
+                           for key, value in zip(node.keys, node.values)
+                           if isinstance(key, ast.Constant) and key.value == "Map")
+        self.config.set("Map", "tile_cache_ttl_days", "45")
+        self.config.set("Map", "tile_cache_max_size_gb", "12.5")
+        result = eval(compile(ast.Expression(map_payload), "web_server.py", "eval"),
+                      {"_main": lambda: main, "config": self.config})
+        self.assertEqual(result["tile_cache_ttl_days"], 45)
+        self.assertEqual(result["tile_cache_max_size_gb"], 12.5)
+
 
 if __name__ == "__main__":
     unittest.main()

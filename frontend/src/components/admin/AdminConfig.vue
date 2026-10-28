@@ -83,6 +83,8 @@ const sections = [
       ] },
       { key: 'backend_page_origin', label: '地图页面来源（选填）', type: 'origin', hint: '用于后端路径规划和前端地图代理。留空自动使用应用请求来源；仅保留协议、域名和端口。' },
       { key: 'frontend_proxy_enabled', label: '启用地图请求后端代理', type: 'boolean', hint: '默认关闭。开启由服务器转发地图请求并使用配置来源；关闭由浏览器直连地图服务，使用当前页面来源。保存后刷新页面生效；已加载地图时，下次加载切换模式会自动刷新页面。' },
+      { key: 'tile_cache_ttl_days', label: '地图瓦片缓存时间（天）', type: 'number', default: 20, step: 1, proxyOnly: true, hint: '正整数；上游更短的有效期优先。私有响应或带 Cookie 的资源不缓存；关闭代理时保留此设置。' },
+      { key: 'tile_cache_max_size_gb', label: '地图瓦片缓存最大大小（GB）', type: 'number', default: 10, step: 0.01, proxyOnly: true, hint: '所有地图供应商共享此缓存总容量，各供应商缓存数据独立；1 GB = 10 亿字节，最多两位小数。' },
       { key: 'providers.amap.js_key', label: '高德 JS Key', type: 'password' },
       { key: 'providers.amap.security_js_code', label: '高德安全密钥（选填）', type: 'password' },
       { key: 'providers.amap.backend_page_origin', label: '高德地图页面来源（选填）', type: 'origin', hint: '同时用于高德后端规划和前端代理；留空继承全局来源。' },
@@ -194,7 +196,7 @@ function applyConfig(config) {
     if (!configForm[s.save]) configForm[s.save] = {}
     for (const field of s.fields) {
       const raw = field.key.split('.').reduce((value, key) => value?.[key], source)
-      configForm[s.save][field.key] = coerceValue(field.type, raw)
+      configForm[s.save][field.key] = coerceValue(field.type, raw ?? field.default)
     }
   }
   takeSnapshot()
@@ -220,6 +222,10 @@ async function saveConfig() {
   saving.value = true
   clearMessages()
   try {
+    const days = Number(configForm.Map.tile_cache_ttl_days)
+    const size = Number(configForm.Map.tile_cache_max_size_gb)
+    if (!Number.isInteger(days) || days <= 0) throw new Error('地图瓦片缓存时间必须是正整数天数')
+    if (!Number.isFinite(size) || size <= 0 || Number(size.toFixed(2)) !== size) throw new Error('地图瓦片缓存最大大小必须是最多两位小数的正数 GB')
     const payload = {}
     for (const section of sections) {
       payload[section.save] = {}
@@ -302,6 +308,7 @@ onMounted(loadConfig)
           <div
             v-for="field in section.fields"
             :key="field.key"
+            v-show="!field.proxyOnly || configForm.Map?.frontend_proxy_enabled"
             class="flex flex-col sm:flex-row sm:items-center gap-2"
           >
             <label class="text-sm text-[var(--ink-secondary)] sm:w-52 flex-shrink-0">{{ field.label }}</label>
@@ -343,11 +350,15 @@ onMounted(loadConfig)
 
             <!-- number input -->
             <template v-else-if="field.type === 'number'">
-              <input
-                type="number"
-                class="input-field sm:max-w-xs"
-                v-model.number="configForm[section.save][field.key]"
-              />
+              <div class="flex-1 min-w-0">
+                <input
+                  type="number"
+                  :step="field.step || 1"
+                  class="input-field sm:max-w-xs"
+                  v-model.number="configForm[section.save][field.key]"
+                />
+                <p v-if="field.hint" class="text-xs text-[var(--ink-muted)] mt-1">{{ field.hint }}</p>
+              </div>
             </template>
 
             <!-- password input -->

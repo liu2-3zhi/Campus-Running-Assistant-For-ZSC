@@ -131,6 +131,20 @@ test('covers observed secondary SDK and tile hosts without broad domain matching
   }
 })
 
+test('proxies only the observed AMap redirect CDN script path on its added host', () => {
+  const { api } = createHarness()
+  const config = { enabled: true, provider: 'amap' }
+  const accepted = 'https://mapplugin.amap.com/maps/checkredirectcdn?key=isolated&callback=isolated'
+  assert.equal(api.rewriteUrl(accepted, config), '/map-proxy/amap/https/mapplugin.amap.com/maps/checkredirectcdn?key=isolated&callback=isolated')
+  for (const url of [
+    'https://mapplugin.amap.com/other-script.js',
+    'https://mapplugin.amap.com/maps/checkredirectcdn/',
+    'https://mapplugin.amap.com/maps/checkredirect',
+    'https://mapplugin.amap.com/maps/%63heckredirectcdn',
+    'https://mapplugin.amap.com.evil.example/maps/checkredirectcdn',
+  ]) assert.equal(api.rewriteUrl(url, config), url)
+})
+
 test('leaves application APIs, unknown hosts, IPs, custom ports, and non-http schemes untouched', () => {
   const { api } = createHarness()
   for (const url of [

@@ -8375,6 +8375,7 @@ def start_web_server(args_param):
                 },
                 "Map": {
                     "provider": _main()._get_active_map_provider(config),
+                    **_main().get_tile_cache_settings(config),
                     "backend_page_origin": config.get("Map", "backend_page_origin", fallback=""),
                     "frontend_proxy_enabled": str(config.get(
                         "Map", "frontend_proxy_enabled", fallback="false"
@@ -8735,6 +8736,8 @@ def start_web_server(args_param):
                 config.set("Map", "provider", _main()._normalize_map_provider(map_updates["provider"]))
                 config.set("Map", "backend_page_origin", map_updates["backend_page_origin"])
                 config.set("Map", "frontend_proxy_enabled", str(map_updates["frontend_proxy_enabled"]).lower())
+                config.set("Map", "tile_cache_ttl_days", str(map_updates["tile_cache_ttl_days"]))
+                config.set("Map", "tile_cache_max_size_gb", str(map_updates["tile_cache_max_size_gb"]))
                 config.set(
                     "Map",
                     "providers",

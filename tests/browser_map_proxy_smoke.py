@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import functools
+import hashlib
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ import re
 import secrets
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from types import SimpleNamespace
@@ -78,6 +80,7 @@ def evaluate_acceptance(row):
                       and row.get("ui_verified", True) and row.get("legacy_ui_verified", True)
                       and not row.get("proxy_failures") and not row.get("upstream_failures")
                       and not (row.get("proxy_enabled", True) and row.get("direct_requests"))
+                      and row.get("tile_cache_policy_pass", row.get("tile_cache_pass", True))
                       and all(item.get("functional_pass", False) for item in rounds))
     lifecycle = not bool(row.get("script_errors") or row.get("unhandled_rejections")
                          or row.get("console_error_messages")) and all(
@@ -256,7 +259,7 @@ def exercise_map_lifecycle(page, provider, credential, *, session_id, render_ui,
     return rows
 
 
-MAP_CHECK = """async ({provider,key}) => {
+MAP_CHECK = """async ({provider,key,tileVariant}) => {
     if(provider==='tencent' && !window.TMap) await new Promise((resolve,reject)=>{
         const script=document.createElement('script');script.onload=resolve;script.onerror=()=>reject(Error('SDK load failed'));
         script.src='https://map.qq.com/api/gljs?v=1.exp&key='+encodeURIComponent(key);document.head.appendChild(script);
@@ -280,6 +283,7 @@ MAP_CHECK = """async ({provider,key}) => {
         line.setLngLats([new T.LngLat(116.398128,39.916527),new T.LngLat(116.397128,39.916527)]);line.setColor('#0088ff');marker.setLngLat(new T.LngLat(116.398128,39.916527));
     } else if(provider==='baidu') {
         window.__smokeMap=new BMap.Map('map');window.__smokeMap.centerAndZoom(new BMap.Point(116.4035,39.9225),16);
+        if (tileVariant==='satellite') window.__smokeMap.setMapType(BMAP_SATELLITE_MAP);
         const line=new BMap.Polyline([new BMap.Point(116.4035,39.9225),new BMap.Point(116.4045,39.9225)]);
         const marker=new BMap.Marker(new BMap.Point(116.4035,39.9225));
         window.__smokeMap.addOverlay(line);window.__smokeMap.addOverlay(marker);
@@ -289,7 +293,7 @@ MAP_CHECK = """async ({provider,key}) => {
 }"""
 
 
-def run(credentials, *, render_ui=False, render_legacy=False):
+def run(credentials, *, render_ui=False, render_legacy=False, probe_tiles=False):
     assert credentials and set(credentials) <= PROXY_HOSTS.keys(), "explicit provider credentials required"
     assert not (render_ui and render_legacy), "run Vue and legacy rendering checks separately"
     session_id = "11111111-1111-4111-8111-111111111111"
@@ -302,6 +306,9 @@ def run(credentials, *, render_ui=False, render_legacy=False):
         assert parsed.scheme in ("http", "https") and parsed.hostname and not parsed.username
         config["Map"]["providers"][provider] = {"backend_page_origin": f"{parsed.scheme}://{parsed.netloc}"}
     outbound = []
+    upstream_counts = {}
+    upstream_policies = {}
+    tile_cache_directory = tempfile.TemporaryDirectory(prefix="zx-map-smoke-cache-")
     ui_bundle = None
     if render_ui:
         bundle_env = {key: value for key, value in os.environ.items() if key != "MAP_SMOKE_CREDENTIALS"}
@@ -322,6 +329,8 @@ def run(credentials, *, render_ui=False, render_legacy=False):
         return wrapped
 
     def transport(method, url, *, headers, body, timeout):
+        digest = hashlib.sha256(url.encode()).hexdigest()
+        upstream_counts[digest] = upstream_counts.get(digest, 0) + 1
         parsed = urlsplit(url)
         assert "Cookie" not in headers and "Authorization" not in headers
         provider = next(name for name, hosts in PROXY_HOSTS.items() if parsed.hostname in hosts)
@@ -336,6 +345,36 @@ def run(credentials, *, render_ui=False, render_legacy=False):
             response = _MapProxy._request_upstream(method, url, headers=headers, body=body, timeout=timeout)
             row["status"] = response.status_code
             row["content_type"] = response.headers.get("Content-Type", "")
+            if response.headers.get("Location"):
+                redirect = urlsplit(response.headers["Location"])
+                row["redirect_target"] = {"scheme": redirect.scheme, "host": redirect.hostname,
+                                          "path": safe_error(redirect.path, credentials)}
+            if probe_tiles:
+                row["cache_policy"] = response.headers.get("Cache-Control", "")
+                row["vary"] = response.headers.get("Vary", "")
+                row["sets_cookie"] = "Set-Cookie" in response.headers
+                from map_tile_cache import tile_cache_ttl
+                row["effective_ttl_seconds"] = tile_cache_ttl(response.headers)
+                upstream_policies[digest] = {"sets_cookie": row["sets_cookie"],
+                                             "effective_ttl_seconds": row["effective_ttl_seconds"]}
+                from urllib.parse import parse_qsl
+                row["query_fields"] = sorted({name for name, _ in parse_qsl(parsed.query)})
+                tile_batch = dict(parse_qsl(parsed.query)).get("tiles")
+                if tile_batch is not None:
+                    row["tile_batch_shape"] = re.sub(r"[0-9]+", "N", tile_batch)[:100]
+                if provider == "baidu" and parsed.path == "/pvd/":
+                    qt = dict(parse_qsl(parsed.query)).get("qt", "")
+                    row["tile_query_type"] = qt if re.fullmatch(r"[a-zA-Z]{1,16}", qt) else "unknown"
+                    original_iterator = response.iter_content
+                    def observe_binary(*args, _original=original_iterator, _row=row, **kwargs):
+                        length = 0
+                        for chunk in _original(*args, **kwargs):
+                            if not length and chunk:
+                                _row["pvd_v2_signature"] = chunk.startswith(b"\x02\0\0\0\x02\0\0\0")
+                            length += len(chunk)
+                            yield chunk
+                        _row["body_length"] = length
+                    response.iter_content = observe_binary
             return response
         except Exception as error:
             row["error_type"] = type(error).__name__
@@ -344,7 +383,7 @@ def run(credentials, *, render_ui=False, render_legacy=False):
     runtime_config = SimpleNamespace(get=lambda section, key, fallback=None: config.get(section, {}).get(key, fallback))
     register_map_proxy_routes(app, login_required, lambda: runtime_config,
                               lambda user, token, sid, _view: user == "proxy-smoke" and token == auth_token and sid == session_id,
-                              transport=transport)
+                              transport=transport, tile_cache_dir=tile_cache_directory.name)
 
     @app.get("/")
     def page():
@@ -398,6 +437,7 @@ def run(credentials, *, render_ui=False, render_legacy=False):
                         page.set_default_timeout(65000)
                         direct = []
                         failures = []
+                        tile_responses = []
                         runtime_errors = []
                         console_errors = []
                         unhandled_rejections = []
@@ -409,6 +449,8 @@ def run(credentials, *, render_ui=False, render_legacy=False):
                                 direct.append({"host": parsed.hostname, "path": safe_error(parsed.path, credentials), "type": req.resource_type})
                         def record_response(response):
                             parsed = urlsplit(response.url)
+                            if probe_tiles and parsed.path.startswith("/map-proxy/"):
+                                tile_responses.append(response)
                             if parsed.path.startswith("/map-proxy/") and response.status >= 400:
                                 failures.append({"status": response.status, "path": safe_error(parsed.path, credentials)})
                             if parsed.path.startswith("/map-proxy/") and response.request.resource_type == "script" and "javascript" not in response.headers.get("content-type", ""):
@@ -452,7 +494,8 @@ def run(credentials, *, render_ui=False, render_legacy=False):
                                 map_ready = all(row["functional_pass"] for row in lifecycle_rounds)
                                 route["ui_verified"] = map_ready
                             elif not render_legacy:
-                                map_ready = page.evaluate(MAP_CHECK, {"provider": provider, "key": credential["key"]})
+                                map_ready = page.evaluate(MAP_CHECK, {"provider": provider, "key": credential["key"],
+                                                                     "tileVariant": credential.get("tileVariant")})
                             if render_legacy:
                                 page.goto(app_origin, wait_until="domcontentloaded")
                                 if not render_ui:
@@ -469,7 +512,19 @@ def run(credentials, *, render_ui=False, render_legacy=False):
                         except Exception as error:
                             route["error" if not route else "map_error"] = safe_error(error, credentials)
                         page.wait_for_timeout(2000)
+                        tile_probe = {}
+                        if probe_tiles:
+                            try:
+                                page.wait_for_load_state("networkidle", timeout=45000)
+                            except Exception as error:
+                                route["map_error"] = safe_error(error, credentials)
+                            from tests.browser_map_tile_cache_smoke import probe_tile_cache
+                            tile_probe = probe_tile_cache(page, tile_responses, upstream_counts, lambda value: safe_error(value, credentials), upstream_policies=upstream_policies)
+                            tile_probe["upstream_resources"] = [{key: value for key, value in item.items() if key != "request_id"}
+                                                                for item in outbound if item["provider"] == provider]
+                            tile_probe["map_dom"] = page.evaluate("() => { const el=document.getElementById('map');const box=el?.getBoundingClientRect();return {width:box?.width,height:box?.height,canvases:el?.querySelectorAll('canvas').length,images:el?.querySelectorAll('img').length}; }")
                         result = {"provider": provider, "origin": config["Map"]["providers"][provider]["backend_page_origin"],
+                                  **tile_probe,
                                   "proxy_enabled": True, "rounds": lifecycle_rounds,
                                   "route_points": len(route.get("path", [])), "route_success": not bool(route.get("error")),
                                   "map_ready": map_ready,
@@ -501,6 +556,7 @@ def run(credentials, *, render_ui=False, render_legacy=False):
         server.shutdown()
         server.server_close()
         server_thread.join(timeout=5)
+        tile_cache_directory.cleanup()
     return results
 
 
@@ -508,7 +564,7 @@ if __name__ == "__main__":
     logging.disable(logging.CRITICAL)
     credentials = json.loads(os.environ.get("MAP_SMOKE_CREDENTIALS", "{}"))
     try:
-        results = run(credentials, render_ui=os.environ.get("MAP_SMOKE_RENDER_UI") == "1", render_legacy=os.environ.get("MAP_SMOKE_RENDER_LEGACY") == "1")
+        results = run(credentials, render_ui=os.environ.get("MAP_SMOKE_RENDER_UI") == "1", render_legacy=os.environ.get("MAP_SMOKE_RENDER_LEGACY") == "1", probe_tiles=os.environ.get("MAP_SMOKE_TILE_CACHE") == "1")
     except Exception as error:
         print(json.dumps({"error": safe_error(error, credentials)}, ensure_ascii=True))
         raise SystemExit(1) from None

@@ -25960,7 +25960,7 @@ async function loadSystemConfig() {
       const rawValue = section.split(".").reduce((acc, part) => (acc ? acc[part] : undefined), config)?.[key];
 
       // 标准化布尔值
-      let value = rawValue;
+      let value = rawValue ?? options.defaultValue;
       if (type === "boolean") {
         if (typeof rawValue === "boolean") {
           value = rawValue;
@@ -25990,13 +25990,13 @@ async function loadSystemConfig() {
       let inputHtml = "";
       if (type === "boolean") {
         inputHtml = `
-        <select id="config-${section}-${key}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">
+        <select id="config-${section}-${key}" ${section === "Map" && key === "frontend_proxy_enabled" ? 'onchange="toggleMapTileCacheSettings(this)"' : ''} class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">
           <option value="true" ${value === true ? "selected" : ""}>✅ 启用</option>
           <option value="false" ${value === false ? "selected" : ""}>❌ 禁用</option>
         </select>
       `;
       } else if (type === "number") {
-        inputHtml = `<input type="number" id="config-${section}-${key}" value="${value}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">`;
+        inputHtml = `<input type="number" step="${options.step || 1}" id="config-${section}-${key}" value="${value}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">`;
       } else if (type === "password_storage") {
         inputHtml = `
         <select id="config-${section}-${key}" class="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all duration-200 hover:border-slate-300">
@@ -26301,6 +26301,10 @@ async function loadSystemConfig() {
     html += createInput("Map.providers.amap", "security_js_code", "高德安全密钥（选填）", "password", "需与高德 JS Key 配套；旧 Key 可留空。");
     html += createInput("Map", "backend_page_origin", "地图页面来源（选填）", "origin", "用于后端路径规划和前端地图代理。留空自动使用应用请求来源；粘贴完整 URL 后仅保留协议、域名和端口。");
     html += createInput("Map", "frontend_proxy_enabled", "启用地图请求后端代理", "boolean", "默认关闭。开启由服务器转发地图请求并使用配置来源；关闭由浏览器直连地图服务，使用当前页面来源。保存后刷新页面生效；已加载地图时，下次加载切换模式会自动刷新页面。");
+    html += '<div data-map-tile-cache-settings>';
+    html += createInput("Map", "tile_cache_ttl_days", "地图瓦片缓存时间（天）", "number", "正整数；上游更短的有效期优先。私有响应或带 Cookie 的资源不缓存；关闭代理时保留此设置。", { defaultValue: 20 });
+    html += createInput("Map", "tile_cache_max_size_gb", "地图瓦片缓存最大大小（GB）", "number", "所有地图供应商共享此缓存总容量，各供应商缓存数据独立；1 GB = 10 亿字节，最多两位小数。", { defaultValue: 10, step: 0.01 });
+    html += '</div>';
     for (const [provider, label] of [["amap", "高德地图"], ["tencent", "腾讯地图"], ["tianditu", "天地图"], ["baidu", "百度地图"]]) {
       html += createInput(`Map.providers.${provider}`, "backend_page_origin", `${label}页面来源（选填）`, "origin", "同时用于该地图的后端规划和前端代理；留空继承全局来源。");
     }
@@ -26460,6 +26464,8 @@ async function loadSystemConfig() {
     );
 
     formContainer.innerHTML = html;
+    const proxyToggle = formContainer.querySelector('[id="config-Map-frontend_proxy_enabled"]');
+    if (proxyToggle) toggleMapTileCacheSettings(proxyToggle);
     formContainer.querySelectorAll("[data-map-origin]").forEach((input) => {
       input.addEventListener("blur", () => {
         try { input.value = normalizeBackendPageOrigin(input.value); input.setCustomValidity(""); }

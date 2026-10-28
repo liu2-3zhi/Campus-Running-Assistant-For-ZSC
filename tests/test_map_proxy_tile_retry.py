@@ -11,7 +11,7 @@ from tests.test_map_proxy_concurrency import MapProxyConcurrencyTests as _Concur
 from map_request_proxy import _MapProxy
 
 
-TILE = '/map-proxy/tianditu/https/t0.tianditu.gov.cn/vec_w/wmts?tk=secret'
+TILE = '/map-proxy/tianditu/https/t0.tianditu.gov.cn/vec_w/wmts?REQUEST=GetTile&TILECOL=1&TILEROW=2&TILEMATRIX=3&tk=secret'
 
 
 def response(status=200, content=b'tile', close=None):
@@ -35,9 +35,28 @@ def test_tianditu_tile_retries_one_timeout_with_redacted_stage_logging(caplog):
     fetch = make_fetch(transport)
     assert fetch(TILE)[:2] == (200, b'tile')
     assert len(calls) == 2
-    assert all(sum(timeout) <= 6 for timeout in calls)
+    assert all(timeout.total <= 6 for timeout in calls)
     assert 'stage=tile' in caplog.text
     assert 'ReadTimeout' in caplog.text and 'secret' not in caplog.text
+
+
+@pytest.mark.parametrize('resource', [
+    '/map-proxy/amap/https/jsapi-data1.amap.com/tile/v1/pbf/0/1_2_3?auth_key=secret',
+    '/map-proxy/tencent/https/rt0.map.gtimg.com/tile?tiles=1_2_3&version=1',
+    '/map-proxy/baidu/https/apimaponline0.bdimg.com/starpic/?u=1&qt=sate&fm=1&ak=secret',
+])
+def test_confirmed_provider_tiles_get_one_bounded_retry(resource):
+    calls = []
+
+    def transport(*args, **kwargs):
+        calls.append(kwargs['timeout'])
+        if len(calls) == 1:
+            raise requests.ReadTimeout()
+        return response()
+
+    assert make_fetch(transport)(resource)[0] == 200
+    assert len(calls) == 2
+    assert all(timeout.total <= 6 for timeout in calls)
 
 
 @pytest.mark.parametrize('status', [502, 503, 504])
@@ -55,6 +74,7 @@ def test_retryable_tile_status_closes_first_response(status):
     '/map-proxy/tianditu/https/t0.tianditu.gov.cn/auth',
     '/map-proxy/tencent/https/rt0.map.gtimg.com/tile.png',
     '/map-proxy/tianditu/https/t0.tianditu.gov.cn/auth_w/wmts',
+    '/map-proxy/tianditu/https/t0.tianditu.gov.cn/vec_w/wmts?REQUEST=GetCapabilities',
 ])
 def test_scripts_auth_routes_and_other_providers_are_not_retried(resource):
     calls = []
@@ -103,7 +123,7 @@ def test_tile_attempts_and_deadline_are_bounded_and_permits_are_released():
     clock = None
     assert len(calls) == 3, 'expired budget must prevent a second attempt'
     assert fetch('/map-proxy/tianditu/https/t0.tianditu.gov.cn/vec_w/wmts')[0] == 502
-    assert len(calls) == 5, 'failure must release admission and active permits'
+    assert len(calls) == 4, 'failure must release permits; metadata must not be retried'
 
 
 @pytest.mark.parametrize('status', [400, 401, 403, 404, 429])
@@ -158,7 +178,7 @@ def test_real_trickling_response_is_interrupted_at_total_deadline_and_socket_clo
         started = time.monotonic()
         with patch('map_request_proxy.TILE_DEADLINE_SECONDS', .20), patch('map_request_proxy.TILE_ATTEMPT_SECONDS', .15):
             with pytest.raises(requests.Timeout):
-                proxy._request_tianditu_tile('GET', f'http://127.0.0.1:{server.server_port}/tile', {}, None, 'test-host')
+                proxy._request_tile('GET', f'http://127.0.0.1:{server.server_port}/tile', {}, None, 'test-host', provider='tianditu')
         elapsed = time.monotonic() - started
         assert elapsed < .60, f'continuous upstream data bypassed the total deadline: {elapsed:.3f}s'
         assert disconnected.wait(.25), 'deadline must close the actual upstream socket'

@@ -1,10 +1,43 @@
 """Backend-only map page origins and partial administrator configuration updates."""
 
 import copy
+from decimal import Decimal, InvalidOperation
 import ipaddress
 import json
 import re
 from urllib.parse import urlsplit
+
+
+TILE_CACHE_DEFAULTS = {"tile_cache_ttl_days": 20, "tile_cache_max_size_gb": 10}
+
+
+def get_tile_cache_settings(config, updates=None):
+    """Read legacy defaults, but reject invalid explicitly submitted values."""
+    result = {}
+    for field, default in TILE_CACHE_DEFAULTS.items():
+        submitted = updates is not None and field in updates
+        value = updates[field] if submitted else config.get("Map", field, fallback=default)
+        try:
+            if isinstance(value, bool) or len(str(value)) > 128:
+                raise ValueError()
+            number = Decimal(str(value))
+            if not number.is_finite() or number <= 0 or number.adjusted() > 12:
+                raise ValueError()
+            if field == "tile_cache_ttl_days":
+                if number != number.to_integral_value():
+                    raise ValueError()
+                normalized = int(number)
+            else:
+                if number * 100 != (number * 100).to_integral_value():
+                    raise ValueError()
+                normalized = float(number)
+            result[field] = normalized
+        except (ValueError, InvalidOperation, TypeError):
+            if submitted:
+                label = "地图瓦片缓存时间必须为正整数天数" if field == "tile_cache_ttl_days" else "地图瓦片缓存大小必须为正数 GB，最多两位小数"
+                raise ValueError(label) from None
+            result[field] = default
+    return result
 
 
 MAP_RUNTIME_PATH = "/map-runtime"
@@ -130,5 +163,6 @@ def merge_map_settings(config, updates):
         "provider": updates.get("provider", config.get("Map", "provider", fallback="amap")),
         "backend_page_origin": global_origin,
         "frontend_proxy_enabled": frontend_proxy_enabled,
+        **get_tile_cache_settings(config, updates),
         "providers": providers,
     }

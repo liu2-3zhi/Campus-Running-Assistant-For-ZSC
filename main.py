@@ -14,7 +14,7 @@ from flask import jsonify, make_response, request, send_from_directory
 
 from payment_crypto import RsaSigner
 from config_adapter import JsonConfigAdapter
-from map_runtime_origin import merge_map_settings, resolve_backend_page_origin
+from map_runtime_origin import get_tile_cache_settings, merge_map_settings, resolve_backend_page_origin
 from log_archiving import ArchiveManager, move_no_replace
 from auto_attendance_config import (
     _disable_auto_attendance,
@@ -5916,6 +5916,8 @@ def _get_default_config():
         "provider": "amap",
         "backend_page_origin": "",
         "frontend_proxy_enabled": "false",
+        "tile_cache_ttl_days": "20",
+        "tile_cache_max_size_gb": "10",
         "amap_js_key": "",
         "tencent_map_key": "",
         "tianditu_token": "",

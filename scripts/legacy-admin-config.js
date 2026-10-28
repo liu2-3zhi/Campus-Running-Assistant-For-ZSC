@@ -943,6 +943,12 @@ function useCurrentMapPageOrigin(button) {
   if (input) input.value = normalizeBackendPageOrigin(window.location.origin);
 }
 
+function toggleMapTileCacheSettings(select) {
+  const form = select.closest('[id="admin-config-form"]');
+  const settings = form?.querySelector('[data-map-tile-cache-settings]');
+  if (settings) settings.hidden = select.value !== "true";
+}
+
 async function saveSystemConfig() {
   const sourceButton = arguments[0] || null;
   const panel = sourceButton?.closest('#admin-config-panel_modal, #mobile-admin-config-content-panel, #mobile-multi-admin-config-content, #mobile-admin-config-panel-panel') || document;
@@ -954,6 +960,10 @@ async function saveSystemConfig() {
   setButtonLoading(btn, true, "保存中...");
 
   try {
+    const tileCacheDays = Number($("config-Map-tile_cache_ttl_days")?.value ?? 20);
+    const tileCacheSize = Number($("config-Map-tile_cache_max_size_gb")?.value ?? 10);
+    if (!Number.isInteger(tileCacheDays) || tileCacheDays <= 0) throw new Error("地图瓦片缓存时间必须是正整数天数");
+    if (!Number.isFinite(tileCacheSize) || tileCacheSize <= 0 || Number(tileCacheSize.toFixed(2)) !== tileCacheSize) throw new Error("地图瓦片缓存最大大小必须是最多两位小数的正数 GB");
     const configData = {
       Config: {
         default_ui: $("config-Config-default_ui").value,
@@ -1031,6 +1041,8 @@ async function saveSystemConfig() {
         provider: $("config-Map-provider").value,
         backend_page_origin: normalizeBackendPageOrigin($("config-Map-backend_page_origin").value),
         frontend_proxy_enabled: $("config-Map-frontend_proxy_enabled").value === "true",
+        tile_cache_ttl_days: tileCacheDays,
+        tile_cache_max_size_gb: tileCacheSize,
         providers: {
           amap: { js_key: $("config-Map.providers.amap-js_key").value,
             security_js_code: $("config-Map.providers.amap-security_js_code").value,

@@ -8,7 +8,7 @@
   const DEFAULT_BASE_PATH = "/map-proxy";
   const CONTEXT_TIMEOUT_MS = 30000;
   const HOST_RULES = Object.freeze({
-    amap: [/^webapi\.amap\.com$/, /^restapi\.amap\.com$/, /^vdata\.amap\.com$/, /^a\.amap\.com$/, /^jsapi\.amap\.com$/, /^o4\.amap\.com$/, /^jsapi-data[1-5]\.amap\.com$/, /^(?:webrd|wprd|webst)0[1-4]\.is\.autonavi\.com$/],
+    amap: [/^webapi\.amap\.com$/, /^mapplugin\.amap\.com$/, /^restapi\.amap\.com$/, /^vdata\.amap\.com$/, /^a\.amap\.com$/, /^jsapi\.amap\.com$/, /^o4\.amap\.com$/, /^jsapi-data[1-5]\.amap\.com$/, /^(?:webrd|wprd|webst)0[1-4]\.is\.autonavi\.com$/],
     tencent: [/^map\.qq\.com$/, /^mapapi\.qq\.com$/, /^apis\.map\.qq\.com$/, /^pr\.map\.qq\.com$/, /^apikey\.map\.qq\.com$/, /^overseactrl\.map\.qq\.com$/, /^confinfo\.map\.qq\.com$/, /^vectorsdk\.map\.qq\.com$/, /^mapstyle\.qpic\.cn$/, /^(?:rt|p)[0-3]\.map\.gtimg\.com$/],
     baidu: [/^api\.map\.baidu\.com$/, /^(?:api|online|shangetu)[0-3]\.map\.bdimg\.com$/, /^apimaponline[0-3]\.bdimg\.com$/, /^maponline[0-3]\.bdimg\.com$/, /^d[0-3]\.map\.baidu\.com$/, /^(?:dlswbr|miao)\.baidu\.com$/, /^webmap0\.bdimg\.com$/],
     tianditu: [/^api\.tianditu\.gov\.cn$/, /^api\.tianditu\.com$/, /^t[0-7]\.tianditu\.gov\.cn$/, /^t[0-7]\.tianditu\.com$/],
@@ -136,6 +136,7 @@
     if (!/^https?:$/.test(parsed.protocol) || parsed.username || parsed.password || parsed.port) return input;
     const provider = providerForHost(parsed.hostname);
     if (!provider) return input;
+    if (parsed.hostname === "mapplugin.amap.com" && parsed.pathname !== "/maps/checkredirectcdn") return input;
     // 供应商资源统一通过后端 HTTPS 连接，避免代理因页面中的 http 绝对地址
     // 退回明文上游；浏览器侧仍保持同源请求。
     return `${workerContext ? appOrigin : ""}${effective.basePath}/${provider}/https/${parsed.hostname}${parsed.pathname || "/"}${parsed.search}`;
