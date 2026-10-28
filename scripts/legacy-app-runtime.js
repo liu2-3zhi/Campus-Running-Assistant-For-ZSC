@@ -67,6 +67,7 @@ function showSessionMissingOverlay() {
 }
 
 async function initializeApp() {
+  const initializationContext = captureLegacyBusinessContext();
   if (window.__mapKeyRuntimeReady) {
     await window.__mapKeyRuntimeReady;
   }
@@ -529,7 +530,10 @@ async function initializeApp() {
     $("loading-overlay").classList.remove("hidden");
     ShowMobileLoadingOverlay();
 
+    if (!isCurrentLegacyBusinessContext(initializationContext)) return;
     resetUI();
+    const modeContext = captureLegacyBusinessContext();
+    applyLegacyBusinessMode(sessionModeInfo, modeContext) || applyLegacyBusinessMode(initialData, modeContext);
     if (sessionModeInfo && sessionModeInfo.is_multi_account_mode) {
       logMessage_Info("检测到会话之前处于多账号模式，正在恢复...");
       currentUserData.group = initialData.auth_group || "user";
@@ -894,7 +898,6 @@ async function initializeApp() {
       text: "服务器无法连接，请检查网络或稍后重试。",
       icon: "warning",
     });
-    IS_OFFLINE = true;
   }
 }
 async function restoreMobileTaskState() {

@@ -21,6 +21,7 @@ import time
 import traceback
 import uuid
 import warnings
+from types import SimpleNamespace
 
 
 from main_runtime import _main
@@ -2574,6 +2575,7 @@ class Api:
 
             response_data = {
                 "success": True,
+                "is_offline_mode": bool(getattr(self, "is_offline_mode", False)),
                 "users": users,
                 "lastUser": last_user,
                 "map_provider": map_public_payload["map_provider"],
@@ -2638,10 +2640,10 @@ class Api:
             return response_data
         except Exception as e:
             logging.error(f"获取初始数据时发生错误: {e}", exc_info=True)
-            self.is_offline_mode = True
             return {
                 "success": False,
                 "offline": True,
+                "is_offline_mode": bool(getattr(self, "is_offline_mode", False)),
                 "message": "暂时无法连接到后端服务器，请刷新重试。如果问题依旧，请联系管理员。",
             }
 
@@ -3127,34 +3129,99 @@ class Api:
                 return gender
         return ""
 
+    def _execution_blocks_mode_change(self):
+        """Only this business session's execution can block its mode change."""
+        if getattr(self, "run_in_progress", False) or getattr(
+            self, "_single_school_account_execution_token", None
+        ):
+            return True
+        stop_flag = getattr(self, "stop_run_flag", None)
+        if stop_flag is not None and not stop_flag.is_set():
+            return True
+        if any(self._is_multi_account_execution_active(account)
+               for account in (getattr(self, "accounts", {}) or {}).values()):
+            return True
+        manager = getattr(_main(), "background_task_manager", None)
+        session_id = getattr(self, "_web_session_id", None)
+        if manager is not None and session_id:
+            with manager.lock:
+                task = manager.tasks.get(session_id, {})
+                if task.get("status") in ("running", "paused", "stopping"):
+                    return True
+        return False
+
+    def _mode_change_refusal(self):
+        return {"success": False, "message": "任务正在执行中，请先停止任务再切换模式。",
+                "is_offline_mode": bool(getattr(self, "is_offline_mode", False))}
+
     def login(self, username, password):
         logging.info(f"API调用: login - 用户登录请求，用户名: '{username}'")
+        if self._execution_blocks_mode_change():
+            return self._mode_change_refusal()
         if not username or not password:
-            return {"success": False, "message": "用户名和密码不能为空！"}
+            return {"success": False, "message": "用户名和密码不能为空！",
+                    "is_offline_mode": bool(getattr(self, "is_offline_mode", False))}
 
         self.log_and_notify_frontend("正在登录...")
         logging.debug(f"正在尝试为用户进行登录认证: 用户名={username}")
-        self.user_data = _main().UserData()
         input_username = username
-        if not self.device_ua:
-            self.device_ua = _main().ApiClient.generate_random_ua()
-
-        resp = self.api_client.login(input_username, password)
-        if not resp or not resp.get("success"):
+        candidate_ua = self.device_ua or _main().ApiClient.generate_random_ua()
+        # Verification has its own network gate and cookies; the current offline
+        # session must remain offline until the new credentials are verified.
+        verification_owner = SimpleNamespace(
+            device_ua=candidate_ua, is_offline_mode=False,
+            log_and_notify_frontend=self.log_and_notify_frontend,
+        )
+        verification_client = _main().ApiClient(verification_owner)
+        try:
+            resp = verification_client.login(input_username, password)
+        except Exception as exc:
+            logging.warning("登录验证请求失败: %s", type(exc).__name__)
+            resp = None
+        if not isinstance(resp, dict) or not resp.get("success"):
+            verification_client.session.close()
             msg = (
                 resp.get("message", "未知错误")
-                if resp
+                if isinstance(resp, dict) and resp
                 else "网络连接失败，无法连接到学校服务器。"
             )
             self.log_and_notify_frontend(f"服务器反馈登录失败：{msg}")
             logging.warning(f"用户登录失败: {msg}")
-            return {"success": False, "message": msg}
+            return {"success": False, "message": msg,
+                    "is_offline_mode": bool(getattr(self, "is_offline_mode", False))}
+
+        if self._execution_blocks_mode_change():
+            verification_client.session.close()
+            return self._mode_change_refusal()
+
+        data = resp.get("data", {})
+        ud = _main().UserData()
+        ud.username = input_username
+        try:
+            if not isinstance(data, dict):
+                raise ValueError("invalid login payload")
+            self._apply_login_profile_to_user_data(ud, data)
+        except Exception:
+            verification_client.session.close()
+            return {"success": False, "message": "登录响应无效，请重试。",
+                    "is_offline_mode": bool(getattr(self, "is_offline_mode", False))}
+
+        previous_client = self.api_client
+        was_offline = bool(getattr(self, "is_offline_mode", False))
+        verification_client.app = self
+        self.api_client = verification_client
+        self.device_ua = candidate_ua
+        self.user_data = ud
+        self.is_offline_mode = False
+        if was_offline:
+            self.all_run_data = []
+            self.current_run_idx = -1
+        try:
+            previous_client.session.close()
+        except Exception:
+            logging.debug("旧登录请求会话清理失败", exc_info=True)
 
         self.log_and_notify_frontend("登录成功，正在解析用户信息...")
-        data = resp.get("data", {})
-        ud = self.user_data
-        ud.username = input_username
-        self._apply_login_profile_to_user_data(ud, data)
         self._persist_school_account_backup(
             ud.username,
             data.get("userInfo", {}),
@@ -3267,6 +3334,7 @@ class Api:
         )
         return {
             "success": True,
+            "is_offline_mode": False,
             "userInfo": user_info_dict,
             "ua": self.device_ua,
             "map_provider": login_map_payload["map_provider"],
@@ -6876,6 +6944,9 @@ class Api:
         logging.info("API调用: import_task_data - 导入JSON任务数据（离线调试模式）")
         logging.info("开始导入任务数据...")
 
+        if self._execution_blocks_mode_change():
+            return self._mode_change_refusal()
+
         if not json_data:
             logging.error("导入失败：未提供有效的JSON数据")
             return {"success": False, "message": "未提供导入数据"}
@@ -6891,31 +6962,15 @@ class Api:
 
             prev_user = copy.deepcopy(getattr(self, "user_data", _main().UserData()))
 
-            self.is_offline_mode = True
-            logging.info("切换到离线模式")
-            try:
-                if hasattr(self, "stop_run_flag") and isinstance(
-                    self.stop_run_flag, threading.Event
-                ):
-                    self.stop_run_flag.set()
-                    logging.info("停止运行中的任务")
-            except Exception:
-                pass
-            self.all_run_data = []
-            self.current_run_idx = -1
-            self._first_center_done = False
-
-            self.user_data = prev_user if prev_user else _main().UserData()
-            if not (self.user_data.name or "").strip():
-                self.user_data.name = "离线调试"
-            if not (self.user_data.student_id or "").strip():
-                self.user_data.student_id = "NULL"
+            candidate_user = prev_user if prev_user else _main().UserData()
+            if not (candidate_user.name or "").strip():
+                candidate_user.name = "离线调试"
+            if not (candidate_user.student_id or "").strip():
+                candidate_user.student_id = "NULL"
 
             logging.info(
-                f"用户信息: {self.user_data.name} ({self.user_data.student_id})"
+                f"用户信息: {candidate_user.name} ({candidate_user.student_id})"
             )
-
-            self.device_ua = None
 
             debug_run = _main().RunData()
             debug_run.run_name = data.get("task_name", "调试任务 (离线)")
@@ -6952,8 +7007,15 @@ class Api:
                 )
 
             debug_run.details_fetched = True
+            if self._execution_blocks_mode_change():
+                return self._mode_change_refusal()
+            self.is_offline_mode = True
+            self.user_data = candidate_user
+            self.device_ua = None
+            self._first_center_done = False
             self.all_run_data = [debug_run]
             self.current_run_idx = 0
+            logging.info("切换到离线模式")
 
             self.log_and_notify_frontend("离线数据已导入。")
             logging.info(f"离线数据导入成功: {debug_run.run_name}")
@@ -6964,6 +7026,7 @@ class Api:
 
             return {
                 "success": True,
+                "is_offline_mode": True,
                 "tasks": tasks_for_js,
                 "userInfo": self._get_full_user_info_dict(),
             }
@@ -7053,7 +7116,16 @@ class Api:
         return {"success": True}
 
     def enter_multi_account_mode(self):
-        """切换到多账号模式（增强：先打断单账号运行）"""
+        """切换到多账号模式；运行中的业务必须先显式停止。"""
+        if self._execution_blocks_mode_change():
+            return self._mode_change_refusal()
+        if getattr(self, "is_offline_mode", False):
+            self.is_offline_mode = False
+            self.all_run_data = []
+            self.current_run_idx = -1
+            self.user_data = _main().UserData()
+            self.user_info = None
+            self.login_success = False
         try:
             if hasattr(self, "stop_run_flag") and isinstance(
                 self.stop_run_flag, threading.Event
@@ -7183,10 +7255,13 @@ class Api:
             except Exception as e:
                 logging.error(f"进入多账号模式：保存会话状态失败: {e}")
 
-        return {"success": True, "params": self.global_params}
+        return {"success": True, "params": self.global_params,
+                "is_offline_mode": bool(getattr(self, "is_offline_mode", False))}
 
     def exit_multi_account_mode(self):
         """退出多账号模式，返回单用户登录页（增强：彻底停止所有执行）"""
+        if self._execution_blocks_mode_change():
+            return self._mode_change_refusal()
         try:
             self.multi_stop_all_accounts()
             for acc in list(self.accounts.values()):
@@ -7283,6 +7358,8 @@ class Api:
 
     def enter_single_account_mode(self):
         """进入单账号模式（增强：先停止多账号运行）"""
+        if self._execution_blocks_mode_change():
+            return self._mode_change_refusal()
         try:
             self.multi_stop_all_accounts()
             for acc in list(getattr(self, "accounts", {}).values()):
@@ -7308,7 +7385,8 @@ class Api:
 
         self.is_multi_account_mode = False
         self.log_and_notify_frontend("进入单账号模式。")
-        return {"success": True}
+        return {"success": True,
+                "is_offline_mode": bool(getattr(self, "is_offline_mode", False))}
 
     # def exit_single_account_mode(self):
     #     """

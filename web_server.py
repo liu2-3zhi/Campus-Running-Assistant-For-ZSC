@@ -1916,6 +1916,24 @@ def start_web_server(args_param):
 
         return decorated_function
 
+    def _resolve_business_billing_context():
+        """Resolve the target session for business-scoped billing operations."""
+        runtime = _main()
+        source_session_id = getattr(runtime.g, "session_id", None)
+        target_session_id = getattr(runtime.g, "viewed_session_id", None)
+        if not target_session_id or target_session_id == source_session_id:
+            api_instance = getattr(runtime.g, "api_instance", None)
+        else:
+            with web_sessions_lock:
+                api_instance = web_sessions.get(target_session_id)
+
+        if not api_instance or not getattr(api_instance, "is_authenticated", False):
+            return None, None
+        username = getattr(api_instance, "auth_username", None)
+        if not username or username == "guest":
+            return None, None
+        return api_instance, username
+
     def _load_map_proxy_runtime_config():
         try:
             runtime_config = _main()._read_config_ini(_main().CONFIG_FILE)
@@ -13294,8 +13312,11 @@ def start_web_server(args_param):
                 target_usernames = _normalize_target_usernames(
                     data.get("school_username"), data.get("school_usernames")
                 )
+                scope_supplied = (
+                    "school_username" in data or "school_usernames" in data
+                )
 
-                if not target_usernames:
+                if not target_usernames and not scope_supplied:
                     if getattr(api_instance, "is_multi_account_mode", False):
                         target_usernames = list(
                             (getattr(api_instance, "accounts", {}) or {}).keys()
@@ -13318,8 +13339,10 @@ def start_web_server(args_param):
                         u for u in target_usernames if u in allowed_usernames
                     ]
 
-                overdue_accounts = _main()._collect_overdue_accounts_from_billing(
-                    target_usernames
+                overdue_accounts = (
+                    _main()._collect_overdue_accounts_from_billing(target_usernames)
+                    if target_usernames
+                    else []
                 )
 
                 if overdue_accounts and not (
@@ -24596,6 +24619,19 @@ def start_web_server(args_param):
             logging.error("[欠费检查] 解析请求数据失败: %s", type(e).__name__)
 
         try:
+            business_api, business_username = _resolve_business_billing_context()
+            if business_api is None:
+                return _main().jsonify({
+                    "success": False, "message": "目标业务会话无效，请刷新后重试",
+                }), 401
+            if getattr(business_api, "is_offline_mode", False):
+                return _main().jsonify({
+                    "success": True,
+                    "has_overdue": False,
+                    "overdue_accounts": [],
+                    "is_offline_mode": True,
+                    "message": "离线调试不涉及计费。",
+                })
             # ========== 步骤1：检查付费控制配置 ==========
             # 统一使用配置读取适配器（优先 configs/config.json，回退 config.ini）
             # 仅根据 Payment_Settings.require_payment 判断是否启用付费检查
@@ -24642,77 +24678,49 @@ def start_web_server(args_param):
 
             # ========== 步骤2：检查学校账号欠费情况 ==========
             # 从请求体中获取参数
-            data = _main().request.get_json(silent=True) or {}
+            data = _main().request.get_json(silent=True)
+            data = {} if data is None else data
+            if not isinstance(data, dict):
+                return _main().jsonify({"success": False, "message": "请求参数必须为对象"}), 400
             logging.info(
                 "[欠费检查] 请求参数已解析，包含单账号筛选=%s，包含多账号筛选=%s",
                 bool(data.get("school_username")),
                 bool(data.get("school_usernames")),
             )
 
-            # 可选参数：要检查的特定学校账号用户名（支持字符串或数组）
-            school_username_input_before1 = data.get("school_username")
-            school_username_input_before2 = data.get("school_usernames")
+            scope_supplied = "school_username" in data or "school_usernames" in data
 
-            # 统一处理输入，确保最终是列表
             def normalize_input(input_val):
                 if input_val is None:
                     return []
                 if isinstance(input_val, list):
-                    return [str(u).strip() for u in input_val if u and str(u).strip()]
-                if isinstance(input_val, str):
-                    input_str = input_val.strip()
-                    if input_str in ['null', 'None', 'undefined', 'NULL', '']:
-                        return []
-                    # 尝试按逗号分隔，支持 "a,b,c" 格式
-                    return [s.strip() for s in input_str.split(',') if s.strip()]
-                # 其他类型（如数字）直接转为字符串
-                return [str(input_val).strip()]
+                    return [item for value in input_val for item in normalize_input(value)]
+                return [value for value in (part.strip() for part in str(input_val).split(","))
+                        if _main().is_valid_school_username(value)]
 
-            # 获取输入
-            school_username_input = None
-            if school_username_input_before1:
-                school_username_input = normalize_input(
-                    school_username_input_before1)
-            elif school_username_input_before2:
-                school_username_input = normalize_input(
-                    school_username_input_before2)
-
-            # 处理筛选逻辑：将输入统一转换为集合（若未指定则为空集合，表示不过滤）
-            target_usernames = set(school_username_input) if school_username_input is not None else set()
+            target_usernames = set(normalize_input(data.get("school_username")))
+            target_usernames.update(normalize_input(data.get("school_usernames")))
             logging.info(
                 "[欠费检查] 规范化后的目标学校账号数量: %d",
                 len(target_usernames),
             )
 
-            # 获取当前认证用户名
-            auth_username = _main().g.user
-
-            if _main().auth_system.get_user_group(auth_username) not in ['admin', 'super_admin']:
-                user_school_accounts = _main().g.api_instance._load_user_school_accounts(
-                    _main().g.user)
-                if school_username_input:
-                    # 用户指定了账号：只保留有权限的账号，若全部无权限才返回错误
-                    allowed = [u for u in school_username_input if u in user_school_accounts]
-                    if not allowed:
-                        return _main().jsonify({
-                            "success": False,
-                            "message": f"以下学校账号不存在或不属于当前用户：{', '.join(school_username_input)}"
-                        }), 404
-                    # 将目标账号限制为有权限的子集
-                    target_usernames = set(allowed)
-                else:
-                    # 用户未指定账号：只返回其自己权限范围内的账号数据
-                    target_usernames = set(user_school_accounts.keys())
-                    
-            logging.info(
-                "[欠费检查] 最终有效的目标学校账号数量: %d",
-                len(target_usernames),
-            )
+            # An explicit empty/invalid scope must never become an unrestricted query.
+            if scope_supplied and not target_usernames:
+                return _main().jsonify({
+                    "success": True, "has_overdue": False, "overdue_accounts": [],
+                    "can_bypass_overdue": can_bypass_overdue, "is_admin": is_admin,
+                    "available_runs": available_runs,
+                })
 
             # 获取该认证用户的所有学校账号配置
             # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
-            school_accounts = _main().g.api_instance._load_user_school_accounts(
-                auth_username)
+            school_accounts = business_api._load_user_school_accounts(
+                business_username) or {}
+            allowed_usernames = set(school_accounts or {})
+            target_usernames = (target_usernames & allowed_usernames
+                                if scope_supplied else allowed_usernames)
+            logging.info("[欠费检查] 最终有效的目标学校账号数量: %d", len(target_usernames))
             
             logging.info(
                 "[欠费检查] 已加载学校账号数量: %d",
@@ -24736,7 +24744,7 @@ def start_web_server(args_param):
             # 遍历所有学校账号，检查欠费情况
             for acc_username, account_info in school_accounts.items():
                 # 如果指定了目标账号（集合非空），且当前账号不在集合中，则跳过
-                if target_usernames and acc_username not in target_usernames:
+                if acc_username not in target_usernames:
                     continue
 
                 # 兼容旧格式：如果 account_info 是字符串（密码），跳过
@@ -25889,7 +25897,26 @@ def start_web_server(args_param):
         需要用户登录。
         """
         try:
-            school_username = _main().request.args.get("school_username", "").strip()
+            business_api, business_username = _resolve_business_billing_context()
+            if business_api is None:
+                return _main().jsonify({
+                    "success": False, "message": "目标业务会话无效，请刷新后重试",
+                }), 401
+            if getattr(business_api, "is_offline_mode", False):
+                return _main().jsonify({
+                    "success": True, "records": [], "total": 0,
+                    "is_offline_mode": True,
+                })
+            query = _main().request.args
+            scope_supplied = "school_username" in query or "school_usernames" in query
+            requested_schools = {
+                part.strip()
+                for value in query.getlist("school_username") + query.getlist("school_usernames")
+                for part in value.split(",")
+                if _main().is_valid_school_username(part.strip())
+            }
+            if scope_supplied and not requested_schools:
+                return _main().jsonify({"success": True, "records": [], "total": 0})
             billing_root = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "User_Billing",
@@ -25898,16 +25925,12 @@ def start_web_server(args_param):
 
             # 仅允许读取当前用户有权限的学校账号账单
             try:
-                allowed_schools = set((_main().g.api_instance._load_user_school_accounts(_main().g.user) or {}).keys())
+                allowed_schools = set((business_api._load_user_school_accounts(business_username) or {}).keys())
             except Exception:
                 allowed_schools = set()
 
-            if school_username:
-                if school_username not in allowed_schools:
-                    return _main().jsonify({"success": True, "records": [], "total": 0})
-                target_schools = [school_username]
-            else:
-                target_schools = sorted(allowed_schools)
+            target_schools = sorted(allowed_schools & requested_schools
+                                    if scope_supplied else allowed_schools)
 
             records = []
 
@@ -25953,7 +25976,7 @@ def start_web_server(args_param):
                         with open(filepath, "r", encoding="utf-8") as f:
                             record = json.load(f)
                         try:
-                            _main()._migrate_billing_file_beijing_times(filepath, record)
+                            _main()._migrate_billing_record_beijing_times(record)
                         except Exception as _migration_err:
                             logging.warning(f"[账单列表] 迁移账单时间字段失败 {filename}: {_migration_err}")
                         record["school_name"] = school_name_map.get(
@@ -26086,7 +26109,7 @@ def start_web_server(args_param):
                         with open(filepath, "r", encoding="utf-8") as f:
                             record = json.load(f)
                         try:
-                            _main()._migrate_billing_file_beijing_times(filepath, record)
+                            _main()._migrate_billing_record_beijing_times(record)
                         except Exception as _migration_err:
                             logging.warning(f"[管理员账单] 迁移账单时间字段失败 {filename}: {_migration_err}")
                         record["school_name"] = school_name_map.get(school, school)
@@ -26955,7 +26978,7 @@ def start_web_server(args_param):
                             if not isinstance(bill, dict):
                                 continue
                             try:
-                                _main()._migrate_billing_file_beijing_times(bill_path, bill)
+                                _main()._migrate_billing_record_beijing_times(bill)
                             except Exception as _migration_err:
                                 logging.warning(
                                     f"[已删除账号] 迁移账单时间字段失败（忽略）: {bill_path}, 错误: {_migration_err}"

@@ -95,24 +95,28 @@ async function handleLogin() {
   errorMsg.value = ''
   successMsg.value = ''
   loading.value = true
+  app.bindBusinessSession(auth.sessionUUID)
+  const context = app.captureBusinessContext(true)
   try {
     const data = await callAPI('login', {
       username: loginForm.username,
       password: loginForm.password,
     })
 
+    if (!app.isCurrentBusinessContext(context)) return
     if (data.success === false) {
       errorMsg.value = data.message || '登录失败'
       return
     }
 
+    app.applyBusinessMode(data, context)
     auth.setLoginResult(data)
     successMsg.value = '登录成功'
     emit('login-success', data)
   } catch (e) {
-    errorMsg.value = e.message || '登录失败'
+    if (app.isCurrentBusinessContext(context)) errorMsg.value = e.message || '登录失败'
   } finally {
-    loading.value = false
+    if (app.isCurrentBusinessContext(context)) loading.value = false
   }
 }
 

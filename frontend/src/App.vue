@@ -12,6 +12,8 @@ const app = useAppStore()
 const theme = useThemeStore()
 const auth = useAuthStore()
 
+watch(() => auth.sessionUUID, session => app.bindBusinessSession(session), { immediate: true, flush: 'sync' })
+
 function handleResize() {
   app.detectMobile()
 }

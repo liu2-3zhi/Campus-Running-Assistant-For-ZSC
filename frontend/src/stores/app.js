@@ -7,6 +7,8 @@ export const useAppStore = defineStore('app', () => {
   const currentView = ref('login') // 'login' | 'main' | 'multi'
   const isMultiMode = ref(false)
   const businessSession = ref('')
+  const businessGeneration = ref(0)
+  const isOfflineMode = ref(null)
 
   // 任务相关
   const tasks = ref([])
@@ -95,6 +97,10 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function bindBusinessSession(session) {
+    if (businessSession.value !== session) {
+      businessGeneration.value++
+      isOfflineMode.value = null
+    }
     if (businessSession.value && businessSession.value !== session) {
       tasks.value = []
       users.value = []
@@ -113,6 +119,21 @@ export const useAppStore = defineStore('app', () => {
       clearLogs()
     }
     businessSession.value = session
+  }
+
+  function captureBusinessContext(modeChange = false) {
+    if (modeChange) businessGeneration.value++
+    return { session: businessSession.value, generation: businessGeneration.value }
+  }
+
+  function isCurrentBusinessContext(context) {
+    return !!context && context.session === businessSession.value && context.generation === businessGeneration.value
+  }
+
+  function applyBusinessMode(data, context) {
+    if (!isCurrentBusinessContext(context) || data?.success === false || typeof data?.is_offline_mode !== 'boolean') return false
+    isOfflineMode.value = data.is_offline_mode
+    return true
   }
 
   function handleMultiStatusUpdate(data) {
@@ -306,7 +327,8 @@ export const useAppStore = defineStore('app', () => {
 
   return {
     isMobile, isLoading, currentView, isMultiMode,
-    businessSession, bindBusinessSession,
+    businessSession, businessGeneration, isOfflineMode, bindBusinessSession,
+    captureBusinessContext, isCurrentBusinessContext, applyBusinessMode,
     tasks, selectedTaskIndex, activeTaskIndex, activeExecutionId, activeExecutionStartedAt, selectedTask, isRunning, runData,
     users, multiAccounts, multiStatus, multiGlobalButtons, multiPositions,
     logs, notifications, unreadCount, verificationCodes,

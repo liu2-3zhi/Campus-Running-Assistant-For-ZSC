@@ -1049,13 +1049,17 @@ class AdminViewOverdueRequestHeaderTests(unittest.TestCase):
         )
         overdue_source = _extract_js_section(
             payment_source,
-            "async function checkOverdueBeforeStart(",
+            "function normalizeOverdueAccounts(",
             "\nlet _requirePaymentForOverdueCache",
+        )
+        business_mode_source = _extract_js_section(
+            main_source, "let IS_OFFLINE = null;", "let authSessionUUID = null;"
         )
 
         node_script = f"""
 const resolverSource = {json.dumps(resolver_source)};
 const overdueSource = {json.dumps(overdue_source)};
+const businessModeSource = {json.dumps(business_mode_source)};
 const originSession = {json.dumps(ORIGIN_SESSION_ID)};
 const targetSession = {json.dumps(TARGET_SESSION_ID)};
 const fetchCalls = [];
@@ -1082,7 +1086,9 @@ globalThis.fetch = async (url, options) => {{
 }};
 
 const {{ checkOverdueBeforeStart }} = Function(
-  resolverSource + "\\n" + overdueSource + "\\nreturn {{ checkOverdueBeforeStart }};",
+  resolverSource + "\\n" + businessModeSource + "\\n" + overdueSource +
+  "\\napplyLegacyBusinessMode({{success:true,is_offline_mode:false}}, captureLegacyBusinessContext());" +
+  "\\nreturn {{ checkOverdueBeforeStart }};",
 )();
 
 (async () => {{

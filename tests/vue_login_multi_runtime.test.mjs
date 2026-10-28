@@ -297,3 +297,29 @@ test('offline task import reads JSON and preserves returned tasks before navigat
   assert.equal(navigations[0].name, 'main')
   assert.equal(navigations[0].params.uuid, 'session-id')
 })
+
+test('failed online login preserves imported offline mode and only server success changes it', async () => {
+  let response = { success: false, offline: true, message: 'fixture failure' }
+  const ctx = setupComponent('components/login/SessionLogin.vue', { callAPI: async () => response })
+  ctx.app.bindBusinessSession(ctx.auth.sessionUUID)
+  ctx.app.applyBusinessMode({ is_offline_mode: true }, ctx.app.captureBusinessContext())
+  ctx.state.loginForm.username = 'fixture-user'
+  ctx.state.loginForm.password = 'fixture-pass'
+  await ctx.state.handleLogin()
+  assert.equal(ctx.app.isOfflineMode, true)
+  response = { success: true, is_offline_mode: false }
+  await ctx.state.handleLogin()
+  assert.equal(ctx.app.isOfflineMode, false)
+})
+
+test('an offline file read cannot import into a newly selected business session', async () => {
+  let finishRead
+  const ctx = setupComponent('views/LoginView.vue')
+  const pending = ctx.state.handleImportFile({ target: { files: [{ text: () => new Promise(resolve => { finishRead = resolve }) }] } })
+  ctx.auth.sessionUUID = 'new-business-session'
+  ctx.app.bindBusinessSession(ctx.auth.sessionUUID)
+  finishRead('{}')
+  await pending
+  assert.equal(ctx.calls.some(([method]) => method === 'import_task_data'), false)
+  assert.equal(ctx.app.isOfflineMode, null)
+})

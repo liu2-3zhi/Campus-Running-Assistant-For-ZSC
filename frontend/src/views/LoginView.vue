@@ -223,6 +223,7 @@ async function onAuthSuccess(data) {
 // --- Session selected from picker → navigate to school login ---
 async function onSessionSelected(sessionId) {
   auth.sessionUUID = sessionId
+  app.bindBusinessSession(sessionId)
   // The selected ID is now the active business session; stop using the
   // temporary system-auth context for subsequent API calls.
   if (!auth.adminOriginSession) auth.authSessionUUID = sessionId
@@ -279,10 +280,16 @@ function onImportUsers() {
 async function handleImportFile(event) {
   const file = event.target.files?.[0]
   if (!file) return
+  app.bindBusinessSession(auth.sessionUUID)
+  const context = app.captureBusinessContext(true)
 
   try {
-    const data = await callAPI('import_task_data', await file.text())
+    const content = await file.text()
+    if (!app.isCurrentBusinessContext(context)) return
+    const data = await callAPI('import_task_data', content)
+    if (!app.isCurrentBusinessContext(context)) return
     if (data.success) {
+      app.applyBusinessMode(data, context)
       app.tasks = data.tasks || []
       app.selectedTaskIndex = app.tasks.length ? 0 : -1
       auth.setLoginResult({ ...data, ...(data.userInfo || {}), session_id: auth.sessionUUID })
@@ -295,6 +302,7 @@ async function handleImportFile(event) {
       })
     }
   } catch (e) {
+    if (!app.isCurrentBusinessContext(context)) return
     await Swal.fire({
       icon: 'error',
       title: '导入失败',

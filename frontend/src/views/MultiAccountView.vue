@@ -640,10 +640,12 @@ function logLevelColor(level) {
 
 async function loadMapProviderConfig() {
   const requestSession = authStore.sessionUUID
+  const context = appStore.captureBusinessContext()
   try {
     const responseData = await callAPI('get_initial_data')
     const data = await hydrateMapProviderSecrets(responseData)
-    if (!viewMounted || requestSession !== authStore.sessionUUID) return
+    if (!viewMounted || requestSession !== authStore.sessionUUID || !appStore.isCurrentBusinessContext(context)) return
+    appStore.applyBusinessMode(data, context)
     const mapConfig = {}
     const providers = data?.map_providers || {}
     if (providers.amap?.js_key) mapConfig.amapKey = providers.amap.js_key

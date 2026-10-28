@@ -2451,7 +2451,37 @@ let isRefreshingNotifications = false;
 
 let isRefreshingTasks = false;
 
-let IS_OFFLINE = false;
+let IS_OFFLINE = null;
+let legacyBusinessSession = "";
+let legacyBusinessGeneration = 0;
+
+function captureLegacyBusinessContext(modeChange = false) {
+  if (legacyBusinessSession !== sessionUUID) {
+    legacyBusinessSession = sessionUUID;
+    legacyBusinessGeneration++;
+    IS_OFFLINE = null;
+  }
+  if (modeChange) legacyBusinessGeneration++;
+  return { session: sessionUUID, generation: legacyBusinessGeneration };
+}
+
+function isCurrentLegacyBusinessContext(context) {
+  return !!context && context.session === sessionUUID && context.generation === legacyBusinessGeneration;
+}
+
+function applyLegacyBusinessMode(data, context) {
+  if (!isCurrentLegacyBusinessContext(context) || data?.success === false || typeof data?.is_offline_mode !== "boolean") return false;
+  IS_OFFLINE = data.is_offline_mode;
+  return true;
+}
+
+async function ensureLegacyBusinessMode() {
+  const context = captureLegacyBusinessContext();
+  if (typeof IS_OFFLINE === "boolean") return IS_OFFLINE;
+  const result = await callPythonAPI("get_session_mode_info");
+  if (!applyLegacyBusinessMode(result, context)) throw new Error("会话模式尚未确认，请刷新后重试");
+  return IS_OFFLINE;
+}
 let authSessionUUID = null;
 let authRequestGeneration = 0;
 let authLoginInProgress = false;
@@ -16010,6 +16040,7 @@ function showMainApp() {
 }
 
 function resetUI() {
+  legacyBusinessGeneration++;
   // 新增：重置UI时恢复显示退出应用按钮
   const exitBtn = $("exit-app-btn");
   if (exitBtn) exitBtn.classList.remove("hidden");
@@ -16031,7 +16062,7 @@ function resetUI() {
   $("history-list").innerHTML = "";
   $("target-points-text").innerHTML = "";
 
-  IS_OFFLINE = false;
+  IS_OFFLINE = null;
   const uaLabel = $("ua-label");
   if (uaLabel) uaLabel.textContent = " (未加载) ";
   const uaBtn = $("random-ua-btn");
@@ -16512,7 +16543,7 @@ async function onLogin() {
     return;
   }
 
-  IS_OFFLINE = false;
+  const modeContext = captureLegacyBusinessContext(true);
   const uaBtn = $("random-ua-btn");
   if (uaBtn) uaBtn.disabled = false;
 
@@ -16524,7 +16555,9 @@ async function onLogin() {
   logMessage_Info("[前端-登录] 调用后端API进行登录验证...");
   const mapProviderSessionUUID = getApiRequestSessionHeaderValue("login");
   let result = await callPythonAPI("login", user, pass);
+  if (!isCurrentLegacyBusinessContext(modeContext)) return;
   if (result.success) {
+    applyLegacyBusinessMode(result, modeContext);
     // 学校账号登录不会结束管理员查看链。
     if (!getStoredAdminReturnOriginSession()) clearAdminReturnOriginState("重新登录");
     try {
@@ -16535,7 +16568,9 @@ async function onLogin() {
     } catch (error) {
       logMessage_Error("[前端-登录] 地图密钥运行时解密失败:", error);
     }
+    if (!isCurrentLegacyBusinessContext(modeContext)) return;
     await syncThemeFromServer(result.theme, result.theme_style);
+    if (!isCurrentLegacyBusinessContext(modeContext)) return;
     logMessage_Info("[前端-登录] ✓ 登录成功！");
     showButtonSuccess("login-button", "登录成功");
     syncMapProviderConfigFromInitialData(result);
@@ -16551,6 +16586,7 @@ async function onLogin() {
       showMissingMapProviderKeyModal(getActiveMapProvider());
     }
 
+    if (!isCurrentLegacyBusinessContext(modeContext)) return;
     logMessage_Info("[前端-登录] 显示主应用界面...");
     showMainApp();
     $("loading-overlay").classList.add("hidden");
@@ -20638,11 +20674,14 @@ async function importTask() {
   input.onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    const modeContext = captureLegacyBusinessContext(true);
     try {
       const text = await file.text();
+      if (!isCurrentLegacyBusinessContext(modeContext)) return;
       const result = await callPythonAPI("import_task_data", text);
+      if (!isCurrentLegacyBusinessContext(modeContext)) return;
       if (result.success) {
-        IS_OFFLINE = true;
+        applyLegacyBusinessMode(result, modeContext);
         currentSessionUA = "NULL";
         const uaLabel = $("ua-label");
         if (uaLabel) uaLabel.textContent = "NULL";
@@ -20662,6 +20701,7 @@ async function importTask() {
           logMessage_Info("[离线导入] 管理面板按钮已显示");
         }
         await mapReadyPromise;
+        if (!isCurrentLegacyBusinessContext(modeContext)) return;
         currentTasks = result.tasks;
         renderTaskList();
         selectTask(0);
@@ -27432,6 +27472,7 @@ async function loadInitialData(options = {}) {
     // 获取当前时间戳（毫秒）
     const now = Date.now();
     const initialDataSessionUUID = getApiRequestSessionHeaderValue("get_initial_data");
+    const businessContext = captureLegacyBusinessContext();
     const initialDataOriginUUID = getAdminViewOriginSessionUUID(initialDataSessionUUID);
     const initialDataContextKey = `${initialDataSessionUUID}|${initialDataOriginUUID}`;
 
@@ -27490,6 +27531,7 @@ async function loadInitialData(options = {}) {
     );
     if (
       initialDataSessionUUID !== getApiRequestSessionHeaderValue("get_initial_data") ||
+      !isCurrentLegacyBusinessContext(businessContext) ||
       initialDataOriginUUID !== getAdminViewOriginSessionUUID(initialDataSessionUUID)
     ) {
       throw new Error("会话已切换，已忽略旧会话响应");

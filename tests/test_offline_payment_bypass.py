@@ -114,14 +114,26 @@ class TestOfflinePaymentBypass(unittest.TestCase):
         self.assertIn('getattr(api_instance, "is_offline_mode", False)', block)
         self.assertIn("require_payment = False", block)
 
+    def test_background_start_explicit_empty_scope_does_not_expand_to_all_accounts(self):
+        import web_server as ws
+
+        source = Path(ws.__file__).read_text(encoding="utf-8")
+        route_index = source.index("def start_background_task():")
+        block = source[route_index : route_index + 5000]
+        self.assertIn('"school_username" in data or "school_usernames" in data', block)
+        self.assertIn("if not target_usernames and not scope_supplied", block)
+        self.assertIn("if target_usernames", block)
+
     def test_frontend_overdue_check_short_circuits_when_offline(self):
         source = (
             PROJECT_ROOT / "scripts" / "legacy-payment-user.js"
         ).read_text(encoding="utf-8")
         block = source.split("async function _isPaymentRequiredForOverdueCheck()", 1)[1]
         block = block.split("\n}", 1)[0]
-        self.assertIn('typeof IS_OFFLINE !== "undefined" && IS_OFFLINE', block)
+        self.assertIn('await ensureLegacyBusinessMode()', block)
         self.assertIn("return false", block)
+        # Runtime behavior, NULL scopes and stale-session responses are covered
+        # by tests/offline_frontend_state.test.mjs for both frontends.
 
 
 if __name__ == "__main__":

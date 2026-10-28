@@ -2060,7 +2060,18 @@ function _consumeOverdueForceOverride() {
   return options;
 }
 
+function normalizeOverdueAccounts(value) {
+  return [...new Set((Array.isArray(value) ? value : [value])
+    .filter(item => typeof item === "string")
+    .map(item => item.trim()).filter(item => item && !/^(null|none|undefined)$/i.test(item)))];
+}
+
 async function checkOverdueBeforeStart(schoolUsernameOrList = null, options = {}) {
+  const context = captureLegacyBusinessContext();
+  try { if (await ensureLegacyBusinessMode()) return true; } catch (_) { return false; }
+  if (!isCurrentLegacyBusinessContext(context)) return false;
+  const accounts = normalizeOverdueAccounts(schoolUsernameOrList);
+  if (!accounts.length) return true;
   const requestedAccountCount = Array.isArray(schoolUsernameOrList)
     ? schoolUsernameOrList.length
     : typeof schoolUsernameOrList === "string" && schoolUsernameOrList
@@ -2068,26 +2079,8 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null, options = {}
       : 0;
   console.log("检查欠费状态，账号数量:", requestedAccountCount);
   try {
-    // ========== 步骤1：构造请求体 ==========
-    // 根据传入参数的不同类型，构造不同的请求体
-    const requestBody = {};
-
-    // 情况1：传入了字符串（单个学校账号）
-    if (typeof schoolUsernameOrList === "string") {
-      // 只检查这一个指定的学校账号
-      requestBody.school_username = schoolUsernameOrList;
-    }
-    // 情况2：传入了数组（多个学校账号列表）
-    else if (
-      Array.isArray(schoolUsernameOrList) &&
-      schoolUsernameOrList.length > 0
-    ) {
-      // 检查这个账号列表中的所有账号
-      // 后端API期望接收的参数名为 school_usernames（复数形式）
-      requestBody.school_usernames = schoolUsernameOrList;
-    }
-    // 情况3：传入了 null 或空数组
-    // requestBody 保持为空对象 {}，后端将检查当前用户的所有账号
+    // 启动前只检查本次执行明确选中的账号，不使用省略范围的全量语义。
+    const requestBody = { school_usernames: accounts };
 
     // ========== 步骤2：调用后端检查欠费接口 ==========
     // 使用 fetch 而不是 callPythonAPI，因为需要更精细的错误处理
@@ -2113,6 +2106,7 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null, options = {}
 
     // ========== 步骤3：解析响应数据 ==========
     const result = await response.json();
+    if (!isCurrentLegacyBusinessContext(context)) return false;
 
     // ========== 步骤4：检查接口调用是否成功 ==========
     if (!result.success) {
@@ -2137,6 +2131,7 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null, options = {}
         isAdmin: result.is_admin === true,
         availableRuns: result.available_runs,
       });
+      if (!isCurrentLegacyBusinessContext(context)) return false;
       if (action === "skip") {
         if (typeof options.onSkip === "function") {
           options.onSkip(overdueAccounts);
@@ -2164,6 +2159,7 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null, options = {}
             cancelButtonColor: "#10b981",
             allowOutsideClick: false,
           });
+          if (!isCurrentLegacyBusinessContext(context)) return false;
           if (warning.isConfirmed) {
             _setOverdueForceOverride(false);
           } else if (
@@ -2186,6 +2182,7 @@ async function checkOverdueBeforeStart(schoolUsernameOrList = null, options = {}
     // ========== 步骤6：没有欠费，允许任务继续 ==========
     return true;
   } catch (error) {
+    if (!isCurrentLegacyBusinessContext(context)) return false;
     // 捕获所有异常（网络错误、JSON解析错误等）
     console.error("检查欠费失败:", error);
     // 容错：检查失败不阻止任务执行，避免因网络问题影响正常用户
@@ -2200,7 +2197,7 @@ let _requirePaymentForOverdueCache = {
 
 async function _isPaymentRequiredForOverdueCheck() {
   // 离线导入的任务不涉及真实账号与计费：既不查欠费也不产生支付订单
-  if (typeof IS_OFFLINE !== "undefined" && IS_OFFLINE) {
+  if (await ensureLegacyBusinessMode()) {
     console.log("[欠费检查] 当前为离线测试模式，跳过欠费检查。");
     return false;
   }
@@ -2217,6 +2214,7 @@ async function _isPaymentRequiredForOverdueCheck() {
     if (typeof sessionUUID !== "undefined" && sessionUUID) {
       headers["X-Session-ID"] = sessionUUID;
     }
+    addAdminViewOriginSessionHeader(headers, sessionUUID);
     const response = await fetch("/api/config/pricing", {
       method: "GET",
       headers,
@@ -2273,14 +2271,22 @@ function _getMultiAccountListUsernames() {
 }
 
 async function _checkOverdueBeforeStartByCurrentMode(options = {}) {
-  if (!(await _isPaymentRequiredForOverdueCheck())) {
+  const context = captureLegacyBusinessContext();
+  try {
+    const offline = await ensureLegacyBusinessMode();
+    if (!isCurrentLegacyBusinessContext(context)) return false;
+    if (offline) return true;
+  } catch (_) { return false; }
+  const paymentRequired = await _isPaymentRequiredForOverdueCheck();
+  if (!isCurrentLegacyBusinessContext(context)) return false;
+  if (!paymentRequired) {
     console.log("未开启欠费检查，允许继续。");
     return true;
   }
   if (_isInMultiAccountModeForOverdueCheck()) {
     console.log("多账号模式，检查所有账号的欠费状态。");
     const usernames = _getMultiAccountListUsernames();
-    console.log("多账号模式，获取到的账号列表:", usernames);
+    console.log("多账号模式，账号数量:", usernames.length);
     return usernames.length > 0
       ? await checkOverdueBeforeStart(usernames, options)
       : true;
@@ -2289,10 +2295,9 @@ async function _checkOverdueBeforeStartByCurrentMode(options = {}) {
   const currentSchoolUsername = String(
     currentUserData?.student_id || "",
   ).trim();
-  console.log("单账号模式，当前账号:", currentSchoolUsername);
-  return currentSchoolUsername
+  return normalizeOverdueAccounts(currentSchoolUsername).length
     ? await checkOverdueBeforeStart(currentSchoolUsername, options)
-    : await checkOverdueBeforeStart(null, options);
+    : true;
 }
 
 /**
@@ -2304,6 +2309,8 @@ async function _checkOverdueBeforeStartByCurrentMode(options = {}) {
  * @param {Array} overdueAccounts - 欠费账号列表，格式：[{username, name, overdue_count, school_username}, ...]
  */
 async function showOverduePaymentModal(overdueAccounts, options = {}) {
+  const context = captureLegacyBusinessContext();
+  if (await ensureLegacyBusinessMode() || !isCurrentLegacyBusinessContext(context)) return "cancel";
   const allowSkip = options.allowSkip === true;
   // 有 bypass_overdue 权限时额外提供“强制执行”按钮。
   const allowForce = options.allowForce === true;
@@ -2317,25 +2324,26 @@ async function showOverduePaymentModal(overdueAccounts, options = {}) {
   });
 
   // 收集所有欠费账号的 school_username 集合
-  const overdueSet = new Set(
-    (overdueAccounts || [])
-      .map((a) => a.school_username || a.username || "")
-      .filter(Boolean),
-  );
+  const overdueSet = new Set(normalizeOverdueAccounts((overdueAccounts || []).map(a => a.school_username || a.username || "")));
+  if (!overdueSet.size) { Swal.close(); return "cancel"; }
 
-  // 从账单系统获取所有待支付账单，过滤出欠费账号的账单
+  // 服务端先限定到本次欠费账号，前端再筛选待支付状态。
   let pendingBills = [];
   try {
-    const resp = await fetch("/api/billing/list", {
-      headers: { "X-Session-ID": sessionUUID },
-    });
+    const query = new URLSearchParams();
+    overdueSet.forEach(username => query.append("school_usernames", username));
+    const headers = { "X-Session-ID": context.session };
+    addAdminViewOriginSessionHeader(headers, context.session);
+    const resp = await fetch(`/api/billing/list?${query}`, { headers });
     const result = await resp.json();
+    if (!isCurrentLegacyBusinessContext(context)) return "cancel";
     if (result.success) {
       pendingBills = (result.records || []).filter(
         (r) => r.status === "pending" && overdueSet.has(r.school_username),
       );
     }
   } catch (e) {
+    if (!isCurrentLegacyBusinessContext(context)) return "cancel";
     console.warn("[showOverduePaymentModal] 获取账单失败:", e);
   }
 
@@ -2525,6 +2533,7 @@ async function showOverduePaymentModal(overdueAccounts, options = {}) {
     width: modalWidth,
   });
 
+  if (!isCurrentLegacyBusinessContext(context)) return "cancel";
   if (result.isDenied) return allowForce ? "force" : "skip";
   if (!result.isConfirmed) return "cancel";
 
@@ -2553,6 +2562,7 @@ async function showOverduePaymentModal(overdueAccounts, options = {}) {
     title: "选择支付方式",
     totalAmount,
   });
+  if (!isCurrentLegacyBusinessContext(context)) return "cancel";
   if (!selectedPayType) return "cancel";
   await _runBillingPaymentFlow(selectedBills, selectedPayType);
   return "paid";

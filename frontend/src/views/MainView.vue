@@ -77,12 +77,14 @@ let resizeHandler = null
 // ── Initial data load ──
 async function loadInitialData() {
   const requestSession = auth.sessionUUID
+  const context = app.captureBusinessContext()
   app.isLoading = true
   try {
     const responseData = await callAPI('get_initial_data')
     const data = await hydrateMapProviderSecrets(responseData)
-    if (!viewMounted || requestSession !== auth.sessionUUID) return
+    if (!viewMounted || requestSession !== auth.sessionUUID || !app.isCurrentBusinessContext(context)) return
     if (data) {
+      app.applyBusinessMode(data, context)
       auth.applyAuthInfo(data)
       app.addRoutePlanningFailures(data.route_planning_failures)
       if (data.tasks) app.tasks = data.tasks
@@ -99,12 +101,12 @@ async function loadInitialData() {
       if (data.selected_task_index != null) app.selectedTaskIndex = data.selected_task_index
       if (data.isLoggedIn && !data.tasks) {
         const taskResult = await callAPI('load_tasks')
-        if (!viewMounted || requestSession !== auth.sessionUUID) return
+        if (!viewMounted || requestSession !== auth.sessionUUID || !app.isCurrentBusinessContext(context)) return
         if (taskResult?.success) app.tasks = taskResult.tasks || []
       }
       if (data.isLoggedIn && !data.params) {
         const params = await callAPI('get_params')
-        if (!viewMounted || requestSession !== auth.sessionUUID) return
+        if (!viewMounted || requestSession !== auth.sessionUUID || !app.isCurrentBusinessContext(context)) return
         app.pythonParams = params
       }
 
@@ -125,25 +127,28 @@ async function loadInitialData() {
       app.addLog('初始数据加载完成', 'INFO', 'System')
     }
   } catch (e) {
-    if (viewMounted && requestSession === auth.sessionUUID) app.addLog('加载初始数据失败: ' + (e.message || e), 'ERROR', 'System')
+    if (viewMounted && requestSession === auth.sessionUUID && app.isCurrentBusinessContext(context)) app.addLog('加载初始数据失败: ' + (e.message || e), 'ERROR', 'System')
   } finally {
-    if (viewMounted && requestSession === auth.sessionUUID) app.isLoading = false
+    if (viewMounted && requestSession === auth.sessionUUID && app.isCurrentBusinessContext(context)) app.isLoading = false
   }
 }
 
 async function refreshUsers() {
   if (!viewMounted || isWebSocketConnected()) return
   const requestId = ++userRefreshRequestId
+  const context = app.captureBusinessContext()
   try {
     const data = await callAPI('get_initial_data')
     if (
       !viewMounted ||
+      !app.isCurrentBusinessContext(context) ||
       isWebSocketConnected() ||
       requestId !== userRefreshRequestId
     ) {
       return
     }
     if (data) {
+      app.applyBusinessMode(data, context)
       auth.applyAuthInfo(data)
       app.addRoutePlanningFailures(data.route_planning_failures)
       if (data.users) app.users = data.users

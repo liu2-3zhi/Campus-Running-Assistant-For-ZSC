@@ -11,7 +11,7 @@
  * 所有网络请求走 @/services/api 的 callRawAPI（自动带 X-Session-ID）。
  * 二维码库运行时动态加载 /api/cdn/qrcode（失败回退 jsdelivr），不改 package.json。
  */
-import { callRawAPI } from '@/services/api'
+import { callAPI, callRawAPI } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { sanitizeSvg } from '@/utils/sanitizeSvg'
@@ -417,13 +417,30 @@ export async function showPaymentPageWithPolling(orderId, payUrl, totalAmount, p
  * ==========================================================================*/
 let _requirePaymentCache = { value: null, ts: 0 }
 
+function normalizeOverdueAccounts(value) {
+  return [...new Set((Array.isArray(value) ? value : [value])
+    .filter(item => typeof item === 'string')
+    .map(item => item.trim()).filter(item => item && !/^(null|none|undefined)$/i.test(item)))]
+}
+
+async function ensureBusinessMode() {
+  const app = useAppStore()
+  app.bindBusinessSession(useAuthStore().sessionUUID)
+  const context = app.captureBusinessContext()
+  if (typeof app.isOfflineMode === 'boolean') return app.isOfflineMode
+  const result = await callAPI('get_session_mode_info')
+  if (!app.applyBusinessMode(result, context)) throw new Error('会话模式尚未确认，请刷新后重试')
+  return app.isOfflineMode
+}
+
 export async function isPaymentRequiredForOverdueCheck() {
+  if (await ensureBusinessMode()) return false
   const now = Date.now()
   if (_requirePaymentCache.value !== null && now - _requirePaymentCache.ts < 30 * 1000) {
     return _requirePaymentCache.value
   }
   try {
-    const result = await callRawAPI('/api/config/pricing', 'GET')
+    const result = await callRawAPI('/api/config/pricing', 'GET', null, { sessionContext: 'business' })
     if (result && result.success && result.config && typeof result.config.require_payment !== 'undefined') {
       const enabled = result.config.require_payment === true || String(result.config.require_payment).toLowerCase() === 'true'
       _requirePaymentCache = { value: enabled, ts: now }
@@ -460,6 +477,15 @@ export function consumeOverdueForceOverride() {
  * @returns {Promise<boolean>} true=允许继续；false=有欠费已弹窗，阻止开始
  */
 export async function checkOverdueBeforeStart(schoolUsernameOrList = null, options = {}) {
+  const app = useAppStore()
+  app.bindBusinessSession(useAuthStore().sessionUUID)
+  const context = app.captureBusinessContext()
+  let offline
+  try { offline = await ensureBusinessMode() } catch (_) { return false }
+  if (!app.isCurrentBusinessContext(context)) return false
+  if (offline) return true
+  const accounts = normalizeOverdueAccounts(schoolUsernameOrList)
+  if (!accounts.length) return true
   const Swal = getSwal()
   const requestedAccountCount = Array.isArray(schoolUsernameOrList)
     ? schoolUsernameOrList.length
@@ -467,13 +493,9 @@ export async function checkOverdueBeforeStart(schoolUsernameOrList = null, optio
       ? 1
       : 0
   try {
-    const body = {}
-    if (typeof schoolUsernameOrList === 'string') {
-      body.school_username = schoolUsernameOrList
-    } else if (Array.isArray(schoolUsernameOrList) && schoolUsernameOrList.length > 0) {
-      body.school_usernames = schoolUsernameOrList
-    }
-    const result = await callRawAPI('/api/check_overdue', 'POST', body)
+    const body = { school_usernames: accounts }
+    const result = await callRawAPI('/api/check_overdue', 'POST', body, { sessionContext: 'business' })
+    if (!app.isCurrentBusinessContext(context)) return false
     if (!result.success) {
       Swal?.fire({ icon: 'error', title: '错误', text: result.message || '欠费检查失败', confirmButtonText: '确定' })
       return true // 容错不阻塞
@@ -490,6 +512,7 @@ export async function checkOverdueBeforeStart(schoolUsernameOrList = null, optio
         isAdmin: result.is_admin === true,
         availableRuns: result.available_runs,
       })
+      if (!app.isCurrentBusinessContext(context)) return false
       if (action === 'skip') {
         if (typeof options.onSkip === 'function') {
           options.onSkip(overdueAccounts)
@@ -517,6 +540,7 @@ export async function checkOverdueBeforeStart(schoolUsernameOrList = null, optio
             cancelButtonColor: '#10b981',
             allowOutsideClick: false,
           })
+          if (!app.isCurrentBusinessContext(context)) return false
           if (warning.isConfirmed) {
             setOverdueForceOverride(false)
           } else if (warning.isDismissed && String(warning.dismiss || '') === 'cancel') {
@@ -533,6 +557,7 @@ export async function checkOverdueBeforeStart(schoolUsernameOrList = null, optio
     }
     return true
   } catch (e) {
+    if (!app.isCurrentBusinessContext(context)) return false
     console.error('检查欠费失败:', e)
     return true // 容错不阻塞
   }
@@ -555,7 +580,7 @@ function collectMultiAccountUsernames() {
   if (usernames.size === 0) {
     try {
       const app = useAppStore()
-      const list = app.users || app.accounts || []
+      const list = app.multiAccounts || []
       if (Array.isArray(list)) {
         list.forEach((u) => {
           const v = String(u.school_username || u.student_id || u.username || '').trim()
@@ -580,7 +605,17 @@ function isMultiAccountMode() {
  * 按当前模式发起欠费检查（§4.5）——供 ControlTabs startRun/startAll 前置调用
  */
 export async function checkOverdueBeforeStartByCurrentMode(options = {}) {
-  if (!(await isPaymentRequiredForOverdueCheck())) return true
+  const app = useAppStore()
+  app.bindBusinessSession(useAuthStore().sessionUUID)
+  const context = app.captureBusinessContext()
+  try {
+    const offline = await ensureBusinessMode()
+    if (!app.isCurrentBusinessContext(context)) return false
+    if (offline) return true
+    const paymentRequired = await isPaymentRequiredForOverdueCheck()
+    if (!app.isCurrentBusinessContext(context)) return false
+    if (!paymentRequired) return true
+  } catch (_) { return false }
   if (isMultiAccountMode()) {
     const usernames = collectMultiAccountUsernames()
     return usernames.length > 0
@@ -592,9 +627,9 @@ export async function checkOverdueBeforeStartByCurrentMode(options = {}) {
     const auth = useAuthStore()
     sid = String(auth.studentId || '').trim()
   } catch (_) { /* ignore */ }
-  return sid
+  return normalizeOverdueAccounts(sid).length
     ? await checkOverdueBeforeStart(sid, options)
-    : await checkOverdueBeforeStart(null, options)
+    : true
 }
 
 /* ============================================================================
@@ -604,7 +639,7 @@ export async function fetchBillingList(schoolUsername = '') {
   let url = '/api/billing/list'
   if (schoolUsername) url += `?school_username=${encodeURIComponent(schoolUsername)}`
   try {
-    return await callRawAPI(url, 'GET')
+    return await callRawAPI(url, 'GET', null, { sessionContext: 'business' })
   } catch (e) {
     return { success: false, message: e.message || '加载账单失败', records: [] }
   }
@@ -614,6 +649,9 @@ export async function fetchBillingList(schoolUsername = '') {
  * 欠费账号待支付账单选择弹窗（§4.6）——勾选后进入账单合并支付流程
  */
 export async function showOverduePaymentModal(overdueAccounts, options = {}) {
+  const app = useAppStore()
+  const context = app.captureBusinessContext()
+  if (await ensureBusinessMode() || !app.isCurrentBusinessContext(context)) return 'cancel'
   const Swal = getSwal()
   const allowSkip = options.allowSkip === true
   // 有 bypass_overdue 权限时额外提供“强制执行”按钮。
@@ -622,21 +660,22 @@ export async function showOverduePaymentModal(overdueAccounts, options = {}) {
 
   Swal.fire({ title: '正在获取欠费账单', allowOutsideClick: false, didOpen: () => Swal.showLoading() })
 
-  const overdueSet = new Set(
-    (overdueAccounts || [])
-      .map((a) => a.school_username || a.username || '')
-      .filter(Boolean),
-  )
+  const overdueSet = new Set(normalizeOverdueAccounts((overdueAccounts || []).map(a => a.school_username || a.username || '')))
+  if (!overdueSet.size) { Swal.close(); return 'cancel' }
 
   let pendingBills = []
   try {
-    const result = await fetchBillingList()
+    const query = new URLSearchParams()
+    overdueSet.forEach(username => query.append('school_usernames', username))
+    const result = await callRawAPI(`/api/billing/list?${query}`, 'GET', null, { sessionContext: 'business' })
+    if (!app.isCurrentBusinessContext(context)) return 'cancel'
     if (result.success) {
       pendingBills = (result.records || []).filter(
         (r) => r.status === 'pending' && overdueSet.has(r.school_username),
       )
     }
   } catch (e) {
+    if (!app.isCurrentBusinessContext(context)) return 'cancel'
     console.warn('[showOverduePaymentModal] 获取账单失败:', e)
   }
 
@@ -784,6 +823,7 @@ export async function showOverduePaymentModal(overdueAccounts, options = {}) {
     denyButtonColor: allowForce ? '#ef4444' : '#f59e0b',
     width: modalWidth,
   })
+  if (!app.isCurrentBusinessContext(context)) return 'cancel'
   if (result.isDenied) return allowForce ? 'force' : 'skip'
   if (!result.isConfirmed) return 'cancel'
 
@@ -799,6 +839,7 @@ export async function showOverduePaymentModal(overdueAccounts, options = {}) {
   }
 
   const payType = await chooseBillingPayType({ title: '选择支付方式', totalAmount })
+  if (!app.isCurrentBusinessContext(context)) return 'cancel'
   if (!payType) return 'cancel'
   await runBillingPaymentFlow(selectedBills, payType)
   return 'paid'

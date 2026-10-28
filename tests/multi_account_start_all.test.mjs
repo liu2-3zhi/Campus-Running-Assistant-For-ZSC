@@ -48,7 +48,7 @@ test('overdue gate can return skip so start-all proceeds without overdue account
     new URL('../scripts/legacy-payment-user.js', import.meta.url),
     'utf8',
   )
-  const start = source.indexOf('async function checkOverdueBeforeStart(')
+  const start = source.indexOf('function normalizeOverdueAccounts(')
   const end = source.indexOf('let _requirePaymentForOverdueCache', start)
   assert.notEqual(start, -1)
   assert.notEqual(end, -1)
@@ -73,6 +73,8 @@ test('overdue gate can return skip so start-all proceeds without overdue account
     }),
   }
   vm.createContext(context)
+  vm.runInContext(source.slice(source.indexOf('let IS_OFFLINE = null;'), source.indexOf('let authSessionUUID = null;')) +
+    '\napplyLegacyBusinessMode({success:true,is_offline_mode:false}, captureLegacyBusinessContext());', context)
   vm.runInContext(source.slice(start, end), context)
 
   let skipped = null

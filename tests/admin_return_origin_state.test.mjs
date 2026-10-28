@@ -310,7 +310,8 @@ test('legacy initialization ignores a response whose target changed while secret
     },
     syncMapProviderConfigFromInitialData() {}, getInitialDataFailureNotice: () => null,
   })
-  const load = vm.runInContext(`${extractSection('async function loadInitialData(options = {}) {', '// 彩虹易支付系统 - 前端JavaScript实现')}
+  const load = vm.runInContext(`${extractSection('let IS_OFFLINE = null;', 'let authSessionUUID = null;')}
+    ${extractSection('async function loadInitialData(options = {}) {', '// 彩虹易支付系统 - 前端JavaScript实现')}
     loadInitialData;`, harness.context)
   const pending = load({ force: true })
   await hydrating
