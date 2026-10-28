@@ -10,6 +10,7 @@ import logging
 import re
 import socket
 import threading
+import time
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import requests
@@ -27,6 +28,8 @@ MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 MAX_CONCURRENT_REQUESTS = 12
 QUEUE_WAIT_TIMEOUT = 3.0
 REQUEST_TIMEOUT = (3.05, 10)
+TILE_DEADLINE_SECONDS = 12.0
+TILE_ATTEMPT_SECONDS = 6.0
 PROXY_HOSTS = {
     "amap": frozenset({
         "webapi.amap.com", "restapi.amap.com", "vdata.amap.com", "a.amap.com",
@@ -251,6 +254,41 @@ class _MapProxy:
             return session.request(method, url, headers=headers, data=body, timeout=timeout,
                                   allow_redirects=False, stream=True)
 
+    def _request_tianditu_tile(self, method, url, headers, body, host):
+        started = time.monotonic()
+        deadline = started + TILE_DEADLINE_SECONDS
+        for attempt in range(1, 3):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise requests.ReadTimeout('tile deadline exceeded')
+            budget = min(TILE_ATTEMPT_SECONDS, remaining)
+            connect = min(REQUEST_TIMEOUT[0], budget / 2)
+            upstream = None
+            try:
+                upstream = self.transport(method, url, headers=headers, body=body,
+                                          timeout=(connect, budget - connect))
+                status = int(getattr(upstream, 'status_code', getattr(upstream, 'status', 502)))
+                if status in (502, 503, 504) and attempt < 2:
+                    logging.warning('[MapProxy] provider=tianditu host=%s stage=tile attempt=%d status=%d elapsed_ms=%d',
+                                    host, attempt, status, int((time.monotonic() - started) * 1000))
+                    upstream.close()
+                    upstream = None
+                    continue
+                payload = _read_limited_response(upstream, self.max_response_bytes, deadline=deadline)
+                return upstream, payload
+            except (requests.Timeout, requests.ConnectionError, requests.exceptions.ChunkedEncodingError) as error:
+                logging.warning('[MapProxy] provider=tianditu host=%s stage=tile attempt=%d error=%s elapsed_ms=%d',
+                                host, attempt, type(error).__name__, int((time.monotonic() - started) * 1000))
+                if upstream is not None:
+                    upstream.close()
+                    upstream = None
+                if attempt == 2:
+                    raise
+            except Exception:
+                if upstream is not None:
+                    upstream.close()
+                raise
+
     def _verify_actor(self):
         signed_context = request.cookies.get(PROXY_COOKIE_NAME, "")
         auth_token = request.cookies.get("auth_token", "")
@@ -410,13 +448,13 @@ class _MapProxy:
                     value = request.headers.get(header)
                     if value and len(value) <= 1024:
                         outbound_headers[header] = value
-                upstream = self.transport(
-                    request.method,
-                    url,
-                    headers=outbound_headers,
-                    body=body,
-                    timeout=REQUEST_TIMEOUT,
-                )
+                stage = _resource_stage(provider, host, path)
+                tile_body = None
+                if request.method == 'GET' and stage == 'tile' and provider == 'tianditu':
+                    upstream, tile_body = self._request_tianditu_tile(request.method, url, outbound_headers, body, host)
+                else:
+                    upstream = self.transport(request.method, url, headers=outbound_headers,
+                                              body=body, timeout=REQUEST_TIMEOUT)
                 status = int(getattr(upstream, "status_code", getattr(upstream, "status", 502)))
                 response_headers = getattr(upstream, "headers", {})
                 if 300 <= status < 400 and status != 304:
@@ -430,7 +468,7 @@ class _MapProxy:
                         return make_response("", 502)
                 except (ValueError, TypeError):
                     pass
-                response_body = _read_limited_response(upstream, self.max_response_bytes)
+                response_body = tile_body if tile_body is not None else _read_limited_response(upstream, self.max_response_bytes)
                 content_type = str(response_headers.get("Content-Type", "application/octet-stream"))
                 jsonp_content_type = _validated_jsonp_content_type(
                     response_body, content_type, request.args,
@@ -471,7 +509,7 @@ class _MapProxy:
                     value = response_headers.get(header) if hasattr(response_headers, "get") else None
                     if value:
                         response.headers[header] = value
-                logging.info("[MapProxy] provider=%s host=%s source=%s status=%d", provider, host, source, status)
+                logging.info("[MapProxy] provider=%s host=%s source=%s stage=%s status=%d", provider, host, source, stage, status)
                 return response
             except ValueError:
                 return make_response("", 502)
@@ -503,7 +541,18 @@ def _request_origin():
     return f"{scheme}://{request.host.lower()}"
 
 
-def _read_limited_response(response, limit):
+def _resource_stage(provider, host, path):
+    if provider == 'tianditu':
+        if re.fullmatch(r't[0-7]\.tianditu\.(?:gov\.cn|com)', host) and re.fullmatch(r'/(?:vec|cva)_[cw]/wmts', path):
+            return 'tile'
+        if path.rstrip('/') == '/drive':
+            return 'route'
+        if '/extend' in path:
+            return 'sdk_extension'
+    return 'sdk' if path.rstrip('/') == '/api' or path.endswith('.js') else 'resource'
+
+
+def _read_limited_response(response, limit, *, deadline=None):
     chunks = []
     total = 0
     iterator = getattr(response, "iter_content", None)
@@ -520,6 +569,8 @@ def _read_limited_response(response, limit):
                 content = read(limit + 1) if callable(read) else b""
             pieces = (content,)
     for chunk in pieces:
+        if deadline is not None and time.monotonic() >= deadline:
+            raise requests.ReadTimeout('tile deadline exceeded')
         if not chunk:
             continue
         total += len(chunk)
