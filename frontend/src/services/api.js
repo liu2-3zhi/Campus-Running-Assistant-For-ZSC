@@ -157,7 +157,7 @@ export async function callAPI(method, ...args) {
   return result
 }
 
-export async function callRawAPI(url, method = 'POST', body = null, { sessionContext = 'auth' } = {}) {
+export async function callRawAPI(url, method = 'POST', body = null, { sessionContext = 'auth', signal } = {}) {
   const auth = useAuthStore()
   const headers = { 'Content-Type': 'application/json' }
   const sessionId = sessionContext === 'business'
@@ -168,6 +168,7 @@ export async function callRawAPI(url, method = 'POST', body = null, { sessionCon
   if (origin) headers['X-Admin-Origin-Session-ID'] = origin
 
   const opts = { method, headers, credentials: 'include' }
+  if (signal) opts.signal = signal
   if (body !== null) opts.body = JSON.stringify(body)
 
   const response = await fetch(url, opts)

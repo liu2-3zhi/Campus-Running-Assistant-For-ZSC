@@ -7,7 +7,12 @@ import { createTaskMapRestorer } from '../frontend/src/utils/taskMapRestore.js'
 
 function loadSource(path, globals, exported) {
   const source = readFileSync(resolve(path), 'utf8').replace(/^import .*\r?\n/gm, '').replace(/export (const|function) /g, '$1 ')
-  return vm.runInNewContext(`${source}\n${exported}`, { createTaskMapRestorer, ...globals })
+  return vm.runInNewContext(`${source}\n${exported}`, {
+    createTaskMapRestorer, AbortController,
+    setTimeout: (callback, delay) => { const timer = setTimeout(callback, delay); timer.unref(); return timer },
+    clearTimeout,
+    ...globals,
+  })
 }
 
 test('a detailed failure replaces its socket hint and is not repeated', () => {
@@ -178,12 +183,13 @@ for (const legacyStatus of [false, true]) test(`a ${legacyStatus ? 'legacy' : 'p
   assert.equal(bg.taskStatus.value, null)
 })
 
-test('an execution restarted while a terminal status waits for geometry keeps polling', async () => {
+test('a new execution resumes polling while the previous terminal geometry is pending', async () => {
   let resolveSnapshot
+  let onRunningChanged
   const auth = { sessionUUID: 'target' }
   const app = { isRunning: true, activeExecutionId: 'old', activeExecutionStartedAt: 1, addRoutePlanningFailures() {} }
   const bg = loadSource('frontend/src/composables/useBackgroundTask.js', {
-    ref: value => ({ value }), onUnmounted() {}, watch() {}, useAppStore: () => app, useAuthStore: () => auth,
+    ref: value => ({ value }), onUnmounted() {}, watch: (_source, callback) => { onRunningChanged ??= callback }, useAppStore: () => app, useAuthStore: () => auth,
     callRawAPI: async () => ({ success: true, task_status: { execution_id: 'old', execution_started_at: 1,
       status: 'completed', active_task_index: 2, route_ready: true } }),
     callAPI: () => new Promise(resolve => { resolveSnapshot = resolve }),
@@ -192,10 +198,12 @@ test('an execution restarted while a terminal status waits for geometry keeps po
   bg.startPolling()
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(typeof resolveSnapshot, 'function')
+  assert.equal(bg.isPolling.value, false, 'terminal status must not wait for geometry')
   app.activeExecutionId = 'new'
   app.activeExecutionStartedAt = 2
   app.isRunning = true
   app.runData = { task_index: 2, current_point_index: 0 }
+  onRunningChanged(true)
   resolveSnapshot({ success: true, route_ready: true, details: { current_point_index: 90, run_coords: [[113, 22], [114, 22]] } })
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(app.isRunning, true)

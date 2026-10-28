@@ -12,7 +12,7 @@ export function useBackgroundTask() {
   let pollTimer = null
   let startTime = 0
   let epoch = 0
-  let statusRequest = 0
+  let inFlight = null
   let latestStatusTimestamp = 0
   let disposed = false
   const mapRestorer = createTaskMapRestorer({ app, loadSnapshot: index => callAPI('get_task_map_snapshot', index), getSession: () => auth.sessionUUID })
@@ -23,7 +23,7 @@ export function useBackgroundTask() {
     return status.execution_id !== app.activeExecutionId && Number(status.execution_started_at || 0) <= Number(app.activeExecutionStartedAt || 0)
   }
 
-  async function applyStatus(status) {
+  function applyStatus(status) {
     if (disposed || !status) return false
     if (isObsoleteExecution(status)) return false
     const timestamp = Number(status.last_update ?? status.start_time ?? 0)
@@ -33,31 +33,54 @@ export function useBackgroundTask() {
     app.addRoutePlanningFailures(status.route_planning_failures)
     if (['running', 'paused'].includes(status.status)) app.isRunning = true
     else if (['completed', 'stopped', 'error'].includes(status.status)) app.isRunning = false
-    try { await mapRestorer.apply(status) } catch (_) {}
+    // Geometry has its own generation guards and must not hold up status polling.
+    try { Promise.resolve(mapRestorer.apply(status)).catch(() => {}) } catch (_) {}
     return !disposed && !isObsoleteExecution(status)
   }
 
-  async function pollStatus() {
-    const requestEpoch = epoch
-    const requestNumber = ++statusRequest
-    const sessionId = auth.sessionUUID
-    try {
-      const data = await callRawAPI('/api/background_task/status', 'GET', null, { sessionContext: 'business' })
-      if (disposed || requestEpoch !== epoch || requestNumber !== statusRequest || sessionId !== auth.sessionUUID) return
-      const status = data?.task_status
-      if (!data?.success || !status) {
-        stopPolling()
-        return
+  function isCurrentRequest(request) {
+    return !disposed && request.epoch === epoch && request.sessionId === auth.sessionUUID
+  }
+
+  function pollStatus() {
+    if (disposed) return Promise.resolve()
+    if (inFlight && isCurrentRequest(inFlight)) return inFlight.promise
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null }
+    const request = { epoch, sessionId: auth.sessionUUID, controller: new AbortController(), timeout: null, promise: null }
+    inFlight = request
+    let onAbort
+    const aborted = new Promise((_, reject) => {
+      onAbort = () => reject(new Error('后台状态请求已取消'))
+      request.controller.signal.addEventListener('abort', onAbort, { once: true })
+    })
+    request.timeout = setTimeout(() => request.controller.abort(), 30000)
+    request.promise = (async () => {
+      try {
+        const data = await Promise.race([
+          callRawAPI('/api/background_task/status', 'GET', null, { sessionContext: 'business', signal: request.controller.signal }),
+          aborted,
+        ])
+        if (!isCurrentRequest(request)) return
+        const status = data?.task_status
+        if (!data?.success || !status) {
+          stopPolling()
+          return
+        }
+        if (!applyStatus(status) || !isCurrentRequest(request)) return
+        if (['completed', 'stopped', 'error'].includes(status.status)) {
+          stopPolling()
+        }
+      } catch (_) {
+      } finally {
+        clearTimeout(request.timeout)
+        request.controller.signal.removeEventListener('abort', onAbort)
+        if (inFlight === request) inFlight = null
+        if (isCurrentRequest(request) && isPolling.value) {
+          pollTimer = setTimeout(() => { pollTimer = null; pollStatus() }, 3000)
+        }
       }
-      const applied = await applyStatus(status)
-      if (!applied || disposed || requestEpoch !== epoch || requestNumber !== statusRequest || sessionId !== auth.sessionUUID) return
-      if (['completed', 'stopped', 'error'].includes(status.status)) {
-        app.isRunning = false
-        stopPolling()
-      } else if (['running', 'paused'].includes(status.status)) {
-        app.isRunning = true
-      }
-    } catch (_) {}
+    })()
+    return request.promise
   }
 
   function startPolling() {
@@ -65,15 +88,20 @@ export function useBackgroundTask() {
     stopPolling()
     isPolling.value = true
     startTime = Date.now()
-    pollTimer = setInterval(pollStatus, 3000)
     pollStatus()
   }
 
   function stopPolling() {
     epoch++
     if (pollTimer) {
-      clearInterval(pollTimer)
+      clearTimeout(pollTimer)
       pollTimer = null
+    }
+    const request = inFlight
+    inFlight = null
+    if (request) {
+      clearTimeout(request.timeout)
+      request.controller.abort()
     }
     isPolling.value = false
   }
