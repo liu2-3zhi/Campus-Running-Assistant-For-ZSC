@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 import hashlib
 import hmac
 import ipaddress
@@ -16,6 +17,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 import requests
 from flask import Response, g, jsonify, make_response, request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 
 from map_runtime_origin import resolve_backend_page_origin
 
@@ -66,6 +68,89 @@ _HOST_PATTERN_CACHE = {}
 _JSONP_CALLBACK_FIELDS = frozenset({"callback", "cb", "jsonp", "jsonpcallback"})
 _JSONP_MIME_TYPES = frozenset({"application/json", "text/json", "text/plain", "application/octet-stream"})
 _JSONP_CALLBACK_PATTERN = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*\Z")
+_TILE_REQUEST_DEADLINE = ContextVar('map_tile_request_deadline', default=None)
+
+
+class _TileRequestDeadline:
+    """Interrupt an active socket; the caller still owns and closes the response."""
+
+    def __init__(self, deadline):
+        self.deadline = deadline
+        self.expired = threading.Event()
+        self.lock = threading.Lock()
+        self.current_socket = None
+        self.current_response = None
+        self.timer = threading.Timer(max(0, deadline - time.monotonic()), self._expire)
+        self.timer.name = 'map-tile-deadline-' + str(id(self))
+        self.timer.daemon = True
+
+    @staticmethod
+    def _shutdown(sock, response):
+        try:
+            if sock is not None:
+                sock.shutdown(socket.SHUT_RDWR)
+            elif response is not None:
+                shutdown = getattr(getattr(response, 'raw', None), 'shutdown', None)
+                if callable(shutdown):
+                    shutdown()
+        except (OSError, ValueError, RuntimeError):
+            pass
+
+    def _expire(self):
+        self.expired.set()
+        with self.lock:
+            self._shutdown(self.current_socket, self.current_response)
+
+    def attach_socket(self, sock):
+        with self.lock:
+            self.current_socket = sock
+            self.current_response = None
+            if self.expired.is_set():
+                self._shutdown(sock, None)
+        self.check()
+
+    def attach_response(self, response):
+        with self.lock:
+            self.current_response = response
+            if self.expired.is_set():
+                self._shutdown(self.current_socket, response)
+        self.check()
+
+    def check(self):
+        if self.expired.is_set() or time.monotonic() >= self.deadline:
+            raise requests.ReadTimeout('tile deadline exceeded')
+
+    def __enter__(self):
+        self.token = _TILE_REQUEST_DEADLINE.set(self)
+        self.timer.start()
+        return self
+
+    def __exit__(self, *_args):
+        self.timer.cancel()
+        self.timer.join()
+        _TILE_REQUEST_DEADLINE.reset(self.token)
+
+
+class _TileDeadlineAdapter(requests.adapters.HTTPAdapter):
+    def __init__(self, deadline):
+        self.deadline = deadline
+        super().__init__(max_retries=0)
+
+    def init_poolmanager(self, *args, **kwargs):
+        super().init_poolmanager(*args, **kwargs)
+        deadline = self.deadline
+
+        class DeadlineConnection:
+            def connect(self):
+                super().connect()
+                deadline.attach_socket(self.sock)
+
+        # Per-session classes avoid changing pools or sockets of other requests.
+        classes = dict(self.poolmanager.pool_classes_by_scheme)
+        for scheme, base in (('http', HTTPConnectionPool), ('https', HTTPSConnectionPool)):
+            connection = type('TileDeadlineConnection', (DeadlineConnection, base.ConnectionCls), {})
+            classes[scheme] = type('TileDeadlinePool', (base,), {'ConnectionCls': connection})
+        self.poolmanager.pool_classes_by_scheme = classes
 
 
 def _map_bool(value):
@@ -251,12 +336,22 @@ class _MapProxy:
     def _request_upstream(method, url, *, headers, body, timeout):
         with requests.Session() as session:
             session.trust_env = False
+            deadline = _TILE_REQUEST_DEADLINE.get()
+            if deadline is not None:
+                session.mount('http://', _TileDeadlineAdapter(deadline))
+                session.mount('https://', _TileDeadlineAdapter(deadline))
             return session.request(method, url, headers=headers, data=body, timeout=timeout,
                                   allow_redirects=False, stream=True)
 
     def _request_tianditu_tile(self, method, url, headers, body, host):
         started = time.monotonic()
         deadline = started + TILE_DEADLINE_SECONDS
+        with _TileRequestDeadline(deadline) as cancellation:
+            return self._request_tianditu_tile_attempts(method, url, headers, body, host,
+                                                       started, deadline, cancellation)
+
+    def _request_tianditu_tile_attempts(self, method, url, headers, body, host,
+                                      started, deadline, cancellation):
         for attempt in range(1, 3):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -267,6 +362,7 @@ class _MapProxy:
             try:
                 upstream = self.transport(method, url, headers=headers, body=body,
                                           timeout=(connect, budget - connect))
+                cancellation.attach_response(upstream)
                 status = int(getattr(upstream, 'status_code', getattr(upstream, 'status', 502)))
                 if status in (502, 503, 504) and attempt < 2:
                     logging.warning('[MapProxy] provider=tianditu host=%s stage=tile attempt=%d status=%d elapsed_ms=%d',
@@ -275,6 +371,7 @@ class _MapProxy:
                     upstream = None
                     continue
                 payload = _read_limited_response(upstream, self.max_response_bytes, deadline=deadline)
+                cancellation.check()
                 return upstream, payload
             except (requests.Timeout, requests.ConnectionError, requests.exceptions.ChunkedEncodingError) as error:
                 logging.warning('[MapProxy] provider=tianditu host=%s stage=tile attempt=%d error=%s elapsed_ms=%d',
@@ -282,6 +379,7 @@ class _MapProxy:
                 if upstream is not None:
                     upstream.close()
                     upstream = None
+                cancellation.check()
                 if attempt == 2:
                     raise
             except Exception:
