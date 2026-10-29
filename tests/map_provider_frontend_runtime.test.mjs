@@ -721,6 +721,8 @@ function createRuntime(provider, options = {}) {
     'bindTaskMapUserInteractionTracking',
     'ensureActiveMapProviderRuntimeIfNeeded',
     'loadScriptOnce',
+    'assertMapSdkConfigSignature',
+    'loadAMapOnce',
     'loadTencentMapOnce',
     'loadTianDiTuMapOnce',
     'loadBaiduMapOnce',
@@ -847,6 +849,7 @@ function createRuntime(provider, options = {}) {
     'updateRunnerPosition',
     'clearSingleExecutionVisuals',
     'onRunStopped',
+    'installAmapRuntimeGuards',
     'installGenericMapRuntimeGuards',
   ];
   const functionSources = functionNames.map((name) => extractFunctionSource(source, name));
@@ -862,7 +865,9 @@ function createRuntime(provider, options = {}) {
       },
     },
     BMAP_ANCHOR_TOP_LEFT: 'top-left',
+    __reloadCalls: 0,
   };
+  window.location = { reload() { window.__reloadCalls += 1; } };
   window.__scheduledTimeouts = [];
   window.setTimeout = (handler, delay) => {
     const id = window.__scheduledTimeouts.length + 1;
@@ -927,6 +932,7 @@ function createRuntime(provider, options = {}) {
     let tiandituMapLoadingPromise = null;
     let baiduMapLoadingPromise = null;
     let amapLoadingPromise = null;
+    const legacyMapSdkConfigSignatures = {};
     let providerMapInstances = {};
     let sessionUUID = 'session-a';
     const providerMapDestructions = {};
@@ -983,6 +989,8 @@ function createRuntime(provider, options = {}) {
       drawProviderRouteOnMap,
       ensureActiveMapProviderRuntimeIfNeeded,
       loadActiveMapProviderRuntime,
+      getActiveMapProvider,
+      getRunningTaskMapProvider,
       zoomProviderMap,
       fitProviderMapToLastRoute,
       fitProviderMapToCoordinates,
@@ -1010,6 +1018,7 @@ function createRuntime(provider, options = {}) {
       setSingleRunProgressVisualActive: (active) => { singleRunProgressVisualActive = active; },
       getCurrentRunData: () => currentRunData,
       getPendingMapProviderRuntimeConfig: () => pendingMapProviderRuntimeConfig,
+      getActiveTaskMapProviderLock: () => activeTaskMapProviderLock,
       getScheduledTimeouts: () => window.__scheduledTimeouts,
       runLastScheduledTimeout: () => {
         const timer = window.__scheduledTimeouts[window.__scheduledTimeouts.length - 1];
@@ -1759,6 +1768,76 @@ test('running background tasks lock map provider and defer newer provider config
   });
   assert.equal(runtime.applyPendingMapProviderConfigIfAny(), true);
   assert.equal(getAppConfig().map_provider, 'baidu');
+});
+
+test('selected frontend config keeps its provider independent of the backend task provider', () => {
+  const runtime = createRuntime('amap');
+  runtime.syncMapProviderConfigFromInitialData({
+    map_config_id: 'front-amap', map_provider: 'amap',
+    map_providers: { amap: { js_key: 'front-placeholder' } },
+    task_status: { status: 'running', map_provider: 'tencent' },
+  });
+  assert.equal(runtime.getActiveMapProvider(), 'amap');
+  assert.equal(runtime.getActiveTaskMapProviderLock(), 'amap');
+  assert.equal(runtime.getWindow().APP_CONFIG.map_config_id, 'front-amap');
+  assert.equal(runtime.getWindow().APP_CONFIG.map_providers.amap.js_key, 'front-placeholder');
+  assert.equal(runtime.getPendingMapProviderRuntimeConfig(), null);
+});
+
+test('running maps defer another config from the same supplier until execution stops', () => {
+  const runtime = createRuntime('tencent');
+  runtime.syncMapProviderConfigFromInitialData({ map_config_id: 'front-one', map_provider: 'tencent' });
+  runtime.setSingleRunProgressVisualActive(true);
+  runtime.syncMapProviderConfigFromInitialData({
+    map_config_id: 'front-two', map_provider: 'tencent',
+    map_providers: { tencent: { map_key: 'second-placeholder' } },
+    task_status: { status: 'running', map_provider: 'baidu' },
+  });
+  assert.equal(runtime.getWindow().APP_CONFIG.map_config_id, 'front-one');
+  assert.equal(runtime.getWindow().APP_CONFIG.map_providers.tencent.map_key, 'tencent-key');
+  assert.equal(runtime.getPendingMapProviderRuntimeConfig().map_config_id, 'front-two');
+  assert.equal(runtime.applyPendingMapProviderConfigIfAny(), false);
+  runtime.setSingleRunProgressVisualActive(false);
+  runtime.syncMapProviderConfigFromInitialData({ task_status: { status: 'stopped' } });
+  assert.equal(runtime.applyPendingMapProviderConfigIfAny(), true);
+  assert.equal(runtime.getWindow().APP_CONFIG.map_config_id, 'front-two');
+  assert.equal(runtime.getWindow().APP_CONFIG.map_providers.tencent.map_key, 'second-placeholder');
+});
+
+test('editing credentials of the active config also waits for running execution', () => {
+  const runtime = createRuntime('amap');
+  runtime.syncMapProviderConfigFromInitialData({ map_config_id: 'front-one', map_provider: 'amap' });
+  runtime.setSingleRunProgressVisualActive(true);
+  runtime.syncMapProviderConfigFromInitialData({
+    map_config_id: 'front-one', map_provider: 'amap',
+    map_providers: { amap: { js_key: 'changed-placeholder', security_js_code: 'changed-security' } },
+    task_status: { status: 'running', map_provider: 'tencent' },
+  });
+  assert.equal(runtime.getWindow().APP_CONFIG.map_providers.amap.js_key, 'amap-key');
+  assert.equal(runtime.getWindow().APP_CONFIG.map_providers.amap.security_js_code, undefined);
+  assert.equal(runtime.applyPendingMapProviderConfigIfAny(), false);
+  runtime.setSingleRunProgressVisualActive(false);
+  runtime.syncMapProviderConfigFromInitialData({ task_status: { status: 'stopped' } });
+  assert.equal(runtime.applyPendingMapProviderConfigIfAny(), true);
+  assert.equal(runtime.getWindow().APP_CONFIG.map_providers.amap.js_key, 'changed-placeholder');
+  assert.equal(runtime.getWindow().APP_CONFIG.map_providers.amap.security_js_code, 'changed-security');
+});
+
+test('a stopped initialization releases the old lock even when its selected config changed', () => {
+  const runtime = createRuntime('amap');
+  runtime.syncMapProviderConfigFromInitialData({
+    map_config_id: 'front-one', map_provider: 'amap',
+    task_status: { status: 'running', map_provider: 'tencent' },
+  });
+  runtime.syncMapProviderConfigFromInitialData({
+    map_config_id: 'front-two', map_provider: 'amap',
+    map_providers: { amap: { js_key: 'second-placeholder' } },
+    task_status: { status: 'stopped', map_provider: 'tencent' },
+  });
+  assert.equal(runtime.getActiveTaskMapProviderLock(), null);
+  runtime.applyPendingMapProviderConfigIfAny();
+  assert.equal(runtime.getWindow().APP_CONFIG.map_config_id, 'front-two');
+  assert.equal(runtime.getWindow().APP_CONFIG.map_providers.amap.js_key, 'second-placeholder');
 });
 
 test('legacy initialization accepts either proxy state and preserves it when omitted', () => {
@@ -2824,6 +2903,42 @@ test('legacy tianditu teardown removes document drag listeners before another SD
   assert.ok(document.events.some((event) => event.eventName === 'mousemove'));
   runtime.destroyProviderMapInstance('map-container');
   assert.ok(document.events.every((event) => event.eventName !== 'mousemove' && event.eventName !== 'mouseup'));
+});
+
+test('reusing a loaded SDK with another key refreshes instead of using the previous credentials', async () => {
+  for (const [provider, field] of [['amap', 'js_key'], ['tencent', 'map_key'], ['tianditu', 'token']]) {
+    const runtime = createRuntime(provider);
+    await runtime.loadActiveMapProviderRuntime(provider);
+    await runtime.loadActiveMapProviderRuntime(provider);
+    assert.equal(runtime.getWindow().__reloadCalls, 0, provider);
+    runtime.syncMapProviderConfigFromInitialData({
+      map_config_id: 'changed-config', map_provider: provider,
+      map_providers: { [provider]: { [field]: 'changed-placeholder' } },
+    });
+    await assert.rejects(async () => runtime.loadActiveMapProviderRuntime(provider), /刷新/, provider);
+    assert.equal(runtime.getWindow().__reloadCalls, 1, provider);
+    assert.equal(runtime.getDocument().appendedScripts.length, 0, 'the old realm must not inject a second SDK');
+  }
+});
+
+test('changing only the AMap security code refreshes the existing SDK realm', async () => {
+  const runtime = createRuntime('amap');
+  await runtime.loadActiveMapProviderRuntime('amap');
+  runtime.syncMapProviderConfigFromInitialData({
+    map_provider: 'amap', map_providers: { amap: { security_js_code: 'changed-placeholder' } },
+  });
+  await assert.rejects(async () => runtime.loadActiveMapProviderRuntime('amap'), /刷新/);
+  assert.equal(runtime.getWindow().__reloadCalls, 1);
+});
+
+test('an explicitly empty frontend AMap key does not reuse the previous config key', async () => {
+  const runtime = createRuntime('amap', { strictDocumentIds: true });
+  runtime.syncMapProviderConfigFromInitialData({
+    map_config_id: 'empty-frontend', map_provider: 'amap',
+    map_providers: { amap: { js_key: '' } },
+  });
+  assert.equal(await runtime.ensureActiveMapProviderRuntimeIfNeeded('cleared-config'), false);
+  assert.equal(runtime.getWindow().APP_CONFIG.map_providers.amap.js_key, '');
 });
 
 test('provider runtime loaders inject the active provider sdk script and resolve from callbacks', async () => {

@@ -72,15 +72,12 @@ function getMapProviderKeyRequirement(provider) {
   };
   const requirement = requirements[normalizedProvider] || requirements.amap;
   const providerConfig = getMapProviderConfig(requirement.provider);
-  const value = String(
-    providerConfig[requirement.fieldKey] ||
-      (requirement.provider === "amap" ? AMAP_API_KEY : "") ||
-      "",
-  ).trim();
+  const value = String(Object.prototype.hasOwnProperty.call(providerConfig, requirement.fieldKey)
+    ? providerConfig[requirement.fieldKey] || ""
+    : (requirement.provider === "amap" ? AMAP_API_KEY : "") || "").trim();
   return {
     ...requirement,
     value,
-    configPath: `Map.providers.${requirement.provider}.${requirement.fieldKey}`,
   };
 }
 
@@ -103,6 +100,9 @@ function createMapProviderRuntimeConfigSnapshot(data) {
     return null;
   }
   const snapshot = {};
+  if (typeof data.map_config_id === "string") {
+    snapshot.map_config_id = data.map_config_id;
+  }
   if (typeof data.frontend_proxy_enabled === "boolean") {
     snapshot.frontend_proxy_enabled = data.frontend_proxy_enabled;
   }
@@ -141,6 +141,7 @@ function getRunningTaskMapProvider(data) {
     return "";
   }
   return (
+    (data.map_config_id && normalizeSupportedMapProvider(data.map_provider)) ||
     normalizeSupportedMapProvider(
       taskStatus.map_provider || taskStatus.mapProvider || taskStatus.provider,
     ) || getActiveMapProvider()
@@ -241,6 +242,7 @@ function syncMapProviderConfigFromInitialData(data) {
     return;
   }
 
+  const currentConfig = window.APP_CONFIG || {};
   const runningTaskProvider = getRunningTaskMapProvider(data);
   if (runningTaskProvider) {
     activeTaskMapProviderLock = runningTaskProvider;
@@ -249,19 +251,30 @@ function syncMapProviderConfigFromInitialData(data) {
   }
 
   const incomingProvider = normalizeSupportedMapProvider(data.map_provider);
+  const incomingConfig = data.map_providers?.[incomingProvider] || {};
+  const activeConfig = currentConfig.map_providers?.[incomingProvider] || {};
+  const credentialsChanged = ["js_key", "security_js_code", "map_key", "token", "ak"].some(
+    (field) => Object.prototype.hasOwnProperty.call(incomingConfig, field) && incomingConfig[field] !== activeConfig[field],
+  );
+  if (data.map_config_id && currentConfig.map_config_id &&
+      (data.map_config_id !== currentConfig.map_config_id || credentialsChanged) &&
+      !(data.task_status && !runningTaskProvider) && isMapProviderRuntimeSwitchLocked(data)) {
+    queuePendingMapProviderConfig(data);
+    return;
+  }
   if (runningTaskProvider && incomingProvider && incomingProvider !== runningTaskProvider) {
     queuePendingMapProviderConfig(data);
   } else if (!runningTaskProvider && incomingProvider) {
     pendingMapProviderRuntimeConfig = null;
   }
 
-  const currentConfig = window.APP_CONFIG || {};
   const nextConfig = {
     ...currentConfig,
     map_providers: {
       ...(currentConfig.map_providers || {}),
     },
   };
+  if (typeof data.map_config_id === "string") nextConfig.map_config_id = data.map_config_id;
 
   if (typeof data.frontend_proxy_enabled === "boolean") {
     nextConfig.frontend_proxy_enabled = data.frontend_proxy_enabled;
@@ -324,7 +337,7 @@ function showMissingMapProviderKeyModal(provider) {
     link.textContent = requirement.platformName;
   }
   if (extra) {
-    extra.textContent = `${requirement.applyHint} 配置路径：${requirement.configPath}。`;
+    extra.textContent = `${requirement.applyHint}也可在系统配置的地图配置卡片中编辑。`;
   }
   if (label) {
     label.textContent = `${requirement.displayName} ${requirement.fieldLabel}:`;
@@ -333,6 +346,7 @@ function showMissingMapProviderKeyModal(provider) {
     input.value = "";
     input.placeholder = `请在此处粘贴${requirement.displayName} ${requirement.fieldLabel}`;
     input.dataset.provider = requirement.provider;
+    input.dataset.configId = window.APP_CONFIG?.map_config_id || "";
   }
   if (confirmButton) {
     confirmButton.textContent = "确认并保存";
@@ -366,6 +380,7 @@ async function ensureActiveMapProviderRuntimeIfNeeded(contextLabel = "地图") {
       const originSessionId = typeof getAdminViewOriginSessionUUID === "function"
         ? getAdminViewOriginSessionUUID(sessionId) : "";
       await proxy.initialize({
+        map_config_id: appConfig.map_config_id,
         enabled: proxyEnabled,
         provider,
         sessionId,
@@ -434,7 +449,20 @@ function loadScriptOnce(scriptSelector, scriptUrl, onBeforeAppend, errorMessage)
   });
 }
 
+const legacyMapSdkConfigSignatures = {};
+
+function assertMapSdkConfigSignature(provider, key, securityCode = "") {
+  const signature = JSON.stringify([key, securityCode]);
+  const previous = legacyMapSdkConfigSignatures[provider];
+  if (previous && previous !== signature) {
+    window.location?.reload?.();
+    throw new Error("地图配置已更改，正在刷新页面以应用新的密钥；如未自动刷新，请手动刷新。");
+  }
+  legacyMapSdkConfigSignatures[provider] = signature;
+}
+
 function loadTencentMapOnce(key) {
+  assertMapSdkConfigSignature("tencent", key);
   if (window.TMap && window.TMap.Map && window.TMap.LatLng) {
     return Promise.resolve(window.TMap);
   }
@@ -462,6 +490,7 @@ function loadTencentMapOnce(key) {
 }
 
 function loadTianDiTuMapOnce(token) {
+  assertMapSdkConfigSignature("tianditu", token);
   if (window.T && window.T.Map) {
     return Promise.resolve(window.T);
   }

@@ -13,6 +13,7 @@ export const useMapStore = defineStore('map', () => {
     tiandituKey: '',
     baiduKey: '',
     frontendProxyEnabled: false,
+    frontendConfigId: '',
   })
 
   // --- 交互式路径绘制协调状态（对齐 original 的 isDrawing/draftPath/draftTotalDist）---

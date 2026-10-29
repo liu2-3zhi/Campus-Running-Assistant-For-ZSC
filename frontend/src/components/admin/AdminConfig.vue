@@ -2,6 +2,8 @@
 import { ref, reactive, watch, onMounted } from 'vue'
 import { callRawAPI } from '@/services/api'
 import { normalizeBackendPageOrigin } from '@/services/mapBackendOrigin'
+import { normalizeMapConfigProfiles, serializeMapConfigProfiles } from '@/utils/mapConfigProfiles'
+import MapConfigCards from './MapConfigCards.vue'
 
 /* ── state ── */
 const loading = ref(false)
@@ -75,25 +77,12 @@ const sections = [
   },
   {
     save: 'Map', load: 'Map', label: '地图配置',
-    description: '后端路径规划与前端地图代理共用以下页面来源。前端启用后端代理后使用配置来源；关闭代理时使用当前页面来源。各地图的来源优先于全局来源。',
+    description: '分别选择前端地图与后端路径规划使用的配置。每份配置可设置独立页面来源；关闭前端代理时，前端地图使用当前页面来源。',
     fields: [
-      { key: 'provider', label: '地图提供方', type: 'select', options: [
-        { value: 'amap', label: '高德地图' }, { value: 'tencent', label: '腾讯地图' },
-        { value: 'tianditu', label: '天地图' }, { value: 'baidu', label: '百度地图' },
-      ] },
       { key: 'backend_page_origin', label: '地图页面来源（选填）', type: 'origin', hint: '用于后端路径规划和前端地图代理。留空自动使用应用请求来源；仅保留协议、域名和端口。' },
       { key: 'frontend_proxy_enabled', label: '启用地图请求后端代理', type: 'boolean', hint: '默认关闭。开启由服务器转发地图请求并使用配置来源；关闭由浏览器直连地图服务，使用当前页面来源。保存后刷新页面生效；已加载地图时，下次加载切换模式会自动刷新页面。' },
       { key: 'tile_cache_ttl_days', label: '地图瓦片缓存时间（天）', type: 'number', default: 20, step: 1, proxyOnly: true, hint: '正整数；上游更短的有效期优先。私有响应或带 Cookie 的资源不缓存；关闭代理时保留此设置。' },
       { key: 'tile_cache_max_size_gb', label: '地图瓦片缓存最大大小（GB）', type: 'number', default: 10, step: 0.01, proxyOnly: true, hint: '所有地图供应商共享此缓存总容量，各供应商缓存数据独立；1 GB = 10 亿字节，最多两位小数。' },
-      { key: 'providers.amap.js_key', label: '高德 JS Key', type: 'password' },
-      { key: 'providers.amap.security_js_code', label: '高德安全密钥（选填）', type: 'password' },
-      { key: 'providers.amap.backend_page_origin', label: '高德地图页面来源（选填）', type: 'origin', hint: '同时用于高德后端规划和前端代理；留空继承全局来源。' },
-      { key: 'providers.tencent.map_key', label: '腾讯地图 Key', type: 'password' },
-      { key: 'providers.tencent.backend_page_origin', label: '腾讯地图页面来源（选填）', type: 'origin', hint: '同时用于腾讯后端规划和前端代理；留空继承全局来源。' },
-      { key: 'providers.tianditu.token', label: '天地图 Token', type: 'password' },
-      { key: 'providers.tianditu.backend_page_origin', label: '天地图页面来源（选填）', type: 'origin', hint: '同时用于天地图后端规划和前端代理；留空继承全局来源。' },
-      { key: 'providers.baidu.ak', label: '百度地图 AK', type: 'password' },
-      { key: 'providers.baidu.backend_page_origin', label: '百度地图页面来源（选填）', type: 'origin', hint: '同时用于百度后端规划和前端代理；留空继承全局来源。' },
     ],
   },
   {
@@ -199,6 +188,7 @@ function applyConfig(config) {
       configForm[s.save][field.key] = coerceValue(field.type, raw ?? field.default)
     }
   }
+  Object.assign(configForm.Map, normalizeMapConfigProfiles(config.Map || {}))
   takeSnapshot()
 }
 
@@ -239,6 +229,9 @@ async function saveConfig() {
         target[last] = value
       }
     }
+    const profiles = serializeMapConfigProfiles(configForm.Map, normalizeBackendPageOrigin)
+    Object.assign(configForm.Map, profiles)
+    Object.assign(payload.Map, profiles)
     const res = await callRawAPI('/api/admin/config/save', 'POST', payload)
     if (res && res.success === false) throw new Error(res.message || '保存失败')
     success.value = '配置已保存'
@@ -305,6 +298,7 @@ onMounted(loadConfig)
         </button>
         <div v-show="expandedSections[section.save]" class="mt-4 space-y-3">
           <p v-if="section.description" class="text-sm text-[var(--ink-secondary)]">{{ section.description }}</p>
+          <MapConfigCards v-if="section.save === 'Map'" v-model="configForm.Map" />
           <div
             v-for="field in section.fields"
             :key="field.key"

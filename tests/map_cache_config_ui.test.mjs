@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import vm from 'node:vm'
+import * as mapConfigProfiles from '../frontend/src/utils/mapConfigProfiles.js'
 
 const require = createRequire(new URL('../frontend/package.json', import.meta.url))
 const vue = require('vue')
@@ -12,7 +13,7 @@ function adminConfig() {
   const source = read('frontend/src/components/admin/AdminConfig.vue').match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
   const calls = []
   const state = vm.runInNewContext(source + '\n;({sections,configForm,applyConfig,saveConfig,error})', {
-    ...vue, watch() {}, onMounted() {},
+    ...vue, ...mapConfigProfiles, watch() {}, onMounted() {},
     callRawAPI: async (...args) => { calls.push(args); return { success: true } },
     normalizeBackendPageOrigin: value => value || '',
   })
@@ -35,6 +36,7 @@ function legacyConfig(days = 20, size = 10) {
     fetch: async (...args) => { calls.push(args); return { json: async () => ({ success: false, message: 'fixture' }) } },
   })
   vm.runInContext(read('scripts/legacy-admin-config.js'), context)
+  context.readMapConfigCards = () => mapConfigProfiles.normalizeMapConfigProfiles({})
   return { context, calls, alerts }
 }
 

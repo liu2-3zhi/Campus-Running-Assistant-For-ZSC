@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 import atexit
+from collections import OrderedDict
 from decimal import Decimal
 import hashlib
 import hmac
@@ -12,11 +13,12 @@ import json
 import logging
 from pathlib import Path
 import re
+import secrets
 import socket
 import threading
 import time
 from types import SimpleNamespace
-from urllib.parse import parse_qsl, urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit
 
 import requests
 from flask import Response, g, jsonify, make_response, request
@@ -25,7 +27,7 @@ from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 from urllib3.exceptions import ConnectTimeoutError, NewConnectionError
 from urllib3.util import Timeout
 
-from map_runtime_origin import get_tile_cache_settings, resolve_backend_page_origin
+from map_runtime_origin import get_map_config_settings, get_tile_cache_settings, resolve_backend_page_origin
 from map_proxy_transport import MapProxyTransport, resolve_map_host
 from map_tile_cache import (
     MapTileCache, build_tile_cache_key, canonical_jsonp_payload, is_cacheable_tile_response, parse_jsonp_payload,
@@ -35,6 +37,9 @@ from map_tile_cache import (
 PROXY_COOKIE_NAME = "map_proxy_context"
 PROXY_COOKIE_PATH = "/map-proxy"
 PROXY_COOKIE_MAX_AGE = 30 * 60
+PROXY_PROFILE_CONTEXT_LIMIT = 2048
+PROXY_PROFILE_CONTEXT_QUERY = "__map_context"
+PROXY_MODULE_QUERY = "__map_module"
 MAX_REQUEST_BODY_BYTES = 1024 * 1024
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 MAX_CONCURRENT_REQUESTS = 12
@@ -72,6 +77,8 @@ PROXY_HOSTS = {
 _CONTROL_QUERY_FIELDS = frozenset({
     "session_id", "session_uuid", "admin_origin_session_id", "origin_session_id",
     "auth_token", "x_session_id",
+    PROXY_PROFILE_CONTEXT_QUERY,
+    PROXY_MODULE_QUERY,
 })
 _TEXT_CONTENT_TYPES = ("javascript", "ecmascript", "text/css", "application/css")
 _HOST_PATTERN_CACHE = {}
@@ -415,7 +422,7 @@ def _validated_jsonp_content_type(body, content_type, query, fetch_destination="
     return f"application/javascript; charset={charset}"
 
 
-def _rewrite_vendor_urls(body, provider, app_origin, backend_origin):
+def _rewrite_vendor_urls(body, provider, app_origin, backend_origin, context_token=None):
     """Rewrite only exact allowlisted provider hosts in JS/CSS response bodies."""
     text = body
     if backend_origin:
@@ -454,9 +461,223 @@ def _rewrite_vendor_urls(body, provider, app_origin, backend_origin):
         local = f"{app_origin}/map-proxy/{provider}/https/{host}{parsed.path}"
         if parsed.query:
             local += "?" + parsed.query
+        if context_token:
+            local += ("&" if parsed.query else "?") + PROXY_PROFILE_CONTEXT_QUERY + "=" + context_token
         return local
 
     return pattern.sub(replace, text)
+
+
+def _pin_resource_specifier(value, upstream_url, app_origin, context_token, *, module=False):
+    if not value or value.startswith("#"):
+        return value
+    if module and not value.startswith((".", "/", "http://", "https://")):
+        return value
+    try:
+        parsed = urlsplit(urljoin(upstream_url, value))
+        port = parsed.port
+    except ValueError:
+        return value
+    if parsed.scheme not in ("http", "https") or parsed.username or parsed.password:
+        return value
+    app = urlsplit(app_origin)
+    if (parsed.scheme, parsed.netloc) == (app.scheme, app.netloc) and parsed.path.startswith("/map-proxy/"):
+        local = app_origin + parsed.path
+    else:
+        if port not in (None, 80, 443):
+            return value
+        provider = next((name for name in PROXY_HOSTS if _valid_host(parsed.hostname or "", name)), None)
+        if provider is None:
+            return value
+        local = f"{app_origin}/map-proxy/{provider}/https/{parsed.hostname}{parsed.path or '/'}"
+    query = parsed.query
+    fields = dict(parse_qsl(query, keep_blank_values=True))
+    if PROXY_PROFILE_CONTEXT_QUERY not in fields:
+        query += ("&" if query else "") + PROXY_PROFILE_CONTEXT_QUERY + "=" + context_token
+    if module and PROXY_MODULE_QUERY not in fields:
+        query += ("&" if query else "") + PROXY_MODULE_QUERY + "=1"
+    return local + ("?" + query if query else "") + ("#" + parsed.fragment if parsed.fragment else "")
+
+
+def _decode_js_literal(value):
+    def unescape(match):
+        escape = match.group(0)[1:]
+        if escape.startswith("u{"):
+            return chr(int(escape[2:-1], 16))
+        if escape.startswith(("u", "x")):
+            return chr(int(escape[1:], 16))
+        return {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "v": "\v", "0": "\0",
+                "\n": "", "\r\n": "", "\r": ""}.get(escape, escape)
+    return re.sub(r"\\(?:u\{[0-9a-fA-F]{1,6}\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|\r\n|[\s\S])", unescape, value[1:-1])
+
+
+def _javascript_tokens(source, position=0):
+    """Skip literal/comment contents when locating module syntax."""
+    previous, before_previous = "", ""
+    control_parentheses = []
+    expression_prefixes = {"", "(", "[", "{", ",", "=", ";", ":", "!", "?", "+", "-", "*", "/",
+                           "%", "&", "|", "^", "~", "<", ">", "return", "yield", "case", "throw", "else", "<control-condition>"}
+    while position < len(source):
+        start = position
+        char = source[position]
+        if char.isspace():
+            position += 1
+            continue
+        if source.startswith("//", position):
+            end = source.find("\n", position + 2)
+            position = len(source) if end < 0 else end
+            continue
+        if source.startswith("/*", position):
+            end = source.find("*/", position + 2)
+            position = len(source) if end < 0 else end + 2
+            continue
+        kind = "punctuation"
+        if char in ("'", '"', "`"):
+            kind = "template" if char == "`" else "string"
+            position += 1
+            while position < len(source):
+                if source[position] == "\\":
+                    position += 2
+                elif char == "`" and source.startswith("${", position):
+                    nesting = 0
+                    for token in _javascript_tokens(source, position + 2):
+                        if token[0] == "punctuation" and token[1] == "}" and nesting == 0:
+                            position = token[3]
+                            break
+                        if token[0] == "punctuation" and token[1] == "{":
+                            nesting += 1
+                        elif token[0] == "punctuation" and token[1] == "}":
+                            nesting -= 1
+                        yield token
+                    else:
+                        position = len(source)
+                elif source[position] == char:
+                    position += 1
+                    break
+                else:
+                    position += 1
+        elif char == "/" and previous in expression_prefixes:
+            kind, bracket = "regex", False
+            position += 1
+            while position < len(source):
+                if source[position] == "\\":
+                    position += 2
+                    continue
+                current = source[position]
+                position += 1
+                if current == "[":
+                    bracket = True
+                elif current == "]":
+                    bracket = False
+                elif current == "/" and not bracket:
+                    while position < len(source) and source[position].isalpha():
+                        position += 1
+                    break
+                elif current in "\r\n":
+                    break
+        elif char.isalpha() or char in "_$":
+            kind = "word"
+            position += 1
+            while position < len(source) and (source[position].isalnum() or source[position] in "_$"):
+                position += 1
+        else:
+            position += 1
+        value = source[start:position]
+        yield kind, value, start, position
+        after_control = False
+        if kind == "punctuation" and value == "(":
+            control_parentheses.append((previous in {"if", "while", "for", "with", "switch", "catch"}
+                                        and before_previous != ".") or (previous == "await" and before_previous == "for"))
+        elif kind == "punctuation" and value == ")" and control_parentheses:
+            after_control = control_parentheses.pop()
+        before_previous = previous
+        previous = "<control-condition>" if after_control else "literal" if kind in ("string", "template", "regex") else value
+
+
+def _rewrite_module_specifiers(source, upstream_url, app_origin, context_token, *, module=False):
+    edits, dynamic, state, previous, pending = [], [], None, "", None
+    parentheses = brackets = braces = clause_depth = 0
+    for kind, value, start, end in _javascript_tokens(source):
+        if pending is not None:
+            # import(...) is also a legal object/class method name.
+            if value != "{":
+                edits.extend(pending)
+            pending = None
+        if dynamic and (parentheses, brackets, braces) == dynamic[-1]["levels"]:
+            if value == "," and dynamic[-1]["argument_end"] is None:
+                dynamic[-1]["argument_end"] = start
+            elif value == ")":
+                call = dynamic.pop()
+                pending = [(call["prefix"], call["prefix"], "self.ZXMapRequestProxy.rewriteModuleUrl("),
+                           (call["argument_end"] if call["argument_end"] is not None else start,
+                            call["argument_end"] if call["argument_end"] is not None else start, ", import.meta.url)")]
+        if state == "import-start" and value == "(":
+            if module:
+                dynamic.append({"levels": (parentheses + 1, brackets, braces), "prefix": end, "argument_end": None})
+            state = None
+        elif state == "import-start" and kind == "string":
+            literal = _decode_js_literal(value)
+            pinned = _pin_resource_specifier(literal, upstream_url, app_origin, context_token, module=True)
+            if pinned != literal:
+                edits.append((start, end, json.dumps(pinned)))
+            state = None
+        elif state == "from" and kind == "string":
+            literal = _decode_js_literal(value)
+            pinned = _pin_resource_specifier(literal, upstream_url, app_origin, context_token, module=True)
+            if pinned != literal:
+                edits.append((start, end, json.dumps(pinned)))
+            state = None
+        elif state == "import-start" and value == ".":
+            state = None
+        elif state == "import-start":
+            state = "import-clause"
+        elif state == "export-start":
+            state = "export-clause" if value in ("*", "{") else None
+        if state in ("import-clause", "export-clause") and value == "from" and braces == clause_depth:
+            state = "from"
+        elif (value in ("import", "export") and kind == "word" and previous != "."
+              and not (state in ("import-clause", "export-clause") and braces > clause_depth)):
+            state, clause_depth = value + "-start", braces
+        elif value == ";":
+            state = None
+        if value == "(":
+            parentheses += 1
+        elif value == ")":
+            parentheses -= 1
+        elif value == "[":
+            brackets += 1
+        elif value == "]":
+            brackets -= 1
+        elif value == "{":
+            braces += 1
+        elif value == "}":
+            braces -= 1
+        previous = value
+    if pending is not None:
+        edits.extend(pending)
+    for start, end, replacement in sorted(edits, reverse=True):
+        source = source[:start] + replacement + source[end:]
+    return source
+
+
+def _rewrite_css_specifiers(source, upstream_url, app_origin, context_token):
+    quoted = r'''"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*' '''.strip()
+    pattern = re.compile(r"/\*[\s\S]*?\*/|(?P<url>\burl\(\s*(?P<value>" + quoted + r"|[^)]*?)\s*\))|"
+                         r"(?P<import>@import\s+(?P<specifier>" + quoted + r"))|(?:" + quoted + r")", re.IGNORECASE)
+
+    def replace(match):
+        value = match.group("value") if match.group("url") else match.group("specifier")
+        if value is None:
+            return match.group(0)
+        value = value.strip()
+        literal = value[1:-1] if value.startswith(("'", '"')) else value
+        literal = re.sub(r"\\(?:([0-9a-fA-F]{1,6})\s?|([^\r\n]))",
+                         lambda item: chr(int(item.group(1), 16)) if item.group(1) else item.group(2), literal)
+        pinned = _pin_resource_specifier(literal, upstream_url, app_origin, context_token)
+        if pinned == literal:
+            return match.group(0)
+        return "url(" + json.dumps(pinned) + ")" if match.group("url") else "@import " + json.dumps(pinned)
+    return pattern.sub(replace, source)
 
 
 class MapProxyAccessLogFilter(logging.Filter):
@@ -502,6 +723,65 @@ class _MapProxy:
         self.tile_cache = MapTileCache(tile_cache_dir or Path(__file__).parent / "cache" / "map_tiles")
         self._tile_flight_lock = threading.Lock()
         self._tile_flights = {}
+        # Page SDKs keep their credentials until reload, so retain their origins too.
+        self._profile_context_lock = threading.Lock()
+        self._profile_contexts = OrderedDict()
+
+    @staticmethod
+    def _profile_context_owner(claims):
+        return tuple(claims.get(field) for field in ("username", "token_digest"))
+
+    def _prune_profile_contexts(self, now):
+        for token in list(self._profile_contexts):
+            if self._profile_contexts[token]["expires_at"] <= now:
+                del self._profile_contexts[token]
+        while len(self._profile_contexts) >= PROXY_PROFILE_CONTEXT_LIMIT:
+            self._profile_contexts.popitem(last=False)
+
+    def _get_profile_context(self, token, claims, *, renew=False, config_id=None):
+        if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
+            return None
+        now = time.monotonic()
+        with self._profile_context_lock:
+            context = self._profile_contexts.get(token)
+            if context is None or context["expires_at"] <= now:
+                self._profile_contexts.pop(token, None)
+                return None
+            if context["owner"] != self._profile_context_owner(claims):
+                return None
+            if config_id is not None and config_id != context["config_id"]:
+                return None
+            actor = context["claims"]
+        try:
+            if not self.authorize_actor(actor["username"], request.cookies.get("auth_token", ""),
+                                        actor["actor_session_id"], bool(actor["require_view_all"])):
+                return None
+        except Exception:
+            return None
+        with self._profile_context_lock:
+            if self._profile_contexts.get(token) is not context or context["expires_at"] <= time.monotonic():
+                return None
+            if renew:
+                context["expires_at"] = time.monotonic() + PROXY_COOKIE_MAX_AGE
+            self._profile_contexts.move_to_end(token)
+            return dict(context)
+
+    def _new_profile_context(self, config, claims, config_id):
+        settings = get_map_config_settings(config)
+        selected_id = settings["frontend_config_id"]
+        if config_id is not None and config_id != selected_id:
+            raise ValueError("地图配置已切换，请刷新页面后重试")
+        origins = {provider: resolve_backend_page_origin(config, provider, _request_origin(), scope="frontend")[0]
+                   for provider in PROXY_HOSTS}
+        token = secrets.token_urlsafe(32)
+        now = time.monotonic()
+        with self._profile_context_lock:
+            self._prune_profile_contexts(now)
+            self._profile_contexts[token] = {
+                "owner": self._profile_context_owner(claims), "claims": dict(claims), "config_id": selected_id,
+                "origins": origins, "expires_at": now + PROXY_COOKIE_MAX_AGE,
+            }
+        return token, selected_id
 
     @staticmethod
     def _wait_for_tile(flight, deadline):
@@ -560,7 +840,7 @@ class _MapProxy:
                     upstream.close()
                 raise
 
-    def _verify_actor(self):
+    def _verify_actor(self, authorize=True):
         signed_context = request.cookies.get(PROXY_COOKIE_NAME, "")
         auth_token = request.cookies.get("auth_token", "")
         if not signed_context or not auth_token:
@@ -579,10 +859,11 @@ class _MapProxy:
         if not hmac.compare_digest(expected, token_digest):
             return None
         try:
-            if not self.authorize_actor(username, auth_token, actor_session_id, bool(require_view_all)):
+            if authorize and not self.authorize_actor(username, auth_token, actor_session_id, bool(require_view_all)):
                 return None
         except Exception:
             return None
+        g.map_proxy_actor_claims = claims
         return username
 
     def register(self, login_required):
@@ -629,13 +910,33 @@ class _MapProxy:
             except Exception:
                 return jsonify({"success": False, "message": "权限不足"}), 403
             digest = hmac.new(self.app.secret_key.encode(), auth_token.encode(), hashlib.sha256).hexdigest()
-            signed = self.serializer.dumps({
+            claims = {
                 "username": username,
                 "token_digest": digest,
                 "actor_session_id": actor_session_id,
                 "require_view_all": require_view_all,
-            })
-            response = make_response(jsonify({"success": True, "expires_in": PROXY_COOKIE_MAX_AGE}))
+            }
+            payload = {"success": True, "expires_in": PROXY_COOKIE_MAX_AGE}
+            submitted = request.get_json(silent=True)
+            if submitted is None:
+                submitted = {}
+            if not isinstance(submitted, dict):
+                return jsonify({"success": False, "message": "地图代理上下文格式无效"}), 400
+            context_token = submitted.get("context_token")
+            config_id = submitted.get("map_config_id")
+            try:
+                if context_token is not None:
+                    snapshot = self._get_profile_context(context_token, claims, renew=True, config_id=config_id)
+                    if snapshot is None:
+                        return jsonify({"success": False, "message": "地图代理上下文已失效，请刷新页面后重试"}), 409
+                    payload["context_token"] = context_token
+                    payload["map_config_id"] = snapshot["config_id"]
+                elif _map_setting(config, "configs", None) is not None or submitted.get("pin_context") is True:
+                    payload["context_token"], payload["map_config_id"] = self._new_profile_context(config, claims, config_id)
+            except ValueError as error:
+                return jsonify({"success": False, "message": str(error)}), 409
+            signed = self.serializer.dumps(claims)
+            response = make_response(jsonify(payload))
             response.set_cookie(
                 PROXY_COOKIE_NAME,
                 signed,
@@ -673,9 +974,17 @@ class _MapProxy:
                 return response
             if origin_header and origin_header.rstrip("/") != _request_origin():
                 return make_response("", 403)
-            username = self._verify_actor()
+            context_tokens = request.args.getlist(PROXY_PROFILE_CONTEXT_QUERY)
+            username = self._verify_actor(authorize=not bool(context_tokens))
             if not username:
                 return make_response("", 401)
+            profile_context = None
+            if context_tokens:
+                if len(context_tokens) != 1:
+                    return make_response("", 400)
+                profile_context = self._get_profile_context(context_tokens[0], getattr(g, "map_proxy_actor_claims", {}))
+                if profile_context is None:
+                    return make_response("", 401)
             if scheme != "https" or not _valid_host(host, provider):
                 return make_response("", 400)
             if host == "mapplugin.amap.com" and (resource_path != "maps/checkredirectcdn" or request.method != "GET"):
@@ -721,9 +1030,12 @@ class _MapProxy:
                 query = _strip_control_query(request.query_string.decode("latin-1"))
                 if query is None:
                     return finish(make_response("", 400))
-                runtime_origin, source = resolve_backend_page_origin(
-                    config, provider, _request_origin()
-                )
+                if profile_context is not None:
+                    runtime_origin, source = profile_context["origins"][provider], "context"
+                else:
+                    runtime_origin, source = resolve_backend_page_origin(
+                        config, provider, _request_origin(), scope="frontend"
+                    )
                 path = "/" + resource_path
                 url = f"https://{host}{path}" + ("?" + query if query else "")
                 body = None
@@ -857,14 +1169,25 @@ class _MapProxy:
                         text_body = response_body.decode("utf-8", errors="replace")
                         charset = "utf-8"
                     text_body = _rewrite_vendor_urls(text_body, provider, _request_origin(), runtime_origin)
-                    if (
-                        request.headers.get("Sec-Fetch-Dest") == "worker"
-                        and request.headers.get("Sec-Fetch-Mode") != "cors"
-                        and any(kind in content_type.lower() for kind in ("javascript", "ecmascript"))
-                    ):
+                    javascript = any(kind in content_type.lower() for kind in ("javascript", "ecmascript"))
+                    module_resource = bool(context_tokens) and (
+                        request.args.get(PROXY_MODULE_QUERY) == "1" or (
+                            request.headers.get("Sec-Fetch-Dest") == "worker"
+                            and request.headers.get("Sec-Fetch-Mode") == "cors"
+                        )
+                    )
+                    if context_tokens and "text/css" in content_type.lower():
+                        text_body = _rewrite_css_specifiers(text_body, url, _request_origin(), context_tokens[0])
+                    elif context_tokens and javascript:
+                        text_body = _rewrite_module_specifiers(text_body, url, _request_origin(), context_tokens[0], module=module_resource)
+                    if javascript and (module_resource or (
+                        request.headers.get("Sec-Fetch-Dest") == "worker" and request.headers.get("Sec-Fetch-Mode") != "cors"
+                    )):
                         script_url = json.dumps(_request_origin() + "/scripts/map-request-proxy.js")
-                        worker_config = json.dumps({"enabled": True, "provider": provider, "basePath": "/map-proxy"})
-                        text_body = f"importScripts({script_url});self.ZXMapRequestProxy.install({worker_config});\n" + text_body
+                        worker_config = json.dumps({"enabled": True, "provider": provider, "basePath": "/map-proxy",
+                                                    **({"contextToken": context_tokens[0]} if context_tokens else {})})
+                        bootstrap = f"import {script_url};" if module_resource else f"importScripts({script_url});"
+                        text_body = bootstrap + f"self.ZXMapRequestProxy.install({worker_config});\n" + text_body
                     try:
                         response_body = text_body.encode(charset, errors="replace")
                     except LookupError:

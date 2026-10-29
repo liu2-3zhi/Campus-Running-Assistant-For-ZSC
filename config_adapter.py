@@ -44,6 +44,8 @@ class JsonConfigAdapter:
                 for k, v in opts.items():
                     if sec == "Map" and k == "providers":
                         self._data[sec][k] = self._coerce_map_providers(v)
+                    elif sec == "Map" and k == "configs":
+                        self._data[sec][k] = self._coerce_map_configs(v)
                     else:
                         self._data[sec][k] = str(v)
             else:
@@ -76,6 +78,19 @@ class JsonConfigAdapter:
                     key: str(value) for key, value in provider_values.items()
                 }
         return normalized
+
+    @staticmethod
+    def _coerce_map_configs(value):
+        if isinstance(value, str):
+            for parser in (json.loads, ast.literal_eval):
+                try:
+                    value = parser(value)
+                    break
+                except (ValueError, SyntaxError, TypeError):
+                    continue
+        if not isinstance(value, list):
+            return value
+        return [dict(entry) if isinstance(entry, dict) else entry for entry in value]
 
     # ── 读取接口 ──────────────────────────────────────────────────────────
 
@@ -144,6 +159,8 @@ class JsonConfigAdapter:
             self._data[section] = {}
         if section == "Map" and option == "providers":
             self._data[section][option] = self._coerce_map_providers(value)
+        elif section == "Map" and option == "configs":
+            self._data[section][option] = self._coerce_map_configs(value)
         else:
             self._data[section][option] = str(value) if value is not None else ""
 
@@ -180,7 +197,7 @@ class JsonConfigAdapter:
                         "baidu_map_ak",
                     }:
                         continue
-                    section_data[key] = value if isinstance(value, dict) else str(value)
+                    section_data[key] = value if isinstance(value, (dict, list)) else str(value)
                 data[section] = section_data
             with tempfile.NamedTemporaryFile(
                 "w", encoding="utf-8", delete=False, dir=parent_dir, suffix=".tmp"
@@ -209,6 +226,8 @@ class JsonConfigAdapter:
                 for k, v in opts.items():
                     if sec == "Map" and k == "providers":
                         self._data[sec][k] = self._coerce_map_providers(v)
+                    elif sec == "Map" and k == "configs":
+                        self._data[sec][k] = self._coerce_map_configs(v)
                     else:
                         self._data[sec][k] = str(v)
             self._path = filename

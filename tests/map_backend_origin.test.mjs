@@ -20,5 +20,7 @@ const clonedInput = { value: '' }
 context.useCurrentMapPageOrigin({ parentElement: { querySelector: () => clonedInput } })
 assert.equal(clonedInput.value, 'https://app.test:8443')
 assert.match(legacy, /const panel = sourceButton\?\.closest/)
-assert.match(legacy, /delete directUpdate\.map_providers\[pKey\]\.backend_page_origin/)
+assert.match(legacy, /map_config_id: configData\.Map\.frontend_config_id/)
+assert.match(legacy, /id, name, provider, backend_page_origin, \.\.\.frontendKeys/)
+assert.match(legacy, /directUpdate\.map_providers\[provider\] = \{ \.\.\.frontendKeys/)
 console.log('map backend origin: normalization, cloned mobile controls, and frontend boundary passed')

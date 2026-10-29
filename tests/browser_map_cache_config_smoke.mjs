@@ -33,6 +33,10 @@ const legacyMode = mainSource.slice(modeStart, modeEnd)
 const legacyConfig = functions(mainSource, ['loadSystemConfig']) + '\n' + functions(adminSource, [
   'escapeHtml', 'normalizeBackendPageOrigin', 'useCurrentMapPageOrigin',
   'toggleMapTileCacheSettings', 'saveSystemConfig',
+  'getMapConfigProviderDetails', 'normalizeLegacyMapConfigSettings', 'escapeMapConfigAttribute',
+  'renderMapConfigCard', 'renderMapConfigCards', 'validateMapConfigOrigin', 'syncMapConfigCardOptions',
+  'initMapConfigCardsSort', 'addMapConfigCard', 'removeMapConfigCard', 'moveMapConfigCard',
+  'readMapConfigCards', 'copyMapConfigEditorState',
 ]) + '\n' + functions(mobileSource, ['copyAdminContentToMobile'])
 const legacyPayment = functions(paymentSource, ['checkOverdueBeforeStart'])
 const { descriptor, errors: parseErrors } = parse(await read('frontend/src/components/admin/AdminConfig.vue'))
@@ -40,6 +44,12 @@ assert.deepEqual(parseErrors, [])
 const compiledConfig = compileScript(descriptor, { id: 'cache-config-browser', inlineTemplate: true }).content
   .replaceAll("'@/services/api'", "'/fixture/api.js'")
   .replaceAll("'@/services/mapBackendOrigin'", "'/fixture/origin.js'")
+  .replaceAll("'@/utils/mapConfigProfiles'", "'/fixture/profiles.js'")
+  .replaceAll("'./MapConfigCards.vue'", "'/fixture/MapConfigCards.js'")
+const cardsDescriptor = parse(await read('frontend/src/components/admin/MapConfigCards.vue')).descriptor
+const compiledCards = compileScript(cardsDescriptor, { id: 'map-config-cards-browser', inlineTemplate: true }).content
+  .replaceAll("'@/services/mapBackendOrigin'", "'/fixture/origin.js'")
+  .replaceAll("'@/utils/mapConfigProfiles'", "'/fixture/profiles.js'")
 const paymentModule = (await read('frontend/src/composables/usePayment.js'))
   .replaceAll("'@/services/api'", "'/fixture/api.js'")
   .replaceAll("'@/stores/auth'", "'/fixture/auth.js'")
@@ -52,6 +62,9 @@ const importMap = '<script type="importmap">{"imports":{"vue":"/fixture/vue.js",
 const head = `<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="${stylesheet}">${importMap}`
 const modules = new Map([
   ['/fixture/AdminConfig.js', compiledConfig],
+  ['/fixture/MapConfigCards.js', compiledCards],
+  ['/fixture/profiles.js', await read('frontend/src/utils/mapConfigProfiles.js')],
+  ['/fixture/sortable.js', await read('cache/cdn/sortable.min.js')],
   ['/fixture/origin.js', await read('frontend/src/services/mapBackendOrigin.js')],
   ['/fixture/app.js', await read('frontend/src/stores/app.js')],
   ['/fixture/payment.js', paymentModule],
@@ -153,7 +166,7 @@ const server = createServer(async (req, res) => {
       const mobile = new URL(req.url, 'http://127.0.0.1').searchParams.get('mobile') === '1'
       const content = path === '/vue'
         ? '<div id="app"></div><script type="module" src="/fixture/vue-entry.js"></script>'
-        : `<div id="admin-config-panel_modal"><div id="admin-config-form"></div><button id="admin-save-config_modal" onclick="saveSystemConfig(this)">保存配置</button></div><div id="mobile-admin-config-content-panel"></div><script src="/fixture/legacy-entry.js"></script><script>startFixture(${mobile});</script>`
+        : `<div id="admin-config-panel_modal"><div id="admin-config-form"></div><button id="admin-save-config_modal" onclick="saveSystemConfig(this)">保存配置</button></div><div id="mobile-admin-config-content-panel"></div><script src="/fixture/sortable.js"></script><script src="/fixture/legacy-entry.js"></script><script>startFixture(${mobile});</script>`
       res.writeHead(200, { 'Content-Type': 'text/html' }).end(`<!doctype html><html><head>${head}</head><body style="padding:16px"><button id="offline-check">离线执行前检查</button><output id="offline-result"></output>${content}</body></html>`)
       return
     }
@@ -165,6 +178,21 @@ const server = createServer(async (req, res) => {
   }
 })
 
+export async function createMapConfigBrowserFixture(initialConfig) {
+  config = structuredClone(initialConfig)
+  saved = []
+  requests = []
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  return {
+    base: `http://127.0.0.1:${server.address().port}`,
+    get saved() { return saved },
+    get requests() { return requests },
+    setConfig(value) { config = structuredClone(value); saved = []; requests = [] },
+    async close() { await new Promise(resolve => server.close(resolve)); assert.equal(server.listening, false) },
+  }
+}
+
+export async function runMapCacheConfigSmoke() {
 let browser
 try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -251,3 +279,6 @@ try {
   assert.equal(server.listening, false)
   if (browser) assert.equal(browser.isConnected(), false)
 }
+}
+
+if (resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) await runMapCacheConfigSmoke()

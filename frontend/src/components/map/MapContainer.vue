@@ -388,6 +388,7 @@ async function initMap() {
   if (proxy) {
     try {
       await proxy.initialize({
+        map_config_id: mapStore.mapConfig.frontendConfigId,
         enabled: mapStore.mapConfig.frontendProxyEnabled === true,
         provider,
         sessionId: auth.getSessionHeaderValue?.('get_initial_data') || auth.sessionUUID || '',
@@ -1042,6 +1043,7 @@ watch([
   () => mapStore.getKeyRequirement().value,
   () => mapStore.mapConfig.amapSecurityJsCode,
   () => mapStore.mapConfig.frontendProxyEnabled,
+  () => mapStore.mapConfig.frontendConfigId,
   () => auth.sessionUUID,
   () => auth.adminOriginSession,
 ], async () => {

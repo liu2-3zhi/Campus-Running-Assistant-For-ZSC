@@ -173,7 +173,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
         source = API_RUNTIME_PATH.read_text(encoding="utf-8")
         main_source = MAIN_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('def save_map_provider_key(self, provider, api_key):', source)
+        self.assertIn('def save_map_provider_key(self, provider, api_key, config_id=None):', source)
         self.assertIn(
             'key_field = _main().MAP_PROVIDER_KEY_FIELDS[provider]',
             source,

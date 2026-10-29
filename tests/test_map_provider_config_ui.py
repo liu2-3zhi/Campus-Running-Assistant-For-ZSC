@@ -49,18 +49,13 @@ class TestMapProviderConfigUi(unittest.TestCase):
             "\nasync function saveSystemConfig() {",
         )
 
-        self.assertIn("地图提供方", load_system_config_source)
-        self.assertIn('"select",', load_system_config_source)
-        self.assertIn("amap、tencent、tianditu、baidu", load_system_config_source)
-        self.assertIn('selectOptions: [', load_system_config_source)
-        self.assertIn('{ value: "amap", label: "高德地图" }', load_system_config_source)
-        self.assertIn('{ value: "tencent", label: "腾讯地图" }', load_system_config_source)
-        self.assertIn('{ value: "tianditu", label: "天地图" }', load_system_config_source)
-        self.assertIn('{ value: "baidu", label: "百度地图" }', load_system_config_source)
-        self.assertIn('createInput(\n      "Map.providers.amap",\n      "js_key",', load_system_config_source)
-        self.assertIn('createInput(\n      "Map.providers.tencent",\n      "map_key",', load_system_config_source)
-        self.assertIn('createInput(\n      "Map.providers.tianditu",\n      "token",', load_system_config_source)
-        self.assertIn('createInput(\n      "Map.providers.baidu",\n      "ak",', load_system_config_source)
+        self.assertIn('renderMapConfigCards(config.Map || {})', load_system_config_source)
+        self.assertIn('initMapConfigCardsSort(formContainer)', load_system_config_source)
+        for marker in ('data-map-config-select="frontend"', 'data-map-config-select="backend"',
+                       'data-map-drag-handle', 'data-map-config-field="name"'):
+            self.assertIn(marker, source)
+        for field in ('js_key', 'map_key', 'token', 'ak', 'security_js_code'):
+            self.assertIn(field, source)
 
     def test_load_system_config_does_not_duplicate_html_accumulator(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + ADMIN_CONFIG_PATH.read_text(
@@ -84,11 +79,10 @@ class TestMapProviderConfigUi(unittest.TestCase):
             "\nfunction showTempMessage",
         )
 
-        self.assertIn('provider: $("config-Map-provider").value', save_system_config_source)
-        self.assertIn('providers: {', save_system_config_source)
-        for provider, field in (("amap", "js_key"), ("tencent", "map_key"), ("tianditu", "token"), ("baidu", "ak")):
-            self.assertIn(f'{provider}: {{ {field}: $("config-Map.providers.{provider}-{field}").value', save_system_config_source)
-        self.assertIn('security_js_code: $("config-Map.providers.amap-security_js_code").value', save_system_config_source)
+        self.assertIn('...readMapConfigCards(panel)', save_system_config_source)
+        self.assertIn('configData.Map.frontend_config_id', save_system_config_source)
+        self.assertIn('map_provider: newProvider', save_system_config_source)
+        self.assertNotIn('config-Map-provider', save_system_config_source)
         self.assertIn('normalizeBackendPageOrigin($("config-Map-backend_page_origin").value)', save_system_config_source)
 
     def test_save_system_config_defers_map_provider_runtime_switch(self):
@@ -121,7 +115,7 @@ class TestMapProviderConfigUi(unittest.TestCase):
             '@app.route("/api/admin/config/save", methods=["POST"])',
         )
 
-        self.assertIn('"provider": _get_active_map_provider(config)', config_load_source)
+        self.assertIn('"provider": _get_active_map_provider(config, scope="frontend")', config_load_source)
         for provider in ("amap", "tencent", "tianditu", "baidu"):
             self.assertIn(f'"{provider}": _get_map_provider_admin_config(config, provider="{provider}")', config_load_source)
         self.assertIn('"backend_page_origin": config.get("Map", "backend_page_origin", fallback="")', config_load_source)

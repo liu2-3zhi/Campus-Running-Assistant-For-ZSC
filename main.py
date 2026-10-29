@@ -14,7 +14,7 @@ from flask import jsonify, make_response, request, send_from_directory
 
 from payment_crypto import RsaSigner
 from config_adapter import JsonConfigAdapter
-from map_runtime_origin import get_tile_cache_settings, merge_map_settings, resolve_backend_page_origin
+from map_runtime_origin import get_map_config_selection, get_map_config_settings, get_tile_cache_settings, merge_map_settings, resolve_backend_page_origin
 from log_archiving import ArchiveManager, move_no_replace
 from auto_attendance_config import (
     _disable_auto_attendance,
@@ -722,17 +722,18 @@ def _normalize_map_provider(provider):
 
 
 
-def _get_active_map_provider(config=None):
+def _get_active_map_provider(config=None, scope="backend"):
     runtime_config = config or _read_config_ini(CONFIG_FILE)
-    configured_provider = runtime_config.get("Map", "provider", fallback="amap")
+    configured_provider = get_map_config_selection(runtime_config, scope=scope)["provider"]
     return _normalize_map_provider(configured_provider)
 
 
 
-def _get_map_provider_runtime_config(config=None, provider=None):
+def _get_map_provider_runtime_config(config=None, provider=None, scope="backend"):
     runtime_config = config or _read_config_ini(CONFIG_FILE)
-    provider = _normalize_map_provider(provider or _get_active_map_provider(runtime_config))
-    providers_config = runtime_config.get("Map", "providers", fallback=None)
+    provider = _normalize_map_provider(provider or _get_active_map_provider(runtime_config, scope=scope))
+    selected = get_map_config_selection(runtime_config, scope=scope, provider=provider)
+    providers_config = {provider: selected}
     if isinstance(providers_config, dict):
         amap_provider = providers_config.get("amap") or {}
         tencent_provider = providers_config.get("tencent") or {}
@@ -748,8 +749,7 @@ def _get_map_provider_runtime_config(config=None, provider=None):
             "provider": "amap",
             "display_name": MAP_PROVIDER_DISPLAY_NAMES["amap"],
             "js_key": str(
-                amap_provider.get("js_key")
-                or runtime_config.get("Map", "amap_js_key", fallback="")
+                amap_provider.get("js_key", "")
             ).strip(),
             "security_js_code": str(amap_provider.get("security_js_code") or "").strip(),
             "coordinate_system": "gcj02",
@@ -759,8 +759,7 @@ def _get_map_provider_runtime_config(config=None, provider=None):
             "provider": "tencent",
             "display_name": MAP_PROVIDER_DISPLAY_NAMES["tencent"],
             "map_key": str(
-                tencent_provider.get("map_key")
-                or runtime_config.get("Map", "tencent_map_key", fallback="")
+                tencent_provider.get("map_key", "")
             ).strip(),
             "coordinate_system": "gcj02",
             "business_coordinate_system": "gcj02",
@@ -769,8 +768,7 @@ def _get_map_provider_runtime_config(config=None, provider=None):
             "provider": "tianditu",
             "display_name": MAP_PROVIDER_DISPLAY_NAMES["tianditu"],
             "token": str(
-                tianditu_provider.get("token")
-                or runtime_config.get("Map", "tianditu_token", fallback="")
+                tianditu_provider.get("token", "")
             ).strip(),
             "coordinate_system": "wgs84",
             "business_coordinate_system": "gcj02",
@@ -779,43 +777,52 @@ def _get_map_provider_runtime_config(config=None, provider=None):
             "provider": "baidu",
             "display_name": MAP_PROVIDER_DISPLAY_NAMES["baidu"],
             "ak": str(
-                baidu_provider.get("ak")
-                or runtime_config.get("Map", "baidu_map_ak", fallback="")
+                baidu_provider.get("ak", "")
             ).strip(),
             "coordinate_system": "bd09",
             "business_coordinate_system": "gcj02",
         },
     }
-    return provider_configs[provider]
+    result = provider_configs[provider]
+    if runtime_config.has_option("Map", "configs"):
+        result["config_id"] = selected.get("id", "")
+    return result
 
 
 def _get_map_provider_admin_config(config, provider):
-    provider_config = dict(_get_map_provider_runtime_config(config, provider=provider))
-    providers = config.get("Map", "providers", fallback=None)
-    stored = providers.get(provider, {}) if isinstance(providers, dict) else {}
+    provider_config = dict(_get_map_provider_runtime_config(config, provider=provider, scope="frontend"))
+    stored = get_map_config_selection(config, provider=provider, scope="frontend")
     provider_config["backend_page_origin"] = stored.get("backend_page_origin", "") if isinstance(stored, dict) else ""
     return provider_config
 
 
 def _get_map_provider_frontend_config(config=None):
     runtime_config = config or _read_config_ini(CONFIG_FILE)
-    map_provider = _get_active_map_provider(runtime_config)
+    map_provider = _get_active_map_provider(runtime_config, scope="frontend")
     proxy_value = str(
         runtime_config.get("Map", "frontend_proxy_enabled", fallback="false")
     ).strip().lower()
     frontend_proxy_enabled = proxy_value in {"1", "true", "yes", "on"}
     map_providers = {
-        "amap": _get_map_provider_runtime_config(runtime_config, provider="amap"),
-        "tencent": _get_map_provider_runtime_config(runtime_config, provider="tencent"),
-        "tianditu": _get_map_provider_runtime_config(runtime_config, provider="tianditu"),
-        "baidu": _get_map_provider_runtime_config(runtime_config, provider="baidu"),
+        "amap": _get_map_provider_runtime_config(runtime_config, provider="amap", scope="frontend"),
+        "tencent": _get_map_provider_runtime_config(runtime_config, provider="tencent", scope="frontend"),
+        "tianditu": _get_map_provider_runtime_config(runtime_config, provider="tianditu", scope="frontend"),
+        "baidu": _get_map_provider_runtime_config(runtime_config, provider="baidu", scope="frontend"),
     }
+    if runtime_config.has_option("Map", "configs"):
+        for provider, provider_config in map_providers.items():
+            if provider != map_provider:
+                provider_config.pop(MAP_PROVIDER_KEY_FIELDS[provider], None)
+                provider_config.pop("security_js_code", None)
+                provider_config.pop("config_id", None)
     for provider_config in map_providers.values():
         provider_config["frontend_proxy_enabled"] = frontend_proxy_enabled
     return {
         "map_provider": map_provider,
         "map_providers": map_providers,
         "frontend_proxy_enabled": frontend_proxy_enabled,
+        **({"map_config_id": map_providers[map_provider].get("config_id", "")}
+           if runtime_config.has_option("Map", "configs") else {}),
     }
 
 
@@ -966,7 +973,8 @@ def _build_public_map_provider_frontend_payload(
     frontend_config = _get_map_provider_frontend_config(config)
     map_providers = frontend_config.get("map_providers", {})
     provider = _normalize_map_provider(
-        required_provider or frontend_config.get("map_provider", "amap")
+        frontend_config.get("map_provider", "amap") if "map_config_id" in frontend_config
+        else required_provider or frontend_config.get("map_provider", "amap")
     )
     runtime_context = None
     normalized_session_id, session_username, session_exists = (
@@ -981,6 +989,7 @@ def _build_public_map_provider_frontend_payload(
         "map_provider": frontend_config.get("map_provider", "amap"),
         "map_providers": _strip_map_provider_secret_fields(map_providers),
         "frontend_proxy_enabled": frontend_config.get("frontend_proxy_enabled") is True,
+        **({"map_config_id": frontend_config["map_config_id"]} if "map_config_id" in frontend_config else {}),
         "map_provider_key_bundle": _build_map_provider_key_bundle(
             map_providers,
             provider=provider,
@@ -997,15 +1006,10 @@ def _resolve_amap_js_key(config=None):
         runtime_config = config or _read_config_ini(CONFIG_FILE)
     if runtime_config is None:
         runtime_config = _get_default_config()
-    providers_config = runtime_config.get("Map", "providers", fallback=None)
-    if isinstance(providers_config, str):
-        providers_config = JsonConfigAdapter._coerce_map_providers(providers_config)
-    if isinstance(providers_config, dict):
-        amap_provider = providers_config.get("amap") or {}
-        amap_js_key = str(amap_provider.get("js_key", "")).strip()
-        if amap_js_key:
-            return amap_js_key
-    return str(runtime_config.get("Map", "amap_js_key", fallback="")).strip()
+    selected = get_map_config_selection(runtime_config, scope="frontend")
+    if selected["provider"] != "amap":
+        return ""
+    return str(selected.get("js_key", "")).strip()
 
 
 

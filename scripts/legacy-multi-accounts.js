@@ -1403,39 +1403,6 @@ function syncMultiAccountAutoRefreshBySocketState() {
   }
 }
 
-async function process_path_queue() {
-  if (is_planning_path || path_planning_queue.length === 0) return;
-  is_planning_path = true;
-  const { username, waypoints } = path_planning_queue.shift();
-  try {
-    if (getActiveMapProvider() !== "amap") {
-      throw new Error("旧版前端路径规划队列仅支持高德地图；请使用后端多地图供应商路径规划。");
-    }
-    logMessage_Info(`[JS-Queue] 开始处理 ${username} 的路径规划...`);
-    const path = await getWalkingPath(waypoints);
-    logMessage_Info(
-      `[JS-Queue] 路径规划成功 for ${username}, 返回 ${path.length} 点给Python。`,
-    );
-    callPythonAPI("multi_path_generation_callback", username, true, path);
-  } catch (error) {
-    logMessage_Info(`[JS-Queue] 路径规划失败 for ${username}: ${error}`);
-    callPythonAPI(
-      "multi_path_generation_callback",
-      username,
-      false,
-      String(error),
-    );
-  } finally {
-    is_planning_path = false;
-    setTimeout(process_path_queue, 100);
-  }
-}
-function triggerPathGenerationForPy(username, waypoints) {
-  logMessage_Info(`收到 ${username} 的路径规划请求，已加入队列。`);
-  path_planning_queue.push({ username, waypoints });
-  process_path_queue();
-}
-
 function updateMobileSelectAllCheckboxState() {
   const container = document.getElementById("mobile-multi-account-list");
   if (!container) return;

@@ -2581,6 +2581,7 @@ class Api:
                 "map_provider": map_public_payload["map_provider"],
                 "map_providers": map_public_payload["map_providers"],
                 "map_provider_key_bundle": map_public_payload["map_provider_key_bundle"],
+                **({"map_config_id": map_public_payload["map_config_id"]} if "map_config_id" in map_public_payload else {}),
                 "isLoggedIn": is_logged_in,
                 "userInfo": user_info,
                 "is_authenticated": is_authenticated,
@@ -2745,7 +2746,7 @@ class Api:
             logging.error(f"获取用户会话列表时发生错误: {e}", exc_info=True)
             return {"success": False, "message": f"服务器内部错误: {e}"}
 
-    def save_map_provider_key(self, provider, api_key):
+    def save_map_provider_key(self, provider, api_key, config_id=None):
         """由JS调用，保存当前地图提供方对应的 API Key 到主配置文件。"""
         try:
             provider = _main()._normalize_map_provider(provider)
@@ -2758,16 +2759,18 @@ class Api:
 
             if not cfg.has_section("Map"):
                 cfg.add_section("Map")
-            providers = cfg.get("Map", "providers", fallback={})
-            if isinstance(providers, str):
-                providers = _main().JsonConfigAdapter._coerce_map_providers(providers)
-            if not isinstance(providers, dict):
-                providers = {}
-
-            provider_config = providers.get(provider) or {}
-            provider_config[key_field] = api_key
-            providers[provider] = provider_config
-            cfg.set("Map", "providers", providers)
+            settings = _main().get_map_config_settings(cfg)
+            selected = next(item for item in settings["configs"]
+                            if item["id"] == settings["frontend_config_id"])
+            if selected["provider"] != provider or (config_id is not None and config_id != selected["id"]):
+                return {"success": False, "message": "地图配置已切换，请刷新页面后重新输入 Key"}
+            selected[key_field] = api_key
+            map_updates = _main().merge_map_settings(cfg, settings)
+            for field in ("configs", "frontend_config_id", "backend_config_id", "providers", "provider"):
+                value = map_updates[field]
+                if isinstance(cfg, configparser.ConfigParser) and isinstance(value, (dict, list)):
+                    value = json.dumps(value, ensure_ascii=False)
+                cfg.set("Map", field, value)
             legacy_keys = {
                 "amap": "amap_js_key",
                 "tencent": "tencent_map_key",
@@ -2796,6 +2799,7 @@ class Api:
                 "map_provider": map_public_payload["map_provider"],
                 "map_providers": map_public_payload["map_providers"],
                 "map_provider_key_bundle": map_public_payload["map_provider_key_bundle"],
+                **({"map_config_id": map_public_payload["map_config_id"]} if "map_config_id" in map_public_payload else {}),
             }
         except Exception as e:
             self.log_and_notify_frontend(f"保存地图API Key失败: {e}")
@@ -3340,6 +3344,7 @@ class Api:
             "map_provider": login_map_payload["map_provider"],
             "map_providers": login_map_payload["map_providers"],
             "map_provider_key_bundle": login_map_payload["map_provider_key_bundle"],
+            **({"map_config_id": login_map_payload["map_config_id"]} if "map_config_id" in login_map_payload else {}),
             # "auth_group": auth_group,
             "cached_notifications": cached_notifications,
         }
@@ -5027,12 +5032,21 @@ class Api:
         if start_coord == end_coord:
             return {"geometry": [start_coord], "distance_m": 0.0, "provider": None}
 
+        provider = None
+        runtime_config = None
         try:
-            provider = _main()._get_active_map_provider()
-        except Exception:  # nosec B110 - 供应商探测失败不阻断主流程
-            provider = None
-
-        cached = _detour_leg_cache_get(provider, start_coord, end_coord)
+            runtime_config = _main()._read_config_ini(_main().CONFIG_FILE)
+            provider = _main()._get_active_map_provider(runtime_config)
+            profile = _main().get_map_config_selection(runtime_config, scope="backend")
+            runtime_fields = {key: value for key, value in profile.items() if key != "name"}
+            cache_provider = (provider, hashlib.sha256(json.dumps(
+                [runtime_fields, runtime_config.get("Map", "backend_page_origin", fallback="")],
+                sort_keys=True, ensure_ascii=True,
+            ).encode("utf-8")).hexdigest())
+        except Exception:
+            # A missing snapshot must not reuse routes from another configuration.
+            cache_provider = (provider, uuid.uuid4().hex)
+        cached = _detour_leg_cache_get(cache_provider, start_coord, end_coord)
         if cached is not None:
             total = 0.0
             for i in range(len(cached) - 1):
@@ -5053,6 +5067,7 @@ class Api:
                 python_params=python_params,
                 guard_label=guard_label,
                 app_base_url=app_base_url,
+                runtime_config=runtime_config,
             )
         except Exception as e:  # noqa: BLE001 - 折返腿失败必须降级而不是中断
             logging.warning(f"[折返规划] 路段规划异常: {e}")
@@ -5084,7 +5099,7 @@ class Api:
             return None
 
         provider_name = result.get("provider") or provider
-        _detour_leg_cache_put(provider_name, start_coord, end_coord, geometry)
+        _detour_leg_cache_put(cache_provider, start_coord, end_coord, geometry)
         return {
             "geometry": geometry,
             "distance_m": total,

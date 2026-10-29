@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import vm from 'node:vm'
+
+const require = createRequire(new URL('../frontend/package.json', import.meta.url))
+const { parse } = require('@babel/parser')
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
 const readBackend = () =>
@@ -40,6 +45,55 @@ test('multi account hydrates map provider secrets before rendering its map', () 
   assert.match(multiView, /mapStore\.setConfig\(/)
   assert.match(multiView, /mapStore\.setProvider\(/)
 })
+
+for (const [path, functionName] of [
+  ['frontend/src/views/MainView.vue', 'loadInitialData'],
+  ['frontend/src/views/MultiAccountView.vue', 'loadMapProviderConfig'],
+]) {
+  test(`${path} clears previous profile credentials when the selected profile has empty keys`, async () => {
+    const source = read(path).match(/<script setup>([\s\S]*?)<\/script>/)[1]
+    const node = parse(source, { sourceType: 'module' }).program.body.find(node => node.type === 'FunctionDeclaration' && node.id.name === functionName)
+    assert.ok(node, 'test the production map-loading function')
+    let payload
+    const app = {
+      captureBusinessContext: () => 'business', isCurrentBusinessContext: () => true,
+      applyBusinessMode() {}, addRoutePlanningFailures() {}, addLog() {},
+    }
+    const auth = { sessionUUID: 'business-session', applyAuthInfo() {} }
+    const mapStore = {
+      config: {}, activeProvider: '',
+      setConfig(config) { Object.assign(this.config, config) },
+      setProvider(provider) { this.activeProvider = provider },
+    }
+    const context = vm.createContext({
+      app, appStore: app, auth, authStore: auth, mapStore, viewMounted: true,
+      callAPI: async () => payload, hydrateMapProviderSecrets: async value => value,
+    })
+    vm.runInContext(source.slice(node.start, node.end), context)
+    const load = () => vm.runInContext(`${functionName}()`, context)
+    payload = { map_provider: 'amap', map_providers: {
+      amap: { js_key: 'first-key', security_js_code: 'first-code' }, tencent: { map_key: 'old-tencent' },
+      tianditu: { token: 'old-tianditu' }, baidu: { ak: 'old-baidu' },
+    } }
+    await load()
+    assert.equal(mapStore.config.amapKey, 'first-key')
+    payload = { map_provider: 'amap', map_config_id: 'empty-amap', map_providers: {
+      amap: { js_key: '', security_js_code: '' }, tencent: { provider: 'tencent' },
+    } }
+    await load()
+    assert.deepEqual(JSON.parse(JSON.stringify(mapStore.config)), {
+      amapKey: '', amapSecurityJsCode: '', tencentKey: '', tiandituKey: '', baiduKey: '', frontendProxyEnabled: false,
+      frontendConfigId: 'empty-amap',
+    })
+    payload = { map_provider: 'tencent', frontend_proxy_enabled: true, map_providers: { tencent: { map_key: 'selected-tencent' } } }
+    await load()
+    assert.equal(mapStore.activeProvider, 'tencent')
+    assert.equal(mapStore.config.tencentKey, 'selected-tencent')
+    assert.equal(mapStore.config.amapKey, '')
+    assert.equal(mapStore.config.frontendProxyEnabled, true)
+    assert.equal(mapStore.config.frontendConfigId, '')
+  })
+}
 
 test('Vue maps use the legacy default center instead of Beijing', () => {
   const mapContainer = read('frontend/src/components/map/MapContainer.vue')

@@ -91,6 +91,58 @@ test('mobile start preserves the legacy automatic route generation behavior', as
   assert.equal(app.isRunning, true)
 })
 
+function pathTools(component, app, mapStore, callAPI) {
+  return componentSetup(`components/main/${component}.vue`, {
+    ref, reactive, computed, watch() {}, onMounted() {}, useAppStore: () => app,
+    useMapStore: () => mapStore, callAPI, callRawAPI: async () => ({ success: true }),
+    checkOverdueBeforeStartByCurrentMode: async () => true,
+    consumeOverdueForceOverride: () => ({ bypass_overdue: false, waive_charge: false }),
+    TabPanel: {}, LogPanel: {}, AppModal: {}, paramDefs: {}, paramGroups: [],
+    formatNotificationTime: () => '', ...taskData,
+  })
+}
+
+for (const [component, method] of [['ControlTabs', 'autoGenPath'], ['MobileControlPanel', 'autoGeneratePath']]) {
+  test(`${component} requests backend planning and only displays its returned geometry`, async () => {
+    const app = makeApp()
+    app.selectedTaskIndex = 0
+    app.runData = { target_points: [[120, 30], [120.01, 30.01]], run_coords: [] }
+    const calls = []
+    const planned = [[120, 30], [120.003, 30.007], [120.01, 30.01]]
+    const panel = pathTools(component, app, {
+      activeProvider: 'tencent', mapConfig: { tencentKey: 'display-only-key', frontendConfigId: 'display-profile' },
+    }, async (...args) => {
+      calls.push(args)
+      return { success: true, run_coords: planned, total_dist: 2345, total_time: 1234 }
+    })
+    await panel[method]()
+    assert.deepEqual(calls, [['auto_generate_path_with_provider', { min_t_m: 20, max_t_m: 30, min_d_m: 2000 }]])
+    assert.deepEqual(app.runData.run_coords, planned)
+    assert.equal(app.runData.total_run_distance_m, 2345)
+    assert.equal(app.runData.total_run_time_s, 1234)
+    assert.ok(!JSON.stringify(calls).includes('display-only-key'))
+    assert.ok(!JSON.stringify(calls).includes('display-profile'))
+  })
+}
+
+test('desktop hand drawing sends raw GCJ-02 points to backend processing without invoking a provider planner', async () => {
+  const app = makeApp()
+  app.selectedTaskIndex = 0
+  const points = [{ lng: 120, lat: 30 }, { lng: 120.01, lat: 30.01 }]
+  const mapStore = {
+    activeProvider: 'baidu', isDrawing: true, draftPoints: points.slice(),
+    stopDrawing() { this.isDrawing = false }, clearDraft() { this.draftPoints = [] },
+  }
+  const calls = []
+  const panel = pathTools('ControlTabs', app, mapStore, async (...args) => { calls.push(args); return { success: true } })
+  await panel.recordPath()
+  assert.deepEqual(calls, [
+    ['set_draft_path', points.map(point => ({ ...point, isKey: 0 }))], ['process_path'],
+  ])
+  assert.equal(mapStore.isDrawing, false)
+  assert.deepEqual(mapStore.draftPoints, [])
+})
+
 for (const provider of ['amap', 'tencent', 'tianditu', 'baidu']) {
   test(`${provider} renders selected task routes, retains segment breaks, and does not mutate execution coordinates`, () => {
     const added = []

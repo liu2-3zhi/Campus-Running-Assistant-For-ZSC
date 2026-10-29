@@ -1576,6 +1576,7 @@ function copyAdminContentToMobile(tabType, mobileContentId) {
       ? captureHealthScrollPositions(mobileContainer)
       : null;
   mobileContainer.innerHTML = pcContainer.innerHTML;
+  if (tabType === "config") copyMapConfigEditorState(pcContainer, mobileContainer);
   mobileContainer.querySelectorAll("button").forEach((btn) => {
     btn.classList.add("!text-xs", "!py-1", "!px-2");
   });
@@ -1659,6 +1660,7 @@ function copyAdminContentToPanelVersion(tabType) {
       ? captureHealthScrollPositions(mobileContainer)
       : null;
   mobileContainer.innerHTML = pcContainer.innerHTML;
+  if (tabType === "config") copyMapConfigEditorState(pcContainer, mobileContainer);
   mobileContainer.querySelectorAll("button").forEach((btn) => {
     btn.classList.add("!text-xs", "!py-1", "!px-2");
   });
@@ -1774,6 +1776,7 @@ function copyAdminContentToMultiPanel(tabType) {
   withMobileAdminUnifiedScrollGuard(tabType, () => {
     // 将PC端内容复制到移动端容器
     mobileContainer.innerHTML = pcContainer.innerHTML;
+    if (tabType === "config") copyMapConfigEditorState(pcContainer, mobileContainer);
   }, { restoreMode: "replace" });
 
   syncMobileAdminUnifiedPanelScroll(tabType, { restoreMode: "replace" });

@@ -646,15 +646,16 @@ async function loadMapProviderConfig() {
     const data = await hydrateMapProviderSecrets(responseData)
     if (!viewMounted || requestSession !== authStore.sessionUUID || !appStore.isCurrentBusinessContext(context)) return
     appStore.applyBusinessMode(data, context)
-    const mapConfig = {}
     const providers = data?.map_providers || {}
-    if (providers.amap?.js_key) mapConfig.amapKey = providers.amap.js_key
-    if (providers.amap) mapConfig.amapSecurityJsCode = providers.amap.security_js_code || ''
-    if (providers.tencent?.map_key) mapConfig.tencentKey = providers.tencent.map_key
-    if (providers.tianditu?.token) mapConfig.tiandituKey = providers.tianditu.token
-    if (providers.baidu?.ak) mapConfig.baiduKey = providers.baidu.ak
-    mapConfig.frontendProxyEnabled = data?.frontend_proxy_enabled === true
-    if (Object.keys(mapConfig).length > 0) mapStore.setConfig(mapConfig)
+    mapStore.setConfig({
+      amapKey: providers.amap?.js_key || '',
+      amapSecurityJsCode: providers.amap?.security_js_code || '',
+      tencentKey: providers.tencent?.map_key || '',
+      tiandituKey: providers.tianditu?.token || '',
+      baiduKey: providers.baidu?.ak || '',
+      frontendProxyEnabled: data?.frontend_proxy_enabled === true,
+      frontendConfigId: data?.map_config_id || '',
+    })
     if (data?.map_provider) mapStore.setProvider(data.map_provider)
   } catch (error) {
     if (viewMounted && requestSession === authStore.sessionUUID) appStore.addLog(`加载地图配置失败: ${error.message || error}`, 'ERROR', 'Multi')

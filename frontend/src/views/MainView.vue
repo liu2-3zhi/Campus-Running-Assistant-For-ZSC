@@ -110,15 +110,16 @@ async function loadInitialData() {
         app.pythonParams = params
       }
 
-      const mapConfig = {}
       const providers = data.map_providers || {}
-      if (providers.amap?.js_key) mapConfig.amapKey = providers.amap.js_key
-      if (providers.amap) mapConfig.amapSecurityJsCode = providers.amap.security_js_code || ''
-      if (providers.tencent?.map_key) mapConfig.tencentKey = providers.tencent.map_key
-      if (providers.tianditu?.token) mapConfig.tiandituKey = providers.tianditu.token
-      if (providers.baidu?.ak) mapConfig.baiduKey = providers.baidu.ak
-      mapConfig.frontendProxyEnabled = data.frontend_proxy_enabled === true
-      if (Object.keys(mapConfig).length > 0) mapStore.setConfig(mapConfig)
+      mapStore.setConfig({
+        amapKey: providers.amap?.js_key || '',
+        amapSecurityJsCode: providers.amap?.security_js_code || '',
+        tencentKey: providers.tencent?.map_key || '',
+        tiandituKey: providers.tianditu?.token || '',
+        baiduKey: providers.baidu?.ak || '',
+        frontendProxyEnabled: data.frontend_proxy_enabled === true,
+        frontendConfigId: data.map_config_id || '',
+      })
       if (data.map_provider) mapStore.setProvider(data.map_provider)
       if (data.task_status) await backgroundTask.applyStatus(data.task_status)
 

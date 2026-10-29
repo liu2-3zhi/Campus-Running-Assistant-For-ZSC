@@ -8374,7 +8374,8 @@ def start_web_server(args_param):
                     ),
                 },
                 "Map": {
-                    "provider": _main()._get_active_map_provider(config),
+                    "provider": _main()._get_active_map_provider(config, scope="frontend"),
+                    **_main().get_map_config_settings(config),
                     **_main().get_tile_cache_settings(config),
                     "backend_page_origin": config.get("Map", "backend_page_origin", fallback=""),
                     "frontend_proxy_enabled": str(config.get(
@@ -8734,6 +8735,12 @@ def start_web_server(args_param):
             if map_updates is not None:
                 ensure_section(config, "Map")
                 config.set("Map", "provider", _main()._normalize_map_provider(map_updates["provider"]))
+                config.set("Map", "frontend_config_id", map_updates["frontend_config_id"])
+                config.set("Map", "backend_config_id", map_updates["backend_config_id"])
+                config.set(
+                    "Map", "configs",
+                    json.dumps(map_updates["configs"], ensure_ascii=False) if isinstance(config, configparser.ConfigParser) else map_updates["configs"],
+                )
                 config.set("Map", "backend_page_origin", map_updates["backend_page_origin"])
                 config.set("Map", "frontend_proxy_enabled", str(map_updates["frontend_proxy_enabled"]).lower())
                 config.set("Map", "tile_cache_ttl_days", str(map_updates["tile_cache_ttl_days"]))

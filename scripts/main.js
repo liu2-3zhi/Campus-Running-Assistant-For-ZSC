@@ -3670,8 +3670,6 @@ const userColors = [
   "#FF5722",
 ];
 let colorIndex = 0;
-let path_planning_queue = [];
-let is_planning_path = false;
 
 let currentSessionUA = "";
 
@@ -15422,6 +15420,9 @@ function loadAMapOnce() {
     installGenericMapRuntimeGuards();
     return Promise.resolve(null);
   }
+  if (typeof assertMapSdkConfigSignature === "function") {
+    assertMapSdkConfigSignature("amap", AMAP_API_KEY, String(getMapProviderConfig("amap").security_js_code || "").trim());
+  }
   if (AMapReady && AMapInstance) return Promise.resolve(AMapInstance);
   if (amapLoadingPromise) return amapLoadingPromise;
   if (window.AMap && window.AMap.ControlBar) {
@@ -15444,7 +15445,7 @@ function loadAMapOnce() {
   amapLoadingPromise = AMapLoader.load({
     key: AMAP_API_KEY,
     version: "2.0",
-    plugins: ["AMap.ControlBar", "AMap.BuildingLayer", "AMap.Walking"],
+    plugins: ["AMap.ControlBar", "AMap.BuildingLayer"],
   })
     .then((AMap) => {
       AMapInstance = AMap;
@@ -16284,6 +16285,7 @@ async function onConfirmAmapKey() {
   try {
     const mapProviderSessionUUID = getAuthenticatedSessionHeaderValue();
     let result = await callPythonAPI("save_map_provider_key", {
+      config_id: $("amap-key-input").dataset.configId || window.APP_CONFIG?.map_config_id,
       provider: requirement.provider,
       api_key: newKey,
     });
@@ -17609,8 +17611,6 @@ async function switchToMultiMode() {
 async function exitMultiMode() {
   stopMultiAccountAutoRefresh();
 
-  path_planning_queue = [];
-  is_planning_path = false;
   await callPythonAPI("exit_multi_account_mode");
   if (isMobileMode) {
     if (typeof destroyMobileMultiMap === "function") {
@@ -20119,7 +20119,7 @@ async function pollBackgroundTaskStatus() {
       }
       if (status.status === "running") {
         activeTaskMapProviderLock =
-          normalizeSupportedMapProvider(status.map_provider) ||
+          (typeof window !== "undefined" && window.APP_CONFIG?.map_config_id ? getActiveMapProvider() : normalizeSupportedMapProvider(status.map_provider)) ||
           activeTaskMapProviderLock ||
           getActiveMapProvider();
         singleRunProgressVisualActive = true;
@@ -20292,7 +20292,7 @@ async function checkBackgroundTaskOnLoad() {
       if (!acceptLegacyRunnerExecution(status, true)) return false;
       if (status.status === "running") {
         activeTaskMapProviderLock =
-          normalizeSupportedMapProvider(status.map_provider) ||
+          (typeof window !== "undefined" && window.APP_CONFIG?.map_config_id ? getActiveMapProvider() : normalizeSupportedMapProvider(status.map_provider)) ||
           activeTaskMapProviderLock ||
           getActiveMapProvider();
         singleRunProgressVisualActive = true;
@@ -20716,135 +20716,6 @@ async function importTask() {
   };
   input.click();
 }
-async function getWalkingPath(waypoints) {
-  if (getActiveMapProvider() !== "amap") {
-    throw new Error("getWalkingPath 仅支持高德地图；当前供应商请使用后端多地图路径规划。");
-  }
-  if (!AMapInstance || waypoints.length < 2)
-    throw new Error("地图实例未加载或路径点少于2");
-  const useFallback = pythonParams.api_fallback_line ?? false,
-    maxRetries = pythonParams.api_retries ?? 2,
-    retryDelayMs = (pythonParams.api_retry_delay_s ?? 0.5) * 1000,
-    queueIntervalMs = (pythonParams.api_queue_interval_s ??0.1) * 1000;
-  const maxFailedWaves =2;
-  callPythonAPI(
-    "js_log",
-    "INFO",
-    `开始路径规划: 重试=${maxRetries}次, 延迟=${retryDelayMs}ms, 排队间隔=${queueIntervalMs}ms, 备用直线=${useFallback}`,
-  );
-  const all_path = [];
-  const areCoordsEqual = (c1, c2) =>
-    Math.abs(c1.lng - c2.lng) < 1e-6 && Math.abs(c1.lat - c2.lat) < 1e-6;
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
-  const searchSegment = (segmentIndex, start, end) =>
-    new Promise((resolve) => {
-      callPythonAPI(
-        "js_log",
-        "DEBUG",
-        `AMap API请求 --> 第 ${segmentIndex + 1} 段步行路径: ${start.toString()} 至 ${end.toString()}`,
-      );
-      new AMap.Walking({
-        map: null,
-        panel: "",
-        hideMarkers: true,
-      }).search(start, end, (status, result) => {
-        if (status === "complete" && result.routes?.length > 0) {
-          const p = [];
-          result.routes[0].steps.forEach((s) =>
-            s.path.forEach((pt) => p.push({ lng: pt.lng, lat: pt.lat })),
-          );
-          callPythonAPI(
-            "js_log",
-            "DEBUG",
-            `AMap API响应 <-- 成功，点数: ${p.length}`,
-          );
-          resolve({ path: p });
-        } else {
-          let info = result ? result.info || JSON.stringify(result) : "NULL";
-          callPythonAPI(
-            "js_log",
-            "ERROR",
-            `AMap API响应 <-- 失败. 状态: ${status}, 结果: ${info}`,
-          );
-          resolve({ path: [], error: info });
-        }
-      });
-    });
-  const segmentCount = waypoints.length - 1;
-  const segmentPaths = Array(segmentCount).fill(null);
-  const segmentErrors = Array(segmentCount).fill(null);
-  const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
-  let consecutiveFailedWaves =0;
-
-  while (pendingIndexes.length >0) {
-    const waveIndexes = pendingIndexes.splice(0, pendingIndexes.length);
-    logMessage_Info(`正在排队规划 ${waveIndexes.length} 段路径...`);
-    const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
-      await sleep(queueIntervalMs * order);
-      const realStart = waypoints[segmentIndex],
-        realEnd = waypoints[segmentIndex + 1];
-      const result = await searchSegment(segmentIndex, realStart, realEnd);
-      return { segmentIndex, result };
-    }));
-    let waveSuccessCount = 0;
-    waveResults.forEach(({ segmentIndex, result }) => {
-      if (Array.isArray(result.path) && result.path.length > 0) {
-        segmentPaths[segmentIndex] = result.path;
-        segmentErrors[segmentIndex] = null;
-        waveSuccessCount += 1;
-      } else {
-        segmentErrors[segmentIndex] = result.error || "路径规划失败";
-        pendingIndexes.push(segmentIndex);
-      }
-    });
-    if (waveSuccessCount ===0) {
-      consecutiveFailedWaves += 1;
-      if (consecutiveFailedWaves >= maxFailedWaves) {
-        break;
-      }
-    } else {
-      consecutiveFailedWaves =0;
-    }
-    if (pendingIndexes.length >0) {
-      logMessage_Info(
-        `仍有 ${pendingIndexes.length} 段路径未成功，${retryDelayMs / 1000}秒后按限流重试...`,
-      );
-      await sleep(retryDelayMs);
-    }
-  }
-
-  for (let i = 0; i < segmentCount; i++) {
-    const realStart = waypoints[i],
-      realEnd = waypoints[i + 1];
-    let segmentPath = segmentPaths[i];
-    if (!Array.isArray(segmentPath) || segmentPath.length === 0) {
-      if (useFallback) {
-        logMessage_Info(`第 ${i + 1} 段路径规划最终失败，启用直线连接。`);
-        segmentPath = [
-          { lng: realStart.lng, lat: realStart.lat },
-          { lng: realEnd.lng, lat: realEnd.lat },
-        ];
-      } else
-        throw new Error(`第 ${i + 1} 段路径规划失败 (${segmentErrors[i] || `连续 ${maxFailedWaves} 次失败`})`);
-    }
-    if (
-      !areCoordsEqual(segmentPath[0], {
-        lng: realStart.lng,
-        lat: realStart.lat,
-      })
-    )
-      segmentPath.unshift({ lng: realStart.lng, lat: realStart.lat });
-    if (
-      !areCoordsEqual(segmentPath[segmentPath.length - 1], {
-        lng: realEnd.lng,
-        lat: realEnd.lat,
-      })
-    )
-      segmentPath.push({ lng: realEnd.lng, lat: realEnd.lat });
-    all_path.push(...(i > 0 ? segmentPath.slice(1) : segmentPath));
-  }
-  return all_path;
-}
 async function onConfirmAutoGenerate() {
   const minTime = parseInt($("min-time-input").value),
     maxTime = parseInt($("max-time-input").value),
@@ -20865,7 +20736,7 @@ async function onConfirmAutoGenerate() {
     showModalAlert("请先选择一个有打卡点的任务");
     return;
   }
-  logMessage_Info(`正在按当前地图供应商（${getMapProviderDisplayName()}）进行路径规划...`);
+  logMessage_Info("正在使用后端地图配置进行路径规划...");
   try {
     const result = await callPythonAPI("auto_generate_path_with_provider", {
       min_t_m: minTime,
@@ -26275,60 +26146,13 @@ async function loadSystemConfig() {
     );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">地图配置</h5>';
-    html += '<p class="text-sm text-slate-600 mb-4">后端路径规划与前端地图代理共用以下页面来源。前端启用后端代理后使用配置来源；关闭代理时使用当前页面来源。各地图的来源优先于全局来源。</p>';
-    html += createInput(
-      "Map",
-      "provider",
-      "地图提供方",
-      "select",
-      "全局单选地图提供方：amap、tencent、tianditu、baidu。PC 与移动端配置页共享同一后端真相源。",
-      {
-        selectOptions: [
-          { value: "amap", label: "高德地图" },
-          { value: "tencent", label: "腾讯地图" },
-          { value: "tianditu", label: "天地图" },
-          { value: "baidu", label: "百度地图" },
-        ],
-      },
-    );
-    html += createInput(
-      "Map.providers.amap",
-      "js_key",
-      "高德地图 JS Key",
-      "text",
-      "主配置改为 provider 嵌套字段；Map.amap_js_key 仅作为兼容读取来源。",
-    );
-    html += createInput("Map.providers.amap", "security_js_code", "高德安全密钥（选填）", "password", "需与高德 JS Key 配套；旧 Key 可留空。");
-    html += createInput("Map", "backend_page_origin", "地图页面来源（选填）", "origin", "用于后端路径规划和前端地图代理。留空自动使用应用请求来源；粘贴完整 URL 后仅保留协议、域名和端口。");
+    html += renderMapConfigCards(config.Map || {});
+    html += createInput("Map", "backend_page_origin", "全局地图页面来源（选填）", "origin", "各配置可单独覆盖此来源。留空自动使用应用请求来源；粘贴完整 URL 后仅保留协议、域名和端口。");
     html += createInput("Map", "frontend_proxy_enabled", "启用地图请求后端代理", "boolean", "默认关闭。开启由服务器转发地图请求并使用配置来源；关闭由浏览器直连地图服务，使用当前页面来源。保存后刷新页面生效；已加载地图时，下次加载切换模式会自动刷新页面。");
     html += '<div data-map-tile-cache-settings>';
     html += createInput("Map", "tile_cache_ttl_days", "地图瓦片缓存时间（天）", "number", "正整数；上游更短的有效期优先。私有响应或带 Cookie 的资源不缓存；关闭代理时保留此设置。", { defaultValue: 20 });
     html += createInput("Map", "tile_cache_max_size_gb", "地图瓦片缓存最大大小（GB）", "number", "所有地图供应商共享此缓存总容量，各供应商缓存数据独立；1 GB = 10 亿字节，最多两位小数。", { defaultValue: 10, step: 0.01 });
     html += '</div>';
-    for (const [provider, label] of [["amap", "高德地图"], ["tencent", "腾讯地图"], ["tianditu", "天地图"], ["baidu", "百度地图"]]) {
-      html += createInput(`Map.providers.${provider}`, "backend_page_origin", `${label}页面来源（选填）`, "origin", "同时用于该地图的后端规划和前端代理；留空继承全局来源。");
-    }
-    html += createInput(
-      "Map.providers.tencent",
-      "map_key",
-      "腾讯地图 Key",
-      "text",
-      "用于腾讯地图路线规划与地图渲染。",
-    );
-    html += createInput(
-      "Map.providers.tianditu",
-      "token",
-      "天地图 Token",
-      "text",
-      "用于天地图正式业务接入；内部坐标仍统一按 GCJ02 处理。",
-    );
-    html += createInput(
-      "Map.providers.baidu",
-      "ak",
-      "百度地图 AK",
-      "text",
-      "用于百度地图正式业务接入；当前先纳入 provider 契约与配置路径。",
-    );
     html +=
       '<h5 class="font-bold text-base text-sky-800 border-b pb-1 mt-4 mb-2">🌐 IP 归属地查询配置</h5>';
     html += createInput(
@@ -26464,6 +26288,7 @@ async function loadSystemConfig() {
     );
 
     formContainer.innerHTML = html;
+    initMapConfigCardsSort(formContainer);
     const proxyToggle = formContainer.querySelector('[id="config-Map-frontend_proxy_enabled"]');
     if (proxyToggle) toggleMapTileCacheSettings(proxyToggle);
     formContainer.querySelectorAll("[data-map-origin]").forEach((input) => {

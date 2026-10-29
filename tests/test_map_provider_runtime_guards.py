@@ -350,31 +350,19 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertNotIn("new AMapInstance.LngLat", auto_generate_source)
         self.assertNotIn("正在调用高德地图API进行路径规划", auto_generate_source)
 
-    def test_legacy_js_path_queue_is_amap_only(self):
+    def test_legacy_display_runtime_has_no_frontend_planning_queue(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
-        queue_source = source[
-            source.index("async function process_path_queue("):
-            source.index("function triggerPathGenerationForPy(", source.index("async function process_path_queue("))
-        ]
+        self.assertNotIn("process_path_queue", source)
+        self.assertNotIn("triggerPathGenerationForPy", source)
+        self.assertNotIn("path_planning_queue", source)
+        self.assertNotIn("is_planning_path", source)
 
-        self.assertIn('if (getActiveMapProvider() !== "amap")', queue_source)
-        self.assertIn("旧版前端路径规划队列仅支持高德地图", queue_source)
-        self.assertIn("getWalkingPath(waypoints)", queue_source)
-
-    def test_legacy_get_walking_path_guarded_as_amap_only(self):
+    def test_legacy_map_sdk_only_loads_display_plugins(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
-        walking_source = source[
-            source.index("async function getWalkingPath("):
-            source.index("async function onConfirmAutoGenerate(", source.index("async function getWalkingPath("))
-        ]
-
-        self.assertIn('if (getActiveMapProvider() !== "amap")', walking_source)
-        self.assertIn("getWalkingPath 仅支持高德地图", walking_source)
-        self.assertIn("new AMap.Walking", walking_source)
-        self.assertIn("api_queue_interval_s ??0.1", walking_source)
-        self.assertIn("const pendingIndexes = Array.from", walking_source)
-        self.assertIn("Promise.all(waveIndexes.map", walking_source)
-        self.assertIn("consecutiveFailedWaves >= maxFailedWaves", walking_source)
+        self.assertNotIn("getWalkingPath", source)
+        self.assertNotIn("AMap.Walking", source)
+        self.assertNotIn("AMap.Driving", source)
+        self.assertIn('plugins: ["AMap.ControlBar", "AMap.BuildingLayer"]', source)
 
     def test_mobile_auxiliary_maps_use_provider_map_or_guard_amap_only_pick(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
