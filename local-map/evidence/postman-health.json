@@ -1,0 +1,86 @@
+{
+  "request": {
+    "url": "http://127.0.0.1:8765/healthz",
+    "header": [
+      {
+        "key": "User-Agent",
+        "value": "PostmanRuntime/7.56.2",
+        "system": true
+      },
+      {
+        "key": "Accept",
+        "value": "*/*",
+        "system": true
+      },
+      {
+        "key": "Cache-Control",
+        "value": "no-cache",
+        "system": true
+      },
+      {
+        "key": "Postman-Token",
+        "value": "74165778-ae87-4031-b9d1-dab0c613af37",
+        "system": true
+      },
+      {
+        "key": "Host",
+        "value": "127.0.0.1:8765",
+        "system": true
+      },
+      {
+        "key": "Accept-Encoding",
+        "value": "gzip, deflate, br",
+        "system": true
+      },
+      {
+        "key": "Connection",
+        "value": "keep-alive",
+        "system": true
+      }
+    ],
+    "method": "GET",
+    "body": ""
+  },
+  "response": {
+    "id": "c980e1dc-b82b-4645-86bc-13ee0bcc3660",
+    "status": "OK",
+    "code": 200,
+    "header": [
+      {
+        "key": "date",
+        "value": "Thu, 29 Oct 2026 09:53:06 GMT"
+      },
+      {
+        "key": "server",
+        "value": "uvicorn"
+      },
+      {
+        "key": "content-length",
+        "value": "68"
+      },
+      {
+        "key": "content-type",
+        "value": "application/json"
+      }
+    ],
+    "cookie": [],
+    "responseTime": 972,
+    "responseSize": 68,
+    "downloadedBytes": 68,
+    "body": "{\"status\":\"ok\",\"version\":\"20261029T094426Z-fd8979d8\",\"offline\":true}"
+  },
+  "timestamp": "2026-10-29T09:53:08.520Z",
+  "tests": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "results": [
+      {
+        "name": "healthy offline release",
+        "passed": true,
+        "consoleLogs": []
+      }
+    ]
+  },
+  "scriptLogs": []
+}

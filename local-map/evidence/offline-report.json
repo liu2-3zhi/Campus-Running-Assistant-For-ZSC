@@ -1,0 +1,47 @@
+{
+  "python_socket_guard": true,
+  "browser_external_requests_blocked": true,
+  "routing_remote_tiles_disabled": true,
+  "health": {
+    "status": "ok",
+    "version": "20261029T171725Z-59b5ff5e",
+    "offline": true,
+    "coordinate_system": "GCJ-02"
+  },
+  "layers": [
+    "roads",
+    "footpaths",
+    "buildings",
+    "boundary",
+    "pois",
+    "landuse",
+    "water"
+  ],
+  "examples": [
+    {
+      "name": "校园南北道路步行",
+      "distance_m": 896.0,
+      "legs": 1
+    },
+    {
+      "name": "校园东西道路步行",
+      "distance_m": 1269.0,
+      "legs": 1
+    },
+    {
+      "name": "途经校园中部道路",
+      "distance_m": 896.0,
+      "legs": 2
+    }
+  ],
+  "concurrent_requests": 24,
+  "zoom_levels": [
+    14,
+    15,
+    16,
+    17,
+    18
+  ],
+  "status": "passed",
+  "server_port_released": true
+}

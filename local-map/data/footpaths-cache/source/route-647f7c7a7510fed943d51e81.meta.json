@@ -1,0 +1,22 @@
+{
+  "source": {
+    "name": "AMap walking API",
+    "url": "https://restapi.amap.com/v5/direction/walking",
+    "request_origin": "https://zslf.zsc.edu.cn",
+    "coordinate_system": "GCJ-02",
+    "license": "AMap Open Platform service terms",
+    "terms_url": "https://lbs.amap.com/pages/terms",
+    "documentation": "https://lbs.amap.com/api/webservice/guide/api/newroute"
+  },
+  "request": {
+    "endpoint": "https://restapi.amap.com/v5/direction/walking",
+    "request_origin": "https://zslf.zsc.edu.cn",
+    "origin": "113.392747,22.530308",
+    "destination": "113.393379,22.529166",
+    "alternative_route": 3,
+    "show_fields": "polyline,navi,cost",
+    "output": "JSON"
+  },
+  "retrieved_at": "2026-10-29T17:05:58.936883+00:00",
+  "sha256": "1ac25edcc2bdd5529a0a208d49670ce6ff0656d9417ad1c5b1bfb0e15daf98c2"
+}

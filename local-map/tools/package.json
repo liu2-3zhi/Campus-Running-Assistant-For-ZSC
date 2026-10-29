@@ -1,0 +1,7 @@
+{
+  "name": "campus-offline-map-build-tools",
+  "private": true,
+  "version": "1.0.0",
+  "engines": { "node": ">=24 <25" },
+  "dependencies": { "tileserver-gl": "5.7.0" }
+}

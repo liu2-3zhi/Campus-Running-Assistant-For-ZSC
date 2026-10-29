@@ -1,0 +1,100 @@
+{
+  "request": {
+    "url": "http://127.0.0.1:8765/api/v1/routes",
+    "header": [
+      {
+        "disabled": false,
+        "description": {
+          "content": "Header: Content-Type",
+          "type": "text/plain"
+        },
+        "key": "Content-Type",
+        "value": "application/json"
+      },
+      {
+        "key": "User-Agent",
+        "value": "PostmanRuntime/7.56.2",
+        "system": true
+      },
+      {
+        "key": "Accept",
+        "value": "*/*",
+        "system": true
+      },
+      {
+        "key": "Cache-Control",
+        "value": "no-cache",
+        "system": true
+      },
+      {
+        "key": "Postman-Token",
+        "value": "7c526131-82d8-44ad-acce-dd90872dda43",
+        "system": true
+      },
+      {
+        "key": "Host",
+        "value": "127.0.0.1:8765",
+        "system": true
+      },
+      {
+        "key": "Accept-Encoding",
+        "value": "gzip, deflate, br",
+        "system": true
+      },
+      {
+        "key": "Connection",
+        "value": "keep-alive",
+        "system": true
+      },
+      {
+        "key": "Content-Length",
+        "value": "187",
+        "system": true
+      }
+    ],
+    "method": "POST",
+    "body": "{\r\n  \"end\": [\r\n    113.3858636,\r\n    22.5333192\r\n  ],\r\n  \"waypoints\": [\r\n    [\r\n      113.3852719,\r\n      22.5304139\r\n    ]\r\n  ],\r\n  \"start\": [\r\n    113.3843369,\r\n    22.5266399\r\n  ]\r\n}\r\n"
+  },
+  "response": {
+    "id": "58adada6-e0f7-4ee0-af82-4f3dcce3a421",
+    "status": "OK",
+    "code": 200,
+    "header": [
+      {
+        "key": "date",
+        "value": "Thu, 29 Oct 2026 09:44:25 GMT"
+      },
+      {
+        "key": "server",
+        "value": "uvicorn"
+      },
+      {
+        "key": "content-length",
+        "value": "1918"
+      },
+      {
+        "key": "content-type",
+        "value": "application/json"
+      }
+    ],
+    "cookie": [],
+    "responseTime": 87,
+    "responseSize": 1918,
+    "downloadedBytes": 1918,
+    "body": "{\"route\":{\"type\":\"Feature\",\"geometry\":{\"type\":\"LineString\",\"coordinates\":[[113.384337,22.52664],[113.384471,22.526715],[113.384831,22.527851],[113.384787,22.527864],[113.38475,22.527891],[113.384725,22.527928],[113.384715,22.52797],[113.384719,22.528009],[113.384737,22.528045],[113.384766,22.528075],[113.384803,22.528094],[113.384845,22.528103],[113.385516,22.529501],[113.385528,22.529618],[113.385272,22.530414],[113.385288,22.530526],[113.385853,22.530797],[113.386426,22.531281],[113.386455,22.53136],[113.3865,22.532528],[113.385848,22.532512],[113.385745,22.532566],[113.385767,22.533225],[113.385864,22.533319]]},\"properties\":{\"distance_m\":927.0,\"duration_s\":663.2919999999999}},\"legs\":[{\"index\":0,\"start_index\":0,\"end_index\":1,\"distance_m\":464.0,\"duration_s\":331.881,\"geometry\":{\"type\":\"LineString\",\"coordinates\":[[113.384337,22.52664],[113.384471,22.526715],[113.384831,22.527851],[113.384787,22.527864],[113.38475,22.527891],[113.384725,22.527928],[113.384715,22.52797],[113.384719,22.528009],[113.384737,22.528045],[113.384766,22.528075],[113.384803,22.528094],[113.384845,22.528103],[113.385516,22.529501],[113.385528,22.529618],[113.385272,22.530414]]}},{\"index\":1,\"start_index\":1,\"end_index\":2,\"distance_m\":463.0,\"duration_s\":331.411,\"geometry\":{\"type\":\"LineString\",\"coordinates\":[[113.385272,22.530414],[113.385272,22.530414],[113.385288,22.530526],[113.385853,22.530797],[113.386426,22.531281],[113.386455,22.53136],[113.3865,22.532528],[113.385848,22.532512],[113.385745,22.532566],[113.385767,22.533225],[113.385864,22.533319]]}}],\"distance_m\":927.0,\"duration_s\":663.2919999999999,\"snapped_points\":[{\"input\":[113.3843369,22.5266399],\"snapped\":[113.384337,22.52664],\"offset_m\":0.015137341331317495},{\"input\":[113.3852719,22.5304139],\"snapped\":[113.385272,22.530414],\"offset_m\":0.015137149930580865},{\"input\":[113.3858636,22.5333192],\"snapped\":[113.385864,22.533319],\"offset_m\":0.04671552874407875}]}"
+  },
+  "timestamp": "2026-10-29T09:44:26.268Z",
+  "tests": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "results": [
+      {
+        "name": "ordered waypoint has two legs",
+        "passed": true,
+        "consoleLogs": []
+      }
+    ]
+  },
+  "scriptLogs": []
+}

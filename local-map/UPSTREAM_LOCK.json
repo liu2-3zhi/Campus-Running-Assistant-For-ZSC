@@ -1,0 +1,65 @@
+{
+  "verified_at": "2026-10-29",
+  "projects": [
+    {
+      "name": "Valhalla / pyvalhalla",
+      "version": "3.9.1",
+      "repository": "https://github.com/valhalla/valhalla",
+      "ref": "3.9.1",
+      "commit": "bafb69902220615a48307d5c790fb6c943802ba4",
+      "license": "MIT",
+      "distribution": "Official PyPI Windows cp312-abi3 wheel; requirements.lock.txt"
+    },
+    {
+      "name": "TileServer GL",
+      "version": "5.7.0",
+      "repository": "https://github.com/maptiler/tileserver-gl",
+      "ref": "v5.7.0",
+      "commit": "243c4ded51dec62cb715769fd88a6e0846c5a076",
+      "license": "BSD-2-Clause",
+      "distribution": "npm package; tools/package-lock.json includes integrity hashes"
+    },
+    {
+      "name": "Valhalla Web App",
+      "repository": "https://github.com/valhalla/web-app",
+      "commit": "699e32f3addaaed415257f020439384de54281a1",
+      "license": "MIT",
+      "distribution": "Vendored source with local adaptations; web/UPSTREAM.md"
+    },
+    {
+      "name": "PyOsmium",
+      "version": "4.3.2",
+      "repository": "https://github.com/osmcode/pyosmium",
+      "ref": "v4.3.2",
+      "commit": "22569722344160d48494f6b26b6eced14ea3cfc5",
+      "license": "BSD-2-Clause"
+    },
+    {
+      "name": "osm2geojson",
+      "version": "0.3.2",
+      "repository": "https://github.com/rapkin/osm2geojson",
+      "ref": "v0.3.2",
+      "commit": "506e72070436118b74ce33f82dfddf96a6e15f53",
+      "license": "MIT"
+    },
+    {
+      "name": "MapLibre Font Maker",
+      "repository": "https://github.com/maplibre/font-maker",
+      "source_reference_commit": "714ccaea67d384717890a3c2c27143dfdd4189b7",
+      "license": "BSD-3-Clause; bundled FreeType License",
+      "distribution": "Official deployed sdfglyph.js and sdfglyph.wasm pinned by SHA256 in campus_map/render.py; binary build commit is not independently established"
+    },
+    {
+      "name": "Noto CJK",
+      "repository": "https://github.com/notofonts/noto-cjk",
+      "ref": "Sans2.004",
+      "commit": "523d033d6cb47f4a80c58a35753646f5c3608a78",
+      "license": "SIL Open Font License 1.1",
+      "distribution": "NotoSansCJKsc-Regular.otf pinned by SHA256 in campus_map/render.py"
+    }
+  ],
+  "notes": [
+    "Release tag commits identify upstream source references; published wheels/native npm binaries were not rebuilt from source in this task.",
+    "Python exact versions are in requirements.lock.txt. Web and renderer npm dependency trees have separate lockfiles."
+  ]
+}

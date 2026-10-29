@@ -1,0 +1,11 @@
+name: ❗ Other
+description: Use this for any other issues. Please do NOT create blank issues
+title: '<description>'
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What would you like to share?
+      description: Provide a clear and concise explanation of your issue.
+    validations:
+      required: true

@@ -1,0 +1,15 @@
+.venv/
+.runtime/
+__pycache__/
+.pytest_cache/
+*.pyc
+node_modules/
+data/builds/
+data/staging/
+data/current.json
+evidence/*.log
+web/dist/
+web/node_modules/
+tools/node_modules/
+.local-config.json
+data/amap-cache/

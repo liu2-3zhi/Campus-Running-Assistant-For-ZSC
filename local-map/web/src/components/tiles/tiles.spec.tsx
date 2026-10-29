@@ -1,0 +1,780 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { LayerSpecification } from 'maplibre-gl';
+import { TilesControl } from './tiles';
+import { VALHALLA_SOURCE_ID } from './valhalla-layers';
+
+const createMockLayers = () => [
+  {
+    id: 'edges-fill',
+    type: 'fill',
+    'source-layer': 'edges',
+    source: VALHALLA_SOURCE_ID,
+  },
+  {
+    id: 'edges-outline',
+    type: 'line',
+    'source-layer': 'edges',
+    source: VALHALLA_SOURCE_ID,
+  },
+  {
+    id: 'nodes-primary',
+    type: 'line',
+    'source-layer': 'nodes',
+    source: VALHALLA_SOURCE_ID,
+  },
+  {
+    id: 'nodes-secondary',
+    type: 'line',
+    'source-layer': 'nodes',
+    source: VALHALLA_SOURCE_ID,
+  },
+  {
+    id: 'nodes-tertiary',
+    type: 'line',
+    'source-layer': 'nodes',
+    source: VALHALLA_SOURCE_ID,
+  },
+  {
+    id: 'restrictions-fill',
+    type: 'fill',
+    'source-layer': 'access_restrictions',
+    source: VALHALLA_SOURCE_ID,
+  },
+  { id: 'background', type: 'background' },
+  { id: 'sky', type: 'sky' },
+];
+
+const createMockMap = (layers = createMockLayers()) => {
+  const layerVisibility: Record<string, string> = {};
+  const sources: Record<string, unknown> = {};
+  const dynamicLayers: Record<string, unknown> = {};
+
+  return {
+    getStyle: vi.fn(() => ({ layers })),
+    getLayoutProperty: vi.fn((layerId: string, property: string) => {
+      if (property === 'visibility') {
+        return layerVisibility[layerId] ?? 'visible';
+      }
+      return undefined;
+    }),
+    setLayoutProperty: vi.fn(
+      (layerId: string, property: string, value: string) => {
+        if (property === 'visibility') {
+          layerVisibility[layerId] = value;
+        }
+      }
+    ),
+    on: vi.fn(),
+    off: vi.fn(),
+    getSource: vi.fn((id: string) => sources[id]),
+    addSource: vi.fn((id: string, spec: unknown) => {
+      sources[id] = spec;
+    }),
+    removeSource: vi.fn((id: string) => {
+      delete sources[id];
+    }),
+    getLayer: vi.fn((id: string) => dynamicLayers[id]),
+    addLayer: vi.fn((layer: { id: string }) => {
+      dynamicLayers[layer.id] = layer;
+    }),
+    removeLayer: vi.fn((id: string) => {
+      delete dynamicLayers[id];
+    }),
+  };
+};
+
+let mockMap = createMockMap();
+
+vi.mock('react-map-gl/maplibre', () => ({
+  useMap: vi.fn(() => ({
+    mainMap: {
+      getMap: () => mockMap,
+    },
+  })),
+}));
+
+vi.mock('@/stores/common-store', () => ({
+  useCommonStore: vi.fn((selector) =>
+    selector({
+      mapReady: true,
+    })
+  ),
+}));
+
+// Capture the onLayerAdded prop so tests can seed custom layers
+let capturedOnLayerAdded: ((layer: LayerSpecification) => void) | null = null;
+
+vi.mock('./custom-layer-editor', () => ({
+  CustomLayerEditor: ({
+    onLayerAdded,
+  }: {
+    customLayers: { layer: LayerSpecification; visible: boolean }[];
+    onLayerAdded: (layer: LayerSpecification) => void;
+  }) => {
+    capturedOnLayerAdded = onLayerAdded;
+    return <div />;
+  },
+}));
+
+describe('TilesControl', () => {
+  beforeEach(() => {
+    mockMap = createMockMap();
+    capturedOnLayerAdded = null;
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('rendering', () => {
+    it('should render without crashing', () => {
+      expect(() => render(<TilesControl />)).not.toThrow();
+    });
+
+    it('should render search input', () => {
+      render(<TilesControl />);
+      expect(
+        screen.getByPlaceholderText('Search layers...')
+      ).toBeInTheDocument();
+    });
+
+    it('should display grouped Valhalla layers by source layer', () => {
+      render(<TilesControl />);
+
+      expect(screen.getByText('edges')).toBeInTheDocument();
+      expect(screen.getByText('nodes')).toBeInTheDocument();
+      expect(screen.getByText('access_restrictions')).toBeInTheDocument();
+    });
+
+    it('should display layer count for each group', () => {
+      render(<TilesControl />);
+
+      expect(screen.getByText('(2)')).toBeInTheDocument();
+      expect(screen.getByText('(3)')).toBeInTheDocument();
+      expect(screen.getByText('(1)')).toBeInTheDocument();
+    });
+
+    it('should not display non-Valhalla layers', () => {
+      render(<TilesControl />);
+
+      expect(screen.queryByText('background')).not.toBeInTheDocument();
+      expect(screen.queryByText('sky')).not.toBeInTheDocument();
+    });
+
+    it('should show "No layers found" when no layers match', async () => {
+      mockMap = createMockMap([]);
+
+      render(<TilesControl />);
+
+      expect(screen.getByText('No layers found')).toBeInTheDocument();
+    });
+  });
+
+  describe('search functionality', () => {
+    it('should filter layers by layer id', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await user.type(screen.getByPlaceholderText('Search layers...'), 'edges');
+
+      await waitFor(() => {
+        expect(screen.getByText('edges')).toBeInTheDocument();
+        expect(screen.queryByText('nodes')).not.toBeInTheDocument();
+        expect(
+          screen.queryByText('access_restrictions')
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it('should filter layers by source layer name', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await user.type(screen.getByPlaceholderText('Search layers...'), 'node');
+
+      await waitFor(() => {
+        expect(screen.getByText('nodes')).toBeInTheDocument();
+        expect(screen.queryByText('edges')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should be case insensitive', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await user.type(screen.getByPlaceholderText('Search layers...'), 'EDGES');
+
+      await waitFor(() => {
+        expect(screen.getByText('edges')).toBeInTheDocument();
+      });
+    });
+
+    it('should show "No layers found" when search has no results', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await user.type(
+        screen.getByPlaceholderText('Search layers...'),
+        'nonexistent'
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('No layers found')).toBeInTheDocument();
+      });
+    });
+
+    it('should clear filter and show all layers when search is cleared', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      const searchInput = screen.getByPlaceholderText('Search layers...');
+      await user.type(searchInput, 'edges');
+
+      await waitFor(() => {
+        expect(screen.queryByText('nodes')).not.toBeInTheDocument();
+      });
+
+      await user.clear(searchInput);
+
+      await waitFor(() => {
+        expect(screen.getByText('edges')).toBeInTheDocument();
+        expect(screen.getByText('nodes')).toBeInTheDocument();
+        expect(screen.getByText('access_restrictions')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('group expansion', () => {
+    it('should expand group when clicked', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      expect(screen.queryByText('edges-fill')).not.toBeInTheDocument();
+
+      await user.click(screen.getByText('edges'));
+
+      await waitFor(() => {
+        expect(screen.getByText('edges-fill')).toBeInTheDocument();
+        expect(screen.getByText('edges-outline')).toBeInTheDocument();
+      });
+    });
+
+    it('should collapse group when clicked again', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await user.click(screen.getByText('edges'));
+
+      await waitFor(() => {
+        expect(screen.getByText('edges-fill')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('edges'));
+
+      await waitFor(() => {
+        expect(screen.queryByText('edges-fill')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should show layer type when group is expanded', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await user.click(screen.getByText('edges'));
+
+      await waitFor(() => {
+        expect(screen.getByText('(fill)')).toBeInTheDocument();
+        expect(screen.getByText('(line)')).toBeInTheDocument();
+      });
+    });
+
+    it('should allow multiple groups to be expanded', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await user.click(screen.getByText('edges'));
+      await user.click(screen.getByText('nodes'));
+
+      await waitFor(() => {
+        expect(screen.getByText('edges-fill')).toBeInTheDocument();
+        expect(screen.getByText('nodes-primary')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('layer visibility toggle', () => {
+    it('should toggle individual layer visibility', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await user.click(screen.getByText('edges'));
+
+      await waitFor(() => {
+        expect(screen.getByText('edges-fill')).toBeInTheDocument();
+      });
+
+      const edgesFillSwitch = screen.getByRole('switch', {
+        name: /edges-fill/,
+      });
+      expect(edgesFillSwitch).toBeChecked();
+
+      await user.click(edgesFillSwitch);
+
+      expect(mockMap.setLayoutProperty).toHaveBeenCalledWith(
+        'edges-fill',
+        'visibility',
+        'none'
+      );
+    });
+
+    it('should toggle layer visibility back on', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await user.click(screen.getByText('edges'));
+
+      await waitFor(() => {
+        expect(screen.getByText('edges-fill')).toBeInTheDocument();
+      });
+
+      const edgesFillSwitch = screen.getByRole('switch', {
+        name: /edges-fill/,
+      });
+
+      await user.click(edgesFillSwitch);
+      await user.click(edgesFillSwitch);
+
+      expect(mockMap.setLayoutProperty).toHaveBeenLastCalledWith(
+        'edges-fill',
+        'visibility',
+        'visible'
+      );
+    });
+  });
+
+  describe('group visibility toggle', () => {
+    it('should toggle all layers in a group off', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      const groupSwitches = screen.getAllByRole('switch');
+      const nodesGroupSwitch = groupSwitches[3]!;
+
+      await user.click(nodesGroupSwitch);
+
+      expect(mockMap.setLayoutProperty).toHaveBeenCalledWith(
+        'nodes-primary',
+        'visibility',
+        'none'
+      );
+      expect(mockMap.setLayoutProperty).toHaveBeenCalledWith(
+        'nodes-secondary',
+        'visibility',
+        'none'
+      );
+      expect(mockMap.setLayoutProperty).toHaveBeenCalledWith(
+        'nodes-tertiary',
+        'visibility',
+        'none'
+      );
+    });
+
+    it('should toggle all layers in a group on', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      const groupSwitches = screen.getAllByRole('switch');
+      const edgesGroupSwitch = groupSwitches[2]!;
+
+      await user.click(edgesGroupSwitch);
+      await user.click(edgesGroupSwitch);
+
+      expect(mockMap.setLayoutProperty).toHaveBeenCalledWith(
+        'edges-fill',
+        'visibility',
+        'visible'
+      );
+      expect(mockMap.setLayoutProperty).toHaveBeenCalledWith(
+        'edges-outline',
+        'visibility',
+        'visible'
+      );
+    });
+  });
+
+  describe('map style changes', () => {
+    it('should register styledata event listener', () => {
+      render(<TilesControl />);
+
+      expect(mockMap.on).toHaveBeenCalledWith(
+        'styledata',
+        expect.any(Function)
+      );
+    });
+
+    it('should unregister styledata event listener on unmount', () => {
+      const { unmount } = render(<TilesControl />);
+
+      unmount();
+
+      expect(mockMap.off).toHaveBeenCalledWith(
+        'styledata',
+        expect.any(Function)
+      );
+    });
+
+    it('should trigger re-render when style changes', async () => {
+      render(<TilesControl />);
+
+      expect(mockMap.getStyle).toHaveBeenCalled();
+      const initialCallCount = mockMap.getStyle.mock.calls.length;
+
+      const styleDataHandlers = mockMap.on.mock.calls
+        .filter((call) => call[0] === 'styledata')
+        .map((call) => call[1]);
+
+      await act(async () => {
+        for (const handler of styleDataHandlers) {
+          handler?.();
+        }
+      });
+
+      await waitFor(() => {
+        expect(mockMap.getStyle.mock.calls.length).toBeGreaterThan(
+          initialCallCount
+        );
+      });
+    });
+
+    it('should collapse all groups when style changes', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await user.click(screen.getByText('edges'));
+
+      await waitFor(() => {
+        expect(screen.getByText('edges-fill')).toBeInTheDocument();
+      });
+
+      const styleDataHandlers = mockMap.on.mock.calls
+        .filter((call) => call[0] === 'styledata')
+        .map((call) => call[1]);
+
+      await act(async () => {
+        for (const handler of styleDataHandlers) {
+          handler?.();
+        }
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByText('edges-fill')).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('when map is not ready', () => {
+    it('should show empty state when mapReady is false', async () => {
+      const { useCommonStore } = await import('@/stores/common-store');
+      vi.mocked(useCommonStore).mockImplementation((selector) =>
+        selector({ mapReady: false } as Parameters<typeof selector>[0])
+      );
+
+      render(<TilesControl />);
+
+      expect(screen.getByText('No layers found')).toBeInTheDocument();
+    });
+  });
+
+  describe('when map has no layers', () => {
+    it('should handle undefined style gracefully', () => {
+      mockMap.getStyle.mockReturnValue(
+        undefined as unknown as ReturnType<typeof mockMap.getStyle>
+      );
+
+      render(<TilesControl />);
+
+      expect(screen.getByText('No layers found')).toBeInTheDocument();
+    });
+
+    it('should handle style with no layers array', () => {
+      mockMap.getStyle.mockReturnValue(
+        {} as unknown as ReturnType<typeof mockMap.getStyle>
+      );
+
+      render(<TilesControl />);
+
+      expect(screen.getByText('No layers found')).toBeInTheDocument();
+    });
+  });
+
+  describe('custom layers section', () => {
+    it('should not render custom layers section when there are no custom layers', () => {
+      render(<TilesControl />);
+
+      expect(screen.queryByText('Custom Layers')).not.toBeInTheDocument();
+    });
+
+    it('should render custom layers section when custom layers are present', async () => {
+      render(<TilesControl />);
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'my-custom-layer',
+          type: 'line',
+        } as LayerSpecification);
+      });
+
+      expect(screen.getByText('Custom Layers')).toBeInTheDocument();
+    });
+
+    it('should display custom layer id and type', async () => {
+      render(<TilesControl />);
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'dead-ends',
+          type: 'line',
+        } as LayerSpecification);
+      });
+
+      expect(screen.getByText('dead-ends')).toBeInTheDocument();
+      expect(screen.getByText('(line)')).toBeInTheDocument();
+    });
+
+    it('should render a visibility switch for each custom layer reflecting visible state', async () => {
+      render(<TilesControl />);
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'layer-a',
+          type: 'line',
+        } as LayerSpecification);
+        capturedOnLayerAdded?.({
+          id: 'layer-b',
+          type: 'fill',
+        } as LayerSpecification);
+      });
+
+      const switches = screen.getAllByRole('switch');
+      const customSwitches = switches.slice(-2);
+      expect(customSwitches[0]).toBeChecked();
+      expect(customSwitches[1]).toBeChecked();
+    });
+
+    it('should render a remove button for each custom layer', async () => {
+      render(<TilesControl />);
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'my-layer',
+          type: 'line',
+        } as LayerSpecification);
+      });
+
+      expect(
+        screen.getByRole('button', { name: /remove my-layer layer/i })
+      ).toBeInTheDocument();
+    });
+
+    it('should show "No layers found" only when both map layers and custom layers are empty', () => {
+      mockMap = createMockMap([]);
+
+      render(<TilesControl />);
+
+      expect(screen.getByText('No layers found')).toBeInTheDocument();
+    });
+
+    it('should NOT show "No layers found" when custom layers exist but map has no layers', async () => {
+      mockMap = createMockMap([]);
+
+      render(<TilesControl />);
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'custom-only',
+          type: 'line',
+        } as LayerSpecification);
+      });
+
+      expect(screen.queryByText('No layers found')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('custom layer visibility toggle', () => {
+    it('should call map.setLayoutProperty when toggling a custom layer off', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      mockMap.addLayer({ id: 'my-toggle-layer' });
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'my-toggle-layer',
+          type: 'line',
+        } as LayerSpecification);
+      });
+
+      const customLayerSwitch = screen.getByRole('switch', {
+        name: /my-toggle-layer/,
+      });
+      await user.click(customLayerSwitch);
+
+      expect(mockMap.setLayoutProperty).toHaveBeenCalledWith(
+        'my-toggle-layer',
+        'visibility',
+        'none'
+      );
+    });
+
+    it('should update local state when toggling custom layer visibility', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'my-toggle-layer',
+          type: 'line',
+        } as LayerSpecification);
+      });
+
+      const customLayerSwitch = screen.getByRole('switch', {
+        name: /my-toggle-layer/,
+      });
+
+      expect(customLayerSwitch).toBeChecked();
+      await user.click(customLayerSwitch);
+      expect(customLayerSwitch).not.toBeChecked();
+    });
+  });
+
+  describe('custom layer removal', () => {
+    it('should call map.removeLayer when the remove button is clicked', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      mockMap.addLayer({ id: 'removable-layer' });
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'removable-layer',
+          type: 'line',
+        } as LayerSpecification);
+      });
+
+      await user.click(
+        screen.getByRole('button', { name: /remove removable-layer layer/i })
+      );
+
+      expect(mockMap.removeLayer).toHaveBeenCalledWith('removable-layer');
+    });
+
+    it('should remove the layer from the list when the remove button is clicked', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'removable-layer',
+          type: 'line',
+        } as LayerSpecification);
+      });
+
+      expect(screen.getByText('removable-layer')).toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole('button', { name: /remove removable-layer layer/i })
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText('removable-layer')).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('styledata re-applies custom layers', () => {
+    const getTilesStyleDataHandler = () =>
+      mockMap.on.mock.calls
+        .filter((call) => call[0] === 'styledata')
+        .at(-1)?.[1];
+
+    it('should call map.addLayer for custom layers on styledata when source exists', async () => {
+      render(<TilesControl />);
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'persisted-layer',
+          type: 'line',
+          source: 'some-source',
+        } as LayerSpecification);
+      });
+
+      mockMap.removeLayer('persisted-layer');
+
+      await act(async () => {
+        getTilesStyleDataHandler()?.();
+      });
+
+      await waitFor(() => {
+        expect(mockMap.addLayer).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'persisted-layer' })
+        );
+      });
+    });
+
+    it('should set visibility to none when re-adding an invisible custom layer', async () => {
+      const user = userEvent.setup();
+      render(<TilesControl />);
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'hidden-layer',
+          type: 'line',
+          source: 'some-source',
+        } as LayerSpecification);
+      });
+
+      // Toggle visibility off so the layer is invisible in local state
+      mockMap.addLayer({ id: 'hidden-layer' });
+      const customLayerSwitch = screen.getByRole('switch', {
+        name: /hidden-layer/,
+      });
+      await user.click(customLayerSwitch);
+
+      mockMap.removeLayer('hidden-layer');
+
+      await act(async () => {
+        getTilesStyleDataHandler()?.();
+      });
+
+      await waitFor(() => {
+        expect(mockMap.setLayoutProperty).toHaveBeenCalledWith(
+          'hidden-layer',
+          'visibility',
+          'none'
+        );
+      });
+    });
+
+    it('should not re-add a custom layer that is already present on the map', async () => {
+      render(<TilesControl />);
+
+      await act(async () => {
+        capturedOnLayerAdded?.({
+          id: 'already-present',
+          type: 'line',
+        } as LayerSpecification);
+      });
+
+      mockMap.addLayer({ id: 'already-present' });
+      const addLayerCallsBefore = mockMap.addLayer.mock.calls.length;
+
+      await act(async () => {
+        getTilesStyleDataHandler()?.();
+      });
+      expect(mockMap.addLayer.mock.calls.length).toBe(addLayerCallsBefore);
+    });
+  });
+});

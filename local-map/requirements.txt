@@ -1,0 +1,7 @@
+fastapi==0.139.0
+uvicorn==0.35.0
+pyvalhalla==3.9.1
+osmium==4.3.2
+osm2geojson==0.3.2
+mercantile==1.2.1
+httpx==0.28.1

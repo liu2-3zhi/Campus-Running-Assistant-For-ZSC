@@ -1,0 +1,8 @@
+services:
+  valhalla-app:
+    build:
+      context: .
+    container_name: valhalla-app
+    ports:
+      - 80:80
+    restart: always

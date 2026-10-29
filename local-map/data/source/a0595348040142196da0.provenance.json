@@ -1,0 +1,21 @@
+{
+  "url": "https://overpass-api.de/api/interpreter",
+  "query": "[out:xml][timeout:25];(nwr(22.5255,113.3798,22.5355,113.3901);way(620224814);way(1468135556););(._;>;);out meta;",
+  "method": "POST",
+  "fallback": false,
+  "attempts": [],
+  "name": "OpenStreetMap",
+  "license": "Open Database License 1.0 (ODbL)",
+  "license_url": "https://www.openstreetmap.org/copyright",
+  "attribution": "(c) OpenStreetMap contributors",
+  "sha256": "a0595348040142196da0abaa9b823d0b03f06d3c6cdce4eb739382529e5e25a3",
+  "retrieved_at": "2026-10-29T17:05:54.491430+00:00",
+  "bounds": [
+    113.3798,
+    22.5255,
+    113.3901,
+    22.5355
+  ],
+  "file": "source/a0595348040142196da0.osm",
+  "coordinate_system": "WGS84"
+}

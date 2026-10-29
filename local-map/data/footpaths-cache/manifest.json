@@ -1,0 +1,871 @@
+{
+  "coordinate_system": "GCJ-02",
+  "bounds": [
+    113.38527452257,
+    22.522802191841,
+    113.395582411025,
+    22.532810058594
+  ],
+  "points": [
+    [
+      113.391996,
+      22.529253
+    ],
+    [
+      113.392747,
+      22.530308
+    ],
+    [
+      113.393379,
+      22.529166
+    ],
+    [
+      113.391335,
+      22.53061
+    ],
+    [
+      113.393432,
+      22.529986
+    ],
+    [
+      113.391301,
+      22.529941
+    ],
+    [
+      113.39413,
+      22.528156
+    ],
+    [
+      113.39284,
+      22.526719
+    ]
+  ],
+  "pair_count": 28,
+  "feature_count": 83,
+  "downloaded_pairs": 25,
+  "cached_pairs": 3,
+  "skipped_pairs": [
+    {
+      "pair_index": 6,
+      "origin": [
+        113.391996,
+        22.529253
+      ],
+      "destination": [
+        113.39284,
+        22.526719
+      ],
+      "reason": "AMap returned no verified continuous walking polylines within the campus bounds."
+    },
+    {
+      "pair_index": 17,
+      "origin": [
+        113.393379,
+        22.529166
+      ],
+      "destination": [
+        113.39284,
+        22.526719
+      ],
+      "reason": "AMap returned no verified continuous walking polylines within the campus bounds."
+    },
+    {
+      "pair_index": 26,
+      "origin": [
+        113.391301,
+        22.529941
+      ],
+      "destination": [
+        113.39284,
+        22.526719
+      ],
+      "reason": "AMap returned no verified continuous walking polylines within the campus bounds."
+    }
+  ],
+  "sources": [
+    {
+      "name": "AMap walking API",
+      "url": "https://restapi.amap.com/v5/direction/walking",
+      "request_origin": "https://zslf.zsc.edu.cn",
+      "coordinate_system": "GCJ-02",
+      "license": "AMap Open Platform service terms",
+      "terms_url": "https://lbs.amap.com/pages/terms",
+      "documentation": "https://lbs.amap.com/api/webservice/guide/api/newroute",
+      "retrieved_at": "2026-10-29T17:06:11.883801+00:00",
+      "requested_points": [
+        [
+          113.391996,
+          22.529253
+        ],
+        [
+          113.392747,
+          22.530308
+        ],
+        [
+          113.393379,
+          22.529166
+        ],
+        [
+          113.391335,
+          22.53061
+        ],
+        [
+          113.393432,
+          22.529986
+        ],
+        [
+          113.391301,
+          22.529941
+        ],
+        [
+          113.39413,
+          22.528156
+        ],
+        [
+          113.39284,
+          22.526719
+        ]
+      ],
+      "pair_count": 28,
+      "path_count": 32,
+      "skipped_pairs": [
+        {
+          "pair_index": 6,
+          "origin": [
+            113.391996,
+            22.529253
+          ],
+          "destination": [
+            113.39284,
+            22.526719
+          ],
+          "reason": "AMap returned no verified continuous walking polylines within the campus bounds."
+        },
+        {
+          "pair_index": 17,
+          "origin": [
+            113.393379,
+            22.529166
+          ],
+          "destination": [
+            113.39284,
+            22.526719
+          ],
+          "reason": "AMap returned no verified continuous walking polylines within the campus bounds."
+        },
+        {
+          "pair_index": 26,
+          "origin": [
+            113.391301,
+            22.529941
+          ],
+          "destination": [
+            113.39284,
+            22.526719
+          ],
+          "reason": "AMap returned no verified continuous walking polylines within the campus bounds."
+        }
+      ],
+      "notes": "Only archived official walking polylines between these references; campus coverage remains incomplete."
+    }
+  ],
+  "routes": [
+    {
+      "route_id": "amap-walking-a3ad4656dfe5741b2988b47e",
+      "origin": [
+        113.391996,
+        22.529253
+      ],
+      "destination": [
+        113.392747,
+        22.530308
+      ],
+      "retrieved_at": "2026-10-29T17:05:55.261120+00:00",
+      "raw_file": "source/route-a3ad4656dfe5741b2988b47e.json",
+      "metadata_file": "source/route-a3ad4656dfe5741b2988b47e.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 196.0,
+          "geometry_length_m": 197.66607878471896,
+          "steps": 2
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-3d68bec973c007716b8ccb2d",
+      "origin": [
+        113.391996,
+        22.529253
+      ],
+      "destination": [
+        113.393379,
+        22.529166
+      ],
+      "retrieved_at": "2026-10-29T17:05:55.851956+00:00",
+      "raw_file": "source/route-3d68bec973c007716b8ccb2d.json",
+      "metadata_file": "source/route-3d68bec973c007716b8ccb2d.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 144.0,
+          "geometry_length_m": 144.29757169612762,
+          "steps": 2
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-5f358a35e5b9bed40055aed3",
+      "origin": [
+        113.391996,
+        22.529253
+      ],
+      "destination": [
+        113.391335,
+        22.53061
+      ],
+      "retrieved_at": "2026-10-29T17:05:56.305908+00:00",
+      "raw_file": "source/route-5f358a35e5b9bed40055aed3.json",
+      "metadata_file": "source/route-5f358a35e5b9bed40055aed3.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 216.0,
+          "geometry_length_m": 218.53759067810049,
+          "steps": 2
+        },
+        {
+          "path_index": 1,
+          "distance_m": 245.0,
+          "geometry_length_m": 246.724490130829,
+          "steps": 2
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-39b126b58c7c8a4b81bfbfdd",
+      "origin": [
+        113.391996,
+        22.529253
+      ],
+      "destination": [
+        113.393432,
+        22.529986
+      ],
+      "retrieved_at": "2026-10-29T17:05:56.752319+00:00",
+      "raw_file": "source/route-39b126b58c7c8a4b81bfbfdd.json",
+      "metadata_file": "source/route-39b126b58c7c8a4b81bfbfdd.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 274.0,
+          "geometry_length_m": 275.7920654746249,
+          "steps": 4
+        },
+        {
+          "path_index": 1,
+          "distance_m": 274.0,
+          "geometry_length_m": 276.3336704644299,
+          "steps": 2
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-5b6ceba07b218a5f053f0234",
+      "origin": [
+        113.391996,
+        22.529253
+      ],
+      "destination": [
+        113.391301,
+        22.529941
+      ],
+      "retrieved_at": "2026-10-29T17:05:57.237072+00:00",
+      "raw_file": "source/route-5b6ceba07b218a5f053f0234.json",
+      "metadata_file": "source/route-5b6ceba07b218a5f053f0234.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 143.0,
+          "geometry_length_m": 144.43326737463423,
+          "steps": 2
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-952aa6777214b7b3179f59b1",
+      "origin": [
+        113.391996,
+        22.529253
+      ],
+      "destination": [
+        113.39413,
+        22.528156
+      ],
+      "retrieved_at": "2026-10-29T17:05:57.752238+00:00",
+      "raw_file": "source/route-952aa6777214b7b3179f59b1.json",
+      "metadata_file": "source/route-952aa6777214b7b3179f59b1.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 278.0,
+          "geometry_length_m": 280.6442185413485,
+          "steps": 2
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-647f7c7a7510fed943d51e81",
+      "origin": [
+        113.392747,
+        22.530308
+      ],
+      "destination": [
+        113.393379,
+        22.529166
+      ],
+      "retrieved_at": "2026-10-29T17:05:58.936883+00:00",
+      "raw_file": "source/route-647f7c7a7510fed943d51e81.json",
+      "metadata_file": "source/route-647f7c7a7510fed943d51e81.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 209.0,
+          "geometry_length_m": 208.93558926391614,
+          "steps": 3
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-dd051cf0a5711d0c90eae5a3",
+      "origin": [
+        113.392747,
+        22.530308
+      ],
+      "destination": [
+        113.391335,
+        22.53061
+      ],
+      "retrieved_at": "2026-10-29T17:05:59.259820+00:00",
+      "raw_file": "source/route-dd051cf0a5711d0c90eae5a3.json",
+      "metadata_file": "source/route-dd051cf0a5711d0c90eae5a3.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 153.0,
+          "geometry_length_m": 153.544417903455,
+          "steps": 1
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-20cbb8c8819b8ebb95764898",
+      "origin": [
+        113.392747,
+        22.530308
+      ],
+      "destination": [
+        113.393432,
+        22.529986
+      ],
+      "retrieved_at": "2026-10-29T17:05:59.914764+00:00",
+      "raw_file": "source/route-20cbb8c8819b8ebb95764898.json",
+      "metadata_file": "source/route-20cbb8c8819b8ebb95764898.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 78.0,
+          "geometry_length_m": 78.41610850635412,
+          "steps": 1
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-c33664f612dae995eda7113a",
+      "origin": [
+        113.392747,
+        22.530308
+      ],
+      "destination": [
+        113.391301,
+        22.529941
+      ],
+      "retrieved_at": "2026-10-29T17:06:00.269278+00:00",
+      "raw_file": "source/route-c33664f612dae995eda7113a.json",
+      "metadata_file": "source/route-c33664f612dae995eda7113a.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 201.0,
+          "geometry_length_m": 201.2071955163285,
+          "steps": 3
+        },
+        {
+          "path_index": 1,
+          "distance_m": 227.0,
+          "geometry_length_m": 227.75821783544748,
+          "steps": 1
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-e71946ce1771b4d304397583",
+      "origin": [
+        113.392747,
+        22.530308
+      ],
+      "destination": [
+        113.39413,
+        22.528156
+      ],
+      "retrieved_at": "2026-10-29T17:06:00.806753+00:00",
+      "raw_file": "source/route-e71946ce1771b4d304397583.json",
+      "metadata_file": "source/route-e71946ce1771b4d304397583.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 343.0,
+          "geometry_length_m": 343.70985126495026,
+          "steps": 3
+        },
+        {
+          "path_index": 1,
+          "distance_m": 474.0,
+          "geometry_length_m": 476.61111813158476,
+          "steps": 3
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-34845654084c6d846a2d3e99",
+      "origin": [
+        113.392747,
+        22.530308
+      ],
+      "destination": [
+        113.39284,
+        22.526719
+      ],
+      "retrieved_at": "2026-10-29T17:06:01.307752+00:00",
+      "raw_file": "source/route-34845654084c6d846a2d3e99.json",
+      "metadata_file": "source/route-34845654084c6d846a2d3e99.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 653.0,
+          "geometry_length_m": 660.3123929658034,
+          "steps": 5
+        }
+      ],
+      "rejected_paths": [
+        {
+          "path_index": 1,
+          "reason": "AMap walking steps need at least two distinct polyline points."
+        },
+        {
+          "path_index": 2,
+          "reason": "AMap walking steps need at least two distinct polyline points."
+        }
+      ]
+    },
+    {
+      "route_id": "amap-walking-67c51aa2c8c0732e83927824",
+      "origin": [
+        113.393379,
+        22.529166
+      ],
+      "destination": [
+        113.391335,
+        22.53061
+      ],
+      "retrieved_at": "2026-10-29T17:06:01.746962+00:00",
+      "raw_file": "source/route-67c51aa2c8c0732e83927824.json",
+      "metadata_file": "source/route-67c51aa2c8c0732e83927824.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 360.0,
+          "geometry_length_m": 361.6396147243078,
+          "steps": 3
+        },
+        {
+          "path_index": 1,
+          "distance_m": 362.0,
+          "geometry_length_m": 363.27794025489305,
+          "steps": 2
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-05539da87b57c9a70ce6e3e2",
+      "origin": [
+        113.393379,
+        22.529166
+      ],
+      "destination": [
+        113.393432,
+        22.529986
+      ],
+      "retrieved_at": "2026-10-29T17:06:02.257761+00:00",
+      "raw_file": "source/route-05539da87b57c9a70ce6e3e2.json",
+      "metadata_file": "source/route-05539da87b57c9a70ce6e3e2.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 130.0,
+          "geometry_length_m": 130.98241068589027,
+          "steps": 2
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-35d0dd75a8357b606a62ca54",
+      "origin": [
+        113.393379,
+        22.529166
+      ],
+      "destination": [
+        113.391301,
+        22.529941
+      ],
+      "retrieved_at": "2026-10-29T17:06:02.749183+00:00",
+      "raw_file": "source/route-35d0dd75a8357b606a62ca54.json",
+      "metadata_file": "source/route-35d0dd75a8357b606a62ca54.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 287.0,
+          "geometry_length_m": 287.53529142084153,
+          "steps": 3
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-2b0259b9479b3bf2db3d0c4d",
+      "origin": [
+        113.393379,
+        22.529166
+      ],
+      "destination": [
+        113.39413,
+        22.528156
+      ],
+      "retrieved_at": "2026-10-29T17:06:03.279567+00:00",
+      "raw_file": "source/route-2b0259b9479b3bf2db3d0c4d.json",
+      "metadata_file": "source/route-2b0259b9479b3bf2db3d0c4d.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 134.0,
+          "geometry_length_m": 136.11020675907014,
+          "steps": 1
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-d8cfc3f770f780489de94656",
+      "origin": [
+        113.391335,
+        22.53061
+      ],
+      "destination": [
+        113.393432,
+        22.529986
+      ],
+      "retrieved_at": "2026-10-29T17:06:04.281316+00:00",
+      "raw_file": "source/route-d8cfc3f770f780489de94656.json",
+      "metadata_file": "source/route-d8cfc3f770f780489de94656.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 231.0,
+          "geometry_length_m": 232.64450244318587,
+          "steps": 1
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-296bd63b9b5757cccc1a83cc",
+      "origin": [
+        113.391335,
+        22.53061
+      ],
+      "destination": [
+        113.391301,
+        22.529941
+      ],
+      "retrieved_at": "2026-10-29T17:06:04.762203+00:00",
+      "raw_file": "source/route-296bd63b9b5757cccc1a83cc.json",
+      "metadata_file": "source/route-296bd63b9b5757cccc1a83cc.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 73.0,
+          "geometry_length_m": 73.65255643845269,
+          "steps": 1
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-9839151e2081257a1525aedd",
+      "origin": [
+        113.391335,
+        22.53061
+      ],
+      "destination": [
+        113.39413,
+        22.528156
+      ],
+      "retrieved_at": "2026-10-29T17:06:08.769453+00:00",
+      "raw_file": "source/route-9839151e2081257a1525aedd.json",
+      "metadata_file": "source/route-9839151e2081257a1525aedd.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 494.0,
+          "geometry_length_m": 497.69711648406525,
+          "steps": 3
+        },
+        {
+          "path_index": 1,
+          "distance_m": 496.0,
+          "geometry_length_m": 497.9407398753963,
+          "steps": 3
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-dbaff0370ae306b1d3278915",
+      "origin": [
+        113.391335,
+        22.53061
+      ],
+      "destination": [
+        113.39284,
+        22.526719
+      ],
+      "retrieved_at": "2026-10-29T17:06:08.883888+00:00",
+      "raw_file": "source/route-dbaff0370ae306b1d3278915.json",
+      "metadata_file": "source/route-dbaff0370ae306b1d3278915.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 806.0,
+          "geometry_length_m": 814.2893037292783,
+          "steps": 6
+        }
+      ],
+      "rejected_paths": [
+        {
+          "path_index": 1,
+          "reason": "AMap walking steps need at least two distinct polyline points."
+        },
+        {
+          "path_index": 2,
+          "reason": "AMap walking steps need at least two distinct polyline points."
+        }
+      ]
+    },
+    {
+      "route_id": "amap-walking-f14bb29590e608a4d566d1b0",
+      "origin": [
+        113.393432,
+        22.529986
+      ],
+      "destination": [
+        113.391301,
+        22.529941
+      ],
+      "retrieved_at": "2026-10-29T17:06:09.361979+00:00",
+      "raw_file": "source/route-f14bb29590e608a4d566d1b0.json",
+      "metadata_file": "source/route-f14bb29590e608a4d566d1b0.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 279.0,
+          "geometry_length_m": 279.8342000793743,
+          "steps": 3
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-1b15c8e28a3ecfc23146f525",
+      "origin": [
+        113.393432,
+        22.529986
+      ],
+      "destination": [
+        113.39413,
+        22.528156
+      ],
+      "retrieved_at": "2026-10-29T17:06:09.870505+00:00",
+      "raw_file": "source/route-1b15c8e28a3ecfc23146f525.json",
+      "metadata_file": "source/route-1b15c8e28a3ecfc23146f525.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 264.0,
+          "geometry_length_m": 265.0928046016586,
+          "steps": 3
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-3b6ed14121767f7faaecb6a3",
+      "origin": [
+        113.393432,
+        22.529986
+      ],
+      "destination": [
+        113.39284,
+        22.526719
+      ],
+      "retrieved_at": "2026-10-29T17:06:10.394923+00:00",
+      "raw_file": "source/route-3b6ed14121767f7faaecb6a3.json",
+      "metadata_file": "source/route-3b6ed14121767f7faaecb6a3.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 503.0,
+          "geometry_length_m": 510.8661002544557,
+          "steps": 3
+        }
+      ],
+      "rejected_paths": [
+        {
+          "path_index": 1,
+          "reason": "AMap walking steps need at least two distinct polyline points."
+        },
+        {
+          "path_index": 2,
+          "reason": "AMap walking steps need at least two distinct polyline points."
+        }
+      ]
+    },
+    {
+      "route_id": "amap-walking-99ad834dcaf90104e3fe76d5",
+      "origin": [
+        113.391301,
+        22.529941
+      ],
+      "destination": [
+        113.39413,
+        22.528156
+      ],
+      "retrieved_at": "2026-10-29T17:06:10.892723+00:00",
+      "raw_file": "source/route-99ad834dcaf90104e3fe76d5.json",
+      "metadata_file": "source/route-99ad834dcaf90104e3fe76d5.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 421.0,
+          "geometry_length_m": 423.79820454457735,
+          "steps": 3
+        },
+        {
+          "path_index": 1,
+          "distance_m": 570.0,
+          "geometry_length_m": 572.0286964999552,
+          "steps": 3
+        }
+      ],
+      "rejected_paths": []
+    },
+    {
+      "route_id": "amap-walking-14c6f06af4ab5920e9987d00",
+      "origin": [
+        113.39413,
+        22.528156
+      ],
+      "destination": [
+        113.39284,
+        22.526719
+      ],
+      "retrieved_at": "2026-10-29T17:06:11.876892+00:00",
+      "raw_file": "source/route-14c6f06af4ab5920e9987d00.json",
+      "metadata_file": "source/route-14c6f06af4ab5920e9987d00.meta.json",
+      "paths": [
+        {
+          "path_index": 0,
+          "distance_m": 631.0,
+          "geometry_length_m": 639.4870274952309,
+          "steps": 5
+        }
+      ],
+      "rejected_paths": []
+    }
+  ],
+  "files": {
+    "source/route-a3ad4656dfe5741b2988b47e.json": "6db2410a2ae932b90ebb1f3daa75f67e760ea7272117a8b61de63a46fcd6e2ea",
+    "source/route-a3ad4656dfe5741b2988b47e.meta.json": "d71d8fde517fb213167a60935c227df020a1cf735d5dda07f23aea419981f66e",
+    "source/route-3d68bec973c007716b8ccb2d.json": "be3804c2e96e4469f50f49cf9ee1eb53838c6da37814588583480db87a563e1a",
+    "source/route-3d68bec973c007716b8ccb2d.meta.json": "c5335f1971b2df5a202bdb1774ef5089b037bf06dd7dd336f0444cf2519f2516",
+    "source/route-5f358a35e5b9bed40055aed3.json": "ab4ac295c86f4071f7753f787545af0c2f26a38867c292966747998a187381c8",
+    "source/route-5f358a35e5b9bed40055aed3.meta.json": "115544150329a0c55f0d0a75eec1d0d5ac5ab29abcd9be89f8c5ba5fbc5655cb",
+    "source/route-39b126b58c7c8a4b81bfbfdd.json": "de2f20241bad413f5240a6b6ec43cafe7438ad04337118c0d622b37cbf7e289d",
+    "source/route-39b126b58c7c8a4b81bfbfdd.meta.json": "1d36e2edd408f5f24d6caaaab065e8e8a9412730fb1a57f39495cecc7e39f268",
+    "source/route-5b6ceba07b218a5f053f0234.json": "994d95ecc3ae72902983a748ac3730e2b3362e1718dcb4c327b05aff5ffebd2e",
+    "source/route-5b6ceba07b218a5f053f0234.meta.json": "63e8241aeb44852752271c01ffcc4453df0b42521c75cedda8110e929bbf4a98",
+    "source/route-952aa6777214b7b3179f59b1.json": "d9b760ee8181e3928286417b951583c168f459e6d369e38da61601e67acfff68",
+    "source/route-952aa6777214b7b3179f59b1.meta.json": "772e3a69ac78bf62f542147f4dba7b0a46a4cb5824fc9968d147485a2e72e5a9",
+    "source/route-647f7c7a7510fed943d51e81.json": "1ac25edcc2bdd5529a0a208d49670ce6ff0656d9417ad1c5b1bfb0e15daf98c2",
+    "source/route-647f7c7a7510fed943d51e81.meta.json": "c98239ec750f000a7aad2715fbbf78125656e50232dabd6fc49a5ba0c056f149",
+    "source/route-dd051cf0a5711d0c90eae5a3.json": "610c2899437510056bdf78e6a87dbbaf3639c070ea56e923539d9d886d0990e9",
+    "source/route-dd051cf0a5711d0c90eae5a3.meta.json": "d564fb8e3adc36bc07825dcf60fe28d8ec905f1fe9702f093f07de905a208f79",
+    "source/route-20cbb8c8819b8ebb95764898.json": "a59a2aed8c07b7dd69d238c1bcada9fe5bc89a4685d3809a37efd2ebc6fc27c2",
+    "source/route-20cbb8c8819b8ebb95764898.meta.json": "858488dea561e8a6946b29ebf608e8811735f189edba109d73fa240f6144a996",
+    "source/route-c33664f612dae995eda7113a.json": "b2fdda7804f96fbccfa320eaa2056620f3604dbb15c8487d56183c7832a310db",
+    "source/route-c33664f612dae995eda7113a.meta.json": "ac8e5aa71160196b166708b89b3e7ebb02fdd192c064f69d7501f0c904e8ab61",
+    "source/route-e71946ce1771b4d304397583.json": "564e874594c5185dcd079170f97ec86daabc5fc0f923fa7bb6461f23f7b35c90",
+    "source/route-e71946ce1771b4d304397583.meta.json": "7ba65894d9e091061be3e5572fc6911b96bf6adb4b935a7d480ffee7e88a828e",
+    "source/route-34845654084c6d846a2d3e99.json": "595e622eb08b89e32461fae58c8391e3ab265cdea3706e62f5b69c3060a967ba",
+    "source/route-34845654084c6d846a2d3e99.meta.json": "bcd391b05feb291a1e94e68e1622399b39569f1d5e38a3fea8ac181c2812fd60",
+    "source/route-67c51aa2c8c0732e83927824.json": "7381d3d2681dc1915bd433001a3fbe985834dc1cdd9c5ce6cf66e03fec38c2d8",
+    "source/route-67c51aa2c8c0732e83927824.meta.json": "daeb4c4e35d6ceb35f0393084849ca8d7c2f16e925bb77ac3ffebaa22f116f4c",
+    "source/route-05539da87b57c9a70ce6e3e2.json": "0d64f977ef47c84be7f90af1e487dc33800ca76a1bb5e883434b27ab640e6280",
+    "source/route-05539da87b57c9a70ce6e3e2.meta.json": "009a12dfc1549617cc9770b340e8993fe2ea333491af2dfc4a50bd72d6d214f4",
+    "source/route-35d0dd75a8357b606a62ca54.json": "82e26eccbf5e0fc759849b53203eb05dde4aed3a4675b4465f4863a7fdccdd52",
+    "source/route-35d0dd75a8357b606a62ca54.meta.json": "79a4b91215e071e8efe9cea64907e8b3ea8f27716e8f8b53b3c5ae94aa97c6a6",
+    "source/route-2b0259b9479b3bf2db3d0c4d.json": "5062d31284068aa65743a77bbeadda547057e17e4dcc6514dd1a28b042e09118",
+    "source/route-2b0259b9479b3bf2db3d0c4d.meta.json": "9ba559b8ee3357e302315091ef3df0e93522acdea87563a2cd4c5bb66603a935",
+    "source/route-d8cfc3f770f780489de94656.json": "5eb8e895595abec24902fd5463b88df94fe1206b6627d26079021b2cc3c1530a",
+    "source/route-d8cfc3f770f780489de94656.meta.json": "ae940aba29f13fca99f67962587fc9b4c3bf5ad19d46e8d6b52fd0c722056a04",
+    "source/route-296bd63b9b5757cccc1a83cc.json": "594a23973aa1a4df0c694b21056efd01d9710c56fcdacfedccab4ecb5e65cfd2",
+    "source/route-296bd63b9b5757cccc1a83cc.meta.json": "12c5ba367b624d83bb6b6a52e7fa71c142ec5f2aa904234ee3da1c6804ad0408",
+    "source/route-9839151e2081257a1525aedd.json": "7b1244047a8ba00d115b703e68cad8fea058c9222a673e3b8cb51040fac1467c",
+    "source/route-9839151e2081257a1525aedd.meta.json": "8221ca6831ca454709e30e29a0cbfa87da6b6b74ed447b078c207b98a9938fea",
+    "source/route-dbaff0370ae306b1d3278915.json": "5ecf3157e07537b325bc1aaccb0e22fc00093ea899dbcfde22a7c7720c94790a",
+    "source/route-dbaff0370ae306b1d3278915.meta.json": "69a854953026d7e31191196a4420b71cf2c33f0ee4584c3d54f9352ddaebb34a",
+    "source/route-f14bb29590e608a4d566d1b0.json": "bdd2d53639fbd7616315372536d7647c4b4ad22470d4d68c26e0dff5a1c395d7",
+    "source/route-f14bb29590e608a4d566d1b0.meta.json": "d0628dcda531fbeb7efc3e60a6fc3cef25c58d6548a6ca93bded2709f655ad70",
+    "source/route-1b15c8e28a3ecfc23146f525.json": "0ee68f25cf36c733244b1b7ae21df31117e24109acf20585fa814385428df198",
+    "source/route-1b15c8e28a3ecfc23146f525.meta.json": "e621158fed93d324057a06d7808a5ae4045fb37bf04d60198a78feaf28dc5542",
+    "source/route-3b6ed14121767f7faaecb6a3.json": "288bc21c6a0e9e90a947a898352dc9d010390ebcba633066ef45a59929430e5a",
+    "source/route-3b6ed14121767f7faaecb6a3.meta.json": "b4081d984b001667c36ff6d137d76709197656ba2cb9bb7eb3287f6fb40cbc73",
+    "source/route-99ad834dcaf90104e3fe76d5.json": "f87c01b36db52ea250f77446266de2a6e78c14b294d1f03cfeb74150c32f3e6c",
+    "source/route-99ad834dcaf90104e3fe76d5.meta.json": "90a34729df4bcaf60a5785583723ac0fd9c250e70bdefd000ddc67395964b5e3",
+    "source/route-14c6f06af4ab5920e9987d00.json": "5bfaef182b748044c4a6e3cb14cf313102bf29e139400d1d646638d1f0daf102",
+    "source/route-14c6f06af4ab5920e9987d00.meta.json": "5a6d7d4417e8a25eeb1c6ff74b82de1a64f3aad62a0c394cb66de21f5113fb9d",
+    "footpaths.geojson": "260a541c052d29eb44c1e44dc4ae044cc00bae06d3c348cef023b708069f5420"
+  }
+}

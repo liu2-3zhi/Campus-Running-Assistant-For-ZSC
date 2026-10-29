@@ -1,0 +1,4 @@
+# Preserve downloaded bytes used by SHA256 checks, including on Windows.
+data/source/*.osm -text
+tools/vendor/* -text -whitespace
+web/public/static/vendor/** -text -whitespace

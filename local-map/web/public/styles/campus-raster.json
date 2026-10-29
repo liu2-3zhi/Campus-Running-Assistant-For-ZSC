@@ -1,0 +1,31 @@
+{
+  "version": 8,
+  "name": "Campus GCJ-02 offline raster",
+  "sources": {
+    "campus": {
+      "type": "raster",
+      "tiles": ["/api/v1/tiles/{z}/{x}/{y}.png"],
+      "tileSize": 256,
+      "minzoom": 14,
+      "maxzoom": 18,
+      "bounds": [
+        113.3852747260368, 22.522802343443914, 113.39558244764372,
+        22.53281022147416
+      ],
+      "attribution": "© OpenStreetMap contributors · ODbL 1.0"
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#f2f0e8" }
+    },
+    {
+      "id": "campus",
+      "type": "raster",
+      "source": "campus",
+      "paint": { "raster-fade-duration": 0 }
+    }
+  ]
+}

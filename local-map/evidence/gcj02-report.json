@@ -1,0 +1,92 @@
+{
+  "data": {
+    "status": "ok",
+    "version": "20261029T160131Z-1a08c115",
+    "checked_files": 115
+  },
+  "request_origin": "https://zslf.zsc.edu.cn",
+  "coordinate_system": "GCJ-02",
+  "graph_coordinate_system": "GCJ-02",
+  "tile_provider": "amap",
+  "tiles": 101,
+  "gps_calibration": {
+    "official_samples": 25,
+    "maximum_error_m": 0.06797792852629476,
+    "mean_error_m": 0.03035806042811016
+  },
+  "original_task_points": [
+    {
+      "index": 0,
+      "input": [
+        113.391996,
+        22.529253
+      ],
+      "within_map": true,
+      "snap_offset_m": 4.007198717493863
+    },
+    {
+      "index": 1,
+      "input": [
+        113.392747,
+        22.530308
+      ],
+      "within_map": true,
+      "snap_offset_m": 1.376248708649604
+    },
+    {
+      "index": 2,
+      "input": [
+        113.393379,
+        22.529166
+      ],
+      "within_map": true,
+      "routing": "OSM has no walkable path within 50m"
+    },
+    {
+      "index": 3,
+      "input": [
+        113.391335,
+        22.53061
+      ],
+      "within_map": true,
+      "snap_offset_m": 0.6123748907191118
+    },
+    {
+      "index": 4,
+      "input": [
+        113.393432,
+        22.529986
+      ],
+      "within_map": true,
+      "snap_offset_m": 7.530728005857218
+    },
+    {
+      "index": 5,
+      "input": [
+        113.391301,
+        22.529941
+      ],
+      "within_map": true,
+      "snap_offset_m": 7.603689835589026
+    },
+    {
+      "index": 6,
+      "input": [
+        113.39413,
+        22.528156
+      ],
+      "within_map": true,
+      "snap_offset_m": 21.664719554842836
+    },
+    {
+      "index": 7,
+      "input": [
+        113.39284,
+        22.526719
+      ],
+      "within_map": true,
+      "snap_offset_m": 46.28944215358773
+    }
+  ],
+  "status": "passed"
+}
