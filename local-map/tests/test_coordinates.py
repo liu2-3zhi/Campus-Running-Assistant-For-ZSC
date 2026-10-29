@@ -43,17 +43,7 @@ def test_bounds_envelope_contains_transformed_campus_edges():
             assert south <= converted_latitude <= north
 
 
-def test_source_conversion_uses_official_service_without_formula_fallback(monkeypatch):
-    from campus_map import amap
-
+def test_source_conversion_uses_the_local_formula_without_network():
     points = [(113.38, 22.53)]
-    expected = [[113.386, 22.527]]
-    monkeypatch.setattr(amap, "convert_points", lambda actual, **options: expected if actual == points and options.get("cache_path") else pytest.fail("Wrong source points"))
-    assert coordinates.convert_nodes(points) is expected
-
-    def unavailable(_points, **_options):
-        raise RuntimeError("AMap is unavailable")
-
-    monkeypatch.setattr(amap, "convert_points", unavailable)
-    with pytest.raises(RuntimeError, match="AMap is unavailable"):
-        coordinates.convert_nodes(points)
+    converted = coordinates.convert_nodes(points)
+    assert converted[0] == pytest.approx(list(coordinates.wgs84_to_gcj02(*points[0])))

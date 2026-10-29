@@ -1,4 +1,4 @@
-"""Offline forward GPS conversion using a grid sampled from AMap at prepare time."""
+"""Offline forward GPS conversion using the local GCJ-02 conversion grid."""
 
 import math
 
@@ -9,8 +9,8 @@ class Calibration:
     def __init__(self, document):
         if (not isinstance(document, dict) or document.get("coordinate_system") != "GCJ-02" or
                 document.get("source_coordinate_system") != "WGS84" or
-                document.get("coordinate_conversion") != "AMap Web Service gps -> GCJ-02"):
-            raise ValueError("Invalid AMap GPS calibration coordinate system")
+                document.get("coordinate_conversion") != "Local WGS84 -> GCJ-02 formula"):
+            raise ValueError("Invalid local GPS calibration coordinate system")
         self.bounds = document["source_bounds"]
         self.columns, self.rows = document["columns"], document["rows"]
         self.points = document["points"]
@@ -23,7 +23,7 @@ class Calibration:
                 any(not isinstance(point, list) or len(point) != 2 or
                     not all(type(value) in (int, float) and math.isfinite(value) for value in point)
                     for point in self.points)):
-            raise ValueError("Invalid AMap GPS calibration grid")
+            raise ValueError("Invalid local GPS calibration grid")
 
     def convert(self, point):
         longitude, latitude = point
@@ -41,4 +41,4 @@ class Calibration:
         weights = [(1 - dx) * (1 - dy), dx * (1 - dy), (1 - dx) * dy, dx * dy]
         converted = [sum(corner[axis] * weight for corner, weight in zip(corners, weights))
                      for axis in range(2)]
-        return converted, "amap-calibration"
+        return converted, "local-calibration"

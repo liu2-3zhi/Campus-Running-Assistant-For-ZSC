@@ -26,10 +26,8 @@ def main(argv: list[str] | None = None) -> int:
         command.add_argument("--data-dir", type=Path, default=ROOT / "data")
         if name == "prepare":
             command.add_argument("--source", type=Path, help="Import an existing local OSM file")
-            command.add_argument("--footpaths", type=Path,
-                                 help="Collect campus walking paths for GCJ-02 target_points from a task JSON or coordinate array")
-            command.add_argument("--tile-provider", choices=("amap", "osm"), default="amap",
-                                 help="Prepare AMap raster tiles (default), or render OSM locally")
+            command.add_argument("--tile-provider", choices=("osm",), default="osm",
+                                 help="Render the local OSM data with TileServer GL")
             command.add_argument("--minzoom", type=int, default=14)
             command.add_argument("--maxzoom", type=int, default=18)
         elif name == "build":
@@ -55,19 +53,8 @@ def main(argv: list[str] | None = None) -> int:
 
             if not 0 <= args.minzoom <= args.maxzoom <= 20:
                 raise DataError("Require 0 <= minzoom <= maxzoom <= 20", "INVALID_INPUT")
-            if args.tile_provider == "amap" and args.maxzoom > 18:
-                raise DataError("AMap native tiles support maxzoom 18; the web page overzooms to 20.", "INVALID_INPUT")
-            footpath_points = None
-            if args.footpaths is not None:
-                reference = json.loads(args.footpaths.read_text(encoding="utf-8"))
-                footpath_points = reference.get("target_points") if isinstance(reference, dict) else reference
-                if not isinstance(footpath_points, list):
-                    raise DataError("Footpaths JSON must be a coordinate array or contain target_points.", "INVALID_INPUT")
-                footpath_points = [point for point in footpath_points
-                                   if isinstance(point, (list, tuple)) and len(point) == 2
-                                   and point != [0, 0] and tuple(point) != (0, 0)]
             result = prepare(data_root, source=args.source, tile_provider=args.tile_provider,
-                             minzoom=args.minzoom, maxzoom=args.maxzoom, footpath_points=footpath_points)
+                             minzoom=args.minzoom, maxzoom=args.maxzoom)
         else:
             from .pipeline import build
 

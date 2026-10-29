@@ -111,8 +111,8 @@ class _Release:
             raise DataUnavailableError("The active map manifest is invalid.")
         if manifest.get("coordinate_system") != "GCJ-02" or manifest.get("graph_coordinate_system") != "GCJ-02":
             raise DataUnavailableError("The active map uses an old coordinate system; run prepare and build for GCJ-02.")
-        if manifest.get("source_coordinate_system") != "WGS84" or manifest.get("coordinate_conversion") != "AMap Web Service gps -> GCJ-02":
-            raise DataUnavailableError("The active map has no verified AMap coordinate conversion; run prepare and build.")
+        if manifest.get("source_coordinate_system") != "WGS84" or manifest.get("coordinate_conversion") != "Local WGS84 -> GCJ-02 formula":
+            raise DataUnavailableError("The active map has no verified local coordinate conversion; run prepare and build.")
         bounds = manifest["bounds"]
         if not isinstance(bounds, list) or len(bounds) != 4 or not all(type(number) in (int, float) and math.isfinite(number) for number in bounds):
             raise DataUnavailableError("The active map bounds are invalid.")
@@ -245,25 +245,17 @@ def create_app(data_root: Path | None = None):
     @app.get("/api/v1/map-style")
     def map_style():
         manifest = release().manifest
-        attribution = "高德地图" if manifest.get("tile_provider") == "amap" else "(c) OpenStreetMap contributors"
+        attribution = "(c) OpenStreetMap contributors"
         style = {"version": 8, "name": "Campus GCJ-02", "sources": {"campus": {
             "type": "raster", "tiles": ["/api/v1/tiles/{z}/{x}/{y}.png?v=" + manifest["version"]], "tileSize": 256,
             "bounds": manifest["bounds"], "minzoom": manifest["minzoom"], "maxzoom": manifest["maxzoom"],
             "attribution": attribution}}, "layers": [
                 {"id": "background", "type": "background", "paint": {"background-color": "#f5f4ef"}},
                 {"id": "campus", "type": "raster", "source": "campus"}]}
-        if "footpaths" in manifest["layers"]:
-            style["sources"]["footpaths"] = {"type": "geojson", "data": "/api/v1/features/footpaths?v=" + manifest["version"]}
-            style["layers"].extend([
-                {"id": "footpaths-outline", "type": "line", "source": "footpaths", "minzoom": 14,
-                 "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": "#fffaf0", "line-width": 5}},
-                {"id": "footpaths", "type": "line", "source": "footpaths", "minzoom": 14,
-                 "layout": {"line-cap": "round", "line-join": "round"}, "paint": {"line-color": "#cf7c13", "line-width": 2}},
-            ])
         return style
 
     @app.post("/api/v1/coordinates/gps", summary="将设备 GPS 换算至 GCJ-02（离线）",
-              description="仅 GPS 输入采用 WGS84；校园内使用准备阶段保存的高德官方转换校准网格，外部使用本地近似算法。路线接口始终采用 GCJ-02。")
+              description="仅 GPS 输入采用 WGS84；服务使用准备阶段生成的本地 GCJ-02 转换校准网格。路线接口始终采用 GCJ-02。")
     def gps_coordinates(body: GpsRequest):
         if any(not -180 <= point[0] <= 180 or not -90 <= point[1] <= 90 for point in body.points):
             raise RouteInputError("GPS coordinates must be valid WGS84 longitude and latitude.")
@@ -271,7 +263,7 @@ def create_app(data_root: Path | None = None):
         converted = [calibration.convert(point) for point in body.points]
         methods = [method for _, method in converted]
         return {"coordinate_system": "GCJ-02", "points": [point for point, _ in converted],
-                "method": "amap-calibration" if all(method == "amap-calibration" for method in methods) else "local-approximation"}
+                "method": "local-calibration" if all(method == "local-calibration" for method in methods) else "local-approximation"}
 
     @app.get("/api/v1/features/{layer}")
     def features(layer: str):

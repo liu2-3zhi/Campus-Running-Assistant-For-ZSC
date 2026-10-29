@@ -1,18 +1,17 @@
 {
   "data": {
     "status": "ok",
-    "version": "20261029T160131Z-1a08c115",
-    "checked_files": 115
+    "version": "20261029T175704Z-d7c14d61",
+    "checked_files": 185
   },
-  "request_origin": "https://zslf.zsc.edu.cn",
   "coordinate_system": "GCJ-02",
   "graph_coordinate_system": "GCJ-02",
-  "tile_provider": "amap",
+  "tile_provider": "osm",
   "tiles": 101,
   "gps_calibration": {
-    "official_samples": 25,
-    "maximum_error_m": 0.06797792852629476,
-    "mean_error_m": 0.03035806042811016
+    "local_samples": 25,
+    "maximum_error_m": 0.00030732213401596213,
+    "mean_error_m": 0.0002014684236433974
   },
   "original_task_points": [
     {
@@ -85,7 +84,7 @@
         22.526719
       ],
       "within_map": true,
-      "snap_offset_m": 46.28944215358773
+      "snap_offset_m": 46.352303851769065
     }
   ],
   "status": "passed"

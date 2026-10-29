@@ -79,8 +79,8 @@ class RoutingService:
             manifest = json.loads((self.release_dir / "manifest.json").read_text(encoding="utf-8"))
             if manifest.get("coordinate_system") != "GCJ-02" or manifest.get("graph_coordinate_system") != "GCJ-02":
                 raise ValueError("The routing graph must be rebuilt in GCJ-02")
-            if manifest.get("source_coordinate_system") != "WGS84" or manifest.get("coordinate_conversion") != "AMap Web Service gps -> GCJ-02":
-                raise ValueError("The routing graph has no verified AMap coordinate conversion")
+            if manifest.get("source_coordinate_system") != "WGS84" or manifest.get("coordinate_conversion") != "Local WGS84 -> GCJ-02 formula":
+                raise ValueError("The routing graph has no verified local coordinate conversion")
             self.bounds = tuple(manifest["bounds"])
             if len(self.bounds) != 4 or not all(type(value) in (float, int) and math.isfinite(value) for value in self.bounds):
                 raise ValueError("Invalid bounds")

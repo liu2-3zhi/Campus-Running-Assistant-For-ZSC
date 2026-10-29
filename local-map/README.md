@@ -1,7 +1,7 @@
 # 电子科技大学中山学院离线地图
 
 独立的校园地图、步行路线规划 API 和 Web 测试台。使用真实 OpenStreetMap
-数据，路线引擎复用 Valhalla，默认使用准备阶段缓存的高德图片瓦片，Web
+数据，路线引擎复用 Valhalla，使用 TileServer GL 在本地渲染 OSM 矢量数据，Web
 基于 Valhalla 官方 Web App 适配。所有代码和数据均限定在本目录，未接入主程序。
 
 ## 启动
@@ -39,22 +39,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
 首次安装和 `prepare` 可以联网；数据准备完毕后的 `build`、`validate`、`serve`
-均使用本地资源。`prepare` 使用高德官方 Web 服务把原始 OSM 节点正向转换为
-GCJ-02，并缓存校园范围的高德 14–18 级瓦片。网页可继续放大至 20 级；19、20
-级使用 18 级图片放大，避免该来源返回的空白图。构建产物、虚拟环境、密钥和依赖
-目录不进入 Git，原始 WGS84 源数据和版本信息保留。
-
-准备数据前，将 Web 服务 Key 设置为 `AMAP_WEB_KEY` 环境变量，或写入本地
-`.local-config.json` 的 `amap_web_key` 字段。该文件已被 Git 忽略；日常启动
-不读取或向浏览器公开 Key，也不加载在线 JS SDK。
-所有高德请求都显式设置 `Referer: https://zslf.zsc.edu.cn/` 和
-`Origin: https://zslf.zsc.edu.cn`。API 的真实数据来源 URL 与请求来源分开记录。
-
-高德栅格使用已实测的 `webrd01.is.autonavi.com/appmaptile`，它不是有版本保障的
-公开 Web 服务接口。其服务条款及来源保存在清单中；后续接口变化可能导致重新准备
-失败，此时保留旧版本。需要独立本地渲染时可使用
-`prepare --tile-provider osm --maxzoom 20` 与 `build --maxzoom 20`，TileServer GL
-会从同一份 GCJ-02 GeoJSON 生成底图，不把 WGS84 图片混入 GCJ-02 版本。
+均使用本地资源。`prepare` 从 Overpass 或本地 OSM 文件读取 WGS84 数据，使用内置
+的 WGS84→GCJ-02 公式一次性转换，再由 TileServer GL 在本地生成 PNG 瓦片。构建产物、
+虚拟环境和依赖目录不进入 Git，原始 OSM 源数据和版本信息保留。
 
 导入已有 OSM 数据时使用：
 
@@ -62,21 +49,6 @@ GCJ-02，并缓存校园范围的高德 14–18 级瓦片。网页可继续放�
 .venv\Scripts\python.exe main.py prepare --source .\campus.osm
 .venv\Scripts\python.exe main.py build
 ```
-
-若要把任务文件中的参考点周边小路一并归档，准备阶段传入 `--footpaths`：
-
-```powershell
-.venv\Scripts\python.exe main.py prepare `
-  --source .\data\source\a0595348040142196da0.osm `
-  --footpaths C:\Users\Zelly\Downloads\task_d2c2c8671877d322b51efaac344e84f1_1793097445.json
-.venv\Scripts\python.exe main.py build
-```
-
-该选项使用高德官方步行接口保存真实 polyline，再并入 GCJ-02 的 Valhalla 图和
-`footpaths` GeoJSON 图层；不会按端点绘制直线。当前参考文件得到 83 条补充路段，
-3 对高德没有连续步行路径的组合会保留在 `skipped_pairs` 中。高德栅格实测原生
-细节到 z18，z19/z20 只是本地放大 z18 图片；因此放大底图本身不能补出小路，
-补充步行几何才是离线小路来源。
 
 各命令均支持 `--data-dir`；`serve` 另支持 `--host` 和 `--port`。
 修改本地道路可使用 JOSM 编辑 OSM 文件，再导入重建。准备或构建失败不会替换
@@ -102,8 +74,8 @@ GCJ-02，并缓存校园范围的高德 14–18 级瓦片。网页可继续放�
 进入离线路网，不在请求时做 GCJ-02→WGS84 的逆向转换。Valhalla 路网也由已转换
 的 GCJ-02 OSM 节点构建；旧 WGS84 版本会明确拒绝加载，必须重新 prepare/build。
 
-唯一的 WGS84 输入边界是设备 GPS。校园内使用准备阶段保存的高德官方转换网格
-在本地插值，离线可用；范围外使用本地近似正向算法，响应中的 `method` 明确区分。
+唯一的 WGS84 输入边界是设备 GPS。校园内使用准备阶段保存的本地转换网格
+在本地插值，离线可用；范围外使用同一套本地正向算法，响应中的 `method` 明确区分。
 这解决坐标基准混用，不修正 OSM 自身的测绘误差或缺失道路；道路吸附仍不代表入口。
 
 | 方法与路径 | 说明 |
@@ -145,8 +117,9 @@ GCJ-02，并缓存校园范围的高德 14–18 级瓦片。网页可继续放�
 当前版本按“真实数据先交付”提供覆盖诊断，不承诺所有建筑入口可达，不代表实地
 通行核验结果。请勿将最近道路吸附点理解为建筑入口。
 
-路网数据许可为 ODbL，地图注明 OpenStreetMap contributors；高德底图与转换服务
-的来源和条款单独记录，不把其图片标为 OSM 或开源数据。上游组件与许可见
+路网数据许可为 ODbL，地图注明 OpenStreetMap contributors。候选的 Overture
+Buildings 数据也采用 ODbL，但本版本不自动下载或混入路网；需要时可通过 `--source`
+导入经过审查的本地数据。上游组件与许可见
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，构建及测试记录见
 [VALIDATION.md](VALIDATION.md)。主要上游提交和发布版本见 `UPSTREAM_LOCK.json`。
 

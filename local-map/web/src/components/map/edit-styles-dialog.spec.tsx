@@ -3,6 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type maplibregl from 'maplibre-gl';
 import { EditStylesDialog } from './edit-styles-dialog';
+import {
+  CUSTOM_STYLE_STORAGE_KEY,
+  MAP_STYLE_STORAGE_KEY,
+} from './constants';
 
 const mockLocalStorage: Record<string, string> = {};
 
@@ -125,11 +129,11 @@ describe('EditStylesDialog', () => {
 
     await waitFor(() => {
       expect(localStorage.setItem).toHaveBeenCalledWith(
-        'customMapStyle',
+        CUSTOM_STYLE_STORAGE_KEY,
         JSON.stringify(newStyle)
       );
       expect(localStorage.setItem).toHaveBeenCalledWith(
-        'selectedMapStyle',
+        MAP_STYLE_STORAGE_KEY,
         'custom'
       );
     });

@@ -234,18 +234,12 @@ test(
       const metadata = await (await fetch(`${origin}/api/v1/map`)).json();
       assert.equal(metadata.coordinate_system, "GCJ-02");
       assert.equal(metadata.graph_coordinate_system, "GCJ-02");
-      assert.equal(metadata.tile_provider, "amap");
+      assert.equal(metadata.tile_provider, "osm");
       const liveStyle = await (await fetch(`${origin}/api/v1/map-style`)).json();
       assert.deepEqual(liveStyle.sources.campus.bounds, metadata.bounds);
       assert.equal(liveStyle.sources.campus.maxzoom, metadata.maxzoom);
       assert.match(liveStyle.sources.campus.tiles[0], new RegExp(`v=${metadata.version}$`));
-      assert.ok(metadata.layers.footpaths.count > 0, "the active release contains collected walking segments");
-      assert.equal(liveStyle.sources.footpaths.type, "geojson");
-      assert.equal(liveStyle.sources.footpaths.data, `/api/v1/features/footpaths?v=${metadata.version}`);
-      const footpathsLayer = liveStyle.layers.find((layer) => layer.id === "footpaths");
-      assert.equal(footpathsLayer.type, "line");
-      assert.equal(footpathsLayer.layout?.visibility ?? "visible", "visible");
-      assert.equal(footpathsLayer.paint["line-color"], "#cf7c13");
+      assert.equal(liveStyle.sources.footpaths, undefined);
       const bounds = (metadata.manifest ?? metadata).bounds;
       await page.waitForSelector('[data-testid="example-route-0"]');
       assert.ok(await page.$(".maplibregl-canvas"), "MapLibre canvas loaded");
@@ -427,37 +421,6 @@ test(
           assert.deepEqual([locations[0].lon, locations[0].lat], start);
           assert.deepEqual([locations[1].lon, locations[1].lat], end);
           await captureMap("original-task-gcj02.png");
-        },
-      );
-
-      await t.test(
-        "all eight original reference points produce seven ordered offline legs",
-        async () => {
-          const expected = [
-            [113.391996, 22.529253],
-            [113.392747, 22.530308],
-            [113.393379, 22.529166],
-            [113.391335, 22.53061],
-            [113.393432, 22.529986],
-            [113.391301, 22.529941],
-            [113.39413, 22.528156],
-            [113.39284, 22.526719],
-          ];
-          const reference = metadata.reference_route;
-          assert.deepEqual([reference.start, ...reference.waypoints, reference.end], expected);
-          const responsePromise = waitRoute();
-          await page.click('[data-testid="reference-route"]');
-          const response = await responsePromise;
-          assert.equal(response.status(), 200);
-          const route = await response.json();
-          const locations = requests.at(-1).locations;
-          assert.deepEqual(locations.map(({ lon, lat }) => [lon, lat]), expected);
-          assert.equal(route.trip.legs.length, 7);
-          assert.ok(route.trip.legs.every((leg) => leg.shape.length > 0));
-          await page.waitForFunction(() => document.querySelectorAll('[role="listitem"][aria-label^="路线点 "]').length === 8);
-          assert.equal(await page.$$eval('[data-testid^="example-route-"]', (items) => items.length), 3);
-          assert.match(await page.$eval('[data-testid="supplementary-paths"]', (el) => el.textContent), /高德步行补充路段.*并非全校园完整小路网/);
-          await captureMap("reference-eight-points.png");
         },
       );
 

@@ -1,14 +1,13 @@
 # Campus offline map implementation
 
 User-approved plan: independent Python entry point under local-map; Valhalla
-3.9.1 for pedestrian routes, AMap cached raster tiles (with TileServer GL 5.7.0
-as the local OSM rendering option),
+3.9.1 for pedestrian routes and TileServer GL 5.7.0 for local OSM rendering,
 and the upstream Valhalla web-app for the local browser interface.
 
 ## Boundaries
 
 - GCJ-02 coordinates, longitude before latitude. Original WGS84 OSM is archived
-  separately and converted forward once using AMap before graph building.
+  separately and converted forward once with the local formula before graph building.
   Runtime bounds come from the immutable release manifest. No inverse coordinate
   conversion occurs during routing or manual input.
 - Runtime must read local assets only. No integration with the main application.
@@ -36,17 +35,17 @@ and the upstream Valhalla web-app for the local browser interface.
 
 ## Progress
 
-- Current GCJ-02 release: 3821 official AMap-converted OSM nodes, 101 cached
-  raster tiles at native zooms 14-18, 83 archived AMap walking supplement
-  segments, and a 17x17 official GPS calibration grid.
-  All AMap requests use Referer/Origin https://zslf.zsc.edu.cn. Legacy WGS84
-  releases, browser caches and permalinks are isolated to avoid coordinate mixing.
+- Current GCJ-02 release: the archived OSM snapshot is converted locally, rendered
+  by TileServer GL, and served only from the release directory. A local 17x17 GPS
+  calibration grid keeps browser GPS conversion offline. Legacy provider releases,
+  browser caches and permalinks are isolated to avoid coordinate mixing.
 - Runtime exposes GCJ-02 through routes, native polyline6, map metadata and
   features; /api/v1/coordinates/gps is the explicit WGS84 GPS input boundary.
-- The supplement covers the supplied reference-point pairs only. Three pairs
-  with no continuous AMap walking geometry are retained as `skipped_pairs`; it
-  is not a complete survey of every campus footpath. See VALIDATION.md for the
-  latest checks and residual OSM coverage limits.
+- OSM remains the default source because the official OSM API and archived
+  Overpass snapshot are redistributable and can be rebuilt locally. Overture
+  Buildings was evaluated as an optional candidate but is not mixed into this
+  release; its transportation extract did not improve campus footpath coverage.
+  See VALIDATION.md for the latest checks and residual OSM coverage limits.
 
 - Baseline: main clean, ahead 69. Dedicated branch codex/campus-offline-map.
 - Ruling: use the explicitly requested checkout and isolated local-map directory;

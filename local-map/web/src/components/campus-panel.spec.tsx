@@ -108,57 +108,7 @@ describe('campus offline panels', () => {
     ).toBeInTheDocument();
   });
 
-  it('loads all eight reference points unchanged and in order without adding an example', async () => {
-    const points = [
-      [113.391996, 22.529253],
-      [113.392747, 22.530308],
-      [113.393379, 22.529166],
-      [113.391335, 22.53061],
-      [113.393432, 22.529986],
-      [113.391301, 22.529941],
-      [113.39413, 22.528156],
-      [113.39284, 22.526719],
-    ];
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        ...metadata,
-        layers: { footpaths: { count: 12 } },
-        reference_route: {
-          name: '参考点完整步行路线',
-          start: points[0],
-          end: points.at(-1),
-          waypoints: points.slice(1, -1),
-        },
-      }),
-    } as Response);
-    render(<CampusPanel />);
-    await userEvent
-      .setup()
-      .click(await screen.findByRole('button', { name: '加载8个参考点' }));
-    await waitFor(() => expect(mocks.refetch).toHaveBeenCalledOnce());
-    expect(mocks.clear).toHaveBeenCalledOnce();
-    expect(mocks.clearRoutes).toHaveBeenCalledOnce();
-    expect(mocks.setWaypoint.mock.calls).toEqual(
-      points.map(([lon, lat], index) => [
-        lon,
-        lat,
-        index,
-        { isPermalink: true },
-      ])
-    );
-    expect(screen.getAllByTestId(/^example-route-/)).toHaveLength(
-      metadata.examples.length
-    );
-    expect(screen.getByTestId('supplementary-paths')).toHaveTextContent(
-      '高德步行补充路段 12 条'
-    );
-    expect(screen.getByTestId('supplementary-paths')).toHaveTextContent(
-      '并非全校园完整小路网'
-    );
-  });
-
-  it('does not show the reference button or invent supplemental coverage before data is available', async () => {
+  it('does not show removed supplemental controls before data is available', async () => {
     render(<CampusPanel />);
     await screen.findByText('测试校园');
     expect(screen.queryByTestId('reference-route')).not.toBeInTheDocument();

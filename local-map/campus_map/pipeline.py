@@ -17,7 +17,7 @@ import xml.etree.ElementTree as ET
 import httpx
 import mercantile
 
-from .coordinates import COORDINATE_SYSTEM, SOURCE_COORDINATE_SYSTEM, convert_nodes, transform_bounds, wgs84_to_gcj02
+from .coordinates import COORDINATE_CONVERSION, COORDINATE_SYSTEM, SOURCE_COORDINATE_SYSTEM, convert_nodes, transform_bounds, wgs84_to_gcj02
 
 SOURCE_BOUNDS = (113.3798, 22.5255, 113.3901, 22.5355)
 BOUNDS = transform_bounds(SOURCE_BOUNDS)
@@ -26,7 +26,7 @@ CENTER = wgs84_to_gcj02((SOURCE_BOUNDS[0] + SOURCE_BOUNDS[2]) / 2,
 COORDINATE_METADATA = {"coordinate_system": COORDINATE_SYSTEM,
                        "graph_coordinate_system": COORDINATE_SYSTEM,
                        "source_coordinate_system": SOURCE_COORDINATE_SYSTEM,
-                       "coordinate_conversion": "AMap Web Service gps -> GCJ-02"}
+                       "coordinate_conversion": COORDINATE_CONVERSION}
 PROJECT = Path(__file__).resolve().parents[1]
 OSM_LICENSE = "Open Database License 1.0 (ODbL)"
 OSM_ATTRIBUTION = "(c) OpenStreetMap contributors"
@@ -44,7 +44,7 @@ def _json(path: Path, value) -> None:
 
 def _require_gcj02(metadata: dict, resource: str) -> None:
     if not isinstance(metadata, dict) or any(metadata.get(key) != value for key, value in COORDINATE_METADATA.items()):
-        raise ValueError(f"{resource} must use GCJ-02 coordinates prepared by the AMap service; run prepare and build again")
+        raise ValueError(f"{resource} must use the local GCJ-02 coordinate conversion; run prepare and build again")
 
 
 def _calibration_grid(target: Path) -> None:
@@ -181,11 +181,11 @@ def _convert_source(source: Path, target: Path) -> dict:
             "center": list(convert_nodes([source_center])[0]), **COORDINATE_METADATA}
 
 
-def prepare(data_root: Path, source: Path | None = None, *, tile_provider: str = "amap", minzoom: int = 14, maxzoom: int = 18, footpath_points=None) -> dict:
+def prepare(data_root: Path, source: Path | None = None, *, tile_provider: str = "osm", minzoom: int = 14, maxzoom: int = 18) -> dict:
     from .render import _assets
 
-    if tile_provider not in ("amap", "osm"):
-        raise ValueError("Tile provider must be amap or osm")
+    if tile_provider != "osm":
+        raise ValueError("The only supported tile provider is local OSM rendering")
     tile_coverage(minzoom, maxzoom)
     data_root = Path(data_root).resolve()
     stage_root = data_root / "staging"
@@ -221,31 +221,11 @@ def prepare(data_root: Path, source: Path | None = None, *, tile_provider: str =
         build_assets = _assets(allow_download=True) if tile_provider == "osm" else []
         conversion = _convert_source(stored, work)
         _require_gcj02(conversion, "Converted source")
-        footpaths = None
-        if footpath_points is not None:
-            from .footpaths import prepare_footpaths
-            from .network_merge import append_footpaths
-
-            footpath_cache = data_root / "footpaths-cache"
-            footpaths = prepare_footpaths(footpath_points, footpath_cache, bounds=conversion["bounds"])
-            shutil.copytree(footpath_cache, work / "footpaths")
-            footpaths["geojson"] = str((work / "footpaths/footpaths.geojson").resolve())
-            footpaths["manifest"] = str((work / "footpaths/manifest.json").resolve())
-            merge_stats = append_footpaths(work / "campus.osm", Path(footpaths["geojson"]))
-            _write_derived(work / "campus.osm", work)
-            footpaths = {key: value for key, value in footpaths.items() if key not in ("geojson", "manifest")}
-            footpaths.update({"geojson": "footpaths/footpaths.geojson", "manifest": "footpaths/manifest.json", "merge": merge_stats})
         _calibration_grid(work / "coordinate-calibration.json")
         _validate_calibration(work / "coordinate-calibration.json")
-        if tile_provider == "amap":
-            from .amap import prepare_tiles
-
-            prepare_tiles(data_root / "amap-cache", conversion["bounds"], minzoom, maxzoom)
         result = {"source_file": str(stored), "sources": [provenance], "build_assets": build_assets,
                   "source_bounds": list(SOURCE_BOUNDS), "tile_provider": tile_provider,
                   "tile_minzoom": minzoom, "tile_maxzoom": maxzoom, **conversion}
-        if footpaths is not None:
-            result["footpaths"] = footpaths
         _json(source_dir / (digest[:20] + ".provenance.json"), provenance)
         _json(work / "prepared.json", result)
         previous = stage_root / "prepared"
@@ -271,7 +251,7 @@ def tile_coverage(minzoom: int, maxzoom: int, bounds=None):
 
 def _feature_layers(prepared: Path, release: Path) -> dict:
     all_features = json.loads((prepared / "all.geojson").read_text(encoding="utf-8"))["features"]
-    layers = {name: [] for name in ("roads", "footpaths", "buildings", "boundary", "pois", "landuse", "water")}
+    layers = {name: [] for name in ("roads", "buildings", "boundary", "pois", "landuse", "water")}
     for item in all_features:
         props = item.get("properties", {})
         tags = props.get("tags", {})
@@ -281,8 +261,6 @@ def _feature_layers(prepared: Path, release: Path) -> dict:
                                   "name": tags.get("name:zh", tags.get("name", ""))}}
         if tags.get("highway") and "LineString" in geometry:
             layers["roads"].append(feature)
-            if tags.get("source") == "AMap walking API" or tags.get("supplement") == "amap_walking":
-                layers["footpaths"].append(feature)
         if tags.get("building") and "Polygon" in geometry:
             layers["buildings"].append(feature)
         if (props.get("id") in (620224814, 1468135556) or tags.get("amenity") in ("university", "college")) and "Polygon" in geometry:
@@ -293,32 +271,6 @@ def _feature_layers(prepared: Path, release: Path) -> dict:
             layers["water"].append(feature)
         if (tags.get("name") and (tags.get("amenity") or tags.get("shop") or tags.get("tourism"))) or tags.get("entrance") or tags.get("barrier") == "gate":
             layers["pois"].append(feature)
-    # osm2geojson drops synthetic high-id ways used for the archived AMap
-    # walking supplements. Publish the validated source GeoJSON directly so
-    # the web map and diagnostics expose the same paths used by Valhalla.
-    supplementary = prepared / "footpaths" / "footpaths.geojson"
-    if supplementary.is_file():
-        for item in json.loads(supplementary.read_text(encoding="utf-8")).get("features", []):
-            props = item.get("properties", {})
-            tags = dict(props.get("osm_tags", {}))
-            feature = {
-                **item,
-                "id": f"amap-footpath/{props.get('route_id', 'unknown')}/{props.get('pair_index', 0)}/{props.get('path_index', 0)}/{props.get('step_index', 0)}",
-                "properties": {
-                    **tags,
-                    "osm_id": None,
-                    "osm_type": "way",
-                    "name": props.get("road_name") or props.get("name", ""),
-                    "source": "AMap walking API",
-                    "supplement": "amap_walking",
-                    "route_id": props.get("route_id"),
-                    "pair_index": props.get("pair_index"),
-                    "path_index": props.get("path_index"),
-                    "step_index": props.get("step_index"),
-                },
-            }
-            layers["roads"].append(feature)
-            layers["footpaths"].append(feature)
     summary = {}
     for name, features in layers.items():
         path = release / "features" / (name + ".geojson")
@@ -402,31 +354,6 @@ def _route_examples(release: Path, config: dict, bounds=None, center=None) -> li
     return result
 
 
-def _reference_route(config: dict, footpaths: dict | None) -> dict | None:
-    """Validate the requested high-detail AMap reference points on the rebuilt graph."""
-    if not footpaths or not isinstance(footpaths.get("points"), list):
-        return None
-    points = footpaths["points"]
-    if len(points) < 2:
-        return None
-    import valhalla
-    from .routing import RoutingService
-
-    actor = valhalla.Actor(config)
-    request = RoutingService._request(points)
-    response = actor.route(request)
-    if isinstance(response, str):
-        response = json.loads(response)
-    legs = response.get("trip", {}).get("legs", [])
-    if len(legs) != len(points) - 1:
-        raise ValueError("AMap reference points are not connected by the rebuilt offline graph")
-    return {"id": "amap-reference-route", "name": "高德放大步行参考点",
-            "description": "由高德步行接口在高倍底图中收集的小路参考点；仅覆盖这些点之间，不代表完整校园小路网。",
-            "start": points[0], "end": points[-1], "waypoints": points[1:-1],
-            "length_km": response.get("trip", {}).get("summary", {}).get("length", 0),
-            "legs": len(legs)}
-
-
 def _coverage(prepared: Path, release: Path, minzoom: int, maxzoom: int, bounds=None) -> dict:
     from shapely.geometry import Point, shape
 
@@ -455,14 +382,9 @@ def _coverage(prepared: Path, release: Path, minzoom: int, maxzoom: int, bounds=
                          "gates": sum(polygon.buffer(.000001).covers(point) for point in gates)})
     notes = [f"{campus['name']}：OSM 收录道路 {campus['roads']} 条（步行道路 {campus['footways']}、台阶 {campus['steps']}），建筑 {campus['buildings']} 栋，entrance 标记 {campus['entrances']} 个、gate 标记 {campus['gates']} 个。" for campus in campuses]
     notes.append("OSM 内部步道和建筑入口并未完整收录；道路吸附点不代表真实入口，不保证各楼宇均可达。未补画或推断缺失道路。")
-    footpath_file = release / "features/footpaths.geojson"
-    if footpath_file.is_file():
-        footpath_count = len(json.loads(footpath_file.read_text(encoding="utf-8")).get("features", []))
-        if footpath_count:
-            notes.append(f"高德步行 API 补充路段 {footpath_count} 条，仅覆盖参考点路线周边；不代表完整校园路网。")
     return {"bounds": list(bounds), "coordinate_system": COORDINATE_SYSTEM, "minzoom": minzoom, "maxzoom": maxzoom,
             "tiles": len(tile_coverage(minzoom, maxzoom, bounds)), "campuses": campuses,
-            "supplementary": {"footpaths": footpath_count if footpath_file.is_file() else 0}, "notes": notes}
+            "notes": notes}
 
 
 def _build_release(data_root: Path, release: Path, minzoom: int, maxzoom: int) -> dict:
@@ -473,41 +395,22 @@ def _build_release(data_root: Path, release: Path, minzoom: int, maxzoom: int) -
     _require_gcj02(source_info, "Prepared data")
     bounds, center = source_info["bounds"], source_info["center"]
     tile_provider = source_info.get("tile_provider", "osm")
-    if tile_provider == "amap" and (minzoom < source_info["tile_minzoom"] or maxzoom > source_info["tile_maxzoom"]):
-        raise ValueError("Requested zooms are not prepared; run prepare with the same minzoom and maxzoom")
     _validate_calibration(prepared / "coordinate-calibration.json")
     layers = _feature_layers(prepared, release)
-    if source_info.get("footpaths"):
-        shutil.copytree(prepared / "footpaths", release / "footpaths")
     config = _build_graph(prepared, release)
     examples = _route_examples(release, config, bounds, center)
-    reference_route = _reference_route(config, source_info.get("footpaths"))
     coverage = tile_coverage(minzoom, maxzoom, bounds)
-    if tile_provider == "amap":
-        from .amap import copy_tiles
-
-        rendering = copy_tiles(data_root / "amap-cache", release, coverage)
-    elif tile_provider == "osm":
-        rendering = render_tiles(release, coverage, bounds, minzoom, maxzoom)
-    else:
-        raise ValueError("Unknown prepared tile provider")
+    rendering = render_tiles(release, coverage, bounds, minzoom, maxzoom)
     shutil.copyfile(prepared / "coordinate-calibration.json", release / "coordinate-calibration.json")
     manifest = {"version": release.name, "name": "电子科技大学中山学院离线地图", "bounds": list(bounds), "center": list(center),
                 **COORDINATE_METADATA, "source_bounds": list(SOURCE_BOUNDS),
                 "tile_provider": tile_provider,
                 "minzoom": minzoom, "maxzoom": maxzoom, "layers": layers,
                 "coverage": _coverage(prepared, release, minzoom, maxzoom, bounds),
-                "sources": source_info["sources"] + ([source_info["footpaths"]["sources"][0]] if source_info.get("footpaths", {}).get("sources") else []) + [{
-                    "name": "AMap coordinate conversion", "url": "https://restapi.amap.com/v3/assistant/coordinate/convert",
-                    "request_origin": "https://zslf.zsc.edu.cn", "source_coordinate_system": "WGS84",
-                    "coordinate_system": "GCJ-02", "license": "AMap Open Platform service terms",
-                    "terms_url": "https://lbs.amap.com/pages/terms"}] + rendering["sources"], "examples": examples,
-                "reference_route": reference_route,
-                "engines": {"routing": "Valhalla 3.9.1", "rendering": "AMap cached raster" if tile_provider == "amap" else "TileServer GL 5.7.0"},
+                "sources": source_info["sources"] + rendering["sources"], "examples": examples,
+                "engines": {"routing": "Valhalla 3.9.1", "rendering": "TileServer GL 5.7.0"},
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "checksums": {p.relative_to(release).as_posix(): sha256(p) for p in sorted(release.rglob("*")) if p.is_file() and p.name != "manifest.json"}}
-    if reference_route is not None:
-        manifest["reference_route"] = reference_route
     _json(release / "manifest.json", manifest)
     return manifest
 

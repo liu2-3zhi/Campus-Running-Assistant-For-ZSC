@@ -1,4 +1,4 @@
-"""Compare offline GPS calibration with AMap and check original task coordinates."""
+"""Check local WGS84-to-GCJ-02 calibration and task coordinates."""
 
 import argparse
 import json
@@ -8,7 +8,7 @@ import sys
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT))
 
-from campus_map.amap import REQUEST_ORIGIN, convert_points
+from campus_map.coordinates import wgs84_to_gcj02
 from campus_map.gps import Calibration
 from campus_map.routing import RoutingService, RouteNotFoundError, _distance_m
 from campus_map.validation import validate_data
@@ -17,26 +17,23 @@ from campus_map.validation import validate_data
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task-file", type=Path)
-    parser.add_argument("--compare-amap", action="store_true", help="Use 25 official conversion samples while online")
     options = parser.parse_args()
     data_root = PROJECT / "data"
-    report = {"data": validate_data(data_root), "request_origin": REQUEST_ORIGIN}
+    report = {"data": validate_data(data_root)}
     release = data_root / "builds" / report["data"]["version"]
     manifest = json.loads((release / "manifest.json").read_text(encoding="utf-8"))
     calibration = Calibration(json.loads((release / "coordinate-calibration.json").read_text(encoding="utf-8")))
-    report.update(coordinate_system=manifest["coordinate_system"], graph_coordinate_system=manifest["graph_coordinate_system"],
+    report.update(coordinate_system=manifest["coordinate_system"],
+                  graph_coordinate_system=manifest["graph_coordinate_system"],
                   tile_provider=manifest["tile_provider"], tiles=manifest["coverage"]["tiles"])
-    if options.compare_amap:
-        west, south, east, north = calibration.bounds
-        # Off-grid samples check interpolation, rather than merely replaying grid vertices.
-        samples = [[round(west + (east - west) * (column + .37) / 5, 6),
-                    round(south + (north - south) * (row + .61) / 5, 6)]
-                   for row in range(5) for column in range(5)]
-        official = convert_points(samples)
-        errors = [_distance_m(calibration.convert(point)[0], expected) for point, expected in zip(samples, official)]
-        report["gps_calibration"] = {"official_samples": len(samples), "maximum_error_m": max(errors),
-                                     "mean_error_m": sum(errors) / len(errors)}
-        assert max(errors) < .2, "Campus GPS calibration differs from AMap by over 0.2m"
+    west, south, east, north = calibration.bounds
+    samples = [[round(west + (east - west) * (column + .37) / 5, 6),
+                round(south + (north - south) * (row + .61) / 5, 6)]
+               for row in range(5) for column in range(5)]
+    errors = [_distance_m(calibration.convert(point)[0], wgs84_to_gcj02(*point)) for point in samples]
+    report["gps_calibration"] = {"local_samples": len(samples), "maximum_error_m": max(errors),
+                                 "mean_error_m": sum(errors) / len(errors)}
+    assert max(errors) < .001, "Local calibration grid differs from its conversion formula"
     if options.task_file:
         task = json.loads(options.task_file.read_text(encoding="utf-8"))
         points = task["target_points"]
@@ -44,7 +41,7 @@ def main():
         service = RoutingService(release)
         checks = []
         for index, point in enumerate(points):
-            assert west <= point[0] <= east and south <= point[1] <= north, "Original GCJ-02 point is outside the map"
+            assert west <= point[0] <= east and south <= point[1] <= north, "Task point is outside the map"
             try:
                 response = service.route(point, point)
                 assert response["snapped_points"][0]["input"] == point, "Task coordinate was converted at runtime"
@@ -55,7 +52,7 @@ def main():
                                "routing": "OSM has no walkable path within 50m"})
         report["original_task_points"] = checks
     report["status"] = "passed"
-    output = PROJECT / "evidence/gcj02-report.json"
+    output = PROJECT / "evidence/coordinate-report.json"
     output.parent.mkdir(exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))

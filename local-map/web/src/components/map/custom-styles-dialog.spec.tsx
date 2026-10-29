@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CustomStylesDialog } from './custom-styles-dialog';
+import { MAP_STYLE_STORAGE_KEY } from './constants';
 
 const mockLocalStorage: Record<string, string> = {};
 
@@ -203,7 +204,7 @@ describe('CustomStylesDialog', () => {
 
     await waitFor(() => {
       expect(localStorage.setItem).toHaveBeenCalledWith(
-        'selectedMapStyle',
+        MAP_STYLE_STORAGE_KEY,
         'custom'
       );
     });

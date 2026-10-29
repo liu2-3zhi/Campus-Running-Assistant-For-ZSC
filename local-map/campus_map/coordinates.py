@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import math
-from pathlib import Path
-
-
 COORDINATE_SYSTEM = "GCJ-02"
 SOURCE_COORDINATE_SYSTEM = "WGS84"
+COORDINATE_CONVERSION = "Local WGS84 -> GCJ-02 formula"
 _A = 6_378_245.0
 _EE = 0.00669342162296594323
 
@@ -50,10 +48,8 @@ def wgs84_to_gcj02(longitude: float, latitude: float) -> tuple[float, float]:
 
 
 def convert_nodes(points) -> list[list[float]]:
-    """Convert source data through the official service; never approximate silently."""
-    from .amap import convert_points
-
-    return convert_points(points, cache_path=Path(__file__).resolve().parents[1] / "data/amap-cache/coordinate-cache.json")
+    """Convert source points locally without an external map provider."""
+    return [list(wgs84_to_gcj02(*point)) for point in points]
 
 
 def transform_bounds(bounds, converter=None) -> tuple[float, float, float, float]:

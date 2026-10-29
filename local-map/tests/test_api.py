@@ -27,7 +27,7 @@ def data_root(tmp_path):
         "columns": 2, "rows": 2, "points": [[113.385, 22.517], [113.395, 22.517], [113.385, 22.527], [113.395, 22.527]]}), encoding="utf-8")
     files = [path for path in release.rglob("*") if path.is_file()]
     manifest = {"version": "test-v1", "name": "Campus", "bounds": BOUNDS, "center": [113.385, 22.53], "minzoom": 14, "maxzoom": 20, "layers": {"roads": {"file": "features/roads.geojson", "count": 0}}, "coverage": {}, "sources": [], "examples": [], "checksums": {path.relative_to(release).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for path in files}}
-    manifest.update(**COORDINATE_METADATA, tile_provider="amap")
+    manifest.update(**COORDINATE_METADATA, tile_provider="osm")
     (release / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (tmp_path / "current.json").write_text('{"version":"test-v1"}', encoding="utf-8")
     return tmp_path
@@ -155,14 +155,14 @@ def test_dynamic_map_style_matches_active_release(client):
     style = client.get("/api/v1/map-style").json()
     assert style["sources"]["campus"]["bounds"] == BOUNDS
     assert style["sources"]["campus"]["tiles"] == ["/api/v1/tiles/{z}/{x}/{y}.png?v=test-v1"]
-    assert style["sources"]["campus"]["attribution"] == "高德地图"
+    assert style["sources"]["campus"]["attribution"] == "(c) OpenStreetMap contributors"
 
 
 def test_gps_uses_local_calibration_without_network(client):
     response = client.post("/api/v1/coordinates/gps", json={"points": [[113.385, 22.525]]})
     assert response.status_code == 200
     assert response.json()["coordinate_system"] == "GCJ-02"
-    assert response.json()["method"] == "amap-calibration"
+    assert response.json()["method"] == "local-calibration"
     assert response.json()["points"][0] == pytest.approx([113.39, 22.522])
 
 

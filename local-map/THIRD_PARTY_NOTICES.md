@@ -40,21 +40,11 @@ See data/source and each release manifest for the retrieved source, time, and
 SHA-256 checksums. These local derived data do not imply endorsement by the
 school, OpenStreetMap, or upstream software projects.
 
-## AMap
+## Overture Maps evaluation
 
-The default background consists of cached AMap raster images. AMap is a data
-service, not an open source component or ODbL map source. Its terms apply
-separately: https://lbs.amap.com/pages/terms .
-
-Original OSM nodes are converted once with the official GPS-to-GCJ-02 Web
-service: https://lbs.amap.com/api/webservice/guide/api/convert . The local
-routing graph and map features use the converted coordinates. A sampled official
-conversion grid supports offline browser GPS conversion inside the campus.
-
-Raster images are retrieved from the tested, undocumented endpoint
-https://webrd01.is.autonavi.com/appmaptile . There is no upstream version or
-availability guarantee for that endpoint. The manifest records its actual URL,
-attribution, native maximum zoom and terms. All AMap preparation requests use
-the configured origin https://zslf.zsc.edu.cn; this request origin is not a claim
-that the images originate from that site. API keys remain in ignored local
-configuration or environment variables and are not shipped with the Web bundle.
+Overture Buildings was evaluated as an optional ODbL source:
+https://docs.overturemaps.org/guides/buildings/ . Its building coverage was
+larger in the candidate extract, but its transportation extract did not improve
+the campus footpath coverage. It is therefore not part of the active release;
+future imports must be reviewed, converted to the active coordinate system and
+recorded as a separate source.

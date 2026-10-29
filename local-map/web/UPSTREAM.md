@@ -23,7 +23,7 @@ same-origin calibrated GPS API, with a local forward approximation as fallback.
 camera update. The active Python release supplies the map style at `/api/v1/map-style`.
 Coordinate cache keys and permalink `crs=gcj02` isolate old WGS84 browser state.
 
-AMap attribution is displayed for the default raster background; the sidebar
+OpenStreetMap attribution is displayed for the default locally rendered raster background; the sidebar
 identifies the separate OSM routing source. The alternate locally rendered OSM
 background retains OpenStreetMap attribution. Routing coverage is limited to
 the real OSM features in the configured campus bounds.

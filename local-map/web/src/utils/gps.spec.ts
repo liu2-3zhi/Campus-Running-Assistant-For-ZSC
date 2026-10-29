@@ -40,7 +40,7 @@ describe('calibrated GPS positions', () => {
       json: async () => ({
         coordinate_system: 'GCJ-02',
         points: [[113.391999, 22.529255]],
-        method: 'amap-calibration',
+        method: 'local-calibration',
       }),
     });
     vi.stubGlobal('fetch', fetchMock);

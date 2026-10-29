@@ -12,4 +12,3 @@ web/dist/
 web/node_modules/
 tools/node_modules/
 .local-config.json
-data/amap-cache/

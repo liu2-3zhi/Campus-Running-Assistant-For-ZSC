@@ -16,7 +16,7 @@ def grid():
 ])
 def test_calibration_interpolates_corners_edges_and_interior(point, expected):
     converted, method = Calibration(grid()).convert(point)
-    assert method == "amap-calibration"
+    assert method == "local-calibration"
     assert converted == pytest.approx(expected)
 
 

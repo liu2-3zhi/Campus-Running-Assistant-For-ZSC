@@ -171,64 +171,6 @@ def test_validate_rejects_legacy_coordinate_system(tmp_path):
         pipeline.validate_release(tmp_path)
 
 
-def test_amap_prepare_and_build_use_official_extent_without_build_network(tmp_path, monkeypatch, official_conversion):
-    from campus_map import amap, render
-
-    original = tmp_path / "input.osm"
-    original.write_text('<osm version="0.6"><node id="1" lat="22.53" lon="113.38"/></osm>', encoding="utf-8")
-    calls = []
-    monkeypatch.setattr(render, "_assets", lambda **_: pytest.fail("AMap preparation does not need rasterizer assets"))
-
-    def prepare_tiles(cache, bounds, minzoom, maxzoom):
-        calls.append((cache, bounds, minzoom, maxzoom))
-        return {"sources": [amap.SOURCE]}
-
-    monkeypatch.setattr(amap, "prepare_tiles", prepare_tiles)
-    data_root = tmp_path / "data"
-    prepared = pipeline.prepare(data_root, original, minzoom=14, maxzoom=14)
-    assert prepared["tile_provider"] == "amap"
-    assert calls == [(data_root / "amap-cache", prepared["bounds"], 14, 14)]
-    monkeypatch.setattr(pipeline, "convert_nodes", lambda *_: pytest.fail("Offline build tried coordinate conversion"))
-    monkeypatch.setattr(render, "render_tiles", lambda *_: pytest.fail("AMap build started the OSM rasterizer"))
-    monkeypatch.setattr(pipeline, "_feature_layers", lambda *_: {"roads": {"file": "features/roads.geojson", "count": 0}})
-
-    def build_graph(_prepared, release):
-        tiles = release / "routing/tiles"
-        tiles.mkdir(parents=True)
-        (tiles / "test.gph").write_bytes(b"graph")
-        return {}
-
-    monkeypatch.setattr(pipeline, "_build_graph", build_graph)
-
-    def examples(_release, _config, bounds, center):
-        assert bounds == prepared["bounds"] and center == prepared["center"]
-        return []
-
-    monkeypatch.setattr(pipeline, "_route_examples", examples)
-    monkeypatch.setattr(pipeline, "_coverage", lambda _prepared, _release, _minimum, _maximum, bounds: {"bounds": bounds})
-
-    def copy_tiles(cache, release, coverage):
-        assert cache == data_root / "amap-cache"
-        assert set(coverage) == set(pipeline.tile_coverage(14, 14, prepared["bounds"]))
-        for tile in coverage:
-            target = release / f"tiles/{tile.z}/{tile.x}/{tile.y}.png"
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\0" * 8 + (256).to_bytes(4, "big") * 2)
-        return {"sources": [amap.SOURCE]}
-
-    monkeypatch.setattr(amap, "copy_tiles", copy_tiles)
-    manifest = pipeline.build(data_root, minzoom=14, maxzoom=14)
-    assert manifest["bounds"] == prepared["bounds"]
-    assert manifest["center"] == prepared["center"]
-    assert manifest["tile_provider"] == "amap"
-    assert manifest["coordinate_system"] == manifest["graph_coordinate_system"] == "GCJ-02"
-    assert manifest["source_coordinate_system"] == "WGS84"
-    release = data_root / "builds" / manifest["version"]
-    assert "coordinate-calibration.json" in manifest["checksums"]
-    assert pipeline.validate_release(release) == manifest
-    assert json.loads((data_root / "current.json").read_text())["version"] == manifest["version"]
-
-
 def test_build_rejects_a_damaged_official_calibration_grid(tmp_path, monkeypatch, official_conversion):
     from campus_map import render
 

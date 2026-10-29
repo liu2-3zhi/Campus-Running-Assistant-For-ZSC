@@ -4,13 +4,12 @@
   "routing_remote_tiles_disabled": true,
   "health": {
     "status": "ok",
-    "version": "20261029T171725Z-59b5ff5e",
+    "version": "20261029T175704Z-d7c14d61",
     "offline": true,
     "coordinate_system": "GCJ-02"
   },
   "layers": [
     "roads",
-    "footpaths",
     "buildings",
     "boundary",
     "pois",
@@ -20,17 +19,17 @@
   "examples": [
     {
       "name": "校园南北道路步行",
-      "distance_m": 896.0,
+      "distance_m": 928.0,
       "legs": 1
     },
     {
       "name": "校园东西道路步行",
-      "distance_m": 1269.0,
+      "distance_m": 1037.0,
       "legs": 1
     },
     {
       "name": "途经校园中部道路",
-      "distance_m": 896.0,
+      "distance_m": 927.0,
       "legs": 2
     }
   ],

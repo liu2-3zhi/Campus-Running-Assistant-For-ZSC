@@ -20,8 +20,6 @@ interface CampusInfo {
   name?: string;
   version?: string;
   examples?: Example[];
-  reference_route?: Example;
-  layers?: { footpaths?: { count?: number } };
   coverage?: { notes?: string[]; warnings?: string[] };
 }
 
@@ -30,11 +28,6 @@ export function CampusPanel() {
   const [error, setError] = useState('');
   const { setWaypointFromCoords } = useSetWaypointFromCoords();
   const { refetch } = useDirectionsQuery();
-  const referenceRoute = info?.reference_route;
-  const referencePointCount = referenceRoute
-    ? (referenceRoute.waypoints?.length ?? 0) + 2
-    : 0;
-  const supplementaryPaths = info?.layers?.footpaths?.count ?? 0;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -77,19 +70,9 @@ export function CampusPanel() {
         </span>
       </p>
       <p className="text-xs text-muted-foreground">
-        底图与路线统一使用 GCJ-02（火星坐标）。步行路网采用已收录的 OSM 道路
-        {supplementaryPaths > 0 ? '及高德步行补充路段' : ''}
-        ，路线仅供步行参考，请遵守现场通行条件。
+        底图与路线统一使用 GCJ-02（火星坐标）。步行路网采用已收录的 OSM 道路，
+        路线仅供步行参考，请遵守现场通行条件。
       </p>
-      {supplementaryPaths > 0 && (
-        <p
-          className="text-xs text-muted-foreground"
-          data-testid="supplementary-paths"
-        >
-          高德步行补充路段 {supplementaryPaths}{' '}
-          条，以橙色细线显示；这些是参考点周边已收集的路段，并非全校园完整小路网。
-        </p>
-      )}
       <p className="text-xs text-muted-foreground">
         内部步道与建筑入口未完整收录；吸附点只是已收录道路上的点，不能视为建筑入口。
       </p>
@@ -121,17 +104,6 @@ export function CampusPanel() {
           {example.name}
         </Button>
       ))}
-      {referenceRoute && (
-        <Button
-          variant="outline"
-          className="h-auto min-h-9 whitespace-normal justify-start text-left"
-          onClick={() => loadExample(referenceRoute)}
-          data-testid="reference-route"
-          title={referenceRoute.description ?? referenceRoute.name}
-        >
-          加载{referencePointCount}个参考点
-        </Button>
-      )}
       <a
         href="/docs"
         target="_blank"
