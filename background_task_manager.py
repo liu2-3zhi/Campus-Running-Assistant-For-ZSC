@@ -1226,6 +1226,7 @@ class ChromeBrowserPool:
                         diagnostic_context=args.get("diagnostic_context"),
                         runtime_page_origin=args.get("runtime_page_origin"),
                         deadline_epoch_ms=args.get("deadline_epoch_ms"),
+                        queued_at_monotonic=request.get("queued_at_monotonic"),
                     )
                 elif operation == "close_context":
                     # 关闭指定会话的上下文
@@ -1359,6 +1360,78 @@ class ChromeBrowserPool:
         self._install_route_page_diagnostics(self._contexts[session_id])
         return {"success": True, "session_id": session_id}
 
+    @staticmethod
+    def _log_route_worker_event(active, event, level=logging.INFO, **fields):
+        if not active:
+            return
+        try:
+            fields.update({
+                "event": event,
+                "worker_elapsed_ms": round((time.monotonic() - active["worker_started"]) * 1000),
+            })
+            if active.get("deadline_epoch_ms") is not None:
+                fields["remaining_ms"] = max(0, round(active["deadline_epoch_ms"] - time.time() * 1000))
+            logging.log(level, "[路径诊断] id=%s provider=%s worker=%s",
+                        sanitize_diagnostic(active.get("diagnostic_id"), 80),
+                        sanitize_diagnostic(active.get("provider"), 80),
+                        sanitize_diagnostic(fields, 16000, active.get("sensitive_values", ())))
+        except Exception:
+            pass  # Diagnostic output must not turn a successful route into a failure.
+
+    @staticmethod
+    def _route_request_timing(request):
+        try:
+            timing = request.timing
+            return {name: round(timing[name], 2) for name in (
+                "domainLookupStart", "domainLookupEnd", "connectStart", "connectEnd",
+                "secureConnectionStart", "requestStart", "responseStart", "responseEnd"
+            ) if isinstance(timing.get(name), (int, float))}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _route_worker_snapshot(active):
+        now = time.monotonic()
+        pending = []
+        for row in list(active.get("network_pending", {}).values())[:12]:
+            pending.append({**row["detail"], "elapsed_ms": round((now - row["started"]) * 1000),
+                            "timing": ChromeBrowserPool._route_request_timing(row["request"])})
+        segments = []
+        for segment, row in active.get("progress_segments", {}).items():
+            row = dict(row)
+            if row.get("state") == "running" and segment in active.get("attempt_started", {}):
+                row["attempt_elapsed_ms"] = round((now - active["attempt_started"][segment]) * 1000)
+            segments.append(row)
+        # The common sanitizer retains twelve array items, so select unfinished segments explicitly.
+        segments.sort(key=lambda row: row.get("state") == "completed")
+        states = active.get("segment_states", {})
+        segment_count = active.get("segment_count", len(states))
+        tracked_count = min(segment_count, 4096)
+        completed_count = sum(state == "completed" for state in states.values())
+        untracked = max(0, segment_count - tracked_count)
+        return {
+            "stage": active.get("stage", active.get("worker_stage", "context")),
+            "last_progress": active.get("last_progress"),
+            "worker_elapsed_ms": round((now - active["worker_started"]) * 1000),
+            "queue_wait_ms": active.get("queue_wait_ms", 0),
+            "segments": segments[:12],
+            "segments_omitted": max(0, segment_count - min(12, len(segments))),
+            "segments_untracked": untracked,
+            "counts_are_partial": bool(untracked),
+            "segment_count": segment_count,
+            "completed_count": completed_count if not untracked else None,
+            "not_started_count": max(0, tracked_count - len(states)) if not untracked else None,
+            "unfinished_count": max(0, segment_count - completed_count) if not untracked else None,
+            "tracked_completed_count": completed_count,
+            "pending_segments": [row["segment"] for row in segments if row.get("state") != "completed"][:12],
+            "progress_events_dropped": active.get("progress_events_dropped", 0),
+            "network": {**active.get("network_counts", {}),
+                        "pending_count": len(active.get("network_pending", {})),
+                        "pending": pending,
+                        "events_dropped": active.get("network_events_dropped", 0),
+                        "requests_untracked": active.get("network_requests_untracked", 0)},
+        }
+
     def _install_route_page_diagnostics(self, entry):
         """Install once on the real, worker-owned page; scope events to a command."""
         from route_diagnostics import sanitize_diagnostic
@@ -1388,18 +1461,104 @@ class ChromeBrowserPool:
             logging.debug("[路径诊断] id=%s provider=%s browser=%s", active.get("diagnostic_id"),
                           active.get("provider"), safe)
 
+        def network(event, request, **fields):
+            active = entry.get("route_diagnostic_context")
+            if not active or not active.get("network_capture_enabled") or active.get("cleanup_started"):
+                return
+            # Only external subresources belong to the provider; the runtime document is local.
+            if getattr(request, "resource_type", "") == "document":
+                return
+            rows = active["network_pending"]
+            request_id = id(request)
+            if event == "request_start":
+                active["network_counts"]["started"] += 1
+                if len(rows) >= 128:
+                    active["network_requests_untracked"] = active.get("network_requests_untracked", 0) + 1
+                    return
+                detail = {"request": active["network_counts"]["started"],
+                          "url": sanitize_diagnostic(getattr(request, "url", ""), 400, active.get("sensitive_values", ())),
+                          "method": str(getattr(request, "method", ""))[:12],
+                          "resource_type": str(getattr(request, "resource_type", ""))[:32]}
+                rows[request_id] = {"started": time.monotonic(), "detail": detail, "request": request}
+            row = rows.get(request_id)
+            if row is None:
+                return  # Late events from the previous command have no matching request.
+            detail = {**row["detail"], **fields, "elapsed_ms": round((time.monotonic() - row["started"]) * 1000)}
+            if event == "response":
+                row["detail"].update(fields)
+            if event in ("request_finished", "request_failed"):
+                active["network_counts"]["finished" if event == "request_finished" else "failed"] += 1
+                rows.pop(request_id, None)
+                detail["timing"] = self._route_request_timing(request)
+            if active.get("network_events_logged", 0) < 80:
+                active["network_events_logged"] = active.get("network_events_logged", 0) + 1
+                self._log_route_worker_event(active, event, **detail)
+            else:
+                active["network_events_dropped"] = active.get("network_events_dropped", 0) + 1
+
         def failed(request):
+            network("request_failed", request, failure=getattr(request, "failure", "unknown"))
             capture("requestfailed", {"url": getattr(request, "url", ""),
                                       "failure": getattr(request, "failure", "unknown")})
 
         def response_failed(response):
+            network("response", getattr(response, "request", None), http_status=getattr(response, "status", None))
             if int(getattr(response, "status", 0)) >= 400:
                 capture("http_error", {"url": getattr(response, "url", ""),
                                        "status": getattr(response, "status", None)})
 
         def console(message):
+            active = entry.get("route_diagnostic_context")
+            text = getattr(message, "text", "")
+            marker = active.get("progress_marker") if active else None
+            if marker and isinstance(text, str) and text.startswith(marker) and not active.get("cleanup_started"):
+                try:
+                    payload = json.loads(text[len(marker):])
+                    allowed_events = {"loader_start", "loader_ready", "sdk_load_start", "sdk_load_ready", "route_start", "wave_start",
+                                      "segment_start", "segment_callback", "segment_result", "retry_wait", "route_result"}
+                    if not isinstance(payload, dict) or payload.get("event") not in allowed_events:
+                        return
+                    safe = {name: sanitize_diagnostic(value, 240, active.get("sensitive_values", ())) if isinstance(value, str) else value
+                            for name, value in payload.items()
+                            if name in {"event", "segment", "attempts", "attempt", "wave", "waves", "status", "error_code", "reason", "elapsed_ms",
+                                        "delay_ms", "segment_count", "pending_count", "success_count", "failed_count", "rate_limited_count", "path_count",
+                                        "routes_count", "steps_count", "valid_path_count", "response_type", "http_status", "timeout_ms", "queue_delay_ms",
+                                        "state", "success", "scope", "max_retries", "qps_limit", "queue_interval_ms", "retry_delay_ms", "segment_timeout_ms", "max_failed_waves", "attempt_elapsed_ms"}
+                            and isinstance(value, (str, int, float, bool))}
+                    active["last_progress"] = safe
+                    if isinstance(safe.get("segment_count"), int) and not isinstance(safe["segment_count"], bool):
+                        active["segment_count"] = max(0, safe["segment_count"])
+                    event = safe["event"]
+                    active["stage"] = "sdk_loader" if event.startswith("loader_") else "sdk_load" if event.startswith("sdk_load_") else "route"
+                    segment = safe.get("segment")
+                    if isinstance(segment, int) and not isinstance(segment, bool) and 0 < segment <= 4096:
+                        active["segment_count"] = max(active.get("segment_count", 0), segment)
+                        state = safe.get("state")
+                        if state in ("running", "completed", "failed"):
+                            active["segment_states"][segment] = state
+                        else:
+                            active["segment_states"].setdefault(segment, "running")
+                        if event == "segment_start":
+                            active["attempt_started"][segment] = time.monotonic()
+                        elif event == "segment_result":
+                            active["attempt_started"].pop(segment, None)
+                        rows = active["progress_segments"]
+                        if segment not in rows and len(rows) >= 80:
+                            completed = next((index for index, row in rows.items() if row.get("state") == "completed"), None)
+                            if completed is not None:
+                                rows.pop(completed)
+                        if segment in rows or len(rows) < 80:
+                            rows[segment] = {**rows.get(segment, {}), **safe}
+                    if active.get("progress_events_logged", 0) < 160:
+                        active["progress_events_logged"] = active.get("progress_events_logged", 0) + 1
+                        self._log_route_worker_event(active, "progress", progress=safe)
+                    else:
+                        active["progress_events_dropped"] = active.get("progress_events_dropped", 0) + 1
+                except (ValueError, TypeError):
+                    pass
+                return
             if getattr(message, "type", "") in ("warning", "error"):
-                capture("console", getattr(message, "text", ""))
+                capture("console", text)
 
         def dialog_opened(dialog):
             if entry.get("route_diagnostic_context"):
@@ -1408,6 +1567,8 @@ class ChromeBrowserPool:
             dialog.dismiss()
 
         page.on("requestfailed", failed)
+        page.on("request", lambda request: network("request_start", request))
+        page.on("requestfinished", lambda request: network("request_finished", request))
         page.on("response", response_failed)
         page.on("console", console)
         page.on("pageerror", lambda error: capture("pageerror", error))
@@ -1446,86 +1607,122 @@ class ChromeBrowserPool:
             page.unroute(runtime_url, serve_runtime)
             page.unroute("**/*", prevent_external_navigation)
 
-    def _do_execute_js(self, session_id, script, js_args, diagnostic_context=None, runtime_page_origin=None, deadline_epoch_ms=None):
-        """
-        在专用线程中执行 JavaScript 代码。
-
-        参数:
-            session_id: 会话标识符
-            script: 要执行的 JavaScript 代码字符串
-            js_args: 传递给 JavaScript 的参数列表
-
-        返回:
-            dict: 包含 success 标志和执行结果的结果字典
-        """
-        if deadline_epoch_ms is not None and time.time() * 1000 >= deadline_epoch_ms:
-            return {"success": False, "error": "后端路径规划总时限已耗尽，已取消排队任务"}
-        # 确保上下文存在
-        ctx_result = self._do_get_context(session_id)
-        if not ctx_result.get("success"):
-            return ctx_result
-
-        from route_diagnostics import sanitize_diagnostic
-
-        entry = self._contexts[session_id]
+    def _do_execute_js(self, session_id, script, js_args, diagnostic_context=None, runtime_page_origin=None, deadline_epoch_ms=None, queued_at_monotonic=None):
+        """Execute in the owning worker, preserving progress even if the outer deadline fires."""
         active = dict(diagnostic_context) if diagnostic_context else None
+        started = time.monotonic()
+        entry = None
         if active is not None:
-            active["events"] = []
+            active.update({
+                "worker_started": started, "deadline_epoch_ms": deadline_epoch_ms,
+                "queue_wait_ms": round(max(0, started - queued_at_monotonic) * 1000) if queued_at_monotonic is not None else 0,
+                "events": [], "network_pending": {}, "network_counts": {"started": 0, "finished": 0, "failed": 0},
+                "progress_segments": {}, "segment_states": {}, "attempt_started": {},
+                "segment_count": max(0, int(active.get("waypoint_count") or 0) - 1),
+                "progress_marker": "__ZX_ROUTE_PROGRESS_" + uuid.uuid4().hex + ":",
+                "worker_stage": "queue", "network_capture_enabled": False,
+            })
             active.pop("sdk_auth_error", None)
-            # Navigation discards the previous JS realm; its late dialogs belong to no new command.
-            active["sdk_auth_capture_enabled"] = runtime_page_origin is None
-        entry["route_diagnostic_context"] = active
+            self._log_route_worker_event(active, "dequeued", queue_wait_ms=active["queue_wait_ms"])
+        if deadline_epoch_ms is not None and time.time() * 1000 >= deadline_epoch_ms:
+            diagnostic = self._route_worker_snapshot(active) if active else {}
+            self._log_route_worker_event(active, "queue_deadline_exhausted", logging.WARNING, snapshot=diagnostic)
+            return {"success": False, "error": "后端路径规划总时限已耗尽，已取消排队任务", "diagnostic": diagnostic}
         try:
-            # 获取页面对象
-            page = self._contexts[session_id]["page"]
+            if active is not None:
+                active["worker_stage"] = "context"
+                self._log_route_worker_event(active, "context_start", browser_initialized=bool(getattr(self, "_initialized", False)),
+                                             context_reused=session_id in self._contexts)
+            context_started = time.monotonic()
+            ctx_result = self._do_get_context(session_id)
+            if not ctx_result.get("success"):
+                if active is None:
+                    return ctx_result
+                raise RuntimeError(ctx_result.get("error") or "Chrome 上下文初始化失败")
+            entry = self._contexts[session_id]
+            if active is not None:
+                # Navigation discards the previous realm; late events belong to no new command.
+                active["sdk_auth_capture_enabled"] = runtime_page_origin is None
+                self._log_route_worker_event(active, "context_ready", elapsed_ms=round((time.monotonic() - context_started) * 1000))
+            entry["route_diagnostic_context"] = active
+            page = entry["page"]
             if runtime_page_origin is not None:
+                if active is not None:
+                    active["worker_stage"] = "runtime_page"
+                    self._log_route_worker_event(active, "runtime_page_start", origin=runtime_page_origin)
+                runtime_started = time.monotonic()
                 self._prepare_map_runtime_page(page, runtime_page_origin, deadline_epoch_ms)
+                self._log_route_worker_event(active, "runtime_page_ready", elapsed_ms=round((time.monotonic() - runtime_started) * 1000))
             if active is not None:
                 active["sdk_auth_capture_enabled"] = True
-            # 执行 JavaScript 代码
-            if deadline_epoch_ms is None:
+                active["network_capture_enabled"] = True
+                active["worker_stage"] = "evaluate"
+                self._log_route_worker_event(active, "evaluate_start")
+            if deadline_epoch_ms is None and active is None:
                 result = page.evaluate(script, js_args)
             else:
-                remaining_ms = deadline_epoch_ms - time.time() * 1000
-                if remaining_ms <= 0:
+                remaining_ms = None if deadline_epoch_ms is None else deadline_epoch_ms - time.time() * 1000
+                if remaining_ms is not None and remaining_ms <= 0:
                     raise TimeoutError("后端路径规划总时限已耗尽")
-                result = page.evaluate("""async ([source, args, remaining]) => {
+                result = page.evaluate("""async ([source, args, remaining, marker]) => {
                     let timer;
+                    const previous = globalThis.__zxRouteProgress;
+                    const report = payload => { try { console.debug(marker + JSON.stringify(payload)); } catch (_) {} };
+                    if (marker) globalThis.__zxRouteProgress = report;
                     try {
                         const execute = (0, eval)('(' + source + ')');
-                        return await Promise.race([Promise.resolve().then(() => execute(args)),
+                        const task = Promise.resolve().then(() => execute(args));
+                        if (remaining === null) return await task;
+                        return await Promise.race([task,
                             new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('后端路径规划总时限已耗尽')), remaining); })]);
-                    } finally { clearTimeout(timer); }
-                }""", [script, js_args, remaining_ms])
-            if active and isinstance(result, dict):
-                if not isinstance(result.get("diagnostic"), dict):
-                    result["diagnostic"] = {}
-                result["diagnostic"]["browser_events"] = active["events"]
-                result["diagnostic"].pop("sdk_auth_error", None)
-                if active.get("sdk_auth_error"):
-                    result["diagnostic"]["sdk_auth_error"] = active["sdk_auth_error"]
-                if active.get("events_dropped"):
-                    result["diagnostic"]["browser_events_dropped"] = active["events_dropped"]
+                    } finally {
+                        clearTimeout(timer);
+                        if (marker && globalThis.__zxRouteProgress === report) {
+                            if (previous === undefined) delete globalThis.__zxRouteProgress;
+                            else globalThis.__zxRouteProgress = previous;
+                        }
+                    }
+                }""", [script, js_args, remaining_ms, active["progress_marker"] if active else None])
+            if active:
+                snapshot = self._route_worker_snapshot(active)
+                self._log_route_worker_event(active, "evaluate_finished", snapshot=snapshot)
+                if isinstance(result, dict):
+                    if not isinstance(result.get("diagnostic"), dict):
+                        result["diagnostic"] = {}
+                    result["diagnostic"]["browser_events"] = active["events"]
+                    result["diagnostic"]["worker"] = snapshot
+                    result["diagnostic"].pop("sdk_auth_error", None)
+                    if active.get("sdk_auth_error"):
+                        result["diagnostic"]["sdk_auth_error"] = active["sdk_auth_error"]
+                    if active.get("events_dropped"):
+                        result["diagnostic"]["browser_events_dropped"] = active["events_dropped"]
             return {"success": True, "result": result}
         except Exception as e:
-            if active is not None:
+            diagnostic = None
+            if active:
+                error = sanitize_diagnostic(e, sensitive_values=active.get("sensitive_values", ()))
+                # Capture pending requests before about:blank aborts them; aborts are cleanup, not upstream failures.
+                diagnostic = {**self._route_worker_snapshot(active), "browser_events": active["events"]}
+                if active.get("events_dropped"):
+                    diagnostic["browser_events_dropped"] = active["events_dropped"]
+                if active.get("sdk_auth_error"):
+                    diagnostic["sdk_auth_error"] = active["sdk_auth_error"]
+                event = "deadline_exhausted" if "总时限" in str(e) else "execution_failed"
+                self._log_route_worker_event(active, event, logging.WARNING, reason=error, snapshot=diagnostic)
                 active["sdk_auth_capture_enabled"] = False
-            if deadline_epoch_ms is not None:
+                active["cleanup_started"] = True
+            if deadline_epoch_ms is not None and entry is not None:
                 try:
                     entry["page"].goto("about:blank", wait_until="commit", timeout=1000)
                 except Exception:
                     pass
             if active:
-                error = sanitize_diagnostic(e, sensitive_values=active.get("sensitive_values", ()))
-                logging.debug("[路径诊断] id=%s JavaScript异常=%s", active.get("diagnostic_id"), error)
-                diagnostic = {"browser_events": active["events"]}
-                if active.get("sdk_auth_error"):
-                    diagnostic["sdk_auth_error"] = active["sdk_auth_error"]
                 return {"success": False, "error": error, "diagnostic": diagnostic}
             logging.error(f"执行 JS 失败 (session={session_id}): {e}", exc_info=True)
             return {"success": False, "error": str(e)}
         finally:
-            entry["route_diagnostic_context"] = None
+            if entry is not None:
+                entry["route_diagnostic_context"] = None
 
     def _do_close_context(self, session_id):
         """
@@ -1736,7 +1933,18 @@ class ChromeBrowserPool:
             "args": args or {},
             "result_event": result_event,
             "result_container": result_container,
+            "queued_at_monotonic": time.monotonic(),
         }
+        route_context = (args or {}).get("diagnostic_context") if operation == "execute_js" else None
+        queued_diagnostic = None
+        if route_context:
+            queued_diagnostic = {**route_context, "worker_started": request["queued_at_monotonic"],
+                                 "deadline_epoch_ms": (args or {}).get("deadline_epoch_ms")}
+            try:
+                queue_depth = self._request_queue.qsize()
+            except Exception:
+                queue_depth = None
+            self._log_route_worker_event(queued_diagnostic, "enqueued", queue_depth=queue_depth, wait_timeout_s=timeout)
 
         # 将请求放入队列
         self._request_queue.put(request)
@@ -1753,6 +1961,7 @@ class ChromeBrowserPool:
             return result_container.get("result", {"success": False, "error": "无结果"})
         else:
             # 超时，返回错误
+            self._log_route_worker_event(queued_diagnostic, "caller_wait_timeout", logging.WARNING, wait_timeout_s=timeout)
             logging.error(f"Playwright 操作 {operation} 超时 (>{timeout}秒)")
             return {"success": False, "error": f"操作超时 (>{timeout}秒)"}
 

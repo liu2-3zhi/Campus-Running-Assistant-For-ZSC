@@ -1136,11 +1136,24 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
             const diagnosticStarted = Date.now();
+            // Capture this command's sink; late callbacks must not report into a later command.
+            const progressSink = globalThis.__zxRouteProgress;
+            function reportProgress(event, fields = {}) {
+                try {
+                    if (typeof progressSink === 'function') {
+                        progressSink({event, elapsed_ms: Date.now() - diagnosticStarted, ...fields});
+                    }
+                } catch (_) { /* Diagnostics must not change route execution. */ }
+            }
+            const attemptStarted = new Map();
             const diagnostic = { waves: 0, segments: Array.from({length: Math.max(0, waypointsPy.length - 1)}, (_, i) => ({segment: i + 1, attempts: 0})) };
             function beginAttempt(index) {
                 const item = diagnostic.segments[index];
                 item.attempts += 1;
                 item.started_at ??= Date.now();
+                attemptStarted.set(index, Date.now());
+                reportProgress('segment_start', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, state: 'running'});
             }
             function recordResponse(index, status, value) {
                 const item = diagnostic.segments[index];
@@ -1195,6 +1208,12 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                     item.callback_history.shift();
                     item.callbacks_dropped = (item.callbacks_dropped || 0) + 1;
                 }
+                reportProgress('segment_callback', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, status: item.status, error_code: item.error_code,
+                    reason: item.reason, http_status: item.http_status,
+                    attempt_elapsed_ms: Date.now() - (attemptStarted.get(index) ?? Date.now()),
+                    routes_count: item.routes_count, steps_count: item.steps_count,
+                    path_count: item.path_count, valid_path_count: item.valid_path_count});
             }
             function diagnosticResult(result, segment) {
                 diagnostic.elapsed_ms = Date.now() - diagnosticStarted;
@@ -1203,6 +1222,8 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                     diagnostic.error_code = diagnostic.segments[segment - 1]?.error_code;
                 }
                 diagnostic.segments.forEach(item => { item.elapsed_ms = item.started_at ? (item.finished_at || Date.now()) - item.started_at : 0; delete item.started_at; delete item.finished_at; });
+                reportProgress('route_result', {success: !result.error, segment: segment || 0,
+                    wave: diagnostic.waves, path_count: Array.isArray(result.path) ? result.path.length : 0});
                 return {...result, diagnostic};
             }
 
@@ -1266,9 +1287,13 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                 } else if (window._AMapSecurityConfig) {
                     delete window._AMapSecurityConfig.securityJsCode;
                 }
+                reportProgress('loader_start');
                 await ensureAmapLoader();
+                reportProgress('loader_ready');
+                reportProgress('sdk_load_start');
                 try {
                     await AMapLoader.load({ key: apiKey, version: '2.0', plugins });
+                    reportProgress('sdk_load_ready');
                 } catch (error) {
                     return { error: 'AMapLoader.load failed: ' + (error && error.message || String(error || 'Unknown error')), diagnostic: {stage: 'sdk_load'} };
                 }
@@ -1319,7 +1344,11 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                             if (isRateLimited(result, status) && attempts.count <= 4) {
                                 // 限流退避：标记 rateLimited，避免被当成「该段无路线」
                                 const backoff = Math.min(5000, 400 * Math.pow(2, attempts.count));
-                                window.setTimeout(runOnce, backoff + Math.random() * 200);
+                                const delayMs = backoff + Math.random() * 200;
+                                reportProgress('retry_wait', {scope: 'rate_limit', segment: segmentIndex + 1,
+                                    attempts: diagnostic.segments[segmentIndex].attempts, wave: diagnostic.waves,
+                                    delay_ms: delayMs, state: 'retry_wait'});
+                                window.setTimeout(runOnce, delayMs);
                                 return;
                             }
                             resolve({
@@ -1332,6 +1361,9 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                 });
 
                 const segmentCount = waypoints.length - 1;
+                reportProgress('route_start', {segment_count: segmentCount, max_retries: maxRetries,
+                    qps_limit: qpsLimit, queue_interval_ms: queueIntervalMs, retry_delay_ms: retryDelayMs,
+                    segment_timeout_ms: 15000, max_failed_waves: maxFailedWaves});
                 const segmentPaths = Array(segmentCount).fill(null);
                 const segmentErrors = Array(segmentCount).fill(null);
                 const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
@@ -1341,6 +1373,7 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                 while (pendingIndexes.length >0) {
                     diagnostic.waves += 1;
                     const waveIndexes = pendingIndexes.slice();
+                    reportProgress('wave_start', {wave: diagnostic.waves, pending_count: waveIndexes.length});
                     pendingIndexes.length = 0;
                     const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
                         // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
@@ -1352,6 +1385,11 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                             recordResponse(segmentIndex, 'exception', error && error.message ? error.message : String(error));
                             result = {error: diagnostic.segments[segmentIndex].reason || '路线请求异常'};
                         }
+                        const success = !!(result && Array.isArray(result.path) && result.path.length > 0);
+                        reportProgress('segment_result', {segment: segmentIndex + 1,
+                            attempts: diagnostic.segments[segmentIndex].attempts, wave: diagnostic.waves,
+                            state: success ? 'completed' : 'failed', success,
+                            path_count: success ? result.path.length : 0});
                         return { segmentIndex, result };
                     }));
                     let waveSuccessCount = 0;
@@ -1375,12 +1413,17 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                         consecutiveFailedWaves += 1;
                         if (consecutiveFailedWaves >= maxFailedWaves) { break; }
                         if (waveRateLimited > 0 && pendingIndexes.length > 0) {
-                            await sleep(Math.min(5000, 600 * waveRateLimited));
+                            const delayMs = Math.min(5000, 600 * waveRateLimited);
+                            reportProgress('retry_wait', {scope: 'failed_wave', wave: diagnostic.waves,
+                                pending_count: pendingIndexes.length, delay_ms: delayMs});
+                            await sleep(delayMs);
                         }
                     } else {
                         consecutiveFailedWaves =0;
                     }
                     if (pendingIndexes.length >0) {
+                        reportProgress('retry_wait', {scope: 'wave_retry', wave: diagnostic.waves,
+                            pending_count: pendingIndexes.length, delay_ms: retryDelayMs});
                         await sleep(retryDelayMs);
                     }
                 }
@@ -1451,11 +1494,24 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
             const diagnosticStarted = Date.now();
+            // Capture this command's sink; late callbacks must not report into a later command.
+            const progressSink = globalThis.__zxRouteProgress;
+            function reportProgress(event, fields = {}) {
+                try {
+                    if (typeof progressSink === 'function') {
+                        progressSink({event, elapsed_ms: Date.now() - diagnosticStarted, ...fields});
+                    }
+                } catch (_) { /* Diagnostics must not change route execution. */ }
+            }
+            const attemptStarted = new Map();
             const diagnostic = { waves: 0, segments: Array.from({length: Math.max(0, waypointsPy.length - 1)}, (_, i) => ({segment: i + 1, attempts: 0})) };
             function beginAttempt(index) {
                 const item = diagnostic.segments[index];
                 item.attempts += 1;
                 item.started_at ??= Date.now();
+                attemptStarted.set(index, Date.now());
+                reportProgress('segment_start', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, state: 'running'});
             }
             function recordResponse(index, status, value) {
                 const item = diagnostic.segments[index];
@@ -1478,6 +1534,12 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                     item.callback_history.shift();
                     item.callbacks_dropped = (item.callbacks_dropped || 0) + 1;
                 }
+                reportProgress('segment_callback', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, status: item.status, error_code: item.error_code,
+                    reason: item.reason, http_status: item.http_status,
+                    attempt_elapsed_ms: Date.now() - (attemptStarted.get(index) ?? Date.now()),
+                    routes_count: item.routes_count, steps_count: item.steps_count,
+                    path_count: item.path_count, valid_path_count: item.valid_path_count});
             }
             function diagnosticResult(result, segment) {
                 diagnostic.elapsed_ms = Date.now() - diagnosticStarted;
@@ -1486,6 +1548,8 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                     diagnostic.error_code = diagnostic.segments[segment - 1]?.error_code;
                 }
                 diagnostic.segments.forEach(item => { item.elapsed_ms = item.started_at ? (item.finished_at || Date.now()) - item.started_at : 0; delete item.started_at; delete item.finished_at; });
+                reportProgress('route_result', {success: !result.error, segment: segment || 0,
+                    wave: diagnostic.waves, path_count: Array.isArray(result.path) ? result.path.length : 0});
                 return {...result, diagnostic};
             }
             let jsonpRequestId = 0;
@@ -1619,7 +1683,11 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                             return { error: data.message || '路线服务限流', rateLimited: true };
                         }
                         // 限流退避：指数增长并加入抖动，避免同步重试再次撞上限
-                        await sleep(Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200);
+                        const delayMs = Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200;
+                        reportProgress('retry_wait', {scope: 'rate_limit', segment: segmentIndex + 1,
+                            attempts: diagnostic.segments[segmentIndex].attempts, wave: diagnostic.waves,
+                            delay_ms: delayMs, state: 'retry_wait'});
+                        await sleep(delayMs);
                         continue;
                     }
                     if (Number(data.status) !== 0) {
@@ -1644,6 +1712,9 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             const allPath = [];
 
             const segmentCount = waypoints.length - 1;
+            reportProgress('route_start', {segment_count: segmentCount, max_retries: maxRetries,
+                qps_limit: qpsLimit, queue_interval_ms: queueIntervalMs, retry_delay_ms: retryDelayMs,
+                segment_timeout_ms: 15000, max_failed_waves: maxFailedWaves});
             const segmentPaths = Array(segmentCount).fill(null);
             const segmentErrors = Array(segmentCount).fill(null);
             const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
@@ -1653,6 +1724,7 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             while (pendingIndexes.length >0) {
                 diagnostic.waves += 1;
                 const waveIndexes = pendingIndexes.slice();
+                reportProgress('wave_start', {wave: diagnostic.waves, pending_count: waveIndexes.length});
                 pendingIndexes.length = 0;
                 const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
                     // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
@@ -1664,6 +1736,11 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                         recordResponse(segmentIndex, 'exception', error && error.message ? error.message : String(error));
                         result = {error: diagnostic.segments[segmentIndex].reason || '路线请求异常'};
                     }
+                    const success = !!(result && Array.isArray(result.path) && result.path.length > 0);
+                    reportProgress('segment_result', {segment: segmentIndex + 1,
+                        attempts: diagnostic.segments[segmentIndex].attempts, wave: diagnostic.waves,
+                        state: success ? 'completed' : 'failed', success,
+                        path_count: success ? result.path.length : 0});
                     return { segmentIndex, result };
                 }));
                 let waveSuccessCount = 0;
@@ -1687,12 +1764,17 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                         consecutiveFailedWaves += 1;
                         if (consecutiveFailedWaves >= maxFailedWaves) { break; }
                         if (waveRateLimited > 0 && pendingIndexes.length > 0) {
-                            await sleep(Math.min(5000, 600 * waveRateLimited));
+                            const delayMs = Math.min(5000, 600 * waveRateLimited);
+                            reportProgress('retry_wait', {scope: 'failed_wave', wave: diagnostic.waves,
+                                pending_count: pendingIndexes.length, delay_ms: delayMs});
+                            await sleep(delayMs);
                         }
                 } else {
                     consecutiveFailedWaves =0;
                 }
                 if (pendingIndexes.length >0) {
+                    reportProgress('retry_wait', {scope: 'wave_retry', wave: diagnostic.waves,
+                        pending_count: pendingIndexes.length, delay_ms: retryDelayMs});
                     await sleep(retryDelayMs);
                 }
             }
@@ -1757,11 +1839,24 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
             const diagnosticStarted = Date.now();
+            // Capture this command's sink; late callbacks must not report into a later command.
+            const progressSink = globalThis.__zxRouteProgress;
+            function reportProgress(event, fields = {}) {
+                try {
+                    if (typeof progressSink === 'function') {
+                        progressSink({event, elapsed_ms: Date.now() - diagnosticStarted, ...fields});
+                    }
+                } catch (_) { /* Diagnostics must not change route execution. */ }
+            }
+            const attemptStarted = new Map();
             const diagnostic = { waves: 0, segments: Array.from({length: Math.max(0, waypointsPy.length - 1)}, (_, i) => ({segment: i + 1, attempts: 0})) };
             function beginAttempt(index) {
                 const item = diagnostic.segments[index];
                 item.attempts += 1;
                 item.started_at ??= Date.now();
+                attemptStarted.set(index, Date.now());
+                reportProgress('segment_start', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, state: 'running'});
             }
             function recordResponse(index, status, value) {
                 const item = diagnostic.segments[index];
@@ -1784,6 +1879,12 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                     item.callback_history.shift();
                     item.callbacks_dropped = (item.callbacks_dropped || 0) + 1;
                 }
+                reportProgress('segment_callback', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, status: item.status, error_code: item.error_code,
+                    reason: item.reason, http_status: item.http_status,
+                    attempt_elapsed_ms: Date.now() - (attemptStarted.get(index) ?? Date.now()),
+                    routes_count: item.routes_count, steps_count: item.steps_count,
+                    path_count: item.path_count, valid_path_count: item.valid_path_count});
             }
             function diagnosticResult(result, segment) {
                 diagnostic.elapsed_ms = Date.now() - diagnosticStarted;
@@ -1792,6 +1893,8 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                     diagnostic.error_code = diagnostic.segments[segment - 1]?.error_code;
                 }
                 diagnostic.segments.forEach(item => { item.elapsed_ms = item.started_at ? (item.finished_at || Date.now()) - item.started_at : 0; delete item.started_at; delete item.finished_at; });
+                reportProgress('route_result', {success: !result.error, segment: segment || 0,
+                    wave: diagnostic.waves, path_count: Array.isArray(result.path) ? result.path.length : 0});
                 return {...result, diagnostic};
             }
             const GCJ_PI = Math.PI;
@@ -1968,13 +2071,17 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                                 };
                             }
                         }
-                        recordResponse(segmentIndex, 'response', vendorError || (response.ok ? '' : bodyText));
                         diagnostic.segments[segmentIndex].http_status = response.status;
+                        recordResponse(segmentIndex, 'response', vendorError || (response.ok ? '' : bodyText));
                         if (!response.ok) {
                             const limited = isRateLimited(response, bodyText);
                             if (limited && rateLimitHits < maxRateLimitRetries) {
                                 rateLimitHits += 1;
-                                await sleep(Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200);
+                                const delayMs = Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200;
+                                reportProgress('retry_wait', {scope: 'rate_limit', segment: segmentIndex + 1,
+                                    attempts: diagnostic.segments[segmentIndex].attempts, wave: diagnostic.waves,
+                                    delay_ms: delayMs, state: 'retry_wait'});
+                                await sleep(delayMs);
                                 continue;
                             }
                             return {
@@ -1984,7 +2091,11 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                         }
                         if (isRateLimited(response, bodyText) && rateLimitHits < maxRateLimitRetries) {
                             rateLimitHits += 1;
-                            await sleep(Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200);
+                            const delayMs = Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200;
+                            reportProgress('retry_wait', {scope: 'rate_limit', segment: segmentIndex + 1,
+                                attempts: diagnostic.segments[segmentIndex].attempts, wave: diagnostic.waves,
+                                delay_ms: delayMs, state: 'retry_wait'});
+                            await sleep(delayMs);
                             continue;
                         }
                         if (vendorError) {
@@ -2019,6 +2130,9 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             const allPath = [];
 
             const segmentCount = waypoints.length - 1;
+            reportProgress('route_start', {segment_count: segmentCount, max_retries: maxRetries,
+                qps_limit: qpsLimit, queue_interval_ms: queueIntervalMs, retry_delay_ms: retryDelayMs,
+                segment_timeout_ms: 15000, max_failed_waves: maxFailedWaves});
             const segmentPaths = Array(segmentCount).fill(null);
             const segmentErrors = Array(segmentCount).fill(null);
             const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
@@ -2028,6 +2142,7 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             while (pendingIndexes.length >0) {
                 diagnostic.waves += 1;
                 const waveIndexes = pendingIndexes.slice();
+                reportProgress('wave_start', {wave: diagnostic.waves, pending_count: waveIndexes.length});
                 pendingIndexes.length = 0;
                 const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
                     // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
@@ -2039,6 +2154,11 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                         recordResponse(segmentIndex, 'exception', error && error.message ? error.message : String(error));
                         result = {error: diagnostic.segments[segmentIndex].reason || '路线请求异常'};
                     }
+                    const success = !!(result && Array.isArray(result.path) && result.path.length > 0);
+                    reportProgress('segment_result', {segment: segmentIndex + 1,
+                        attempts: diagnostic.segments[segmentIndex].attempts, wave: diagnostic.waves,
+                        state: success ? 'completed' : 'failed', success,
+                        path_count: success ? result.path.length : 0});
                     return { segmentIndex, result };
                 }));
                 let waveSuccessCount = 0;
@@ -2062,12 +2182,17 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                         consecutiveFailedWaves += 1;
                         if (consecutiveFailedWaves >= maxFailedWaves) { break; }
                         if (waveRateLimited > 0 && pendingIndexes.length > 0) {
-                            await sleep(Math.min(5000, 600 * waveRateLimited));
+                            const delayMs = Math.min(5000, 600 * waveRateLimited);
+                            reportProgress('retry_wait', {scope: 'failed_wave', wave: diagnostic.waves,
+                                pending_count: pendingIndexes.length, delay_ms: delayMs});
+                            await sleep(delayMs);
                         }
                 } else {
                     consecutiveFailedWaves =0;
                 }
                 if (pendingIndexes.length >0) {
+                    reportProgress('retry_wait', {scope: 'wave_retry', wave: diagnostic.waves,
+                        pending_count: pendingIndexes.length, delay_ms: retryDelayMs});
                     await sleep(retryDelayMs);
                 }
             }
@@ -2132,11 +2257,24 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
             const diagnosticStarted = Date.now();
+            // Capture this command's sink; late callbacks must not report into a later command.
+            const progressSink = globalThis.__zxRouteProgress;
+            function reportProgress(event, fields = {}) {
+                try {
+                    if (typeof progressSink === 'function') {
+                        progressSink({event, elapsed_ms: Date.now() - diagnosticStarted, ...fields});
+                    }
+                } catch (_) { /* Diagnostics must not change route execution. */ }
+            }
+            const attemptStarted = new Map();
             const diagnostic = { waves: 0, segments: Array.from({length: Math.max(0, waypointsPy.length - 1)}, (_, i) => ({segment: i + 1, attempts: 0})) };
             function beginAttempt(index) {
                 const item = diagnostic.segments[index];
                 item.attempts += 1;
                 item.started_at ??= Date.now();
+                attemptStarted.set(index, Date.now());
+                reportProgress('segment_start', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, state: 'running'});
             }
             function recordResponse(index, status, value) {
                 const item = diagnostic.segments[index];
@@ -2159,6 +2297,12 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                     item.callback_history.shift();
                     item.callbacks_dropped = (item.callbacks_dropped || 0) + 1;
                 }
+                reportProgress('segment_callback', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, status: item.status, error_code: item.error_code,
+                    reason: item.reason, http_status: item.http_status,
+                    attempt_elapsed_ms: Date.now() - (attemptStarted.get(index) ?? Date.now()),
+                    routes_count: item.routes_count, steps_count: item.steps_count,
+                    path_count: item.path_count, valid_path_count: item.valid_path_count});
             }
             function diagnosticResult(result, segment) {
                 diagnostic.elapsed_ms = Date.now() - diagnosticStarted;
@@ -2167,6 +2311,8 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                     diagnostic.error_code = diagnostic.segments[segment - 1]?.error_code;
                 }
                 diagnostic.segments.forEach(item => { item.elapsed_ms = item.started_at ? (item.finished_at || Date.now()) - item.started_at : 0; delete item.started_at; delete item.finished_at; });
+                reportProgress('route_result', {success: !result.error, segment: segment || 0,
+                    wave: diagnostic.waves, path_count: Array.isArray(result.path) ? result.path.length : 0});
                 return {...result, diagnostic};
             }
 
@@ -2332,10 +2478,11 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                                 && rateLimitHits < maxRateLimitRetries) {
                                 // 限流退避：标记 rateLimited，避免被当成「该段无路线」
                                 rateLimitHits += 1;
-                                window.setTimeout(
-                                    runOnce,
-                                    Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200
-                                );
+                                const delayMs = Math.min(5000, 400 * Math.pow(2, rateLimitHits)) + Math.random() * 200;
+                                reportProgress('retry_wait', {scope: 'rate_limit', segment: segmentIndex + 1,
+                                    attempts: diagnostic.segments[segmentIndex].attempts, wave: diagnostic.waves,
+                                    delay_ms: delayMs, state: 'retry_wait'});
+                                window.setTimeout(runOnce, delayMs);
                                 return;
                             }
                             if (result && result.error && isRateLimited(null, result.error)) {
@@ -2354,7 +2501,9 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                 return { error: 'Waypoints must be at least 2.' };
             }
 
+            reportProgress('sdk_load_start');
             await ensureBaiduMapScript();
+            reportProgress('sdk_load_ready');
             const map = ensureMapInstance();
             const routeType = actualMode === 'driving' ? 'driving' : 'walking';
             const waypoints = waypointsPy.map(point => {
@@ -2364,6 +2513,9 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             const allPath = [];
 
             const segmentCount = waypoints.length - 1;
+            reportProgress('route_start', {segment_count: segmentCount, max_retries: maxRetries,
+                qps_limit: qpsLimit, queue_interval_ms: queueIntervalMs, retry_delay_ms: retryDelayMs,
+                segment_timeout_ms: 15000, max_failed_waves: maxFailedWaves});
             const segmentPaths = Array(segmentCount).fill(null);
             const segmentErrors = Array(segmentCount).fill(null);
             const pendingIndexes = Array.from({ length: segmentCount }, (_, index) => index);
@@ -2373,6 +2525,7 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             while (pendingIndexes.length >0) {
                 diagnostic.waves += 1;
                 const waveIndexes = pendingIndexes.slice();
+                reportProgress('wave_start', {wave: diagnostic.waves, pending_count: waveIndexes.length});
                 pendingIndexes.length = 0;
                 const waveResults = await Promise.all(waveIndexes.map(async (segmentIndex, order) => {
                     // 节流：同时受排队间隔与每秒请求上限约束，避免并发触发地图服务限流
@@ -2384,6 +2537,11 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                         recordResponse(segmentIndex, 'exception', error && error.message ? error.message : String(error));
                         result = {error: diagnostic.segments[segmentIndex].reason || '路线请求异常'};
                     }
+                    const success = !!(result && Array.isArray(result.path) && result.path.length > 0);
+                    reportProgress('segment_result', {segment: segmentIndex + 1,
+                        attempts: diagnostic.segments[segmentIndex].attempts, wave: diagnostic.waves,
+                        state: success ? 'completed' : 'failed', success,
+                        path_count: success ? result.path.length : 0});
                     return { segmentIndex, result };
                 }));
                 let waveSuccessCount = 0;
@@ -2407,12 +2565,17 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                         consecutiveFailedWaves += 1;
                         if (consecutiveFailedWaves >= maxFailedWaves) { break; }
                         if (waveRateLimited > 0 && pendingIndexes.length > 0) {
-                            await sleep(Math.min(5000, 600 * waveRateLimited));
+                            const delayMs = Math.min(5000, 600 * waveRateLimited);
+                            reportProgress('retry_wait', {scope: 'failed_wave', wave: diagnostic.waves,
+                                pending_count: pendingIndexes.length, delay_ms: delayMs});
+                            await sleep(delayMs);
                         }
                 } else {
                     consecutiveFailedWaves =0;
                 }
                 if (pendingIndexes.length >0) {
+                    reportProgress('retry_wait', {scope: 'wave_retry', wave: diagnostic.waves,
+                        pending_count: pendingIndexes.length, delay_ms: retryDelayMs});
                     await sleep(retryDelayMs);
                 }
             }
@@ -2757,6 +2920,9 @@ def _plan_route_path_with_provider_runtime(
         execution_plan["_diagnostic_context"] = diagnostic_context
         execution_plan["_runtime_page_origin"] = runtime_page_origin
         execution_plan["_deadline_epoch_ms"] = time.time() * 1000 + max(0, 45000 - (time.monotonic() - started) * 1000)
+        logging.info("[路径诊断] phase=dispatch id=%s provider=%s total_budget_ms=45000 setup_elapsed_ms=%s remaining_ms=%s",
+                     diagnostic_id, provider, round((time.monotonic() - started) * 1000),
+                     max(0, round(execution_plan["_deadline_epoch_ms"] - time.time() * 1000)))
         if provider == "amap":
             result = _plan_route_path_with_amap_runtime(session_id, page, waypoints, execution_plan, python_params)
         elif provider == "tencent":
