@@ -99,6 +99,22 @@ class RouteNetworkContextTests(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertNotIn("transport-secret", text)
 
+    def test_timeout_snapshot_collects_transport_from_responses_received_before_failure(self):
+        def exercise(listeners, _pool, _args):
+            req = request("https://restapi.amap.com/v3/log/init?key=fake-secret")
+            listeners["request"](req)
+            listeners["response"](response(req))
+            raise RuntimeError("upstream timeout")
+
+        result, events, text = self.run_worker(exercise)
+        self.assertFalse(result["success"])
+        network = result["diagnostic"]["network"]
+        host = next(item for item in network["host_summaries"] if item["host"] == "restapi.amap.com")
+        self.assertEqual(host["transport"]["remote_ip"], "203.0.113.17")
+        self.assertEqual(host["transport"]["tls_protocol"], "TLS 1.3")
+        self.assertTrue(any(item["event"] == "response_transport" for item in events))
+        self.assertNotIn("fake-secret", text)
+
     def test_response_metadata_rpc_reentry_does_not_drop_status_or_endpoint(self):
         def exercise(listeners, _pool, _args):
             req = request()
@@ -328,6 +344,38 @@ class RouteNetworkContextTests(unittest.TestCase):
         text = "\n".join(record.getMessage() for record in logs.records) + result["error"]
         self.assertNotIn("fake-secret", text)
         self.assertNotIn("private-session", text)
+
+    def test_main_logs_origin_candidates_and_selected_source_without_url_paths(self):
+        plan = {"provider": "amap", "actual_mode": "walking", "plugins": ["AMap.Walking"],
+                "provider_config": {"backend_page_origin": "https://profile.test/provider?private=profile"}}
+        class RuntimeConfig:
+            def get(self, section, key, fallback=None):
+                if (section, key) == ("Map", "backend_page_origin"):
+                    return "https://global.test/config?private=global"
+                if (section, key) == ("Map", "providers"):
+                    return {"amap": {"backend_page_origin": "https://profile.test/provider?private=profile"}}
+                return fallback
+        pool = SimpleNamespace(execute_js=lambda *_args, **_kwargs: {"path": [{"lng": 1, "lat": 2}]})
+        with patch.object(main, "chrome_pool", pool, create=True), patch.object(
+            main, "_plan_route_with_map_provider", return_value=plan
+        ), patch.object(
+            main, "resolve_backend_page_origin", return_value=("https://profile.test", "provider")
+        ), self.assertLogs(level="INFO") as logs:
+            result = main._plan_route_path_with_provider_runtime(
+                "private-session", [[1, 2], [3, 4]], runtime_config=RuntimeConfig(),
+                app_base_url="http://request.test/app?private=request",
+            )
+        entry = next(line for line in logs.output if "phase=origin_resolution" in line)
+        trace = json.loads(entry.split("trace=", 1)[1])
+        self.assertEqual(result["provider"], "amap")
+        self.assertEqual(trace["selected_source"], "provider")
+        self.assertEqual(trace["selected_origin"], "https://profile.test")
+        self.assertEqual([row["source"] for row in trace["candidates"]], ["provider", "global", "request"])
+        self.assertEqual([row["origin"] for row in trace["candidates"]], [
+            "https://profile.test", "https://global.test", "http://request.test",
+        ])
+        for private in ("private-session", "private=", "profile?", "global?", "request?"):
+            self.assertNotIn(private, entry)
 
 
 class RealRouteNetworkContextTests(unittest.TestCase):

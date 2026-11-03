@@ -14,7 +14,7 @@ from flask import jsonify, make_response, request, send_from_directory
 
 from payment_crypto import RsaSigner
 from config_adapter import JsonConfigAdapter
-from map_runtime_origin import get_map_config_selection, get_map_config_settings, get_tile_cache_settings, merge_map_settings, resolve_backend_page_origin
+from map_runtime_origin import describe_backend_page_origin_candidates, get_map_config_selection, get_map_config_settings, get_tile_cache_settings, merge_map_settings, resolve_backend_page_origin
 from log_archiving import ArchiveManager, move_no_replace
 from auto_attendance_config import (
     _disable_auto_attendance,
@@ -2947,6 +2947,18 @@ def _plan_route_path_with_provider_runtime(
         }
         runtime_page_origin, origin_source = resolve_backend_page_origin(runtime_config, provider, app_base_url)
         diagnostic_context.update({"runtime_page_origin": runtime_page_origin, "origin_source": origin_source})
+        try:
+            origin_candidates = describe_backend_page_origin_candidates(runtime_config, provider, app_base_url)
+        except Exception:
+            origin_candidates = [{"source": "unavailable", "configured": False, "origin": ""}]
+        origin_trace = {
+            "selected_source": origin_source,
+            "selected_origin": runtime_page_origin,
+            "candidates": origin_candidates,
+        }
+        logging.info("[路径诊断] phase=origin_resolution id=%s provider=%s trace=%s",
+                     diagnostic_id, sanitize_diagnostic(provider, 80, sensitive_values),
+                     json.dumps(origin_trace, ensure_ascii=False, separators=(",", ":")))
         logging.info("[路径诊断] id=%s provider=%s origin=%s origin_source=%s",
                      diagnostic_id, provider, runtime_page_origin, origin_source)
         execution_plan = dict(provider_plan)

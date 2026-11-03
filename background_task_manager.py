@@ -1458,10 +1458,11 @@ class ChromeBrowserPool:
         except Exception:
             self._log_route_worker_event(active, "network_probe_unavailable", probe_source="python_direct")
 
-    def _route_collect_transports(self, active):
+    def _route_collect_transports(self, active, max_samples=8, ignore_deadline=False):
         """Inspect bounded response samples outside re-entrant Playwright event callbacks."""
-        for host, sample in list(active.get("network_response_samples", {}).items())[:8]:
-            if active.get("deadline_epoch_ms") is not None and active["deadline_epoch_ms"] - time.time() * 1000 < 200:
+        for host, sample in list(active.get("network_response_samples", {}).items())[:max_samples]:
+            if (not ignore_deadline and active.get("deadline_epoch_ms") is not None
+                    and active["deadline_epoch_ms"] - time.time() * 1000 < 200):
                 break
             try:
                 transport = self._route_response_transport(sample["response"])
@@ -1860,6 +1861,10 @@ class ChromeBrowserPool:
             if active:
                 error = sanitize_diagnostic(e, sensitive_values=active.get("sensitive_values", ()))
                 # Capture pending requests before about:blank aborts them; aborts are cleanup, not upstream failures.
+                try:
+                    self._route_collect_transports(active, max_samples=2, ignore_deadline=True)
+                except Exception:
+                    pass
                 diagnostic = {**self._route_worker_snapshot(active), "browser_events": active["events"]}
                 if active.get("events_dropped"):
                     diagnostic["browser_events_dropped"] = active["events_dropped"]

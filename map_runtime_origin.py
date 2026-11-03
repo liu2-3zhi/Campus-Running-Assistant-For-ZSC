@@ -191,13 +191,29 @@ def get_map_config_selection(config, scope="backend", provider=None):
     return copy.deepcopy(selected) if selected else {}
 
 
-def resolve_backend_page_origin(config, provider, request_origin=None, scope="backend"):
+def _backend_page_origin_candidates(config, provider, request_origin=None, scope="backend"):
     provider_config = get_map_config_selection(config, scope=scope, provider=provider)
-    candidates = (
+    return (
         (provider_config.get("backend_page_origin", ""), "provider"),
         (config.get("Map", "backend_page_origin", fallback=""), "global"),
         (request_origin or "", "request"),
     )
+
+
+def describe_backend_page_origin_candidates(config, provider, request_origin=None, scope="backend"):
+    """Return safe, normalized candidates for correlated origin diagnostics."""
+    result = []
+    for value, source in _backend_page_origin_candidates(config, provider, request_origin, scope):
+        try:
+            origin = normalize_backend_page_origin(value)
+        except (TypeError, ValueError):
+            origin = "<invalid>"
+        result.append({"source": source, "configured": value is not None and value != "", "origin": origin})
+    return result
+
+
+def resolve_backend_page_origin(config, provider, request_origin=None, scope="backend"):
+    candidates = _backend_page_origin_candidates(config, provider, request_origin, scope)
     for candidate, source in candidates:
         origin = normalize_backend_page_origin(candidate)
         if origin:

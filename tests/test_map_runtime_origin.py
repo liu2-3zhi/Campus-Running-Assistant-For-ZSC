@@ -1,6 +1,7 @@
 import unittest
 
 from map_runtime_origin import (
+    describe_backend_page_origin_candidates,
     merge_map_settings,
     normalize_backend_page_origin,
     resolve_backend_page_origin,
@@ -48,6 +49,20 @@ class MapRuntimeOriginTests(unittest.TestCase):
                          ("https://app.test", "request"))
         with self.assertRaises(ValueError):
             resolve_backend_page_origin(Config({}), "amap", "")
+
+    def test_origin_candidates_report_normalized_provider_global_and_request_values(self):
+        config = Config({"Map": {
+            "backend_page_origin": "https://global.test/settings?private=global-query",
+            "providers": {"amap": {"backend_page_origin": "https://profile.test/path?private=profile-query"}},
+        }})
+        self.assertEqual(describe_backend_page_origin_candidates(
+            config, "amap", "http://request.test/app?private=request-query"),
+            [
+                {"source": "provider", "configured": True, "origin": "https://profile.test"},
+                {"source": "global", "configured": True, "origin": "https://global.test"},
+                {"source": "request", "configured": True, "origin": "http://request.test"},
+            ],
+        )
 
     def test_partial_update_preserves_keys_security_and_other_origins(self):
         config = Config({"Map": {"provider": "amap", "backend_page_origin": "https://global.test",
