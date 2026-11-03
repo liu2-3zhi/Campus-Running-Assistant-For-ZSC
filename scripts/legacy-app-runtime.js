@@ -119,7 +119,7 @@ function waitForLegacyInitialization(promise, phase, timeoutMs) {
 }
 
 async function initializeApp() {
-  const initializationContext = captureLegacyBusinessContext();
+  let initializationContext = null;
   const initializationStartedAt = Date.now();
   const initializationId =
     (Number(window.__legacyInitializationSequence) || 0) + 1;
@@ -233,6 +233,8 @@ async function initializeApp() {
     ShowLoadingOverlay();
     if (match) {
       sessionUUID = match[1];
+      // 先绑定 URL 会话，避免后续初始数据加载将本次初始化误判为旧会话。
+      initializationContext = captureLegacyBusinessContext();
       checkAdminReturnState();
 
       if (!isValidUUID(sessionUUID)) {
@@ -632,10 +634,19 @@ async function initializeApp() {
 
     const hasLoadedTasks = sessionModeInfo && sessionModeInfo.has_tasks;
 
+    if (!isCurrentLegacyBusinessContext(initializationContext)) {
+      console.info("[初始化] initializeApp 已取消：会话上下文已变化", {
+        initializationId,
+        elapsedMs: Date.now() - initializationStartedAt,
+        sessionChanged: initializationContext?.session !== sessionUUID,
+        generation: initializationContext?.generation,
+      });
+      return;
+    }
+
     $("loading-overlay").classList.remove("hidden");
     ShowMobileLoadingOverlay();
 
-    if (!isCurrentLegacyBusinessContext(initializationContext)) return;
     resetUI();
     const modeContext = captureLegacyBusinessContext();
     applyLegacyBusinessMode(sessionModeInfo, modeContext) || applyLegacyBusinessMode(initialData, modeContext);

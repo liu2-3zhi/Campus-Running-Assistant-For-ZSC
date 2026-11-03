@@ -301,6 +301,8 @@ test('legacy initialization ignores a response whose target changed while secret
   const hydrating = new Promise(resolve => { entered = resolve })
   Object.assign(harness.globals, {
     lastInitialDataRequest: 0, lastInitialDataResponse: null, lastInitialDataContextKey: '', INITIAL_DATA_RATE_LIMIT: 1000,
+    legacyInitialDataRequestSequence: 0, LEGACY_INITIAL_DATA_TIMEOUT_MS: 30000,
+    withLegacyInitializationTimeout: promise => Promise.resolve(promise),
     getApiRequestSessionHeaderValue: () => harness.globals.sessionUUID,
     callPythonAPI: async () => ({ success: false }),
     hydrateInitialDataMapProviderSecrets: async value => {
