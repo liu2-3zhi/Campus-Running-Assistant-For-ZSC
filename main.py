@@ -2928,8 +2928,9 @@ def _plan_route_path_with_provider_runtime(
         )
         provider = provider_plan["provider"]
         sensitive_values.extend(
-            value for value in (provider_plan.get("provider_config") or {}).values()
-            if isinstance(value, str) and value
+            value for field, value in (provider_plan.get("provider_config") or {}).items()
+            if field in {"js_key", "security_js_code", "map_key", "token", "ak"}
+            and isinstance(value, str) and value
         )
         actual_mode = provider_plan.get("actual_mode") or "walking"
         log_entry()

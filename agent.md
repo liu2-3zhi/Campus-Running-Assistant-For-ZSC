@@ -17,6 +17,8 @@
 - 路径规划诊断统一写现有日志，由 `diagnostic_id` 关联浏览器命令、供应商回调与最终失败；不要另建账号日志或持久化诊断文件。`log_and_notify_frontend` 同时写服务器日志和通知前端，具体原因与前端文案必须分开选择。
 - 路径规划总时限可能早于整轮 `Promise.all` 返回，不能只在最终返回值里保留路段诊断。四个供应商通过可选 `__zxRouteProgress` 实时输出 SDK 阶段、路段尝试/回调/结果及退避信息；钩子异常不得改变规划行为，迟到回调必须使用原命令的接收器。排查时按同一 `id` 查看 `phase=dispatch`、`enqueued/dequeued`、`context_*`、`runtime_page_*`、`progress` 和 `deadline_exhausted`。
 - 浏览器超时快照必须先于 `about:blank` 清理，清理造成的取消不计为上游失败。网络日志仅记录去查询串的 URL、状态、耗时和浏览器 timing（`-1` 表示该阶段数据不可用）；HTTP 200 只说明收到响应头，仍需查看 `request_finished` 或快照的未完成请求。进度/网络日志达到上限后继续更新有界状态与丢弃计数，不能因原有浏览器错误条数上限而丢失超时现场。
+- 路线诊断的敏感值只收集实际凭据和会话标识，不能把供应商名、坐标系或展示名称也当作秘密，否则供应商域名会被错误隐藏。请求来源只记录 Origin/Referer 的 origin；代理环境只记录变量是否存在。`response.server_addr()`、`security_details()` 是同步 RPC，不能在 Playwright 事件回调内读取（会重入并丢失请求完成/响应事件）；应在规划 evaluate 返回后有界读取样本并记录 `response_transport`。
+- 超时后 `network_probe` 是同一诊断编号下的独立 Python 直连 DNS/TCP/TLS 探测，不代表 Chromium 的实际代理或解析路径；探测只允许固定供应商域名的 443 端口，不发 HTTP。守护线程最多两个并发，不等待业务线程；系统 DNS 无法取消，`dns started` 后没有结果时不能假称 TCP 故障。按同一编号同时查看 `network_environment`、`runtime_page_ready`、`request_start`、`response_transport`、失败快照和探测结果。
 - 单账号失败摘要只保存在后台管理器独立内存中，每会话当前批次最多 20 条、每条 JSON 最多 2 KiB；不得附加到会保存的内部任务对象。HTTP 详情按已验证调用者权限过滤，多账号前端详情按目标会话所属系统账号角色过滤；SocketIO 加入房间也要校验现有会话凭证。
 - 管理员查看态分开保存来源认证和目标业务会话，连续查看始终保留最早来源。来源上下文须由服务器验证并通过 `admin_view_context` 返回；学校账号登录和业务页面初始化不能清除来源。强制查看不能调用会轮换 Token 的 `/auth/switch_session`；该接口仅允许真实调用者自己的目标会话。
 - 后台任务阻塞返回后，写状态、提交生成路线及释放账号执行锁前均须匹配原执行批次，避免旧线程覆盖新任务。真实页面事件监听应安装在浏览器工作线程中，并为队列命令单独传递诊断上下文。

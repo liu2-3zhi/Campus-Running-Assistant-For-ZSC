@@ -11,11 +11,14 @@ import string
 import threading
 import uuid
 import time
+import ipaddress
+from urllib.parse import urlsplit
 
 
 from main_runtime import _main
 from route_diagnostics import build_route_failure_summary, generic_route_failure_message, sanitize_diagnostic
 from map_runtime_origin import MAP_RUNTIME_MARKER, MAP_RUNTIME_PAGE_HTML, MAP_RUNTIME_PATH, normalize_backend_page_origin
+from route_network_diagnostics import route_network_environment, schedule_route_network_probe, select_route_probe_hosts
 
 
 class BackgroundTaskManager:
@@ -1352,7 +1355,7 @@ class ChromeBrowserPool:
                 page = context.new_page()
                 # 存储上下文和页面到字典中
                 self._contexts[session_id] = {"context": context, "page": page}
-                logging.info(f"为会话 {session_id} 创建了新的 Chrome 上下文")
+                logging.info("已创建后台 Chrome 上下文")
             except Exception as e:
                 logging.error(f"创建上下文失败: {e}", exc_info=True)
                 return {"success": False, "error": str(e)}
@@ -1388,6 +1391,86 @@ class ChromeBrowserPool:
             ) if isinstance(timing.get(name), (int, float))}
         except Exception:
             return {}
+
+    @staticmethod
+    def _route_request_origin(request):
+        """Keep only origins, never complete headers or a Referer path/query."""
+        result = {}
+        try:
+            headers = request.headers
+            if not isinstance(headers, dict):
+                return result
+            headers = {str(name).lower(): value for name, value in headers.items()}
+            for header, field in (("referer", "referer_origin"), ("origin", "origin_header")):
+                value = headers.get(header)
+                if not value:
+                    continue
+                try:
+                    result[field] = "null" if value == "null" else normalize_backend_page_origin(value)
+                except (ValueError, TypeError):
+                    result[field] = "<invalid origin>"
+        except Exception:
+            pass
+        return result
+
+    @staticmethod
+    def _route_response_transport(response):
+        """Read optional browser transport metadata without changing its result."""
+        result = {}
+        try:
+            address = response.server_addr()
+            if isinstance(address, dict):
+                try:
+                    result["remote_ip"] = str(ipaddress.ip_address(address.get("ipAddress", address.get("ip_address"))))
+                except ValueError:
+                    pass
+                port = address.get("port")
+                if isinstance(port, int) and not isinstance(port, bool) and 0 < port < 65536:
+                    result["remote_port"] = port
+        except Exception:
+            pass
+        try:
+            security = response.security_details()
+            protocol = security.get("protocol") if isinstance(security, dict) else None
+            if isinstance(protocol, str) and protocol.startswith("TLS") and len(protocol) < 32:
+                result["tls_protocol"] = protocol
+        except Exception:
+            pass
+        return result
+
+    def _route_schedule_network_probe(self, active):
+        """Schedule independent direct probes; never wait on DNS in the browser worker."""
+        if not active or active.get("network_probe_attempted"):
+            return
+        try:
+            active["network_probe_attempted"] = True
+            rows = list(active.get("network_failed_requests", ()))
+            rows.extend(row["detail"] for row in active.get("network_pending", {}).values())
+            hosts = select_route_probe_hosts(active.get("provider"), [row.get("host") for row in rows])
+            # Async callbacks retain this command's identifiers, never its live page/requests.
+            context = {field: active[field] for field in (
+                "diagnostic_id", "provider", "worker_started", "deadline_epoch_ms", "sensitive_values")
+                if field in active}
+            scheduled = schedule_route_network_probe(active.get("provider"), hosts,
+                lambda event, **fields: self._log_route_worker_event(context, event, **fields))
+            self._log_route_worker_event(active, "network_probe_scheduled" if scheduled else "network_probe_skipped",
+                                         hosts=hosts[:2], probe_source="python_direct", scheduled=bool(scheduled))
+        except Exception:
+            self._log_route_worker_event(active, "network_probe_unavailable", probe_source="python_direct")
+
+    def _route_collect_transports(self, active):
+        """Inspect bounded response samples outside re-entrant Playwright event callbacks."""
+        for host, sample in list(active.get("network_response_samples", {}).items())[:8]:
+            if active.get("deadline_epoch_ms") is not None and active["deadline_epoch_ms"] - time.time() * 1000 < 200:
+                break
+            try:
+                transport = self._route_response_transport(sample["response"])
+                self._log_route_worker_event(active, "response_transport", host=host,
+                    request=sample["request"], transport=transport, available=bool(transport))
+                if host in active.get("network_hosts", {}):
+                    active["network_hosts"][host]["transport"] = transport
+            except Exception:
+                pass
 
     @staticmethod
     def _route_worker_snapshot(active):
@@ -1428,6 +1511,12 @@ class ChromeBrowserPool:
             "network": {**active.get("network_counts", {}),
                         "pending_count": len(active.get("network_pending", {})),
                         "pending": pending,
+                        "failed_requests": active.get("network_failed_requests", [])[:12],
+                        "failed_requests_omitted": max(0, active.get("network_counts", {}).get("failed", 0)
+                                                       - len(active.get("network_failed_requests", []))),
+                        "http_error_count": active.get("network_http_error_count", 0),
+                        "http_errors": active.get("network_http_errors", [])[:12],
+                        "host_summaries": list(active.get("network_hosts", {}).values())[:8],
                         "events_dropped": active.get("network_events_dropped", 0),
                         "requests_untracked": active.get("network_requests_untracked", 0)},
         }
@@ -1461,12 +1550,19 @@ class ChromeBrowserPool:
             logging.debug("[路径诊断] id=%s provider=%s browser=%s", active.get("diagnostic_id"),
                           active.get("provider"), safe)
 
-        def network(event, request, **fields):
+        def network(event, request, _response=None, **fields):
             active = entry.get("route_diagnostic_context")
             if not active or not active.get("network_capture_enabled") or active.get("cleanup_started"):
                 return
             # Only external subresources belong to the provider; the runtime document is local.
             if getattr(request, "resource_type", "") == "document":
+                return
+            try:
+                target = urlsplit(getattr(request, "url", ""))
+                if target.scheme not in ("http", "https") or not target.hostname:
+                    return
+                host = target.hostname.lower()
+            except (ValueError, TypeError):
                 return
             rows = active["network_pending"]
             request_id = id(request)
@@ -1477,20 +1573,58 @@ class ChromeBrowserPool:
                     return
                 detail = {"request": active["network_counts"]["started"],
                           "url": sanitize_diagnostic(getattr(request, "url", ""), 400, active.get("sensitive_values", ())),
+                          "host": host,
+                          "request_origin": self._route_request_origin(request),
                           "method": str(getattr(request, "method", ""))[:12],
                           "resource_type": str(getattr(request, "resource_type", ""))[:32]}
                 rows[request_id] = {"started": time.monotonic(), "detail": detail, "request": request}
+                hosts = active.setdefault("network_hosts", {})
+                if host not in hosts and len(hosts) < 8:
+                    hosts[host] = {"host": host, "started": 0, "finished": 0, "failed": 0, "pending": 0,
+                                   "http_errors": 0}
+                if host in hosts:
+                    hosts[host]["started"] += 1
+                    hosts[host]["pending"] += 1
             row = rows.get(request_id)
             if row is None:
                 return  # Late events from the previous command have no matching request.
             detail = {**row["detail"], **fields, "elapsed_ms": round((time.monotonic() - row["started"]) * 1000)}
             if event == "response":
                 row["detail"].update(fields)
+                summary = active.get("network_hosts", {}).get(host)
+                status = fields.get("http_status")
+                if isinstance(status, int) and not isinstance(status, bool):
+                    if summary:
+                        summary["last_http_status"] = status
+                    if status >= 400:
+                        active["network_http_error_count"] = active.get("network_http_error_count", 0) + 1
+                        errors = active.setdefault("network_http_errors", [])
+                        if len(errors) < 12:
+                            errors.append(detail)
+                        if summary:
+                            summary["http_errors"] += 1
+                samples = active.setdefault("network_response_samples", {})
+                if host not in samples and len(samples) < 8 and _response is not None:
+                    samples[host] = {"response": _response, "request": row["detail"]["request"]}
             if event in ("request_finished", "request_failed"):
                 active["network_counts"]["finished" if event == "request_finished" else "failed"] += 1
                 rows.pop(request_id, None)
                 detail["timing"] = self._route_request_timing(request)
-            if active.get("network_events_logged", 0) < 80:
+                summary = active.get("network_hosts", {}).get(row["detail"].get("host"))
+                if summary:
+                    summary["finished" if event == "request_finished" else "failed"] += 1
+                    summary["pending"] = max(0, summary["pending"] - 1)
+                if event == "request_failed":
+                    failures = active.setdefault("network_failed_requests", [])
+                    if len(failures) < 12:
+                        failures.append(detail)
+            if event == "response" and isinstance(fields.get("http_status"), int) and fields["http_status"] >= 400 and active.get("network_http_error_events_logged", 0) < 12:
+                active["network_http_error_events_logged"] = active.get("network_http_error_events_logged", 0) + 1
+                self._log_route_worker_event(active, event, **detail)
+            elif event == "request_failed" and active.get("network_failure_events_logged", 0) < 12:
+                active["network_failure_events_logged"] = active.get("network_failure_events_logged", 0) + 1
+                self._log_route_worker_event(active, event, **detail)
+            elif active.get("network_events_logged", 0) < 80:
                 active["network_events_logged"] = active.get("network_events_logged", 0) + 1
                 self._log_route_worker_event(active, event, **detail)
             else:
@@ -1502,7 +1636,8 @@ class ChromeBrowserPool:
                                       "failure": getattr(request, "failure", "unknown")})
 
         def response_failed(response):
-            network("response", getattr(response, "request", None), http_status=getattr(response, "status", None))
+            network("response", getattr(response, "request", None), http_status=getattr(response, "status", None),
+                    _response=response)
             if int(getattr(response, "status", 0)) >= 400:
                 capture("http_error", {"url": getattr(response, "url", ""),
                                        "status": getattr(response, "status", None)})
@@ -1598,11 +1733,19 @@ class ChromeBrowserPool:
         page.route("**/*", prevent_external_navigation)
         page.route(runtime_url, serve_runtime)
         try:
-            page.goto(runtime_url, wait_until="domcontentloaded", timeout=max(1, int(remaining_ms)))
+            response = page.goto(runtime_url, wait_until="domcontentloaded", timeout=max(1, int(remaining_ms)))
             verified = page.evaluate("""() => ({origin: location.origin,
-                marker: document.querySelector('meta[name="zx-map-runtime"]')?.content})""")
+                marker: document.querySelector('meta[name="zx-map-runtime"]')?.content,
+                meta_referrer: document.querySelector('meta[name="referrer"]')?.content})""")
             if page.url != runtime_url or not isinstance(verified, dict) or verified.get("origin") != origin or verified.get("marker") != MAP_RUNTIME_MARKER:
                 raise RuntimeError("后端规划页面来源校验失败")
+            try:
+                headers = response.headers
+                policy = headers.get("referrer-policy") if isinstance(headers, dict) else None
+            except Exception:
+                policy = None
+            return {"origin": origin, "url": runtime_url, "referrer_policy": policy,
+                    "meta_referrer": verified.get("meta_referrer")}
         finally:
             page.unroute(runtime_url, serve_runtime)
             page.unroute("**/*", prevent_external_navigation)
@@ -1631,6 +1774,10 @@ class ChromeBrowserPool:
         try:
             if active is not None:
                 active["worker_stage"] = "context"
+                try:
+                    self._log_route_worker_event(active, "network_environment", **route_network_environment())
+                except Exception:
+                    pass
                 self._log_route_worker_event(active, "context_start", browser_initialized=bool(getattr(self, "_initialized", False)),
                                              context_reused=session_id in self._contexts)
             context_started = time.monotonic()
@@ -1643,7 +1790,9 @@ class ChromeBrowserPool:
             if active is not None:
                 # Navigation discards the previous realm; late events belong to no new command.
                 active["sdk_auth_capture_enabled"] = runtime_page_origin is None
-                self._log_route_worker_event(active, "context_ready", elapsed_ms=round((time.monotonic() - context_started) * 1000))
+                version = getattr(getattr(self, "_browser", None), "version", None)
+                self._log_route_worker_event(active, "context_ready", elapsed_ms=round((time.monotonic() - context_started) * 1000),
+                                             browser_version=version if isinstance(version, str) else None)
             entry["route_diagnostic_context"] = active
             page = entry["page"]
             if runtime_page_origin is not None:
@@ -1651,8 +1800,9 @@ class ChromeBrowserPool:
                     active["worker_stage"] = "runtime_page"
                     self._log_route_worker_event(active, "runtime_page_start", origin=runtime_page_origin)
                 runtime_started = time.monotonic()
-                self._prepare_map_runtime_page(page, runtime_page_origin, deadline_epoch_ms)
-                self._log_route_worker_event(active, "runtime_page_ready", elapsed_ms=round((time.monotonic() - runtime_started) * 1000))
+                runtime_page = self._prepare_map_runtime_page(page, runtime_page_origin, deadline_epoch_ms)
+                self._log_route_worker_event(active, "runtime_page_ready", elapsed_ms=round((time.monotonic() - runtime_started) * 1000),
+                                             runtime_page=runtime_page)
             if active is not None:
                 active["sdk_auth_capture_enabled"] = True
                 active["network_capture_enabled"] = True
@@ -1684,8 +1834,16 @@ class ChromeBrowserPool:
                     }
                 }""", [script, js_args, remaining_ms, active["progress_marker"] if active else None])
             if active:
+                self._route_collect_transports(active)
                 snapshot = self._route_worker_snapshot(active)
                 self._log_route_worker_event(active, "evaluate_finished", snapshot=snapshot)
+                if isinstance(result, dict) and result.get("error") and (
+                    active["network_counts"]["failed"] or any(row.get("status") == "timeout"
+                        for row in active.get("progress_segments", {}).values()) or (
+                        active.get("network_pending") and any(word in str(result["error"]).lower()
+                            for word in ("timeout", "timed_out", "超时")))
+                ):
+                    self._route_schedule_network_probe(active)
                 if isinstance(result, dict):
                     if not isinstance(result.get("diagnostic"), dict):
                         result["diagnostic"] = {}
@@ -1709,6 +1867,8 @@ class ChromeBrowserPool:
                     diagnostic["sdk_auth_error"] = active["sdk_auth_error"]
                 event = "deadline_exhausted" if "总时限" in str(e) else "execution_failed"
                 self._log_route_worker_event(active, event, logging.WARNING, reason=error, snapshot=diagnostic)
+                if active.get("network_pending") or active["network_counts"]["failed"]:
+                    self._route_schedule_network_probe(active)
                 active["sdk_auth_capture_enabled"] = False
                 active["cleanup_started"] = True
             if deadline_epoch_ms is not None and entry is not None:
@@ -1744,7 +1904,7 @@ class ChromeBrowserPool:
             ctx["context"].close()
             # 从字典中删除引用
             del self._contexts[session_id]
-            logging.info(f"已关闭会话 {session_id} 的 Chrome 上下文")
+            logging.info("后台 Chrome 上下文已关闭")
             return {"success": True}
         except Exception as e:
             logging.error(f"关闭上下文失败: {e}", exc_info=True)
@@ -1871,9 +2031,9 @@ class ChromeBrowserPool:
             for session_id, ctx in list(self._contexts.items()):
                 try:
                     ctx["context"].close()
-                    logging.debug(f"已关闭会话 {session_id} 的上下文")
+                    logging.debug("后台 Chrome 上下文已清理")
                 except Exception as e:
-                    logging.warning(f"关闭会话 {session_id} 上下文失败: {e}")
+                    logging.warning("清理后台 Chrome 上下文失败: %s", sanitize_diagnostic(e, sensitive_values=(session_id,)))
             self._contexts.clear()
 
             # 关闭浏览器
@@ -2070,7 +2230,7 @@ class ChromeBrowserPool:
                 "close_context", {"session_id": session_id})
             if not result.get("success"):
                 error_msg = result.get("error", "未知错误")
-                logging.error(f"关闭上下文失败 (session={session_id}): {error_msg}")
+                logging.error("关闭后台 Chrome 上下文失败: %s", sanitize_diagnostic(error_msg, sensitive_values=(session_id,)))
         except Exception as e:
             logging.error(f"关闭上下文异常: {e}", exc_info=True)
 
