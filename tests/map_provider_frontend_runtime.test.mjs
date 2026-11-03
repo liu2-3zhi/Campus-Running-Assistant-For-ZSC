@@ -594,6 +594,10 @@ function createBaiduSdk() {
     setLabel(label) {
       this.label = label;
     }
+    setIcon(icon) {
+      this.options.icon = icon;
+      this.iconUpdateCount = (this.iconUpdateCount || 0) + 1;
+    }
     setAnimation(animation) { this.animation = animation; }
   }
   class Label {
@@ -609,6 +613,13 @@ function createBaiduSdk() {
       this.height = height;
     }
   }
+  class Icon {
+    constructor(imageUrl, size, options = {}) {
+      this.imageUrl = imageUrl;
+      this.size = size;
+      this.options = options;
+    }
+  }
   class Polyline {
     constructor(points, options) {
       this.points = points;
@@ -622,7 +633,7 @@ function createBaiduSdk() {
       this.options = options;
     }
   }
-  return { Map: BaiduMap, Point, Marker, Label, Size, Polyline, NavigationControl3D };
+  return { Map: BaiduMap, Point, Marker, Label, Size, Icon, Polyline, NavigationControl3D };
 }
 
 function createAmapSdk() {
@@ -809,6 +820,8 @@ function createRuntime(provider, options = {}) {
     'resolveProviderMarkerColor',
     'createTencentMarkerStyleOptions',
     'createProviderLabelMarkerSvgOptions',
+    'createProviderRunnerMarkerSvgOptions',
+    'createBaiduProviderMarkerIcon',
     'updateProviderRunnerMarker',
     'resolveMultiAccountRunnerColor',
     'multi_updateRunnerPosition',
@@ -2191,6 +2204,12 @@ test('provider runner markers update current position in place on non-amap maps'
       assert.ok(firstMarker.position, `${provider} runner marker should keep a position`);
       const expected = runtime.convertGcj02ToProviderCoordinates(provider, { lng: 113.40, lat: 22.53 });
       assert.ok(distanceMeters(firstMarker.position, expected) < 0.001, `${provider} marker setter converts GCJ exactly once`);
+      if (provider === 'baidu') {
+        const runnerSvg = decodeProviderDataSvg(firstMarker.options.icon?.imageUrl);
+        assert.match(runnerSvg, /<circle cx="14" cy="14" r="7" fill="#2563eb"\/>/);
+        assert.equal(firstMarker.options.icon.options.anchor.width, 14);
+        assert.equal(firstMarker.options.icon.options.anchor.height, 14);
+      }
     }
     assert.equal(Object.keys(runtime.getState().providerRunnerMarkers).length, 1, provider);
   }
@@ -2254,7 +2273,12 @@ test('tianditu and baidu checkpoint markers expose visible point names', () => {
     } else {
       const marker = overlays.find((overlay) => overlay?.options?.title === '教学楼');
       assert.ok(marker, 'baidu marker should retain title metadata');
-      assert.match(marker.label?.content || '', /教学楼/);
+      const markerSvg = decodeProviderDataSvg(marker.options.icon?.imageUrl);
+      assert.match(markerSvg, /教学楼/);
+      assert.match(markerSvg, /<rect x="1" y="1"[^>]*fill="#059669"\/>/);
+      assert.match(markerSvg, /<path d="M .* L .* 36 L .* Z"/);
+      assert.equal(marker.options.icon.options.anchor.height, marker.options.icon.size.height);
+      assert.equal(marker.options.icon.options.anchor.width, marker.options.icon.size.width / 2);
     }
   }
 });
@@ -2879,7 +2903,10 @@ test('legacy baidu and tianditu checkpoints keep identity and update color when 
     runtime.updateRunnerPosition(route[2][0], route[2][1], 100, 1, 1000, false, 3);
     const updated = runtime.getState().providerMapOverlays['map-container'].find((overlay) => overlay.options.title === '起始楼');
     assert.equal(updated, original, provider);
-    if (provider === 'baidu') assert.equal(updated.label.style.backgroundColor, '#94a3b8');
+    if (provider === 'baidu') {
+      assert.equal(updated.iconUpdateCount, 1);
+      assert.match(decodeProviderDataSvg(updated.options.icon.imageUrl), /fill="#94a3b8"/);
+    }
     else assert.match(decodeURIComponent(updated.options.icon.options.iconUrl), /#94a3b8/);
   }
 });

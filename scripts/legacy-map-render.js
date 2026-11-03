@@ -440,6 +440,34 @@ function createProviderLabelMarkerSvgOptions(label, options = {}) {
   };
 }
 
+function createProviderRunnerMarkerSvgOptions(options = {}) {
+  const color = resolveProviderMarkerColor(options);
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">',
+    '<circle cx="14" cy="14" r="10" fill="#ffffff" opacity="0.95"/>',
+    `<circle cx="14" cy="14" r="7" fill="${color}"/>`,
+    `<circle cx="14" cy="14" r="12" fill="none" stroke="${color}" stroke-width="2" opacity="0.32"/>`,
+    '</svg>',
+  ].join("");
+  return {
+    width: 28,
+    height: 28,
+    anchor: { x: 14, y: 14 },
+    src: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+  };
+}
+
+function createBaiduProviderMarkerIcon(BMap, iconOptions) {
+  if (typeof BMap?.Icon !== "function" || typeof BMap?.Size !== "function") {
+    return null;
+  }
+  return new BMap.Icon(
+    iconOptions.src,
+    new BMap.Size(iconOptions.width, iconOptions.height),
+    { anchor: new BMap.Size(iconOptions.anchor.x, iconOptions.anchor.y) },
+  );
+}
+
 function addProviderMarker(containerId, coord, options = {}) {
   const provider = getActiveMapProvider();
   const instance = getProviderMapInstance(containerId);
@@ -506,27 +534,21 @@ function addProviderMarker(containerId, coord, options = {}) {
     } else if (provider === "baidu" && BMap) {
       const label = normalizeProviderMarkerLabel(options);
       const markerKind = options.markerKind || (options.anchor === "center" ? "runner" : "label");
+      const iconOptions = markerKind === "runner"
+        ? createProviderRunnerMarkerSvgOptions(options)
+        : label
+          ? createProviderLabelMarkerSvgOptions(label, options)
+          : null;
+      const icon = iconOptions && createBaiduProviderMarkerIcon(BMap, iconOptions);
+      const markerOptions = {
+        title: options.title || label || "",
+        zIndex: options.zIndex || 100,
+      };
+      if (icon) markerOptions.icon = icon;
       marker = new BMap.Marker(
         new BMap.Point(providerCoord.lng, providerCoord.lat),
-        {
-          title: options.title || label || "",
-          zIndex: options.zIndex || 100,
-        },
+        markerOptions,
       );
-      if (
-        label &&
-        markerKind !== "runner" &&
-        typeof BMap.Label === "function" &&
-        typeof BMap.Size === "function" &&
-        typeof marker.setLabel === "function"
-      ) {
-        const markerLabel = new BMap.Label(label, { offset: new BMap.Size(12, -24) });
-        marker.__providerLabel = markerLabel;
-        marker.setLabel(markerLabel);
-        if (typeof markerLabel.setStyle === "function") {
-          markerLabel.setStyle({ backgroundColor: resolveProviderMarkerColor(options), color: "#ffffff", border: "0", borderRadius: "12px", padding: "4px 8px" });
-        }
-      }
       instance.addOverlay(marker);
     }
     if (marker) {
@@ -1274,6 +1296,7 @@ function drawProviderTaskOnMap(containerId, data) {
 
 function syncProviderTaskCheckpointMarkers(containerId, data, routeCoords) {
   const cached = providerRouteSegmentOverlays[containerId];
+  const BMap = getProviderBaiduSdk(getProviderMapInstance(containerId));
   const previous = cached?.checkpointMarkers || [];
   const next = [];
   if (Array.isArray(data.target_points)) {
@@ -1321,7 +1344,7 @@ function syncProviderTaskCheckpointMarkers(containerId, data, routeCoords) {
         };
         const key = `${markerCoord.lng},${markerCoord.lat}:${pointName}`;
         let marker = previous[index]?.key === key ? previous[index].marker : null;
-        if (marker && previous[index].status !== markerStatus && !updateProviderCheckpointMarkerStyle(marker, options)) {
+        if (marker && previous[index].status !== markerStatus && !updateProviderCheckpointMarkerStyle(marker, options, BMap)) {
           marker = null;
         }
         if (!marker) marker = addProviderMarker(containerId, markerCoord, options);
@@ -1338,7 +1361,7 @@ function syncProviderTaskCheckpointMarkers(containerId, data, routeCoords) {
   if (cached) cached.checkpointMarkers = next;
 }
 
-function updateProviderCheckpointMarkerStyle(marker, options) {
+function updateProviderCheckpointMarkerStyle(marker, options, BMap = null) {
   const provider = getActiveMapProvider();
   try {
     if (provider === "tencent" && window.TMap && typeof marker.setStyles === "function") {
@@ -1347,8 +1370,11 @@ function updateProviderCheckpointMarkerStyle(marker, options) {
       const icon = createProviderLabelMarkerSvgOptions(options.label, options);
       const point = (x, y) => typeof T.Point === "function" ? new T.Point(x, y) : [x, y];
       marker.setIcon(new T.Icon({ iconUrl: icon.src, iconSize: point(icon.width, icon.height), iconAnchor: point(icon.anchor.x, icon.anchor.y) }));
-    } else if (provider === "baidu" && typeof marker.__providerLabel?.setStyle === "function") {
-      marker.__providerLabel.setStyle({ backgroundColor: options.markerColor });
+    } else if (provider === "baidu" && BMap && typeof marker.setIcon === "function") {
+      const icon = createProviderLabelMarkerSvgOptions(options.label, options);
+      const baiduIcon = createBaiduProviderMarkerIcon(BMap, icon);
+      if (!baiduIcon) return false;
+      marker.setIcon(baiduIcon);
     } else if (provider === "amap" && typeof marker.setContent === "function") {
       marker.setContent(options.content);
     } else {
