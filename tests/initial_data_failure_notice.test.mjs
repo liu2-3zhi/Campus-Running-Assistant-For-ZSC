@@ -203,6 +203,33 @@ test('map runtime hydration failure does not invalidate authenticated initial da
   }
 });
 
+test('legacy initialization timeout rejects with a diagnostic phase', async () => {
+  const withLegacyInitializationTimeout = loadFunction(
+    'withLegacyInitializationTimeout',
+  );
+  globalThis.LEGACY_INITIAL_DATA_TIMEOUT_MS = 30000;
+  globalThis.sessionUUID = '22222222-2222-4222-8222-222222222222';
+
+  try {
+    await assert.rejects(
+      withLegacyInitializationTimeout(
+        new Promise(() => {}),
+        'get_initial_data',
+        5,
+      ),
+      (error) => {
+        assert.equal(error.code, 'LEGACY_INITIALIZATION_TIMEOUT');
+        assert.equal(error.phase, 'get_initial_data');
+        assert.match(error.message, /get_initial_data超时/);
+        return true;
+      },
+    );
+  } finally {
+    delete globalThis.LEGACY_INITIAL_DATA_TIMEOUT_MS;
+    delete globalThis.sessionUUID;
+  }
+});
+
 test('session expired notices are suppressed on the login screen and for empty sessions', () => {
   const shouldSuppressSessionExpiredNotice = loadFunction(
     'shouldSuppressSessionExpiredNotice',

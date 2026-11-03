@@ -18,6 +18,7 @@ function extractLegacyRuntimeBlock() {
 function createLegacyRuntimeHarness({
   fetchImpl,
   timeoutImpl,
+  abortControllerImpl,
   activeSessionId = '',
   storedSessionId = '',
   urlSessionId = '',
@@ -78,6 +79,7 @@ function createLegacyRuntimeHarness({
       return 1
     }),
     clearTimeout() {},
+    ...(abortControllerImpl ? { AbortController: abortControllerImpl } : {}),
     console,
     sessionUUID: activeSessionId,
     isUsableClientSessionUUID(value) {
@@ -213,4 +215,51 @@ window.__MAP_KEY_RUNTIME__ = Object.freeze({
   assert.equal(fetchCalls[0].options.headers['X-Session-ID'], sessionId)
   assert.equal(fetchCalls[1].options.headers['X-Session-ID'], sessionId)
   assert.deepEqual(retryDelays, [100])
+})
+
+test('legacy runtime loader reports a timed out runtime request', async () => {
+  let rejectFetch
+  let abortCount = 0
+  let requestSignal
+  class FakeAbortController {
+    constructor() {
+      this.signal = { aborted: false }
+    }
+
+    abort() {
+      abortCount += 1
+      this.signal.aborted = true
+      const error = new Error('request aborted')
+      error.name = 'AbortError'
+      rejectFetch(error)
+    }
+  }
+
+  const { api } = createLegacyRuntimeHarness({
+    timeoutImpl: (handler) => {
+      setImmediate(handler)
+      return 1
+    },
+    abortControllerImpl: FakeAbortController,
+    fetchImpl: async (_url, options) => {
+      requestSignal = options.signal
+      return new Promise((_, reject) => {
+        rejectFetch = reject
+      })
+    },
+  })
+
+  await assert.rejects(
+    api.loadLegacyMapKeyRuntime({
+      runtime_script: '/api/map_key_runtime.js?v=runtime-timeout',
+      runtime_version: 'runtime-timeout',
+    }, '41473ebe-61ff-4f71-aa13-2620c13057a4'),
+    (error) => {
+      assert.match(error.message, /地图密钥运行时脚本加载超时/)
+      assert.equal(error.timedOut, true)
+      return true
+    },
+  )
+  assert.equal(abortCount, 1)
+  assert.equal(requestSignal.aborted, true)
 })

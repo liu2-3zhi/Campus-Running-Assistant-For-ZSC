@@ -257,6 +257,8 @@ function getUUIDFromURL() {
  */
 const LEGACY_MAP_KEY_RUNTIME_NAMESPACE = "__MAP_KEY_RUNTIME__";
 const LEGACY_MAP_KEY_RUNTIME_RETRY_DELAYS = [100, 300];
+const LEGACY_MAP_KEY_RUNTIME_FETCH_TIMEOUT_MS = 15000;
+const LEGACY_INITIAL_DATA_TIMEOUT_MS = 30000;
 let legacyMapKeyRuntimeLoadPromise = null;
 let legacyMapKeyRuntimeLoadVersion = "";
 let legacyMapKeyRuntimeLoadSession = "";
@@ -320,6 +322,62 @@ function waitForLegacyMapKeyRuntimeRetry(delayMs) {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
+function withLegacyInitializationTimeout(promise, phase, timeoutMs) {
+  const timeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : LEGACY_INITIAL_DATA_TIMEOUT_MS;
+  let timeoutId = null;
+  const startedAt = Date.now();
+  const context = {
+    phase,
+    timeoutMs: timeout,
+    elapsedMs: 0,
+    sessionUUID: typeof sessionUUID === "string" ? sessionUUID : "",
+    initializationId:
+      typeof window !== "undefined" ? window.__legacyInitializationId || null : null,
+    pathname:
+      typeof window !== "undefined" ? window.location?.pathname || "" : "",
+  };
+  console.info("[初始化] 阶段开始", context);
+  let timedOut = false;
+  const guardedPromise = Promise.resolve(promise).then(
+    (value) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      console.info(
+        timedOut ? "[初始化] 阶段超时后完成" : "[初始化] 阶段完成",
+        {
+          ...context,
+          elapsedMs: Date.now() - startedAt,
+          success: true,
+        },
+      );
+      return value;
+    },
+    (error) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      console.error("[初始化] 阶段失败", {
+        ...context,
+        elapsedMs: Date.now() - startedAt,
+        message: error?.message || String(error),
+      });
+      throw error;
+    },
+  );
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      const error = new Error(`${phase}超时（${timeout}ms）`);
+      error.code = "LEGACY_INITIALIZATION_TIMEOUT";
+      error.phase = phase;
+      error.elapsedMs = Date.now() - startedAt;
+      console.error("[初始化] 阶段超时", {
+        ...context,
+        elapsedMs: error.elapsedMs,
+      });
+      reject(error);
+    }, timeout);
+  });
+  return Promise.race([guardedPromise, timeoutPromise]);
+}
+
 async function fetchLegacyMapKeyRuntimeScript(
   runtimeUrl,
   expectedVersion,
@@ -334,22 +392,49 @@ async function fetchLegacyMapKeyRuntimeScript(
       addAdminViewOriginSessionHeader(headers, sessionId);
     }
     let response;
+    const controller =
+      typeof AbortController === "function" ? new AbortController() : null;
+    const timeoutId = controller
+      ? setTimeout(() => controller.abort(), LEGACY_MAP_KEY_RUNTIME_FETCH_TIMEOUT_MS)
+      : null;
+    const startedAt = Date.now();
     try {
       response = await fetch(runtimeUrl, {
         credentials: "include",
         cache: "no-store",
         headers,
+        ...(controller ? { signal: controller.signal } : {}),
       });
     } catch (error) {
+      const timedOut = controller && error?.name === "AbortError";
+      console.error("[配置] 地图密钥运行时脚本请求结束", {
+        runtimeVersion: expectedVersion,
+        attempt: attempt + 1,
+        elapsedMs: Date.now() - startedAt,
+        timedOut: !!timedOut,
+        errorName: error?.name || "Error",
+      });
       throw createLegacyMapKeyRuntimeLoadError(
-        "地图密钥运行时脚本加载失败",
+        timedOut
+          ? `地图密钥运行时脚本加载超时（${LEGACY_MAP_KEY_RUNTIME_FETCH_TIMEOUT_MS}ms）`
+          : "地图密钥运行时脚本加载失败",
         {
           cause: error,
           runtimeVersion: expectedVersion,
           attempt: attempt + 1,
+          timedOut: !!timedOut,
+          elapsedMs: Date.now() - startedAt,
         },
       );
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
+    console.info("[配置] 地图密钥运行时脚本请求完成", {
+      runtimeVersion: expectedVersion,
+      attempt: attempt + 1,
+      elapsedMs: Date.now() - startedAt,
+      status: response.status,
+    });
     if (response.ok) {
       return {
         scriptText: await response.text(),
@@ -5039,6 +5124,9 @@ async function checkAuthStatus() {
       return true;
     }
   } catch (e) {
+    if (e?.code === "LEGACY_INITIALIZATION_TIMEOUT") {
+      throw e;
+    }
     logMessage_Info("未认证或会话过期");
   }
 
@@ -27293,6 +27381,7 @@ async function hydrateInitialDataMapProviderSecrets(response, sessionId) {
  *   Promise<Object> - 包含初始数据的对象
  */
 let lastInitialDataContextKey = "";
+let legacyInitialDataRequestSequence = 0;
 async function loadInitialData(options = {}) {
   // 使用try-catch块进行错误处理，这是异步函数的最佳实践
   try {
@@ -27306,6 +27395,7 @@ async function loadInitialData(options = {}) {
     const businessContext = captureLegacyBusinessContext();
     const initialDataOriginUUID = getAdminViewOriginSessionUUID(initialDataSessionUUID);
     const initialDataContextKey = `${initialDataSessionUUID}|${initialDataOriginUUID}`;
+    const initialDataRequestId = ++legacyInitialDataRequestSequence;
 
     // 计算距离上次请求的时间间隔
     const timeSinceLastRequest = now - lastInitialDataRequest;
@@ -27355,11 +27445,46 @@ async function loadInitialData(options = {}) {
     // 使用await关键字等待callPythonAPI的Promise完成
     // callPythonAPI是应用中已存在的函数，负责与Python后端通信
     // "get_initial_data"是API端点的标识符，后端会据此返回相应数据
-    let response = await callPythonAPI("get_initial_data", params);
+    const initialDataStartedAt = Date.now();
+    console.info("[初始化] get_initial_data 请求开始", {
+      requestId: initialDataRequestId,
+      sessionUUID: initialDataSessionUUID,
+      originSessionUUID: initialDataOriginUUID,
+      force: !!options.force,
+    });
+    let response;
+    try {
+      response = await withLegacyInitializationTimeout(
+        callPythonAPI("get_initial_data", params),
+        "get_initial_data",
+        LEGACY_INITIAL_DATA_TIMEOUT_MS,
+      );
+    } catch (error) {
+      console.error("[初始化] get_initial_data 请求结束（失败）", {
+        requestId: initialDataRequestId,
+        sessionUUID: initialDataSessionUUID,
+        elapsedMs: Date.now() - initialDataStartedAt,
+        timeout: error?.code === "LEGACY_INITIALIZATION_TIMEOUT",
+        message: error?.message || String(error),
+      });
+      throw error;
+    }
+    console.info("[初始化] get_initial_data 请求结束", {
+      requestId: initialDataRequestId,
+      sessionUUID: initialDataSessionUUID,
+      elapsedMs: Date.now() - initialDataStartedAt,
+      success: response?.success !== false,
+    });
+    const mapHydrationStartedAt = Date.now();
     response = await hydrateInitialDataMapProviderSecrets(
       response,
       initialDataSessionUUID,
     );
+    console.info("[初始化] 地图密钥数据处理完成", {
+      requestId: initialDataRequestId,
+      sessionUUID: initialDataSessionUUID,
+      elapsedMs: Date.now() - mapHydrationStartedAt,
+    });
     if (
       initialDataSessionUUID !== getApiRequestSessionHeaderValue("get_initial_data") ||
       !isCurrentLegacyBusinessContext(businessContext) ||
@@ -28912,8 +29037,26 @@ async function restoreAccountAndRefreshMobile(auth_username) {
 }
 
 function handleApplicationInitializationFailure(err) {
-  logMessage_Error("应用初始化失败:", err);
+  if (typeof logMessage_Error === "function") {
+    logMessage_Error("应用初始化失败:", err);
+  } else {
+    console.error("应用初始化失败:", err);
+  }
+  console.error("[初始化] 页面启动失败，释放加载遮罩", {
+    message: err?.message || String(err),
+    stack: err?.stack || "",
+    sessionUUID: typeof sessionUUID === "string" ? sessionUUID : "",
+  });
   appInitialized = false;
+  ["loading-overlay", "mobile-loading-overlay"].forEach((id) => {
+    const overlay = document.getElementById(id);
+    if (!overlay) return;
+    if (overlay.classList) overlay.classList.add("hidden");
+    if (overlay.style) {
+      overlay.style.opacity = "0";
+      overlay.style.display = "none";
+    }
+  });
   if (cdnErrorCount > 0) {
     if (cdnErrorTimer) clearTimeout(cdnErrorTimer);
     const errorOverlay = document.getElementById("cdn-error-overlay");

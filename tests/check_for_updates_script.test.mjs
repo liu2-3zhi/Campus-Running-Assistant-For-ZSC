@@ -11,6 +11,7 @@ function run({ storedVersion = '', apiOk = true, apiVersion = latestVersion, sto
   const replacements = []
   const cacheDeletes = []
   const written = []
+  const errors = []
   let unregisterCount = 0
   const storage = new Map([['siteVersion', storedVersion]])
   const context = vm.createContext({
@@ -56,12 +57,12 @@ function run({ storedVersion = '', apiOk = true, apiVersion = latestVersion, sto
       }
       return { ok: true }
     },
-    console: { log() {} },
+    console: { log() {}, error(...args) { errors.push(args) } },
     URL,
     Date: class extends Date { static now() { return 1234567890 } },
   })
   vm.runInContext(source, context)
-  return { context, requests, replacements, cacheDeletes, get unregisterCount() { return unregisterCount }, storage, written }
+  return { context, requests, replacements, cacheDeletes, get unregisterCount() { return unregisterCount }, storage, written, errors }
 }
 
 function scriptUrl(result) {
@@ -77,6 +78,7 @@ const settle = () => new Promise((resolve) => setImmediate(resolve))
 test('main.js uses localStorage version before any API response, retaining parser defer', async () => {
   const result = run({ storedVersion: latestVersion })
   const url = scriptUrl(result)
+  assert.match(result.written[0], /onerror="window.__legacyScriptLoadError\(this.src\)"/)
   assert.equal(url.pathname, '/scripts/main.js')
   assert.equal(url.searchParams.get('version'), latestVersion)
   await settle()
@@ -93,6 +95,18 @@ test('first visit uses a temporary cache key and saves API version for the next 
   const nextLoad = run({ storedVersion: result.storage.get('siteVersion') })
   assert.equal(scriptUrl(nextLoad).searchParams.get('version'), latestVersion)
   await settle()
+})
+
+test('legacy script load errors are sent to the frontend log endpoint', async () => {
+  const result = run({ storedVersion: latestVersion })
+  result.context.window.__legacyScriptLoadError('/scripts/main.js?version=test')
+  await settle()
+
+  assert.equal(result.errors.length, 1)
+  const logRequest = result.requests.find(({ url }) => url === '/api/log_frontend')
+  assert.ok(logRequest)
+  assert.match(logRequest.options.body, /旧版脚本加载失败/)
+  assert.match(logRequest.options.body, /scripts\/main\.js/)
 })
 
 test('new version is saved before cache cleanup and reload', async () => {

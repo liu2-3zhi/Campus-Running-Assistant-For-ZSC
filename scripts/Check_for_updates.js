@@ -26,6 +26,21 @@
     ) return;
 
     const version = currentVersion || Date.now().toString();
+    window.__legacyScriptLoadError = function (src) {
+      const message = `[初始化] 旧版脚本加载失败: ${src || "未知脚本"}`;
+      console.error(message);
+      sendUpdateLog("ERROR", message, { src: src || "" });
+      if (/\/scripts\/main\.js(?:[?#]|$)/i.test(String(src || ""))) {
+        ["loading-overlay", "mobile-loading-overlay"].forEach((id) => {
+          const overlay = document.getElementById(id);
+          if (!overlay) return;
+          overlay.textContent = "页面初始化脚本加载失败，请刷新页面重试。";
+          if (typeof overlay.setAttribute === "function") {
+            overlay.setAttribute("role", "alert");
+          }
+        });
+      }
+    };
     const scripts = [
       "/scripts/legacy-payment.js",
       "/scripts/legacy-mobile-core.js",
@@ -50,7 +65,7 @@
           const url = new URL(pathname, window.location.href);
           url.searchParams.set("version", version);
           const id = index === scripts.length - 1 ? "main-script" : "";
-          return `<script${id ? ` id="${id}"` : ""} src="${url.pathname}${url.search}" defer=""></script>`;
+          return `<script${id ? ` id="${id}"` : ""} src="${url.pathname}${url.search}" defer="" onerror="window.__legacyScriptLoadError(this.src)"></script>`;
         })
         .join(""),
     );

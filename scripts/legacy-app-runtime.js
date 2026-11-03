@@ -66,10 +66,81 @@ function showSessionMissingOverlay() {
   document.body.appendChild(overlay);
 }
 
+function waitForLegacyInitialization(promise, phase, timeoutMs) {
+  if (typeof withLegacyInitializationTimeout === "function") {
+    return withLegacyInitializationTimeout(promise, phase, timeoutMs);
+  }
+
+  const timeout = Number(timeoutMs) > 0 ? Number(timeoutMs) : 30000;
+  let timeoutId = null;
+  const startedAt = Date.now();
+  const context = {
+    phase,
+    timeoutMs: timeout,
+    initializationId:
+      window.__legacyInitializationId || null,
+    sessionUUID: typeof sessionUUID === "string" ? sessionUUID : "",
+    pathname: window.location?.pathname || "",
+  };
+  console.info("[初始化] 阶段开始", context);
+  const guardedPromise = Promise.resolve(promise).then(
+    (value) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      console.info("[初始化] 阶段完成", {
+        ...context,
+        elapsedMs: Date.now() - startedAt,
+        success: true,
+      });
+      return value;
+    },
+    (error) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      console.error("[初始化] 阶段失败", {
+        ...context,
+        elapsedMs: Date.now() - startedAt,
+        message: error?.message || String(error),
+      });
+      throw error;
+    },
+  );
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error(`${phase}超时（${timeout}ms）`);
+      error.code = "LEGACY_INITIALIZATION_TIMEOUT";
+      error.phase = phase;
+      console.error("[初始化] 阶段超时", {
+        ...context,
+        elapsedMs: Date.now() - startedAt,
+      });
+      reject(error);
+    }, timeout);
+  });
+  return Promise.race([guardedPromise, timeoutPromise]);
+}
+
 async function initializeApp() {
   const initializationContext = captureLegacyBusinessContext();
+  const initializationStartedAt = Date.now();
+  const initializationId =
+    (Number(window.__legacyInitializationSequence) || 0) + 1;
+  window.__legacyInitializationSequence = initializationId;
+  window.__legacyInitializationId = initializationId;
+  console.info("[初始化] initializeApp 开始", {
+    initializationId,
+    pathname: window.location.pathname || "",
+    sessionUUID: typeof sessionUUID === "string" ? sessionUUID : "",
+    hasMapKeyRuntimeReady: !!window.__mapKeyRuntimeReady,
+  });
   if (window.__mapKeyRuntimeReady) {
-    await window.__mapKeyRuntimeReady;
+    console.info("[初始化] 等待地图密钥运行时完成");
+    await waitForLegacyInitialization(
+      window.__mapKeyRuntimeReady,
+      "地图密钥运行时",
+      20000,
+    );
+    console.info("[初始化] 地图密钥运行时完成", {
+      elapsedMs: Date.now() - initializationStartedAt,
+    });
   }
 
   function ShowMobileLoadingOverlay() {
@@ -101,9 +172,13 @@ async function initializeApp() {
   const initialUuidFromPath = resolveThemeRequestSessionUUID("", window.location.pathname);
   const shouldDeferInitialThemeConfigApply = !!initialUuidFromPath;
   setThemeStyle(cachedThemeStyle, false, false);
-  await ensureThemeStylesLoaded(false, {
-    applyThemeConfig: !shouldDeferInitialThemeConfigApply,
-  });
+  await waitForLegacyInitialization(
+    ensureThemeStylesLoaded(false, {
+      applyThemeConfig: !shouldDeferInitialThemeConfigApply,
+    }),
+    "主题样式加载",
+    15000,
+  );
   if (!shouldDeferInitialThemeConfigApply) {
     setThemeStyle(cachedThemeStyle, false);
   }
@@ -181,15 +256,29 @@ async function initializeApp() {
       let result = null;
       try {
         try {
-          const response = await fetch("/auth/check_uuid_type", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ uuid: sessionUUID }),
+          const uuidCheckStartedAt = Date.now();
+          console.info("[初始化] UUID 会话类型检查开始", { sessionUUID });
+          const uuidCheck = await waitForLegacyInitialization(
+            (async () => {
+              const response = await fetch("/auth/check_uuid_type", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ uuid: sessionUUID }),
+              });
+              return { response, result: await response.json() };
+            })(),
+            "UUID会话类型检查",
+            15000,
+          );
+          const { response } = uuidCheck;
+          result = uuidCheck.result;
+          console.info("[初始化] UUID 会话类型检查完成", {
+            sessionUUID,
+            elapsedMs: Date.now() - uuidCheckStartedAt,
+            status: response.status,
           });
-
-          result = await response.json();
 
           if (!result.success) {
             logMessage_Error("检查UUID失败:", result.message);
@@ -385,7 +474,11 @@ async function initializeApp() {
 
     $("loading-overlay").classList.remove("hidden");
     ShowMobileLoadingOverlay();
-    const isAuthenticated = await checkAuthStatus();
+    const isAuthenticated = await waitForLegacyInitialization(
+      checkAuthStatus(),
+      "认证状态检查",
+      35000,
+    );
     themeBackgroundAuthStateResolved = true;
     themeBackgroundAuthenticatedSession = !!isAuthenticated;
     if (!isAuthenticated) {
@@ -447,7 +540,11 @@ async function initializeApp() {
         : {};
     applyThemeGlobalEnvironmentVariables(currentThemeConfig);
     if (!availableThemeStyles.length) {
-      await ensureThemeStylesLoaded();
+      await waitForLegacyInitialization(
+        ensureThemeStylesLoaded(),
+        "主题样式补充加载",
+        15000,
+      );
     }
     renderThemeStyleButtons(
       document.getElementById("profile-theme-style-buttons"),
@@ -458,7 +555,11 @@ async function initializeApp() {
       pythonParams.theme_style || currentThemeStyle || "default",
       { mobile: true },
     );
-    await syncThemeFromServer(initialData?.theme, initialData?.theme_style);
+    await waitForLegacyInitialization(
+      syncThemeFromServer(initialData?.theme, initialData?.theme_style),
+      "主题配置同步",
+      15000,
+    );
 
     currentUserIsGuest = initialData.is_guest || false;
     currentAuthUsername = getLegacyActorIdentity(initialData).auth_username || null;
@@ -500,14 +601,18 @@ async function initializeApp() {
 
     createParamInputs($("params-container"), "param", onParamChange);
     if (initialData.lastUser) userCombo.value = initialData.lastUser;
-    await onUserChange();
+    await waitForLegacyInitialization(onUserChange(), "用户上下文初始化", 30000);
 
     const hasSchoolLogin = initialData.isLoggedIn && initialData.userInfo;
     const hasSystemAuth = initialData.is_authenticated && !initialData.is_guest;
     const isGuestMode = initialData.is_authenticated && initialData.is_guest;
     let sessionModeInfo = null;
     try {
-      sessionModeInfo = await callPythonAPI("get_session_mode_info");
+      sessionModeInfo = await waitForLegacyInitialization(
+        callPythonAPI("get_session_mode_info"),
+        "会话模式查询",
+        30000,
+      );
     } catch (e) {
       logMessage_Error("获取会话模式信息失败:", e);
       hideLoadingOverlays();
@@ -538,7 +643,11 @@ async function initializeApp() {
       logMessage_Info("检测到会话之前处于多账号模式，正在恢复...");
       currentUserData.group = initialData.auth_group || "user";
       try {
-        const result = await callPythonAPI("enter_multi_account_mode");
+        const result = await waitForLegacyInitialization(
+          callPythonAPI("enter_multi_account_mode"),
+          "多账号模式恢复",
+          30000,
+        );
         if (!result.success) {
           logMessage_Error("无法进入多账号模式，返回登录界面");
           return;
@@ -554,7 +663,11 @@ async function initializeApp() {
       hideLoadingOverlays();
       HiddenMobileLoadingOverlay();
       try {
-        await ensureActiveMapProviderRuntimeIfNeeded("多账号模式恢复");
+        await waitForLegacyInitialization(
+          ensureActiveMapProviderRuntimeIfNeeded("多账号模式恢复"),
+          "多账号地图运行时恢复",
+          30000,
+        );
       } catch (e) {
         logMessage_Error("地图加载失败（多账号模式恢复）", e);
       }
@@ -649,7 +762,11 @@ async function initializeApp() {
         $("login-container").classList.add("hidden");
       }
       try {
-        const configUsers = await callPythonAPI("multi_get_all_config_users");
+        const configUsers = await waitForLegacyInitialization(
+          callPythonAPI("multi_get_all_config_users"),
+          "多账号配置用户加载",
+          30000,
+        );
         const select = $("multi-config-user-select");
         select.innerHTML = '<option value="">(新用户/手动输入)</option>';
         configUsers.users.forEach((u) => {
@@ -674,9 +791,13 @@ async function initializeApp() {
       try {
         bindImmediateRefreshForUserSelects();
         updateMultiGlobalButtons(true, true);
-        await callPythonAPI(
-          "set_multi_run_only_incomplete",
-          document.getElementById("multi-run-only-incomplete-check").checked,
+        await waitForLegacyInitialization(
+          callPythonAPI(
+            "set_multi_run_only_incomplete",
+            document.getElementById("multi-run-only-incomplete-check").checked,
+          ),
+          "多账号运行参数同步",
+          30000,
         );
       } catch (e) {
         logMessage_Error("绑定多账号UI事件失败:", e);
@@ -743,7 +864,11 @@ async function initializeApp() {
 
       hideLoadingOverlays();
       try {
-        await ensureActiveMapProviderRuntimeIfNeeded("会话恢复");
+        await waitForLegacyInitialization(
+          ensureActiveMapProviderRuntimeIfNeeded("会话恢复"),
+          "地图运行时恢复",
+          30000,
+        );
       } catch (e) {
         logMessage_Error("地图加载失败（会话恢复）", e);
       }
@@ -758,10 +883,14 @@ async function initializeApp() {
         currentUserData.student_id || "未登录"
       }`;
       updateDashboard();
-      await refreshTasks();
+      await waitForLegacyInitialization(refreshTasks(), "任务列表刷新", 30000);
       let isTaskRestored = false;
       try {
-        isTaskRestored = await checkBackgroundTaskOnLoad();
+        isTaskRestored = await waitForLegacyInitialization(
+          checkBackgroundTaskOnLoad(),
+          "后台任务状态恢复",
+          30000,
+        );
       } catch (err) {
         logMessage_Warning("检查后台任务失败:", err);
       }
@@ -777,7 +906,11 @@ async function initializeApp() {
       const adminBtn = $("show-admin-panel");
       if (adminBtn) adminBtn.classList.remove("hidden");
       hideLoadingOverlays();
-      await fetchNotifications();
+      await waitForLegacyInitialization(
+        fetchNotifications(),
+        "通知加载",
+        30000,
+      );
     } else if (hasSystemAuth || isGuestMode) {
       currentUserData.group = initialData.auth_group || "guest";
       logMessage_Info(
@@ -805,7 +938,7 @@ async function initializeApp() {
         $("auth-login-container").classList.add("hidden");
         $("login-container").classList.remove("hidden");
       }
-      await onUserChange();
+      await waitForLegacyInitialization(onUserChange(), "用户上下文初始化", 30000);
       setTimeout(async () => {
         try {
           await initializeInlineAdminPanel();
@@ -814,7 +947,11 @@ async function initializeApp() {
         }
       }, 100);
       try {
-        await ensureActiveMapProviderRuntimeIfNeeded("系统账号恢复");
+        await waitForLegacyInitialization(
+          ensureActiveMapProviderRuntimeIfNeeded("系统账号恢复"),
+          "地图运行时恢复",
+          30000,
+        );
       } catch (e) {
         logMessage_Error("地图加载失败（系统账号恢复）", e);
       }
@@ -844,7 +981,11 @@ async function initializeApp() {
       hideLoadingOverlays();
     } else {
       try {
-        await ensureActiveMapProviderRuntimeIfNeeded("ready 阶段");
+        await waitForLegacyInitialization(
+          ensureActiveMapProviderRuntimeIfNeeded("ready 阶段"),
+          "地图运行时就绪",
+          30000,
+        );
       } catch (e) {
         logMessage_Error("地图加载失败（ready 阶段）", e);
       }
@@ -854,7 +995,7 @@ async function initializeApp() {
     if (pythonParams.theme_style) {
       setThemeStyle(pythonParams.theme_style, false); // 传入 false
     }
-    await refreshUserList();
+    await waitForLegacyInitialization(refreshUserList(), "用户列表刷新", 30000);
 
     const loadingOverlay = $("loading-overlay");
     loadingOverlay.style.opacity = "0";
@@ -890,8 +1031,20 @@ async function initializeApp() {
 
     // 新增：检查是否显示返回管理员按钮
     checkAdminReturnState();
+    console.info("[初始化] initializeApp 完成", {
+      initializationId,
+      elapsedMs: Date.now() - initializationStartedAt,
+      sessionUUID: typeof sessionUUID === "string" ? sessionUUID : "",
+    });
   } catch (err) {
     hideLoadingOverlays();
+    console.error("[初始化] initializeApp 失败，已释放加载遮罩", {
+      initializationId,
+      elapsedMs: Date.now() - initializationStartedAt,
+      message: err?.message || String(err),
+      stack: err?.stack || "",
+      sessionUUID: typeof sessionUUID === "string" ? sessionUUID : "",
+    });
     // showModalAlert("服务器无法连接，请检查网络或稍后重试。", "网络错误");
     Swal.fire({
       title: "网络错误",

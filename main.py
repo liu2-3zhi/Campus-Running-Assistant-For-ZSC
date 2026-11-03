@@ -584,6 +584,7 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
   const runtimeVersion = __MAP_KEY_RUNTIME_VERSION__;
   const runtimeNamespace = "__MAP_KEY_RUNTIME_NAMESPACE__";
   const decryptEndpoint = "/api/map_provider_keys/decrypt";
+  const decryptRequestTimeoutMs = 15000;
   let clientKeyPairPromise = null;
 
   function getSessionId() {
@@ -648,16 +649,47 @@ MAP_KEY_RUNTIME_TEMPLATE = r"""
     const endpointUrl = runtimeVersion
       ? decryptEndpoint + "?v=" + encodeURIComponent(runtimeVersion)
       : decryptEndpoint;
-    const response = await fetch(endpointUrl, {
-      method: "POST",
-      credentials: "include",
-      cache: "no-store",
-      headers,
-      body: JSON.stringify({
-        runtime_version: runtimeVersion,
-        bundle: bundle || {},
-        client_public_key: clientPublicKey,
-      }),
+    const controller = typeof AbortController === "function"
+      ? new AbortController()
+      : null;
+    const timeoutId = controller
+      ? setTimeout(() => controller.abort(), decryptRequestTimeoutMs)
+      : null;
+    const startedAt = Date.now();
+    let response;
+    try {
+      response = await fetch(endpointUrl, {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers,
+        ...(controller ? { signal: controller.signal } : {}),
+        body: JSON.stringify({
+          runtime_version: runtimeVersion,
+          bundle: bundle || {},
+          client_public_key: clientPublicKey,
+        }),
+      });
+    } catch (error) {
+      const timedOut = controller && error && error.name === "AbortError";
+      console.error("[配置] 地图密钥解密请求结束", {
+        runtimeVersion,
+        elapsedMs: Date.now() - startedAt,
+        timedOut: !!timedOut,
+        errorName: error && error.name ? error.name : "Error",
+      });
+      throw new Error(
+        timedOut
+          ? "地图密钥解密请求超时"
+          : "地图密钥解密请求失败",
+      );
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+    console.info("[配置] 地图密钥解密请求完成", {
+      runtimeVersion,
+      elapsedMs: Date.now() - startedAt,
+      status: response.status,
     });
     if (!response.ok) {
       throw new Error("地图密钥解密请求失败");
