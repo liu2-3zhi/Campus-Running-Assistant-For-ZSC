@@ -143,18 +143,22 @@ function isSelected(account) {
 }
 
 // --- API Actions ---
-async function loadAccounts() {
+async function loadAccounts(context = null) {
+  const isCurrent = () => !context || (viewMounted && context.session === authStore.sessionUUID && appStore.isCurrentBusinessContext(context))
+  if (!isCurrent()) return
   const snapshotContext = appStore.captureMultiAccountsSnapshot()
   loading.value = true
   try {
     const data = await checkedAPI('multi_get_all_accounts_status')
+    if (!isCurrent()) return
     if (data?.accounts) {
       appStore.applyMultiAccountsSnapshot(data.accounts, snapshotContext)
     }
   } catch (e) {
-    appStore.addLog(`加载账号失败: ${e.message}`, 'ERROR', 'Multi')
+    if (isCurrent()) appStore.addLog(`加载账号失败: ${e.message}`, 'ERROR', 'Multi')
+  } finally {
+    if (isCurrent()) loading.value = false
   }
-  loading.value = false
 }
 
 async function startAll() {
@@ -643,6 +647,7 @@ async function loadMapProviderConfig() {
   const context = appStore.captureBusinessContext()
   try {
     const responseData = await callAPI('get_initial_data')
+    if (!viewMounted || requestSession !== authStore.sessionUUID || !appStore.isCurrentBusinessContext(context)) return
     const data = await hydrateMapProviderSecrets(responseData)
     if (!viewMounted || requestSession !== authStore.sessionUUID || !appStore.isCurrentBusinessContext(context)) return
     appStore.applyBusinessMode(data, context)
@@ -658,7 +663,7 @@ async function loadMapProviderConfig() {
     })
     if (data?.map_provider) mapStore.setProvider(data.map_provider)
   } catch (error) {
-    if (viewMounted && requestSession === authStore.sessionUUID) appStore.addLog(`加载地图配置失败: ${error.message || error}`, 'ERROR', 'Multi')
+    if (viewMounted && requestSession === authStore.sessionUUID && appStore.isCurrentBusinessContext(context)) appStore.addLog(`加载地图配置失败: ${error.message || error}`, 'ERROR', 'Multi')
   }
 }
 
@@ -666,31 +671,45 @@ async function loadMapProviderConfig() {
 onMounted(async () => {
   viewMounted = true
   appStore.bindBusinessSession(authStore.sessionUUID)
+  const context = appStore.captureBusinessContext()
+  const isCurrent = () => viewMounted && context.session === authStore.sessionUUID && appStore.isCurrentBusinessContext(context)
+  appStore.isLoading = true
   appStore.currentView = 'multi'
   appStore.isMultiMode = true
   try {
-    const result = await checkedAPI('enter_multi_account_mode')
-    Object.assign(globalParams, result?.params || {})
+    const modeInfo = await checkedAPI('get_session_mode_info')
+    if (!isCurrent()) return
+    let result = modeInfo
+    if (!modeInfo.is_multi_account_mode) {
+      result = await checkedAPI('enter_multi_account_mode')
+      if (!isCurrent()) return
+    }
+    appStore.applyBusinessMode(result, context)
+    Object.assign(globalParams, modeInfo.is_multi_account_mode ? modeInfo.global_params || {} : result?.params || {})
     appStore.addLog('已进入多账号模式', 'INFO', 'Multi')
+    await loadMapProviderConfig()
+    if (!isCurrent()) return
+    await loadAccounts(context)
+    if (!isCurrent()) return
+
+    // Load config users list if empty
+    if (configUsers.value.length === 0) {
+      try {
+        const data = await checkedAPI('multi_get_all_config_users')
+        if (!isCurrent()) return
+        if (data?.users) appStore.users = data.users
+      } catch (_) {}
+    }
+    if (!isCurrent()) return
+
+    // WebSocket is the primary channel; polling is only the disconnected fallback.
+    socketStatusUnsubscribe = onWebSocketStatus(syncAutoRefreshWithSocket)
+    connectWebSocket()
   } catch (e) {
-    appStore.addLog(`进入多账号模式失败: ${e.message}`, 'ERROR', 'Multi')
+    if (isCurrent()) appStore.addLog(`进入多账号模式失败: ${e.message}`, 'ERROR', 'Multi')
+  } finally {
+    if (isCurrent()) appStore.isLoading = false
   }
-  await loadMapProviderConfig()
-  await loadAccounts()
-
-  // Load config users list if empty
-  if (configUsers.value.length === 0) {
-    try {
-      const data = await checkedAPI('multi_get_all_config_users')
-      if (data?.users) {
-        appStore.users = data.users
-      }
-    } catch (_) {}
-  }
-
-  // WebSocket is the primary channel; polling is only the disconnected fallback.
-  socketStatusUnsubscribe = onWebSocketStatus(syncAutoRefreshWithSocket)
-  connectWebSocket()
 })
 
 onUnmounted(() => {

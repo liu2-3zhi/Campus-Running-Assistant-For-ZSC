@@ -2535,6 +2535,8 @@ let AMAP_API_KEY = "";
 let isRefreshingNotifications = false;
 
 let isRefreshingTasks = false;
+let legacyTaskRefreshContext = null;
+let legacyLoginLoadingContext = null;
 
 let IS_OFFLINE = null;
 let legacyBusinessSession = "";
@@ -5224,9 +5226,11 @@ function showAuthSuccess(message) {
 function setButtonLoading(buttonId, loading, originalText = "") {
   const btn = $(buttonId);
   if (!btn) return;
+  btn._buttonStateVersion = (btn._buttonStateVersion || 0) + 1;
+  btn.classList.remove("!bg-green-600", "!bg-red-600");
 
   if (loading) {
-    btn.dataset.originalText = btn.textContent;
+    btn.dataset.originalText = btn.dataset.originalText || btn._buttonFeedbackOriginalText || btn.textContent;
     btn.disabled = true;
     btn.innerHTML = `<span class="inline-block animate-spin mr-2">⏳</span>${
       originalText || "处理中..."
@@ -5238,23 +5242,29 @@ function setButtonLoading(buttonId, loading, originalText = "") {
     btn.classList.remove("opacity-75", "cursor-not-allowed");
     delete btn.dataset.originalText;
   }
+  delete btn._buttonFeedbackOriginalText;
 }
 
 function showButtonSuccess(buttonId, message = "成功", duration = 1500) {
   const btn = $(buttonId);
   if (!btn) return;
+  const stateVersion = btn._buttonStateVersion = (btn._buttonStateVersion || 0) + 1;
 
   btn.disabled = false;
   btn.classList.remove("opacity-75", "cursor-not-allowed");
+  btn.classList.remove("!bg-red-600");
 
-  const originalText = btn.dataset.originalText || btn.textContent;
+  const originalText = btn.dataset.originalText || btn._buttonFeedbackOriginalText || btn.textContent;
+  btn._buttonFeedbackOriginalText = originalText;
   delete btn.dataset.originalText;
 
   btn.innerHTML = `<span class="mr-1">✓</span>${message}`;
   btn.classList.add("!bg-green-600");
 
   setTimeout(() => {
+    if (btn._buttonStateVersion !== stateVersion) return;
     btn.textContent = originalText;
+    delete btn._buttonFeedbackOriginalText;
     btn.classList.remove("!bg-green-600");
     btn.disabled = false;
   }, duration);
@@ -5263,18 +5273,23 @@ function showButtonSuccess(buttonId, message = "成功", duration = 1500) {
 function showButtonError(buttonId, message = "失败", duration = 2000) {
   const btn = $(buttonId);
   if (!btn) return;
+  const stateVersion = btn._buttonStateVersion = (btn._buttonStateVersion || 0) + 1;
 
   btn.disabled = false;
   btn.classList.remove("opacity-75", "cursor-not-allowed");
+  btn.classList.remove("!bg-green-600");
 
-  const originalText = btn.dataset.originalText || btn.textContent;
+  const originalText = btn.dataset.originalText || btn._buttonFeedbackOriginalText || btn.textContent;
+  btn._buttonFeedbackOriginalText = originalText;
   delete btn.dataset.originalText;
 
   btn.innerHTML = `<span class="mr-1">✗</span>${message}`;
   btn.classList.add("!bg-red-600");
 
   setTimeout(() => {
+    if (btn._buttonStateVersion !== stateVersion) return;
     btn.textContent = originalText;
+    delete btn._buttonFeedbackOriginalText;
     btn.classList.remove("!bg-red-600");
     btn.disabled = false;
   }, duration);
@@ -16640,119 +16655,136 @@ async function onLogin() {
   const uaOnLoginScreen = $("ua-label")?.textContent || "";
   logMessage_Info(`[前端-登录] 当前UA: ${uaOnLoginScreen.substring(0, 50)}...`);
 
+  const loginButton = $("login-button");
+  const originalLoginText = loginButton?.dataset.originalText;
+  legacyLoginLoadingContext = modeContext;
   setButtonLoading("login-button", true, "登录中...");
+  if (loginButton && originalLoginText !== undefined) {
+    loginButton.dataset.originalText = originalLoginText;
+  }
 
-  logMessage_Info("[前端-登录] 调用后端API进行登录验证...");
-  const mapProviderSessionUUID = getApiRequestSessionHeaderValue("login");
-  let result = await callPythonAPI("login", user, pass);
-  if (!isCurrentLegacyBusinessContext(modeContext)) return;
-  if (result.success) {
-    applyLegacyBusinessMode(result, modeContext);
-    // 学校账号登录不会结束管理员查看链。
-    if (!getStoredAdminReturnOriginSession()) clearAdminReturnOriginState("重新登录");
-    try {
-      result = await hydrateMapProviderSecretsForLegacy(
-        result,
-        mapProviderSessionUUID,
-      );
-    } catch (error) {
-      logMessage_Error("[前端-登录] 地图密钥运行时解密失败:", error);
-    }
+  try {
+    logMessage_Info("[前端-登录] 调用后端API进行登录验证...");
+    const mapProviderSessionUUID = getApiRequestSessionHeaderValue("login");
+    let result = await callPythonAPI("login", user, pass);
     if (!isCurrentLegacyBusinessContext(modeContext)) return;
-    await syncThemeFromServer(result.theme, result.theme_style);
-    if (!isCurrentLegacyBusinessContext(modeContext)) return;
-    logMessage_Info("[前端-登录] ✓ 登录成功！");
-    showButtonSuccess("login-button", "登录成功");
-    syncMapProviderConfigFromInitialData(result);
-    if (getActiveMapProviderApiKey()) {
-      logMessage_Info(`[前端-登录] 加载${getMapProviderDisplayName()}地图配置...`);
+    if (result.success) {
+      applyLegacyBusinessMode(result, modeContext);
+      // 学校账号登录不会结束管理员查看链。
+      if (!getStoredAdminReturnOriginSession()) clearAdminReturnOriginState("重新登录");
       try {
-        await ensureActiveMapProviderRuntimeIfNeeded("登录成功");
-        logMessage_Info("[前端-登录] ✓ 地图加载成功");
-      } catch (e) {
-        logMessage_Error("[前端-登录] ✗ 地图加载失败:", e);
+        result = await hydrateMapProviderSecretsForLegacy(
+          result,
+          mapProviderSessionUUID,
+        );
+      } catch (error) {
+        logMessage_Error("[前端-登录] 地图密钥运行时解密失败:", error);
       }
-    } else {
-      showMissingMapProviderKeyModal(getActiveMapProvider());
-    }
+      if (!isCurrentLegacyBusinessContext(modeContext)) return;
+      await syncThemeFromServer(result.theme, result.theme_style);
+      if (!isCurrentLegacyBusinessContext(modeContext)) return;
+      logMessage_Info("[前端-登录] ✓ 登录成功！");
+      showButtonSuccess("login-button", "登录成功");
+      syncMapProviderConfigFromInitialData(result);
+      if (getActiveMapProviderApiKey()) {
+        logMessage_Info(`[前端-登录] 加载${getMapProviderDisplayName()}地图配置...`);
+        try {
+          await ensureActiveMapProviderRuntimeIfNeeded("登录成功");
+          logMessage_Info("[前端-登录] ✓ 地图加载成功");
+        } catch (e) {
+          logMessage_Error("[前端-登录] ✗ 地图加载失败:", e);
+        }
+      } else {
+        showMissingMapProviderKeyModal(getActiveMapProvider());
+      }
 
-    if (!isCurrentLegacyBusinessContext(modeContext)) return;
-    logMessage_Info("[前端-登录] 显示主应用界面...");
-    showMainApp();
-    $("loading-overlay").classList.add("hidden");
-    currentUserData = result.userInfo;
-    // 从API返回的result中获取group字段，而不是auth_group
-    // 原因：后端登录API（main.py第16868行）返回的字段名是"group"，不是"auth_group"
-    // 错误使用auth_group会导致currentUserData.group总是默认为"user"
-    // 这会使管理员权限验证失败（如第5326行的isAdmin判断）
-    // currentUserData.group = result.group || "user";
+      if (!isCurrentLegacyBusinessContext(modeContext)) return;
+      logMessage_Info("[前端-登录] 显示主应用界面...");
+      showMainApp();
+      $("loading-overlay").classList.add("hidden");
+      currentUserData = result.userInfo;
+      // 从API返回的result中获取group字段，而不是auth_group
+      // 原因：后端登录API（main.py第16868行）返回的字段名是"group"，不是"auth_group"
+      // 错误使用auth_group会导致currentUserData.group总是默认为"user"
+      // 这会使管理员权限验证失败（如第5326行的isAdmin判断）
+      // currentUserData.group = result.group || "user";
 
-    // 添加调试日志，验证 group 字段是否正确设置
-    // console.log('[登录成功] currentUserData.group =', currentUserData.group);
-    // console.log('[登录成功] result.group =', result.group);
-    // console.log('[登录成功] currentUserData 完整数据:', currentUserData);
-    // logMessage_Info(
-    //   `[登录成功] 权限组设置为: ${currentUserData.group}`
-    // );
+      // 添加调试日志，验证 group 字段是否正确设置
+      // console.log('[登录成功] currentUserData.group =', currentUserData.group);
+      // console.log('[登录成功] result.group =', result.group);
+      // console.log('[登录成功] currentUserData 完整数据:', currentUserData);
+      // logMessage_Info(
+      //   `[登录成功] 权限组设置为: ${currentUserData.group}`
+      // );
 
-    currentSessionUA = uaOnLoginScreen;
-    const name = currentUserData.name || "";
-    $("user-name-label").textContent = `姓名: ${name}`;
-    $("user-id-label").textContent = `学号: ${currentUserData.student_id}`;
-    logMessage_Info(
-      `[前端-登录] 用户信息已更新: ${name} (${currentUserData.student_id})`,
-    );
-
-    logMessage_Info("[前端-登录] 更新仪表盘...");
-    updateDashboard();
-
-    logMessage_Info("[前端-登录] 刷新任务列表...");
-    await refreshTasks();
-
-    logMessage_Info("[前端-登录] 获取通知...");
-    const notificationBadge = $("notification-badge");
-    if (notificationBadge) {
-      notificationBadge.classList.add("hidden");
-    }
-    if (
-      result.cached_notifications &&
-      result.cached_notifications.notices.length > 0
-    ) {
+      currentSessionUA = uaOnLoginScreen;
+      const name = currentUserData.name || "";
+      $("user-name-label").textContent = `姓名: ${name}`;
+      $("user-id-label").textContent = `学号: ${currentUserData.student_id}`;
       logMessage_Info(
-        `使用登录时预加载的 ${result.cached_notifications.notices.length} 条通知`,
+        `[前端-登录] 用户信息已更新: ${name} (${currentUserData.student_id})`,
       );
-      if (result.cached_notifications.unreadCount > 0) {
-        notificationBadge.textContent =
-          result.cached_notifications.unreadCount > 9
-            ? "9+"
-            : result.cached_notifications.unreadCount;
-        notificationBadge.classList.remove("hidden");
-      }
-      window.currentNotifications = result.cached_notifications.notices;
-    } else {
-      await fetchNotifications();
-    }
 
-    const base = pythonParams.theme_base_color || "#7dd3fc";
-    setBaseColor(base, base);
-    const adminBtn = $("show-admin-panel");
-    if (adminBtn) adminBtn.classList.remove("hidden");
-    const adminBtnLogin = $("show-admin-panel-login");
-    if (adminBtnLogin) adminBtnLogin.classList.remove("hidden");
-    $("loading-overlay").classList.add("hidden");
-    logMessage_Info("[前端-登录] ✓ 登录流程完成！");
-    return true;
-  } else {
-    logMessage_Info(`[前端-登录] ✗ 登录失败: ${result.message}`);
-    setButtonLoading("login-button", false);
-    showButtonError("login-button", "登录失败");
-    // showModalAlert(result.message, "登录失败");
-    swal.fire({
-      title: "错误",
-      text: result.message,
-      icon: "error",
-    });
-    return false;
+      logMessage_Info("[前端-登录] 更新仪表盘...");
+      updateDashboard();
+
+      logMessage_Info("[前端-登录] 刷新任务列表...");
+      await refreshTasks();
+      if (!isCurrentLegacyBusinessContext(modeContext)) return;
+
+      logMessage_Info("[前端-登录] 获取通知...");
+      const notificationBadge = $("notification-badge");
+      if (notificationBadge) {
+        notificationBadge.classList.add("hidden");
+      }
+      if (
+        result.cached_notifications &&
+        result.cached_notifications.notices.length > 0
+      ) {
+        logMessage_Info(
+          `使用登录时预加载的 ${result.cached_notifications.notices.length} 条通知`,
+        );
+        if (result.cached_notifications.unreadCount > 0) {
+          notificationBadge.textContent =
+            result.cached_notifications.unreadCount > 9
+              ? "9+"
+              : result.cached_notifications.unreadCount;
+          notificationBadge.classList.remove("hidden");
+        }
+        window.currentNotifications = result.cached_notifications.notices;
+      } else {
+        await fetchNotifications();
+        if (!isCurrentLegacyBusinessContext(modeContext)) return;
+      }
+
+      const base = pythonParams.theme_base_color || "#7dd3fc";
+      setBaseColor(base, base);
+      const adminBtn = $("show-admin-panel");
+      if (adminBtn) adminBtn.classList.remove("hidden");
+      const adminBtnLogin = $("show-admin-panel-login");
+      if (adminBtnLogin) adminBtnLogin.classList.remove("hidden");
+      $("loading-overlay").classList.add("hidden");
+      logMessage_Info("[前端-登录] ✓ 登录流程完成！");
+      return true;
+    } else {
+      logMessage_Info(`[前端-登录] ✗ 登录失败: ${result.message}`);
+      setButtonLoading("login-button", false);
+      showButtonError("login-button", "登录失败");
+      // showModalAlert(result.message, "登录失败");
+      swal.fire({
+        title: "错误",
+        text: result.message,
+        icon: "error",
+      });
+      return false;
+    }
+  } finally {
+    if (legacyLoginLoadingContext === modeContext) {
+      legacyLoginLoadingContext = null;
+      if (loginButton?.dataset.originalText !== undefined) {
+        setButtonLoading("login-button", false);
+      }
+    }
   }
 }
 
@@ -16773,9 +16805,11 @@ async function onLogout() {
 }
 
 async function refreshTasks() {
-  if (isRefreshingTasks) {
+  const context = captureLegacyBusinessContext();
+  if (isRefreshingTasks && isCurrentLegacyBusinessContext(legacyTaskRefreshContext)) {
     return;
   }
+  legacyTaskRefreshContext = context;
   isRefreshingTasks = true;
 
   const btn = $("refresh-button");
@@ -16783,6 +16817,7 @@ async function refreshTasks() {
 
   try {
     const taskResult = await callPythonAPI("load_tasks");
+    if (!isCurrentLegacyBusinessContext(context)) return;
     if (taskResult && taskResult.success) {
       currentTasks = taskResult.tasks;
       renderTaskList();
@@ -16790,7 +16825,9 @@ async function refreshTasks() {
     }
 
     await new Promise((r) => setTimeout(r, 300));
+    if (!isCurrentLegacyBusinessContext(context)) return;
     const retry = await callPythonAPI("load_tasks");
+    if (!isCurrentLegacyBusinessContext(context)) return;
     if (retry && retry.success) {
       currentTasks = retry.tasks;
       renderTaskList();
@@ -16800,8 +16837,11 @@ async function refreshTasks() {
       logMessage_Info("加载任务列表失败，请点击左侧“刷新”重试。");
     }
   } finally {
-    isRefreshingTasks = false;
-    if (btn) btn.disabled = false;
+    if (legacyTaskRefreshContext === context) {
+      legacyTaskRefreshContext = null;
+      isRefreshingTasks = false;
+      if (btn) btn.disabled = false;
+    }
   }
 }
 
@@ -21901,6 +21941,7 @@ function toggleNotifications(show, forceDisableMap = false) {
 }
 
 async function fetchNotifications(limit = null, offset = 0) {
+  const context = captureLegacyBusinessContext();
   if (IS_OFFLINE) {
     logMessage_Info("[通知] 离线模式下无法获取通知");
     return {
@@ -21921,6 +21962,7 @@ async function fetchNotifications(limit = null, offset = 0) {
     }
 
     result = await callPythonAPI("get_notifications", params);
+    if (!isCurrentLegacyBusinessContext(context)) return null;
     if (result && result.success) {
       if (offset === 0) {
         window.currentNotifications = result.notices || [];
@@ -21946,6 +21988,7 @@ async function fetchNotifications(limit = null, offset = 0) {
       badge.classList.add("hidden");
     }
   } catch (e) {
+    if (!isCurrentLegacyBusinessContext(context)) return null;
     logMessage_Error("Fetch notifications failed", e);
     badge.classList.add("hidden");
   }

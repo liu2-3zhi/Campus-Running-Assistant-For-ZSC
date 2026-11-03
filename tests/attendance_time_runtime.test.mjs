@@ -11,6 +11,10 @@ const require = createRequire(new URL('../frontend/package.json', import.meta.ur
 const { createSSRApp } = require('vue')
 const { renderToString } = require('@vue/server-renderer')
 const legacySource = readFileSync(new URL('../scripts/main.js', import.meta.url), 'utf8')
+const legacyBusinessContextSource = legacySource.slice(
+  legacySource.indexOf('let IS_OFFLINE = null;'),
+  legacySource.indexOf('async function ensureLegacyBusinessMode()'),
+)
 const controlTabs = readFileSync(new URL('../frontend/src/components/main/ControlTabs.vue', import.meta.url), 'utf8')
 const timeTemplate = controlTabs.match(/<div v-if="t\.(?:createtime|time)[\s\S]*?<\/div>/)?.[0]
 assert.ok(timeTemplate, 'attendance time template must exist')
@@ -34,12 +38,13 @@ function legacyRuntime(notice, overrides = {}) {
     return elements.get(id)
   }
   const context = vm.createContext({
+    sessionUUID: 'attendance-test-session',
     window: { currentNotifications: [notice] },
     document: { createElement: element, getElementById: getElement },
     $: getElement, escapeHtml, escapeInlineJsArg: JSON.stringify, logMessage_Info() {},
     logMessage_Debug() {}, IS_OFFLINE: false, ...overrides,
   })
-  vm.runInContext('let notificationAutoRefreshTimer = null; let isRefreshingNotifications = false', context)
+  vm.runInContext(`${legacyBusinessContextSource}\nIS_OFFLINE = false;\nlet notificationAutoRefreshTimer = null; let isRefreshingNotifications = false`, context)
   for (const name of [
     'formatNotificationTime', 'renderNotificationBatch', 'onNotificationsUpdated',
     'syncMobileAttendanceList', 'updateMobileNotificationUI', 'fetchNotifications',

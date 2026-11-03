@@ -139,9 +139,9 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             login_source,
         )
         self.assertIn("let result = await callPythonAPI(\"login\", user, pass);", login_source)
-        self.assertIn(
-            "result = await hydrateMapProviderSecretsForLegacy(\n        result,\n        mapProviderSessionUUID,\n      );",
+        self.assertRegex(
             login_source,
+            r"result = await hydrateMapProviderSecretsForLegacy\(\s*result,\s*mapProviderSessionUUID,\s*\);",
         )
         self.assertLess(
             login_source.index("hydrateMapProviderSecretsForLegacy"),

@@ -649,27 +649,12 @@ async function initializeApp() {
 
     resetUI();
     const modeContext = captureLegacyBusinessContext();
+    initializationContext = modeContext;
     applyLegacyBusinessMode(sessionModeInfo, modeContext) || applyLegacyBusinessMode(initialData, modeContext);
     if (sessionModeInfo && sessionModeInfo.is_multi_account_mode) {
       logMessage_Info("检测到会话之前处于多账号模式，正在恢复...");
       currentUserData.group = initialData.auth_group || "user";
-      try {
-        const result = await waitForLegacyInitialization(
-          callPythonAPI("enter_multi_account_mode"),
-          "多账号模式恢复",
-          30000,
-        );
-        if (!result.success) {
-          logMessage_Error("无法进入多账号模式，返回登录界面");
-          return;
-        }
-        if (!sessionModeInfo.global_params && result.params) {
-          pythonParams = result.params;
-        }
-      } catch (e) {
-        logMessage_Error("调用 enter_multi_account_mode 失败:", e);
-        return;
-      }
+      // 恢复已有模式仅使用会话快照，不能再次切换模式并干扰正在执行的任务。
 
       hideLoadingOverlays();
       HiddenMobileLoadingOverlay();
@@ -680,8 +665,10 @@ async function initializeApp() {
           30000,
         );
       } catch (e) {
+        if (!isCurrentLegacyBusinessContext(modeContext)) return;
         logMessage_Error("地图加载失败（多账号模式恢复）", e);
       }
+      if (!isCurrentLegacyBusinessContext(modeContext)) return;
       $("loading-overlay").classList.remove("hidden");
       ShowMobileLoadingOverlay();
       if (isMobileMode) {
@@ -778,6 +765,7 @@ async function initializeApp() {
           "多账号配置用户加载",
           30000,
         );
+        if (!isCurrentLegacyBusinessContext(modeContext)) return;
         const select = $("multi-config-user-select");
         select.innerHTML = '<option value="">(新用户/手动输入)</option>';
         configUsers.users.forEach((u) => {
@@ -786,6 +774,7 @@ async function initializeApp() {
           select.appendChild(opt);
         });
       } catch (e) {
+        if (!isCurrentLegacyBusinessContext(modeContext)) return;
         logMessage_Error("加载配置用户列表失败:", e);
       }
       if (sessionModeInfo.global_params) {
@@ -811,11 +800,17 @@ async function initializeApp() {
           30000,
         );
       } catch (e) {
+        if (!isCurrentLegacyBusinessContext(modeContext)) return;
         logMessage_Error("绑定多账号UI事件失败:", e);
       }
+      if (!isCurrentLegacyBusinessContext(modeContext)) return;
       try {
         // 使用loadInitialData替代直接调用API
         const initialData = await loadInitialData({ force: true });
+        if (!isCurrentLegacyBusinessContext(modeContext)) return;
+        if (!initialData || initialData.success === false) {
+          throw new Error(initialData?.message || "账号列表加载失败");
+        }
         syncMapProviderConfigFromInitialData(initialData);
         if (initialData && initialData.accounts) {
           renderMultiAccountList(initialData.accounts);
@@ -826,7 +821,14 @@ async function initializeApp() {
           logMessage_Info(`已恢复多账号模式，当前有 0 个账号`);
         }
       } catch (e) {
+        if (!isCurrentLegacyBusinessContext(modeContext)) return;
         logMessage_Error("恢复账号列表失败:", e);
+        const cachedAccounts = Array.isArray(initialData.accounts)
+          ? initialData.accounts
+          : sessionModeInfo.accounts;
+        if (Array.isArray(cachedAccounts)) {
+          renderMultiAccountList(cachedAccounts);
+        }
         logMessage_Info(
           `已恢复多账号模式，当前有 ${
             sessionModeInfo.multi_account_count || 0
@@ -834,6 +836,7 @@ async function initializeApp() {
         );
       }
       setTimeout(async () => {
+        if (!isCurrentLegacyBusinessContext(modeContext)) return;
         try {
           await initializeInlineAdminPanel();
         } catch (e) {
@@ -1007,10 +1010,12 @@ async function initializeApp() {
       setThemeStyle(pythonParams.theme_style, false); // 传入 false
     }
     await waitForLegacyInitialization(refreshUserList(), "用户列表刷新", 30000);
+    if (!isCurrentLegacyBusinessContext(modeContext)) return;
 
     const loadingOverlay = $("loading-overlay");
     loadingOverlay.style.opacity = "0";
     setTimeout(() => {
+      if (!isCurrentLegacyBusinessContext(modeContext)) return;
       loadingOverlay.style.display = "none";
     }, 500);
     bindImmediateRefreshForUserSelects();
@@ -1035,6 +1040,7 @@ async function initializeApp() {
     }
     if (isMobileMode) {
       setTimeout(() => {
+        if (!isCurrentLegacyBusinessContext(modeContext)) return;
         restoreMobileTaskState();
         hideMobileLoadingOverlay();
       }, 1000);
@@ -1048,6 +1054,7 @@ async function initializeApp() {
       sessionUUID: typeof sessionUUID === "string" ? sessionUUID : "",
     });
   } catch (err) {
+    if (initializationContext && !isCurrentLegacyBusinessContext(initializationContext)) return;
     hideLoadingOverlays();
     console.error("[初始化] initializeApp 失败，已释放加载遮罩", {
       initializationId,
