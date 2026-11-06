@@ -310,6 +310,7 @@
 - 根因：空 `jump` 经 URL 归一化后变成 `/`，提前返回跳转页，跳过验签和通知处理。
 - 正确做法：只有非空 `jump` 才进入同步跳转；异步通知继续验签和处理，成功时返回纯文本 `success`。支付日志的 action/status 中文只用于两套 UI 展示，筛选请求和完整 JSON 保留原始值。
 - 相关测试：`tests/test_security_hardening_fixes.py`、`tests/test_mobile_admin_payment_logs_ui.py`、`tests/vue_admin_interactions.test.mjs`。
+- 创建支付订单收到业务失败响应时，服务端日志应记录经 `_redact_sensitive_log_text()` 清洗并限长的平台错误码和错误原因，客户端仍返回通用提示；不要只记错误文本长度，也不要持久化完整支付响应体。回归见 `tests/test_payment_order_lifecycle.py`。
 
 ### 主题背景与登录同步
 

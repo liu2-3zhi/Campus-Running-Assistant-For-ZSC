@@ -19346,6 +19346,7 @@ def start_web_server(args_param):
                         # 失败信息
                         "success": False,                      # 操作失败
                         "message": result["message"],          # 失败原因
+                        "error_code": result.get("error_code", ""),
                         "error": result.get("error", "")       # 详细错误信息（如果有）
                     }
                 )

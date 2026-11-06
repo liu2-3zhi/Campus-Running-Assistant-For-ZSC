@@ -1,3 +1,4 @@
+import configparser
 import json
 import os
 import tempfile
@@ -32,6 +33,75 @@ from main import (
 
 
 class TestPaymentOrderLifecycle(unittest.TestCase):
+    def _create_order_with_platform_error(self, platform_result):
+        config = configparser.ConfigParser()
+        config.add_section("Rainbow_YiPay")
+        config.set("Rainbow_YiPay", "host", "https://pay.example.com")
+        config.set("Rainbow_YiPay", "pid", "merchant-1")
+        config.set("Rainbow_YiPay", "key", "private-key")
+        config.set("Rainbow_YiPay", "app_host", "https://merchant.example.com")
+
+        response = mock.Mock()
+        response.status_code = 200
+        response.content = json.dumps(platform_result).encode("utf-8")
+        response.json.return_value = platform_result
+
+        verifier = mock.Mock(
+            is_private_ip=mock.Mock(return_value=False),
+            check_app_host=mock.Mock(return_value=True),
+            normalize_host_url=mock.Mock(return_value="https://merchant.example.com"),
+        )
+        requests_mock = mock.Mock(post=mock.Mock(return_value=response))
+
+        with mock.patch.object(main_module, "_read_config_ini", return_value=config), \
+             mock.patch.object(main_module, "IPVerifier", return_value=verifier), \
+             mock.patch.object(main_module, "RsaSigner") as signer_class, \
+             mock.patch.object(main_module, "requests", requests_mock, create=True):
+            signer_class.return_value.generate_sign.side_effect = lambda params: params
+            client = main_module.RainbowYiPayClient()
+            with self.assertLogs(level="ERROR") as captured:
+                result = client.create_order(
+                    out_trade_no="order-test",
+                    name="测试商品",
+                    money="0.50",
+                    client_app_host="https://merchant.example.com",
+                    device_get="pc",
+                    clientip="203.0.113.10",
+                )
+
+        return result, "\n".join(captured.output)
+
+    def test_yipay_create_order_logs_platform_error_reason(self):
+        result, log_output = self._create_order_with_platform_error(
+            {"code": 1001, "msg": "商户未开通支付宝"}
+        )
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["message"], "创建订单失败，请稍后重试")
+        self.assertEqual(result["error_code"], "1001")
+        self.assertEqual(result["error"], "商户未开通支付宝")
+        self.assertIn("错误码: 1001", log_output)
+        self.assertIn("错误原因: 商户未开通支付宝", log_output)
+
+    def test_yipay_create_order_redacts_credentials_from_platform_error(self):
+        result, log_output = self._create_order_with_platform_error(
+            {
+                "code": 1002,
+                "msg": (
+                    "配置错误 merchant_key=merchant-secret "
+                    "token=token-secret signature=signature-secret "
+                    "pay_url=https://pay.example.com/create?token=url-secret"
+                ),
+            }
+        )
+
+        self.assertFalse(result["success"])
+        self.assertIn("错误原因: 配置错误", log_output)
+        self.assertIn("merchant_key=<redacted>", result["error"])
+        for secret in ("merchant-secret", "token-secret", "signature-secret", "url-secret"):
+            self.assertNotIn(secret, result["error"])
+            self.assertNotIn(secret, log_output)
+
     def test_pending_order_becomes_closed_after_timeout(self):
         order = {
             "status": "pending",

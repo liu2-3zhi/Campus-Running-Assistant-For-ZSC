@@ -9158,13 +9158,21 @@ class RainbowYiPayClient:
                     # 订单创建失败，API返回了错误信息
                     error_msg = result.get("msg") or result.get(
                         "message") or "未知错误"
+                    error_code = _redact_sensitive_log_text(
+                        str(result.get("code", "N/A"))
+                    )[:80]
+                    safe_error_msg = _redact_sensitive_log_text(
+                        str(error_msg)
+                    )[:500]
                     logging.error(
-                        f"[彩虹易支付] 创建订单失败 - "
-                        f"错误信息长度: {len(str(error_msg))}"
+                        f"[彩虹易支付] 创建订单失败 - 错误码: {error_code}, "
+                        f"错误原因: {safe_error_msg}"
                     )
                     return {
                         "success": False,
                         "message": "创建订单失败，请稍后重试",
+                        "error_code": error_code,
+                        "error": safe_error_msg,
                     }
             else:
                 # HTTP请求失败（非200状态码）
