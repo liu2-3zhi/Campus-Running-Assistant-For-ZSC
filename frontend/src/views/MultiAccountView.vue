@@ -578,7 +578,7 @@ async function pollAccountsFallback() {
 
 function startAutoRefresh() {
   stopAutoRefresh()
-  scheduleAutoRefresh()
+  pollAccountsFallback()
 }
 
 function stopAutoRefresh() {

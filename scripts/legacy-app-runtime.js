@@ -1128,26 +1128,50 @@ async function restoreMobileTaskState() {
 }
 
 let socket = null;
-let wsHeartbeatTimer = null;
+let wsSocketSession = "";
+let wsHeartbeatState = null;
+const WS_HEARTBEAT_INTERVAL_MS = 500;
+const WS_HEARTBEAT_TIMEOUT_MS = 2000;
 
 function startWsHeartbeat() {
   stopWsHeartbeat();
-  wsHeartbeatTimer = setInterval(() => {
-    if (socket && socket.connected) {
-      socket.emit("heartbeat", { ts: Date.now() });
-    }
-  }, 20000);
+  const connection = socket;
+  const session = wsSocketSession;
+  const state = { interval: null, timeout: null, acknowledge: null };
+  wsHeartbeatState = state;
+  const isCurrent = () => wsHeartbeatState === state && connection === socket &&
+    session === sessionUUID && connection.connected;
+
+  // ACK 超时独立计时，旧连接及旧轮次的回调不能影响当前连接。
+  state.acknowledge = () => {
+    if (!isCurrent()) return;
+    clearTimeout(state.timeout);
+    state.timeout = setTimeout(() => {
+      if (!isCurrent()) return;
+      logMessage_Warning("[System] WebSocket 心跳超时，切换轮询并重连");
+      stopWsHeartbeat();
+      connection.disconnect();
+      if (connection === socket && session === sessionUUID && !isInNetworkErrorState && connection.io?.opts?.reconnection !== false) {
+        connection.connect();
+      }
+    }, WS_HEARTBEAT_TIMEOUT_MS);
+  };
+  state.acknowledge();
+  state.interval = setInterval(() => {
+    if (isCurrent()) connection.emit("heartbeat", { ts: Date.now() });
+  }, WS_HEARTBEAT_INTERVAL_MS);
+  connection.emit("heartbeat", { ts: Date.now() });
 }
 
 function stopWsHeartbeat() {
-  if (wsHeartbeatTimer) {
-    clearInterval(wsHeartbeatTimer);
-    wsHeartbeatTimer = null;
-  }
+  if (!wsHeartbeatState) return;
+  clearInterval(wsHeartbeatState.interval);
+  clearTimeout(wsHeartbeatState.timeout);
+  wsHeartbeatState = null;
 }
 
 function connectWebSocket() {
-  if (socket && socket.connected) {
+  if (socket && socket.connected && wsSocketSession === sessionUUID) {
     logMessage_Info("WebSocket 已连接.");
     return;
   }
@@ -1158,6 +1182,13 @@ function connectWebSocket() {
   }
 
   logMessage_Info("尝试连接 WebSocket...");
+  stopWsHeartbeat();
+  if (socket) {
+    if (socket.io) socket.io.opts.reconnection = false;
+    socket.removeAllListeners();
+    socket.disconnect();
+  }
+  wsSocketSession = sessionUUID;
   socket = io({
     autoConnect: false,
     reconnection: true,
@@ -1167,9 +1198,12 @@ function connectWebSocket() {
     pingTimeout: 60000,
     pingInterval: 25000,
   });
-  socket.connect();
+  const connection = socket;
+  const session = sessionUUID;
+  const isCurrentConnection = () => connection === socket && session === sessionUUID;
 
   socket.on("connect", () => {
+    if (!isCurrentConnection()) return;
     verificationCodesSocketHealthy = true;
     stopVerificationCodesPollingFallback();
     syncUserListPollingBySocketState();
@@ -1181,6 +1215,7 @@ function connectWebSocket() {
   });
 
   socket.on("disconnect", (reason) => {
+    if (!isCurrentConnection()) return;
     verificationCodesSocketHealthy = false;
     stopWsHeartbeat();
     syncVerificationCodesPollingByModalState();
@@ -1191,6 +1226,8 @@ function connectWebSocket() {
   });
 
   socket.on("connect_error", (error) => {
+    if (!isCurrentConnection()) return;
+    stopWsHeartbeat();
     verificationCodesSocketHealthy = false;
     syncVerificationCodesPollingByModalState();
     syncUserListPollingBySocketState();
@@ -1201,7 +1238,9 @@ function connectWebSocket() {
     }
   });
 
-  socket.on("heartbeat_ack", () => {});
+  socket.on("heartbeat_ack", () => {
+    if (isCurrentConnection()) wsHeartbeatState?.acknowledge();
+  });
 
   socket.on("log_message", (data) => {
     if (data && data.msg) {
@@ -1329,6 +1368,7 @@ function connectWebSocket() {
     logMessage_Info("[Socket] 收到验证码列表更新推送");
     refreshOpenVerificationCodeModals();
   });
+  socket.connect();
 }
 
 function enhanceMapInteraction(mapInstance) {

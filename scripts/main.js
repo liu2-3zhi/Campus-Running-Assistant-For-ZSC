@@ -1495,6 +1495,7 @@ function startUserListPollingFallback() {
     return;
   }
   refreshUserListInterval = setInterval(refreshUserList, 30000);
+  refreshUserList();
   logMessage_Info("refreshUserList fallback interval started.");
 }
 
@@ -13746,6 +13747,7 @@ function startVerificationCodesPollingFallback() {
       refreshOpenVerificationCodeModals();
     }
   }, VERIFICATION_CODES_POLLING_MS);
+  refreshOpenVerificationCodeModals();
 }
 
 function stopVerificationCodesPollingFallback() {

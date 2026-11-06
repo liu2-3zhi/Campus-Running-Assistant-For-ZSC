@@ -174,6 +174,7 @@ function startUserRefresh() {
   stopUserRefresh()
   if (!viewMounted || isWebSocketConnected()) return
   userRefreshTimer = setInterval(refreshUsers, 30000)
+  refreshUsers()
 }
 
 function syncUserRefreshWithSocket(connected) {

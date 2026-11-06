@@ -289,6 +289,12 @@
 - 相关回归使用实际初始化函数和 Vue/Pinia 状态，覆盖桌面/移动、多账号运行中恢复、延迟响应、失败/异常、会话 A-B-A 及旧操作完成晚于新操作。前端修复同步更新 `version.json` 的版本和实际构建时间，所有经典脚本使用同一版本缓存键。
 - 相关测试：`tests/legacy_app_initialization.test.mjs`、`tests/legacy_business_lifecycle.test.mjs`、`tests/vue_multi_lifecycle.test.mjs`、`tests/check_for_updates_script.test.mjs`。
 
+## WebSocket 心跳与轮询兜底
+
+- Vue `services/socket.js` 和旧版 `legacy-app-runtime.js` 都使用应用层 `heartbeat` / `heartbeat_ack`：连接后立即发送，此后每 500ms 发送；连接成功或最后一次 ACK 后 2000ms 未收到 ACK 就主动断开。ACK 截止时间独立于发送间隔，不能只修改 Socket.IO 客户端的 `pingInterval` / `pingTimeout` 选项或依赖底层断开事件。
+- 超时断开须先触发现有状态监听和轮询兜底，再显式调用同一 Socket 的 `connect()` 恢复自动重连；轮询首次查询立即执行，不等待原有周期。普通重试仍交给 Socket.IO；网络错误主动暂停、会话替换和退出时应清理发送与超时计时器，旧连接或旧轮次回调不能关闭新连接、续期新心跳或复活已暂停连接。
+- 监听器必须在 `connect()` 前注册，替换尚未连上的 Socket 也必须调用 `disconnect()`，避免旧连接自行恢复。回归：`tests/websocket_heartbeat.test.mjs`、`tests/realtime_polling_priority.test.mjs`、`tests/vue_socket_session_race.test.mjs`。
+
 ## 后续更新方式
 
 当以后又踩到坑时，在对应章节追加：

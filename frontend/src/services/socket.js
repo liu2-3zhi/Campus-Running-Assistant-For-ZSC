@@ -4,7 +4,9 @@ import { useAppStore } from '@/stores/app'
 
 let socket = null
 let socketSession = ''
-let heartbeatTimer = null
+let heartbeatState = null
+const HEARTBEAT_INTERVAL_MS = 500
+const HEARTBEAT_TIMEOUT_MS = 2000
 const connectionListeners = new Set()
 let socketConnected = false
 
@@ -37,18 +39,40 @@ export function onWebSocketStatus(listener) {
 
 function startHeartbeat() {
   stopHeartbeat()
-  heartbeatTimer = setInterval(() => {
-    if (socket?.connected) {
-      socket.emit('heartbeat', { ts: Date.now() })
-    }
-  }, 20000)
+  const connection = socket
+  const auth = useAuthStore()
+  const session = socketSession
+  const state = { interval: null, timeout: null, acknowledge: null }
+  heartbeatState = state
+  const isCurrent = () => heartbeatState === state && connection === socket &&
+    session === auth.sessionUUID && connection.connected
+
+  // ACK deadline is independent of the send interval and belongs to this connection run.
+  state.acknowledge = () => {
+    if (!isCurrent()) return
+    clearTimeout(state.timeout)
+    state.timeout = setTimeout(() => {
+      if (!isCurrent()) return
+      console.warn('[WS] 心跳超时，切换到轮询并重连')
+      stopHeartbeat()
+      connection.disconnect()
+      if (connection === socket && session === auth.sessionUUID && connection.io?.opts?.reconnection !== false) {
+        connection.connect()
+      }
+    }, HEARTBEAT_TIMEOUT_MS)
+  }
+  state.acknowledge()
+  state.interval = setInterval(() => {
+    if (isCurrent()) connection.emit('heartbeat', { ts: Date.now() })
+  }, HEARTBEAT_INTERVAL_MS)
+  connection.emit('heartbeat', { ts: Date.now() })
 }
 
 function stopHeartbeat() {
-  if (heartbeatTimer) {
-    clearInterval(heartbeatTimer)
-    heartbeatTimer = null
-  }
+  if (!heartbeatState) return
+  clearInterval(heartbeatState.interval)
+  clearTimeout(heartbeatState.timeout)
+  heartbeatState = null
 }
 
 export function connectWebSocket() {
@@ -73,8 +97,6 @@ export function connectWebSocket() {
     if (connection !== socket || connectionSession !== auth.sessionUUID) return
     callback(...args)
   })
-
-  socket.connect()
 
   on('connect', () => {
     notifyConnectionState(true)
@@ -101,11 +123,12 @@ export function connectWebSocket() {
   })
 
   on('connect_error', (err) => {
+    stopHeartbeat()
     notifyConnectionState(false)
     console.warn('[WS] 连接错误:', err.message)
   })
 
-  on('heartbeat_ack', () => {})
+  on('heartbeat_ack', () => heartbeatState?.acknowledge())
 
   on('log_message', (data) => {
     if (data?.msg) {
@@ -180,6 +203,7 @@ export function connectWebSocket() {
     app.handleVerificationCodesUpdated()
   })
 
+  socket.connect()
   return socket
 }
 
@@ -187,7 +211,7 @@ export function disconnectWebSocket() {
   stopHeartbeat()
   if (socket) {
     if (socket.io) socket.io.opts.reconnection = false
-    if (socket.connected) socket.disconnect()
+    socket.disconnect()
     socket = null
   }
   socketSession = ''
@@ -195,8 +219,9 @@ export function disconnectWebSocket() {
 }
 
 export function disableReconnection() {
+  stopHeartbeat()
   if (socket?.io) socket.io.opts.reconnection = false
-  if (socket?.connected) socket.disconnect()
+  socket?.disconnect()
 }
 
 export function enableReconnection() {
