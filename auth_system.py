@@ -1566,13 +1566,7 @@ class AuthSystem:
                     continue
 
                 last_ip = user_data.get("last_login_ip", None)
-                last_city = None
-                if last_ip:
-                    try:
-                        last_city = _main().get_ip_location(last_ip)
-                    except Exception as ip_e:
-                        logging.warning(f"查询IP归属地失败 {last_ip}: {ip_e}")
-                        last_city = "查询失败"
+                last_city = user_data.get("last_login_city") or "未知"
 
                 school_accounts_data = self._load_user_school_accounts(auth_username) or {}
                 school_accounts = list(school_accounts_data.keys())

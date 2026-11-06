@@ -948,8 +948,12 @@ async function _showPhoneLocationNearInput(inputEl, phone) {
   }
 }
 
-async function loadAdminUsers(keywordOverride = null) {
+const adminUsersRequestByKeyword = new Map();
+let adminUsersLoadRequestId = 0;
+
+async function loadAdminUsers(keywordOverride = null, { force = false } = {}) {
   try {
+    const requestId = ++adminUsersLoadRequestId;
     const keywordInput = document.getElementById("admin-users-search-input_modal");
     const mobileKeywordInput = document.getElementById(
       "mobile-multi-admin-users-search-input",
@@ -958,17 +962,29 @@ async function loadAdminUsers(keywordOverride = null) {
       keywordOverride != null
         ? String(keywordOverride).trim()
         : keywordInput?.value.trim() || mobileKeywordInput?.value.trim() || "";
-    const response = await fetch(
-      keyword
-        ? `/auth/admin/list_users?keyword=${encodeURIComponent(keyword)}`
-        : "/auth/admin/list_users",
-      {
-        headers: {
-          "X-Session-ID": sessionUUID,
+    let request = adminUsersRequestByKeyword.get(keyword);
+    if (force || !request) {
+      const requestPromise = fetch(
+        keyword
+          ? `/auth/admin/list_users?keyword=${encodeURIComponent(keyword)}`
+          : "/auth/admin/list_users",
+        {
+          headers: {
+            "X-Session-ID": sessionUUID,
+          },
         },
-      },
-    );
-    const result = await response.json();
+      ).then((response) => response.json());
+      request = { promise: requestPromise };
+      adminUsersRequestByKeyword.set(keyword, request);
+      const clearRequest = () => {
+        if (adminUsersRequestByKeyword.get(keyword) === request) {
+          adminUsersRequestByKeyword.delete(keyword);
+        }
+      };
+      request.promise.then(clearRequest, clearRequest);
+    }
+    const result = await request.promise;
+    if (requestId !== adminUsersLoadRequestId) return;
 
     if (keywordInput && mobileKeywordInput) {
       if (document.activeElement === mobileKeywordInput) {

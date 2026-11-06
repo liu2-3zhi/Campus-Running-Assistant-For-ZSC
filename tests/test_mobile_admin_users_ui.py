@@ -9,6 +9,17 @@ SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
 
 
 class TestMobileAdminUsersUi(unittest.TestCase):
+    def test_admin_user_loader_deduplicates_same_keyword_requests(self):
+        js = (PROJECT_ROOT / "scripts" / "legacy-admin-users.js").read_text(encoding="utf-8")
+
+        self.assertIn("const adminUsersRequestByKeyword = new Map();", js)
+        self.assertIn("adminUsersRequestByKeyword.get(keyword)", js)
+        self.assertIn("adminUsersRequestByKeyword.set(keyword, request)", js)
+        self.assertIn("loadAdminUsers(keywordOverride = null, { force = false } = {})", js)
+        self.assertIn("request.promise.then(clearRequest, clearRequest)", js)
+        self.assertIn("const requestId = ++adminUsersLoadRequestId;", js)
+        self.assertIn("if (requestId !== adminUsersLoadRequestId) return;", js)
+
     def test_admin_users_panels_have_keyword_search_inputs(self):
         html = INDEX_PATH.read_text(encoding="utf-8")
         js = SCRIPT_PATH.read_text(encoding="utf-8") + "\n" + (

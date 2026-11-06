@@ -52,6 +52,31 @@ class TestAuthSystemSchoolAccounts(unittest.TestCase):
         self.assertEqual("alice", users[0]["auth_username"])
         self.assertEqual(["20240001", "20240002"], users[0]["school_accounts"])
 
+    def test_list_users_uses_cached_city_without_external_lookup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            system_accounts_dir = root / "system_accounts"
+            school_accounts_dir = root / "school_accounts"
+            user_accounts_dir = school_accounts_dir / "user_accounts"
+            system_accounts_dir.mkdir()
+            user_accounts_dir.mkdir(parents=True)
+            (system_accounts_dir / "user-file.json").write_text(
+                json.dumps({
+                    "auth_username": "alice",
+                    "last_login_ip": "203.0.113.1",
+                    "last_login_city": "广州",
+                }, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            auth_system = object.__new__(main.AuthSystem)
+            with patch.object(main, "SYSTEM_ACCOUNTS_DIR", str(system_accounts_dir)), patch.object(
+                main, "SCHOOL_ACCOUNTS_DIR", str(school_accounts_dir)
+            ), patch.object(main, "get_ip_location", side_effect=AssertionError("external lookup"), create=True):
+                users = auth_system.list_users()
+
+        self.assertEqual("广州", users[0]["last_login_city"])
+
 
 class TestMapServerRuntime(unittest.TestCase):
     def test_backend_map_runtime_page_does_not_load_frontend_auth_bootstrap(self):
