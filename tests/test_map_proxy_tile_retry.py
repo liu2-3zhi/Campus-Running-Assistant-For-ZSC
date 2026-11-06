@@ -23,7 +23,7 @@ def make_fetch(transport):
     return _ConcurrencyHarness().make_proxy(transport)[1]
 
 
-def test_tianditu_tile_retries_one_timeout_with_redacted_stage_logging(caplog):
+def test_tianditu_tile_retries_one_timeout_with_complete_stage_logging(caplog):
     calls = []
 
     def transport(*args, **kwargs):
@@ -37,7 +37,7 @@ def test_tianditu_tile_retries_one_timeout_with_redacted_stage_logging(caplog):
     assert len(calls) == 2
     assert all(timeout.total <= 6 for timeout in calls)
     assert 'stage=tile' in caplog.text
-    assert 'ReadTimeout' in caplog.text and 'secret' not in caplog.text
+    assert 'ReadTimeout' in caplog.text and 'tk=secret' in caplog.text
 
 
 @pytest.mark.parametrize('resource', [

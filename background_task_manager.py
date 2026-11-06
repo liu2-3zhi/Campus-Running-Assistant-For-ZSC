@@ -21,6 +21,28 @@ from map_runtime_origin import MAP_RUNTIME_MARKER, MAP_RUNTIME_PAGE_HTML, MAP_RU
 from route_network_diagnostics import route_network_environment, schedule_route_network_probe, select_route_probe_hosts
 
 
+def _diagnostic_log_redaction_enabled():
+    try:
+        return bool(getattr(_main(), "_log_redaction_enabled", False))
+    except Exception:
+        return False
+
+
+def _diagnostic_log_text(value, max_bytes=4096, sensitive_values=()):
+    """Keep log formatting separate from bounded, sanitized API diagnostics."""
+    if _diagnostic_log_redaction_enabled():
+        return sanitize_diagnostic(value, max_bytes, sensitive_values)
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:
+        try:
+            return str(value)
+        except Exception:
+            return "<unavailable diagnostic>"
+
+
 class BackgroundTaskManager:
     """管理服务器端后台任务执行"""
 
@@ -746,7 +768,8 @@ class BackgroundTaskManager:
                     )
 
         except Exception as e:
-            logging.error("后台任务执行失败: %s", sanitize_diagnostic(e))
+            logging.error("后台任务执行失败: %s", _diagnostic_log_text(e),
+                          exc_info=not _diagnostic_log_redaction_enabled())
             with self.lock:
                 if session_id in self.tasks and is_current_batch():
                     self.tasks[session_id]["status"] = "error"
@@ -1375,9 +1398,11 @@ class ChromeBrowserPool:
             if active.get("deadline_epoch_ms") is not None:
                 fields["remaining_ms"] = max(0, round(active["deadline_epoch_ms"] - time.time() * 1000))
             logging.log(level, "[路径诊断] id=%s provider=%s worker=%s",
-                        sanitize_diagnostic(active.get("diagnostic_id"), 80),
-                        sanitize_diagnostic(active.get("provider"), 80),
-                        sanitize_diagnostic(fields, 16000, active.get("sensitive_values", ())))
+                        _diagnostic_log_text(active.get("diagnostic_id"), 80),
+                        _diagnostic_log_text(active.get("provider"), 80),
+                        _diagnostic_log_text(fields, 16000, active.get("sensitive_values", ())),
+                        exc_info=event in {"execution_failed", "deadline_exhausted"}
+                        and not _diagnostic_log_redaction_enabled())
         except Exception:
             pass  # Diagnostic output must not turn a successful route into a failure.
 
@@ -1412,6 +1437,21 @@ class ChromeBrowserPool:
         except Exception:
             pass
         return result
+
+    @staticmethod
+    def _route_request_log_fields(request):
+        """Read original request data only for the server log, never snapshots."""
+        if _diagnostic_log_redaction_enabled():
+            return {}
+        fields = {}
+        for attribute, field in (("url", "url"), ("headers", "request_headers"),
+                                 ("post_data", "request_post_data"), ("method", "method"),
+                                 ("resource_type", "resource_type")):
+            try:
+                fields[field] = getattr(request, attribute, None)
+            except Exception as error:
+                fields[field + "_error"] = str(error)
+        return fields
 
     @staticmethod
     def _route_response_transport(response):
@@ -1452,7 +1492,8 @@ class ChromeBrowserPool:
                 "diagnostic_id", "provider", "worker_started", "deadline_epoch_ms", "sensitive_values")
                 if field in active}
             scheduled = schedule_route_network_probe(active.get("provider"), hosts,
-                lambda event, **fields: self._log_route_worker_event(context, event, **fields))
+                lambda event, **fields: self._log_route_worker_event(context, event, **fields),
+                include_details=not _diagnostic_log_redaction_enabled())
             self._log_route_worker_event(active, "network_probe_scheduled" if scheduled else "network_probe_skipped",
                                          hosts=hosts[:2], probe_source="python_direct", scheduled=bool(scheduled))
         except Exception:
@@ -1542,14 +1583,19 @@ class ChromeBrowserPool:
             previous = active.get("sdk_auth_error")
             if candidate and (not previous or (previous.get("error_code") is None and candidate.get("error_code") is not None)):
                 active["sdk_auth_error"] = candidate
+            full_log = not _diagnostic_log_redaction_enabled()
+            if full_log:
+                logging.debug("[路径诊断] id=%s provider=%s browser_kind=%s browser=%s", active.get("diagnostic_id"),
+                              active.get("provider"), kind, _diagnostic_log_text(value))
             if len(active["events"]) >= 12:
                 active["events_dropped"] = active.get("events_dropped", 0) + 1
                 return
             safe = sanitize_diagnostic(value, 800, active.get("sensitive_values", ()))
             event = {"kind": kind, "detail": safe}
             active["events"].append(event)
-            logging.debug("[路径诊断] id=%s provider=%s browser=%s", active.get("diagnostic_id"),
-                          active.get("provider"), safe)
+            if not full_log:
+                logging.debug("[路径诊断] id=%s provider=%s browser=%s", active.get("diagnostic_id"),
+                              active.get("provider"), safe)
 
         def network(event, request, _response=None, **fields):
             active = entry.get("route_diagnostic_context")
@@ -1571,6 +1617,9 @@ class ChromeBrowserPool:
                 active["network_counts"]["started"] += 1
                 if len(rows) >= 128:
                     active["network_requests_untracked"] = active.get("network_requests_untracked", 0) + 1
+                    if not _diagnostic_log_redaction_enabled():
+                        self._log_route_worker_event(active, event, request=active["network_counts"]["started"],
+                                                     host=host, **self._route_request_log_fields(request))
                     return
                 detail = {"request": active["network_counts"]["started"],
                           "url": sanitize_diagnostic(getattr(request, "url", ""), 400, active.get("sensitive_values", ())),
@@ -1619,7 +1668,10 @@ class ChromeBrowserPool:
                     failures = active.setdefault("network_failed_requests", [])
                     if len(failures) < 12:
                         failures.append(detail)
-            if event == "response" and isinstance(fields.get("http_status"), int) and fields["http_status"] >= 400 and active.get("network_http_error_events_logged", 0) < 12:
+            if not _diagnostic_log_redaction_enabled():
+                active["network_events_logged"] = active.get("network_events_logged", 0) + 1
+                self._log_route_worker_event(active, event, **{**detail, **self._route_request_log_fields(request)})
+            elif event == "response" and isinstance(fields.get("http_status"), int) and fields["http_status"] >= 400 and active.get("network_http_error_events_logged", 0) < 12:
                 active["network_http_error_events_logged"] = active.get("network_http_error_events_logged", 0) + 1
                 self._log_route_worker_event(active, event, **detail)
             elif event == "request_failed" and active.get("network_failure_events_logged", 0) < 12:
@@ -1650,6 +1702,10 @@ class ChromeBrowserPool:
             if marker and isinstance(text, str) and text.startswith(marker) and not active.get("cleanup_started"):
                 try:
                     payload = json.loads(text[len(marker):])
+                    if isinstance(payload, dict) and payload.get("event") == "sdk_callback_raw":
+                        if not _diagnostic_log_redaction_enabled():
+                            self._log_route_worker_event(active, "sdk_callback", callback=payload)
+                        return
                     allowed_events = {"loader_start", "loader_ready", "sdk_load_start", "sdk_load_ready", "route_start", "wave_start",
                                       "segment_start", "segment_callback", "segment_result", "retry_wait", "route_result"}
                     if not isinstance(payload, dict) or payload.get("event") not in allowed_events:
@@ -1685,13 +1741,17 @@ class ChromeBrowserPool:
                                 rows.pop(completed)
                         if segment in rows or len(rows) < 80:
                             rows[segment] = {**rows.get(segment, {}), **safe}
-                    if active.get("progress_events_logged", 0) < 160:
+                    if not _diagnostic_log_redaction_enabled():
+                        active["progress_events_logged"] = active.get("progress_events_logged", 0) + 1
+                        self._log_route_worker_event(active, "progress", progress=payload)
+                    elif active.get("progress_events_logged", 0) < 160:
                         active["progress_events_logged"] = active.get("progress_events_logged", 0) + 1
                         self._log_route_worker_event(active, "progress", progress=safe)
                     else:
                         active["progress_events_dropped"] = active.get("progress_events_dropped", 0) + 1
-                except (ValueError, TypeError):
-                    pass
+                except Exception as error:
+                    self._log_route_worker_event(active, "progress_parse_failed", logging.WARNING,
+                                                 reason=error, raw_progress=text[len(marker):])
                 return
             if getattr(message, "type", "") in ("warning", "error"):
                 capture("console", text)
@@ -1776,7 +1836,8 @@ class ChromeBrowserPool:
             if active is not None:
                 active["worker_stage"] = "context"
                 try:
-                    self._log_route_worker_event(active, "network_environment", **route_network_environment())
+                    self._log_route_worker_event(active, "network_environment",
+                        **route_network_environment(include_details=not _diagnostic_log_redaction_enabled()))
                 except Exception:
                     pass
                 self._log_route_worker_event(active, "context_start", browser_initialized=bool(getattr(self, "_initialized", False)),
@@ -1815,10 +1876,11 @@ class ChromeBrowserPool:
                 remaining_ms = None if deadline_epoch_ms is None else deadline_epoch_ms - time.time() * 1000
                 if remaining_ms is not None and remaining_ms <= 0:
                     raise TimeoutError("后端路径规划总时限已耗尽")
-                result = page.evaluate("""async ([source, args, remaining, marker]) => {
+                result = page.evaluate("""async ([source, args, remaining, marker, rawLogsEnabled]) => {
                     let timer;
                     const previous = globalThis.__zxRouteProgress;
                     const report = payload => { try { console.debug(marker + JSON.stringify(payload)); } catch (_) {} };
+                    report.rawLogsEnabled = rawLogsEnabled;
                     if (marker) globalThis.__zxRouteProgress = report;
                     try {
                         const execute = (0, eval)('(' + source + ')');
@@ -1833,7 +1895,8 @@ class ChromeBrowserPool:
                             else globalThis.__zxRouteProgress = previous;
                         }
                     }
-                }""", [script, js_args, remaining_ms, active["progress_marker"] if active else None])
+                }""", [script, js_args, remaining_ms, active["progress_marker"] if active else None,
+                        not _diagnostic_log_redaction_enabled()])
             if active:
                 self._route_collect_transports(active)
                 snapshot = self._route_worker_snapshot(active)
@@ -1871,7 +1934,7 @@ class ChromeBrowserPool:
                 if active.get("sdk_auth_error"):
                     diagnostic["sdk_auth_error"] = active["sdk_auth_error"]
                 event = "deadline_exhausted" if "总时限" in str(e) else "execution_failed"
-                self._log_route_worker_event(active, event, logging.WARNING, reason=error, snapshot=diagnostic)
+                self._log_route_worker_event(active, event, logging.WARNING, reason=e, snapshot=diagnostic)
                 if active.get("network_pending") or active["network_counts"]["failed"]:
                     self._route_schedule_network_probe(active)
                 active["sdk_auth_capture_enabled"] = False
@@ -1950,7 +2013,9 @@ class ChromeBrowserPool:
                 from route_diagnostics import sanitize_diagnostic
 
                 safe_error = sanitize_diagnostic(e, sensitive_values=active.get("sensitive_values", ()))
-                logging.debug("[路径诊断] id=%s 页面导航失败: %s", active.get("diagnostic_id"), safe_error)
+                logging.debug("[路径诊断] id=%s 页面导航失败: %s", active.get("diagnostic_id"),
+                              _diagnostic_log_text(e, sensitive_values=active.get("sensitive_values", ())),
+                              exc_info=not _diagnostic_log_redaction_enabled())
                 return {"success": False, "error": safe_error}
             logging.error(
                 f"页面导航失败 (session={session_id}, url={url}): {e}", exc_info=True
@@ -2038,7 +2103,8 @@ class ChromeBrowserPool:
                     ctx["context"].close()
                     logging.debug("后台 Chrome 上下文已清理")
                 except Exception as e:
-                    logging.warning("清理后台 Chrome 上下文失败: %s", sanitize_diagnostic(e, sensitive_values=(session_id,)))
+                    logging.warning("清理后台 Chrome 上下文失败: %s", _diagnostic_log_text(e, sensitive_values=(session_id,)),
+                                    exc_info=not _diagnostic_log_redaction_enabled())
             self._contexts.clear()
 
             # 关闭浏览器
@@ -2235,7 +2301,7 @@ class ChromeBrowserPool:
                 "close_context", {"session_id": session_id})
             if not result.get("success"):
                 error_msg = result.get("error", "未知错误")
-                logging.error("关闭后台 Chrome 上下文失败: %s", sanitize_diagnostic(error_msg, sensitive_values=(session_id,)))
+                logging.error("关闭后台 Chrome 上下文失败: %s", _diagnostic_log_text(error_msg, sensitive_values=(session_id,)))
         except Exception as e:
             logging.error(f"关闭上下文异常: {e}", exc_info=True)
 

@@ -58,6 +58,7 @@ def test_background_planning_passes_the_optional_security_code(tmp_path):
         main._plan_route_path_with_amap_runtime("test-session", None, [[1, 2], [3, 4]], plan)
 
 
-def test_security_code_is_redacted_from_log_text():
+@patch.object(main, "_log_redaction_enabled", True)
+def test_security_code_is_redacted_from_log_text_when_enabled():
     assert "example-secret" not in main._redact_sensitive_log_text("security_js_code=example-secret")
     assert "example-secret" not in main._redact_sensitive_log_text("securityJsCode=example-secret")

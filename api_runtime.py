@@ -605,7 +605,7 @@ class Api:
             return True
         except Exception as e:
             logging.error(f"[SocketIO Emit] Failed: {event_name} from {thread_info}")
-            logging.error(f"[SocketIO Emit] Error type: {type(e).__name__}")
+            logging.error(f"[SocketIO Emit] Error type: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
             logging.error(f"[SocketIO Emit] Error message: {e}")
             logging.error(f"[SocketIO Emit] Traceback:\n{traceback.format_exc()}")
             return False
@@ -637,9 +637,9 @@ class Api:
     def log_and_notify_frontend(self, message, *, frontend_message=None, diagnostic_id=None):
         """记录服务器日志，并向会话前端发送可独立选择的文案。"""
         session_id = getattr(self, "_web_session_id", None)
-        safe_message = _main()._redact_sensitive_log_value(message)
-        logging.info(safe_message)
-        public_message = safe_message if frontend_message is None else _main()._redact_sensitive_log_value(frontend_message)
+        log_message = _main()._redact_sensitive_log_value(message)
+        logging.info(log_message)
+        public_message = _main()._redact_sensitive_display_value(message if frontend_message is None else frontend_message)
         if session_id and _main().socketio:
             try:
                 # 添加线程诊断日志
@@ -649,7 +649,7 @@ class Api:
                 
                 payload = {"msg": str(public_message)}
                 if diagnostic_id:
-                    payload["diagnostic_id"] = str(diagnostic_id)
+                    payload["diagnostic_id"] = _main()._redact_sensitive_display_text(diagnostic_id)
                 _main().socketio.emit("log_message", payload, room=session_id)
                 logging.debug(f"[SocketIO Emit] Success from {thread_info}")
             except Exception as e:
@@ -4610,7 +4610,7 @@ class Api:
                             current_thread = threading.current_thread()
                             logging.error(
                                 f"SocketIO发送'task_completed'事件失败 from Thread[{current_thread.name}]: {e}")
-                            logging.error(f"Error type: {type(e).__name__}")
+                            logging.error(f"Error type: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
                             logging.error(f"Full traceback: {traceback.format_exc()}")
                     return True
             time.sleep(1)
@@ -4944,7 +4944,7 @@ class Api:
                     except Exception as e:
                         current_thread = threading.current_thread()
                         logging.error(f"SocketIO发送'run_stopped'运行停止事件失败 from Thread[{current_thread.name}]: {e}")
-                        logging.error(f"Error type: {type(e).__name__}")
+                        logging.error(f"Error type: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
                         logging.error(f"Full traceback: {traceback.format_exc()}")
 
             if finished_event:
@@ -7212,7 +7212,7 @@ class Api:
                 current_thread = threading.current_thread()
                 logging.error(
                     f"Failed to emit accounts_updated on mode entry from Thread[{current_thread.name}]: {e}")
-                logging.error(f"Error type: {type(e).__name__}")
+                logging.error(f"Error type: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
                 logging.error(f"Full traceback: {traceback.format_exc()}")
 
         # [新版] 使用统一的多账号监控线程机制
@@ -7930,7 +7930,7 @@ class Api:
             except Exception as e:
                 current_thread = threading.current_thread()
                 logging.error(f"SocketIO emit 'accounts_updated' failed from Thread[{current_thread.name}]: {e}")
-                logging.error(f"Error type: {type(e).__name__}")
+                logging.error(f"Error type: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
                 logging.error(f"Full traceback: {traceback.format_exc()}")
 
         try:

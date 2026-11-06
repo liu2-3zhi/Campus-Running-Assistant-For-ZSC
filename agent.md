@@ -16,7 +16,7 @@
 
 - 路径规划诊断统一写现有日志，由 `diagnostic_id` 关联浏览器命令、供应商回调与最终失败；不要另建账号日志或持久化诊断文件。`log_and_notify_frontend` 同时写服务器日志和通知前端，具体原因与前端文案必须分开选择。
 - 路径规划总时限可能早于整轮 `Promise.all` 返回，不能只在最终返回值里保留路段诊断。四个供应商通过可选 `__zxRouteProgress` 实时输出 SDK 阶段、路段尝试/回调/结果及退避信息；钩子异常不得改变规划行为，迟到回调必须使用原命令的接收器。排查时按同一 `id` 查看 `phase=dispatch`、`enqueued/dequeued`、`context_*`、`runtime_page_*`、`progress` 和 `deadline_exhausted`。
-- 浏览器超时快照必须先于 `about:blank` 清理，清理造成的取消不计为上游失败。网络日志仅记录去查询串的 URL、状态、耗时和浏览器 timing（`-1` 表示该阶段数据不可用）；HTTP 200 只说明收到响应头，仍需查看 `request_finished` 或快照的未完成请求。进度/网络日志达到上限后继续更新有界状态与丢弃计数，不能因原有浏览器错误条数上限而丢失超时现场。
+- 浏览器超时快照必须先于 `about:blank` 清理，清理造成的取消不计为上游失败。网络日志默认保留完整 URL、请求头、请求体及异常详情，显式开启日志脱敏时才净化；公共快照仍保留原有边界。HTTP 200 只说明收到响应头，仍需查看 `request_finished` 或快照的未完成请求。进度/网络事件超过公共摘要上限后仍需写入日志，不能因摘要条数上限而丢失超时现场。
 - 路线诊断的敏感值只收集实际凭据和会话标识，不能把供应商名、坐标系或展示名称也当作秘密，否则供应商域名会被错误隐藏。请求来源只记录 Origin/Referer 的 origin；代理环境只记录变量是否存在。`response.server_addr()`、`security_details()` 是同步 RPC，不能在 Playwright 事件回调内读取（会重入并丢失请求完成/响应事件）；应在规划 evaluate 返回后有界读取样本并记录 `response_transport`。
 - `phase=origin_resolution` 记录 backend provider/global/request 三种地图来源候选（只含规范化 origin）和最终命中项；超时异常要在清空页面前尝试读取最多两个已响应主机的 `response_transport`，让已有连接结果留在失败快照中。该 RPC 是尽力采集，失败不得覆盖规划错误。
 - 超时后 `network_probe` 是同一诊断编号下的独立 Python 直连 DNS/TCP/TLS 探测，不代表 Chromium 的实际代理或解析路径；探测只允许固定供应商域名的 443 端口，不发 HTTP。守护线程最多两个并发，不等待业务线程；系统 DNS 无法取消，`dns started` 后没有结果时不能假称 TCP 故障。按同一编号同时查看 `network_environment`、`runtime_page_ready`、`request_start`、`response_transport`、失败快照和探测结果。
@@ -53,14 +53,14 @@
 - `ENABLE_FRONTEND_JS_ANTI_DEBUG` 默认必须为 `False`；开启后，所有 JS 响应统一去注释、压缩空白、移除 source map 指示并注入轻量反调试守卫。该机制只用于提高浏览器端分析和 Hook 的成本，不能替代服务端鉴权、会话绑定、密文下发或密钥轮换。
 - `/api/frontend_config.js` 从 `Referer` 恢复会话时，只能恢复已有内存会话或确有持久化状态的会话；格式合法但未登记的 UUID 不得被创建并长期占用资源。
 - Vue 新版 UI 和根目录 `index.html` 使用的老版 UI 都必须完成运行时脚本加载和地图密钥解密。修改新版组件时要同步检查 `scripts/main.js` 的老版入口、初始数据、地图配置保存和登录响应链路。
-- 日志、支付操作日志、前端 `appConfigLoaded` 事件和错误信息不得输出原始地图 Key、Token、密码、验证码、签名或完整配置；密码恢复等流程只能记录数量和状态，通用参数日志统一使用递归脱敏函数。
+- 只有持久化日志脱敏默认禁用：`Logging.redact_sensitive_logs=false`，旧配置缺项也按关闭处理。文件格式化器、日志专用 helper、支付日志写入、地图访问日志保留原始参数、响应正文、完整异常及回调，不能先固定遮蔽或截断再落盘。只有显式开启时才对 Python 持久化日志脱敏。控制台、Web 日志列表/详情、实时通知等展示出口必须始终调用 display 脱敏函数，不能复用默认不脱敏的日志函数。普通业务 API、前端配置和公共诊断维持原有权限、白名单及大小限制。
 
 ## 地图 iframe 与代理验收经验
 
 - 百度 JS API v4 的地图实例与 `BMap` 构造器必须留在各自 iframe realm；父页面只保存 realm 句柄，销毁时先清覆盖物/事件，再移除 iframe 并清空 `window` 引用，避免 SDK 异步回调污染下一代地图。
 - iframe 使用 `srcdoc` 时，`about:srcdoc` 不能作为 `Request` 的 URL 基址；代理重写优先采用继承文档的 HTTP `document.baseURI`，并确认请求不携带父页面路径、会话 UUID 或 Cookie。
 - 真实地图验收必须逐轮保留失败记录。供应商上游 `ReadTimeout`、代理 `502`、错误 MIME 与 SDK `pageerror` 不能由后续成功轮次覆盖；连接建立阶段仍受底层 DNS/TCP 超时约束，不应宣称被响应体截止器完全取消。
-- 支付订单查询、订单列表和后台订单详情必须通过字段白名单返回；待支付链接只在已鉴权的待支付订单查询中返回，平台原始响应、通知参数、支付参数、主动查询令牌哈希和退款原文不能返回。支付日志读取接口也要在返回前递归脱敏，兼容旧日志文件。
+- 支付订单查询、订单列表和后台订单详情必须通过字段白名单返回；待支付链接只在已鉴权的待支付订单查询中返回，平台原始响应、通知参数、支付参数、主动查询令牌哈希和退款原文不能通过普通业务接口返回。支付日志读取接口必须始终递归 display 脱敏，包括旧文件；落盘开关只影响文件写入，不能影响展示权限或内容保护。
 
 ## 地图供应商相关入口
 
@@ -126,7 +126,7 @@
 - 腾讯 `confinfo` 会返回 `callback&&callback(JSON)` 和 `text/plain`；只允许同一个已验证回调的精确守卫包装，不能接受其他表达式。Vue 的 SDK 脚本缓存应使用原始请求 URL，不能拿代理改写后的 `script.src` 比较，否则重建组件会重载高德 Loader。
 - 地图容器初始化前保持布局尺寸，可用 `visibility:hidden`，不能以 `display:none` 隐藏后再创建腾讯 GL 地图；天地图 `T.Marker` 没有 `setTitle()`，标题放构造参数并通过 `T.Label` 显示。验收时天地图坐标 getter 自身会舍入，预期值须按同一 SDK getter 规范化，不能修改业务坐标迎合测试。
 - 代理凭证须在过期前续签；鉴权失败不能恢复直连。初始化和续签要隔离旧会话响应，成功鉴权只维持真实调用者的内存活跃时间，不新增每瓦片 Token 保存。
-- Nginx 必须保留请求 Host 的非默认端口，且包括 HTTP 重定向在内的访问/错误日志不能记录地图代理查询串。Python 的统一脱敏还必须覆盖 `ak`、`tk`、`jscode`、`securityJsCode`，包括 urllib3 DEBUG 记录。
+- Nginx 必须保留请求 Host 的非默认端口，默认记录完整地图代理访问日志和查询串。Python 日志脱敏默认关闭；只有显式开启时才覆盖 `ak`、`tk`、`jscode`、`securityJsCode` 等字段，包括 urllib3 DEBUG 记录。
 - `tests/browser_map_proxy_smoke.py` 是显式启用的真实后端代理验收，凭据只从环境变量进入内存；不得把真实 Key、Token、原始响应或完整路线写入脚本、配置或验收记录。
 - 地图请求代理开关 `Map.frontend_proxy_enabled` 默认关闭，旧版运行时快照和初始化合并都要传递显式 `true/false`，缺字段保留现值；管理员保存后的前端配置读取失败时，回退更新也要保留开关。已执行 SDK/Worker 中的代理 URL 不能靠卸载请求 hooks 逆转，模式切换须在下次加载地图时整页重载，不能复用另一模式的 SDK 缓存。
 - 后台任务启动、状态、停止接口都须验证真实调用者及显式管理员来源，再按调用者权限执行；游客同时核对 Token 索引与实体文件且不增加轮询写入。旧版路线快照按会话/执行批次/任务合并进行中的请求，不能因下一次 3 秒轮询到来持续作废慢快照。返回时合并更晚 WebSocket 位置；新批次、路线未就绪、任务切换和停止必须使旧请求失效。相关回归见 `tests/test_background_task_route_auth.py`、`tests/legacy_task_map_restore.test.mjs`。
@@ -310,7 +310,7 @@
 - 根因：空 `jump` 经 URL 归一化后变成 `/`，提前返回跳转页，跳过验签和通知处理。
 - 正确做法：只有非空 `jump` 才进入同步跳转；异步通知继续验签和处理，成功时返回纯文本 `success`。支付日志的 action/status 中文只用于两套 UI 展示，筛选请求和完整 JSON 保留原始值。
 - 相关测试：`tests/test_security_hardening_fixes.py`、`tests/test_mobile_admin_payment_logs_ui.py`、`tests/vue_admin_interactions.test.mjs`。
-- 创建支付订单收到业务失败响应时，服务端日志应记录经 `_redact_sensitive_log_text()` 清洗并限长的平台错误码和错误原因，客户端仍返回通用提示；不要只记错误文本长度，也不要持久化完整支付响应体。回归见 `tests/test_payment_order_lifecycle.py`。
+- 创建支付订单失败时，服务端日志应记录完整请求参数、HTTP 状态和响应正文、平台错误码、错误原因或网络异常详情，支付日志保留原始平台响应；客户端仍返回通用提示。日志 helper 默认不脱敏，不要只记录类型或长度。回归见 `tests/test_payment_order_lifecycle.py`、`tests/test_full_logging_payloads.py` 和 `tests/test_config_adapter.py`。
 
 ### 主题背景与登录同步
 

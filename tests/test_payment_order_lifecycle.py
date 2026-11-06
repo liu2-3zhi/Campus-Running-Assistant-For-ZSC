@@ -44,6 +44,7 @@ class TestPaymentOrderLifecycle(unittest.TestCase):
         response = mock.Mock()
         response.status_code = 200
         response.content = json.dumps(platform_result).encode("utf-8")
+        response.text = json.dumps(platform_result, ensure_ascii=False)
         response.json.return_value = platform_result
 
         verifier = mock.Mock(
@@ -59,7 +60,7 @@ class TestPaymentOrderLifecycle(unittest.TestCase):
              mock.patch.object(main_module, "requests", requests_mock, create=True):
             signer_class.return_value.generate_sign.side_effect = lambda params: params
             client = main_module.RainbowYiPayClient()
-            with self.assertLogs(level="ERROR") as captured:
+            with self.assertLogs(level="INFO") as captured:
                 result = client.create_order(
                     out_trade_no="order-test",
                     name="测试商品",
@@ -83,7 +84,29 @@ class TestPaymentOrderLifecycle(unittest.TestCase):
         self.assertIn("错误码: 1001", log_output)
         self.assertIn("错误原因: 商户未开通支付宝", log_output)
 
-    def test_yipay_create_order_redacts_credentials_from_platform_error(self):
+    def test_yipay_create_order_keeps_full_error_and_response_by_default(self):
+        message = "配置错误 " + "完整原因" * 200 + " token=visible-token"
+        payload = {"code": 1002, "msg": message, "detail": {"upstream": "complete-detail"}}
+        with mock.patch.object(main_module, "_log_redaction_enabled", False, create=True):
+            result, log_output = self._create_order_with_platform_error(payload)
+        self.assertEqual(result["error"], message)
+        self.assertEqual(result["api_response"], payload)
+        self.assertIn(message, log_output)
+        self.assertIn("complete-detail", log_output)
+        self.assertIn("响应正文:", log_output)
+
+    def test_yipay_create_order_redacts_credentials_only_when_enabled(self):
+        with mock.patch.object(main_module, "_log_redaction_enabled", True, create=True):
+            result, log_output = self._create_order_with_platform_error(
+                {
+                    "code": 1002,
+                    "msg": "配置错误 merchant_key=merchant-secret token=token-secret",
+                }
+            )
+        self.assertIn("merchant_key=<redacted>", result["error"])
+        self.assertNotIn("merchant-secret", log_output)
+
+    def test_yipay_create_order_preserves_credentials_when_redaction_disabled(self):
         result, log_output = self._create_order_with_platform_error(
             {
                 "code": 1002,
@@ -97,10 +120,10 @@ class TestPaymentOrderLifecycle(unittest.TestCase):
 
         self.assertFalse(result["success"])
         self.assertIn("错误原因: 配置错误", log_output)
-        self.assertIn("merchant_key=<redacted>", result["error"])
+        self.assertIn("merchant_key=merchant-secret", result["error"])
         for secret in ("merchant-secret", "token-secret", "signature-secret", "url-secret"):
-            self.assertNotIn(secret, result["error"])
-            self.assertNotIn(secret, log_output)
+            self.assertIn(secret, result["error"])
+            self.assertIn(secret, log_output)
 
     def test_pending_order_becomes_closed_after_timeout(self):
         order = {

@@ -264,7 +264,9 @@ def test_auth_detail_is_removed_from_complete_public_http_and_websocket_payloads
     api = api_runtime.Api.__new__(api_runtime.Api)
     api._web_session_id = "test-session"
     socket = Mock()
-    runtime = SimpleNamespace(socketio=socket, _redact_sensitive_log_value=lambda value: value)
+    runtime = SimpleNamespace(socketio=socket, _redact_sensitive_log_value=lambda value: value,
+                              _redact_sensitive_display_value=main._redact_sensitive_display_value,
+                              _redact_sensitive_display_text=main._redact_sensitive_display_text)
     with patch.object(api_runtime, "_main", return_value=runtime):
         api._notify_route_planning_failure(result)
     public_ws = socket.emit.call_args.args[1]
@@ -293,6 +295,8 @@ def test_multi_http_and_websocket_details_follow_target_owner_not_admin_viewer(o
 
     runtime = SimpleNamespace(
         socketio=socket, _redact_sensitive_log_value=lambda value: value,
+        _redact_sensitive_display_value=main._redact_sensitive_display_value,
+        _redact_sensitive_display_text=main._redact_sensitive_display_text,
         request=SimpleNamespace(headers={"X-Admin-Origin-Session-ID": "admin-origin"}, cookies={"auth_token": "test-token"}),
         ADMIN_ORIGIN_SESSION_HEADER="X-Admin-Origin-Session-ID", web_sessions={"test-session": api},
         web_sessions_lock=threading.Lock(), auth_system=SimpleNamespace(get_user_group=role),

@@ -203,6 +203,7 @@ _log_buffer = []
 _logging_exception_hooks_installed = False
 _logging_configured = False
 _logging_archive_manager = None
+_log_redaction_enabled = False
 _SINGLE_INSTANCE_LOCK_HANDLE = None
 
 # 运行时在 main() 中从 product_name_generator.py 导入。
@@ -305,18 +306,19 @@ def _buffer_log(level, message):
     """
     暂存日志到缓冲区，同时打印到控制台。
     """
+    display_message = _redact_sensitive_display_text(message)
     try:
-        print(message)
+        print(display_message)
     except UnicodeEncodeError:
         try:
             _sys = __import__("sys")
             output_encoding = getattr(getattr(_sys, "stdout", None), "encoding", None) or "utf-8"
-            safe_message = str(message).encode(output_encoding, errors="replace").decode(
+            safe_message = display_message.encode(output_encoding, errors="replace").decode(
                 output_encoding, errors="replace"
             )
             print(safe_message)
         except Exception:
-            print(str(message).encode("ascii", errors="replace").decode("ascii"))
+            print(display_message.encode("ascii", errors="replace").decode("ascii"))
     _log_buffer.append((level, message))
 
 
@@ -444,10 +446,26 @@ def _send_frontend_static_file(
 
 
 def _redact_sensitive_log_text(value):
-    """移除文本中以键值形式出现的凭据、令牌和其他认证材料。"""
+    """持久化日志默认保留原文，只有显式启用时才脱敏。"""
+    if not _log_redaction_enabled:
+        return str(value or "")
+    return _redact_sensitive_display_text(value)
+
+
+def _redact_sensitive_display_text(value):
+    """展示文本始终脱敏，不受持久化日志配置影响。"""
+    import re
+
     text = str(value or "")
+    # 控制字符可能破坏字段边界；展示前先去颜色，避免 token 紧贴 ANSI 序列漏脱敏。
+    text = re.sub(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", text)
     if not text:
         return text
+    text = re.sub(r"(\b[A-Za-z][A-Za-z0-9+.-]*://)[^/@\s]+@", r"\1<redacted>@", text)
+    text = re.sub(r"(/api/payment/verify_host/probe/)[^/?#\s'\"]+", r"\1<redacted>", text)
+    text = re.sub(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+", "Bearer <redacted>", text)
+    text = re.sub(r"(?im)(\b(?:Cookie(?:内容)?|Authorization)\s*[:：=]\s*)(?![\"'])[^\r\n]+", r"\1<redacted>", text)
+    text = re.sub(r"((?:密码|验证码|私钥|令牌|签名)\s*[:：=]\s*)(\"[^\"]*\"|'[^']*'|[^\s,，;&}]+)", r"\1<redacted>", text)
     text = re.sub(
         r"(?i)(['\"]?\b("
         r"api[_-]?key|map[_-]?key|js[_-]?key|amap[_-]?key|"
@@ -456,10 +474,13 @@ def _redact_sensitive_log_text(value):
         r"token|password|secret|private[_-]?key|access[_-]?key|"
         r"authorization|cookie|captcha(?:[_-]?id)?|sms[_-]?code|"
         r"two[_-]?fa[_-]?code|verification[_-]?code|auth[_-]?code|"
-        r"refresh[_-]?token|csrf[_-]?token|session[_-]?(?:id|uuid)|"
+        r"refresh[_-]?token|csrf[_-]?token|session(?:[_\s-]?(?:id|uuid))?|challenge|"
         r"x-session-id|shiro[_-]?cookie|sub[_-]?openid|sub[_-]?appid|"
-        r"signature|security[_-]?(?:js[_-]?)?code|merchant[_-]?key|"
+        r"signature|sign|sig|sn|security[_-]?(?:js[_-]?)?code|merchant[_-]?key|"
         r"app[_-]?secret|client[_-]?secret|pay[_-]?url|payment[_-]?url|"
+        r"pay[_-]?info|payment[_-]?info|signed[_-]?params|refund[_-]?result|"
+        r"platform[_-]?data|platform[_-]?order|order[_-]?data|api[_-]?response|"
+        r"query[_-]?result|notify[_-]?params|"
         r"return[_-]?url|notify[_-]?url|request[_-]?url"
         r")['\"]?\s*[:=]\s*)(\"[^\"]*\"|'[^']*'|[^,\s;&}]+)",
         r"\1<redacted>",
@@ -476,7 +497,14 @@ def _redact_sensitive_log_text(value):
 
 
 def _redact_sensitive_log_value(value):
-    """递归移除日志中的凭据、令牌和其他认证材料。"""
+    """按持久化日志配置处理结构化数据，默认完整保留。"""
+    if not _log_redaction_enabled:
+        return value
+    return _redact_sensitive_display_value(value)
+
+
+def _redact_sensitive_display_value(value):
+    """展示结构化数据始终递归脱敏，包括历史日志。"""
     sensitive_fragments = (
         "api_key",
         "apikey",
@@ -527,21 +555,36 @@ def _redact_sensitive_log_value(value):
         for key, item in value.items():
             normalized_key = str(key or "").strip().lower().replace("-", "_")
             if normalized_key in {
-                "key", "ak", "tk", "jscode", "js_code", "securitycode",
+                "key", "ak", "tk", "sig", "sn", "session", "challenge", "jscode", "js_code", "securitycode",
                 "security_code", "securityjscode", "security_js_code",
                 "security_jscode", "securityjs_code",
             } or any(fragment in normalized_key for fragment in sensitive_fragments):
                 redacted[key] = "<redacted>"
             else:
-                redacted[key] = _redact_sensitive_log_value(item)
+                redacted[key] = _redact_sensitive_display_value(item)
         return redacted
     if isinstance(value, list):
-        return [_redact_sensitive_log_value(item) for item in value]
+        return [_redact_sensitive_display_value(item) for item in value]
     if isinstance(value, tuple):
-        return tuple(_redact_sensitive_log_value(item) for item in value)
+        return tuple(_redact_sensitive_display_value(item) for item in value)
     if isinstance(value, str):
-        return _redact_sensitive_log_text(value)
+        return _redact_sensitive_display_text(value)
     return value
+
+
+def _format_log_diagnostic(value, max_bytes=4096, sensitive_values=()):
+    """日志与对外诊断分开；默认保留原始字段和完整文本。"""
+    if _log_redaction_enabled:
+        return sanitize_diagnostic(value, max_bytes, sensitive_values)
+    try:
+        if isinstance(value, (dict, list, tuple)):
+            try:
+                return json.dumps(value, ensure_ascii=False, default=str)
+            except (TypeError, ValueError):
+                return repr(value)
+        return str(value)
+    except Exception:
+        return "<unavailable diagnostic>"
 
 
 def _install_amap_dialog_guard(page, guard_label="AMap"):
@@ -1173,6 +1216,21 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
             function reportProgress(event, fields = {}) {
                 try {
                     if (typeof progressSink === 'function') {
+                        if (event === 'sdk_callback_raw') {
+                            if (progressSink.rawLogsEnabled === false) { return; }
+                            const seen = new WeakSet();
+                            fields = JSON.parse(JSON.stringify(fields, (_key, child) => {
+                                if (typeof child === 'bigint') { return String(child); }
+                                if (child && typeof child === 'object') {
+                                    if (seen.has(child)) { return '<cycle>'; }
+                                    seen.add(child);
+                                    if (child instanceof Error) {
+                                        return {name: child.name, message: child.message, stack: child.stack, ...child};
+                                    }
+                                }
+                                return child;
+                            }));
+                        }
                         progressSink({event, elapsed_ms: Date.now() - diagnosticStarted, ...fields});
                     }
                 } catch (_) { /* Diagnostics must not change route execution. */ }
@@ -1187,8 +1245,10 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                 reportProgress('segment_start', {segment: item.segment, attempts: item.attempts,
                     wave: diagnostic.waves, state: 'running'});
             }
-            function recordResponse(index, status, value) {
+            function recordResponse(index, status, value, rawValue = value) {
                 const item = diagnostic.segments[index];
+                reportProgress('sdk_callback_raw', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, status: status ?? '', response: rawValue});
                 item.status = String(status ?? '');
                 item.response_type = typeof value;
                 item.finished_at = Date.now();
@@ -1531,6 +1591,21 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
             function reportProgress(event, fields = {}) {
                 try {
                     if (typeof progressSink === 'function') {
+                        if (event === 'sdk_callback_raw') {
+                            if (progressSink.rawLogsEnabled === false) { return; }
+                            const seen = new WeakSet();
+                            fields = JSON.parse(JSON.stringify(fields, (_key, child) => {
+                                if (typeof child === 'bigint') { return String(child); }
+                                if (child && typeof child === 'object') {
+                                    if (seen.has(child)) { return '<cycle>'; }
+                                    seen.add(child);
+                                    if (child instanceof Error) {
+                                        return {name: child.name, message: child.message, stack: child.stack, ...child};
+                                    }
+                                }
+                                return child;
+                            }));
+                        }
                         progressSink({event, elapsed_ms: Date.now() - diagnosticStarted, ...fields});
                     }
                 } catch (_) { /* Diagnostics must not change route execution. */ }
@@ -1545,8 +1620,10 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                 reportProgress('segment_start', {segment: item.segment, attempts: item.attempts,
                     wave: diagnostic.waves, state: 'running'});
             }
-            function recordResponse(index, status, value) {
+            function recordResponse(index, status, value, rawValue = value) {
                 const item = diagnostic.segments[index];
+                reportProgress('sdk_callback_raw', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, status: status ?? '', response: rawValue});
                 item.status = String(status ?? '');
                 item.response_type = typeof value;
                 item.finished_at = Date.now();
@@ -1876,6 +1953,21 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
             function reportProgress(event, fields = {}) {
                 try {
                     if (typeof progressSink === 'function') {
+                        if (event === 'sdk_callback_raw') {
+                            if (progressSink.rawLogsEnabled === false) { return; }
+                            const seen = new WeakSet();
+                            fields = JSON.parse(JSON.stringify(fields, (_key, child) => {
+                                if (typeof child === 'bigint') { return String(child); }
+                                if (child && typeof child === 'object') {
+                                    if (seen.has(child)) { return '<cycle>'; }
+                                    seen.add(child);
+                                    if (child instanceof Error) {
+                                        return {name: child.name, message: child.message, stack: child.stack, ...child};
+                                    }
+                                }
+                                return child;
+                            }));
+                        }
                         progressSink({event, elapsed_ms: Date.now() - diagnosticStarted, ...fields});
                     }
                 } catch (_) { /* Diagnostics must not change route execution. */ }
@@ -1890,8 +1982,10 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                 reportProgress('segment_start', {segment: item.segment, attempts: item.attempts,
                     wave: diagnostic.waves, state: 'running'});
             }
-            function recordResponse(index, status, value) {
+            function recordResponse(index, status, value, rawValue = value) {
                 const item = diagnostic.segments[index];
+                reportProgress('sdk_callback_raw', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, status: status ?? '', response: rawValue});
                 item.status = String(status ?? '');
                 item.response_type = typeof value;
                 item.finished_at = Date.now();
@@ -2104,7 +2198,7 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                             }
                         }
                         diagnostic.segments[segmentIndex].http_status = response.status;
-                        recordResponse(segmentIndex, 'response', vendorError || (response.ok ? '' : bodyText));
+                        recordResponse(segmentIndex, 'response', vendorError || (response.ok ? '' : bodyText), bodyText);
                         if (!response.ok) {
                             const limited = isRateLimited(response, bodyText);
                             if (limited && rateLimitHits < maxRateLimitRetries) {
@@ -2294,6 +2388,21 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
             function reportProgress(event, fields = {}) {
                 try {
                     if (typeof progressSink === 'function') {
+                        if (event === 'sdk_callback_raw') {
+                            if (progressSink.rawLogsEnabled === false) { return; }
+                            const seen = new WeakSet();
+                            fields = JSON.parse(JSON.stringify(fields, (_key, child) => {
+                                if (typeof child === 'bigint') { return String(child); }
+                                if (child && typeof child === 'object') {
+                                    if (seen.has(child)) { return '<cycle>'; }
+                                    seen.add(child);
+                                    if (child instanceof Error) {
+                                        return {name: child.name, message: child.message, stack: child.stack, ...child};
+                                    }
+                                }
+                                return child;
+                            }));
+                        }
                         progressSink({event, elapsed_ms: Date.now() - diagnosticStarted, ...fields});
                     }
                 } catch (_) { /* Diagnostics must not change route execution. */ }
@@ -2308,8 +2417,10 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                 reportProgress('segment_start', {segment: item.segment, attempts: item.attempts,
                     wave: diagnostic.waves, state: 'running'});
             }
-            function recordResponse(index, status, value) {
+            function recordResponse(index, status, value, rawValue = value) {
                 const item = diagnostic.segments[index];
+                reportProgress('sdk_callback_raw', {segment: item.segment, attempts: item.attempts,
+                    wave: diagnostic.waves, status: status ?? '', response: rawValue});
                 item.status = String(status ?? '');
                 item.response_type = typeof value;
                 item.finished_at = Date.now();
@@ -2917,9 +3028,9 @@ def _plan_route_path_with_provider_runtime(
 
     def log_entry():
         logging.info("[路径诊断] phase=start id=%s provider=%s guard_label=%s actual_mode=%s waypoint_count=%s",
-                     diagnostic_id, sanitize_diagnostic(provider or "unknown", 80, sensitive_values),
-                     sanitize_diagnostic(guard_label, 160, sensitive_values),
-                     sanitize_diagnostic(actual_mode, 80, sensitive_values), waypoint_count)
+                     diagnostic_id, _format_log_diagnostic(provider or "unknown", 80, sensitive_values),
+                     _format_log_diagnostic(guard_label, 160, sensitive_values),
+                     _format_log_diagnostic(actual_mode, 80, sensitive_values), waypoint_count)
 
     try:
         runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
@@ -2957,8 +3068,8 @@ def _plan_route_path_with_provider_runtime(
             "candidates": origin_candidates,
         }
         logging.info("[路径诊断] phase=origin_resolution id=%s provider=%s trace=%s",
-                     diagnostic_id, sanitize_diagnostic(provider, 80, sensitive_values),
-                     json.dumps(origin_trace, ensure_ascii=False, separators=(",", ":")))
+                     diagnostic_id, _format_log_diagnostic(provider, 80, sensitive_values),
+                     _format_log_diagnostic(origin_trace, 4096, sensitive_values))
         logging.info("[路径诊断] id=%s provider=%s origin=%s origin_source=%s",
                      diagnostic_id, provider, runtime_page_origin, origin_source)
         execution_plan = dict(provider_plan)
@@ -2994,7 +3105,7 @@ def _plan_route_path_with_provider_runtime(
             else:
                 result["path"] = normalized_path
     except Exception as error:
-        result = {"error": sanitize_diagnostic(error, sensitive_values=sensitive_values)}
+        result = {"error": str(error)}
     if not entry_logged:
         log_entry()
     if not isinstance(provider_plan, dict):
@@ -3003,6 +3114,8 @@ def _plan_route_path_with_provider_runtime(
     result["provider"] = provider
     result["provider_plan"] = provider_plan
     result["notices"] = provider_plan.get("notices", [])
+    raw_error = result.get("error")
+    raw_diagnostic = result.get("diagnostic")
     if result.get("error"):
         result["error"] = sanitize_diagnostic(result["error"], sensitive_values=sensitive_values)
     elapsed_ms = round((time.monotonic() - started) * 1000)
@@ -3059,20 +3172,20 @@ def _plan_route_path_with_provider_runtime(
     segments = diagnostic.get("segments")
     for segment in segments if isinstance(segments, list) else []:
         logging.debug("[路径诊断] id=%s provider=%s segment=%s", diagnostic_id, provider,
-                      sanitize_diagnostic(segment, 1500, sensitive_values))
+                      _format_log_diagnostic(segment, 1500, sensitive_values))
         history = segment.get("callback_history") if isinstance(segment, dict) else None
-        for callback in history[-4:] if isinstance(history, list) else []:
+        for callback in history if isinstance(history, list) else []:
             logging.debug("[路径诊断] id=%s segment=%s callback_history=%s", diagnostic_id,
-                          segment.get("segment"), sanitize_diagnostic(callback, 800, sensitive_values))
+                          segment.get("segment"), _format_log_diagnostic(callback, 800, sensitive_values))
     result["diagnostic"] = _bounded_route_runtime_diagnostic(diagnostic, sensitive_values)
     logging.info("[路径诊断] phase=result id=%s provider=%s guard_label=%s actual_mode=%s waypoint_count=%s success=%s elapsed_ms=%s failed_endpoints=%s reason=%s",
-                 diagnostic_id, sanitize_diagnostic(provider or "unknown", 80, sensitive_values),
-                 sanitize_diagnostic(guard_label, 160, sensitive_values), sanitize_diagnostic(actual_mode, 80, sensitive_values),
+                 diagnostic_id, _format_log_diagnostic(provider or "unknown", 80, sensitive_values),
+                 _format_log_diagnostic(guard_label, 160, sensitive_values), _format_log_diagnostic(actual_mode, 80, sensitive_values),
                  waypoint_count, not bool(result.get("error")), elapsed_ms,
-                 sanitize_diagnostic(failed_endpoints, 400, sensitive_values),
-                 sanitize_diagnostic(result.get("error") or "ok", 800, sensitive_values))
+                 _format_log_diagnostic(failed_endpoints, 400, sensitive_values),
+                 _format_log_diagnostic(raw_error or "ok", 800, sensitive_values))
     logging.debug("[路径诊断] id=%s detail=%s", diagnostic_id,
-                  sanitize_diagnostic(result.get("diagnostic") or {}, 4096, sensitive_values))
+                  _format_log_diagnostic(raw_diagnostic if raw_diagnostic is not None else diagnostic, 4096, sensitive_values))
     return result
 
 
@@ -4500,13 +4613,13 @@ def initialize_global_variables():
 
 
 class SensitiveLogFormatter(logging.Formatter):
-    """格式化日志时统一移除凭据、令牌和其他认证材料。"""
+    """控制台等展示出口始终脱敏。"""
 
     def format(self, record):
-        return _redact_sensitive_log_text(super().format(record))
+        return _redact_sensitive_display_text(super().format(record))
 
 
-class NoColorFileFormatter(SensitiveLogFormatter):
+class NoColorFileFormatter(logging.Formatter):
     """
     自定义日志格式化程序，用于在写入文件前去除ANSI颜色代码。
     """
@@ -4517,7 +4630,7 @@ class NoColorFileFormatter(SensitiveLogFormatter):
         """
         格式化日志记录并移除颜色代码。
         """
-        original_message = super().format(record)
+        original_message = _redact_sensitive_log_text(super().format(record))
         cleaned_message = self.ansi_escape_regex.sub("", original_message)
         return cleaned_message
 
@@ -4785,7 +4898,7 @@ def setup_logging():
     """
     配置详细的日志系统（带自定义轮转逻辑）。
     """
-    global _logging_configured, _logging_archive_manager
+    global _logging_configured, _logging_archive_manager, _log_redaction_enabled
     if _logging_configured:
         return logging.getLogger()
     log_rotation_size_mb = 10
@@ -4794,11 +4907,15 @@ def setup_logging():
     global log_dir, archive_dir
     log_dir = "logs"
     archive_dir = os.path.join(log_dir, "archive")
+    _log_redaction_enabled = False
 
     try:
         if os.path.exists(CONFIG_JSON_FILE):
             config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
             if config.has_section("Logging"):
+                _log_redaction_enabled = config.getboolean(
+                    "Logging", "redact_sensitive_logs", fallback=False
+                )
                 log_rotation_size_mb = config.getint(
                     "Logging", "log_rotation_size_mb", fallback=10
                 )
@@ -4942,6 +5059,7 @@ def setup_logging():
     logging.info("=" * 80)
     _install_global_exception_logging(logger)
     logging.info("日志系统初始化完成！")
+    logging.info("持久化日志脱敏: %s；展示日志始终脱敏", "启用" if _log_redaction_enabled else "禁用（完整记录）")
     logging.info(f"日志文件: {log_file}")
     logging.info(f"警告日志文件: {warning_log_file}")
     logging.info(f"错误日志文件: {error_log_file}")
@@ -6108,6 +6226,7 @@ def _get_default_config():
     }
 
     config["Logging"] = {
+        "redact_sensitive_logs": "false",
         "log_rotation_size_mb": "10",
         "log_backup_count": "10",
         "archive_max_size_mb": "5120",
@@ -6570,6 +6689,10 @@ def _write_config_with_comments(config_obj, filepath):
 
         # [Logging] 配置
         f.write("[Logging]\n")
+        f.write("# 是否启用持久化日志脱敏（默认 false；展示日志始终脱敏；修改后重启生效）\n")
+        f.write(
+            f"redact_sensitive_logs = {config_obj.get('Logging', 'redact_sensitive_logs', fallback='false')}\n"
+        )
         f.write("# 单个日志文件最大大小（MB）\n")
         f.write("# 超过此大小时会把当前日志改名为下一个编号（如 zx-slm-tool-01.log）\n")
         f.write("# 编号从 01 开始递增，01 最旧、编号越大越新；历史文件不会被搬动\n")
@@ -7181,7 +7304,7 @@ def get_baidu_access_token(api_key, secret_key):
     except requests.exceptions.HTTPError as e:
         # 捕获HTTP错误异常（4xx、5xx状态码）
         # 例如：401 Unauthorized、403 Forbidden、500 Internal Server Error
-        logging.warning(f"[百度云Token] HTTP请求失败: {type(e).__name__}")
+        logging.warning(f"[百度云Token] HTTP请求失败: {type(e).__name__}: {_redact_sensitive_log_text(e)}")
         return {
             "access_token": None,
             "error": "HTTP请求失败，请稍后重试"
@@ -7198,7 +7321,7 @@ def get_baidu_access_token(api_key, secret_key):
     except Exception as e:
         # 捕获所有其他未预期的异常
         # 作为最后的兜底处理，确保函数不会因为未知错误而崩溃
-        logging.warning(f"[百度云Token] 请求异常: {type(e).__name__}")
+        logging.warning(f"[百度云Token] 请求异常: {type(e).__name__}: {_redact_sensitive_log_text(e)}")
         return {
             "access_token": None,
             "error": "请求百度云服务失败，请稍后重试"
@@ -7439,7 +7562,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
     except requests.exceptions.HTTPError as e:
         # HTTP错误（4xx、5xx状态码）
         # 例如：401未授权、403禁止访问、500服务器内部错误等
-        logging.warning(f"[百度云文本审核] HTTP请求失败: {type(e).__name__}")
+        logging.warning(f"[百度云文本审核] HTTP请求失败: {type(e).__name__}: {_redact_sensitive_log_text(e)}")
         return {
             "success": False,
             "conclusion": "审核失败",
@@ -7462,7 +7585,7 @@ def check_text_content(text, strategy_id=None, user_id=None, user_ip=None, phone
     except Exception as e:
         # 捕获所有其他未预期的异常
         # 这是最后的兜底处理，确保函数始终返回标准格式的结果
-        logging.warning(f"[百度云文本审核] 请求异常: {type(e).__name__}")
+        logging.warning(f"[百度云文本审核] 请求异常: {type(e).__name__}: {_redact_sensitive_log_text(e)}")
         return {
             "success": False,
             "conclusion": "审核失败",
@@ -9080,7 +9203,8 @@ class RainbowYiPayClient:
             f"[彩虹易支付] 创建订单 - 订单号: {out_trade_no}, 金额: {money}元, 支付方式: {pay_type}")
 
         logging.info(
-            f"[彩虹易支付] 发起请求 - URL: {api_url}, 已签名参数数量: {len(data_to_sent)}",
+            f"[彩虹易支付] 发起请求 - URL: {api_url}, "
+            f"已签名参数: {_redact_sensitive_log_value(data_to_sent)}",
             extra={"method": "POST"},
         )
 
@@ -9090,7 +9214,8 @@ class RainbowYiPayClient:
 
             logging.info(
                 f"[彩虹易支付] 收到响应 - 状态码: {response.status_code}, "
-                f"响应长度: {len(response.content or b'')}"
+                f"响应长度: {len(response.content or b'')}, "
+                f"响应正文: {_redact_sensitive_log_text(response.text)}"
             )
 
             # 检查HTTP响应状态码
@@ -9160,10 +9285,10 @@ class RainbowYiPayClient:
                         "message") or "未知错误"
                     error_code = _redact_sensitive_log_text(
                         str(result.get("code", "N/A"))
-                    )[:80]
+                    )
                     safe_error_msg = _redact_sensitive_log_text(
                         str(error_msg)
-                    )[:500]
+                    )
                     logging.error(
                         f"[彩虹易支付] 创建订单失败 - 错误码: {error_code}, "
                         f"错误原因: {safe_error_msg}"
@@ -9173,6 +9298,7 @@ class RainbowYiPayClient:
                         "message": "创建订单失败，请稍后重试",
                         "error_code": error_code,
                         "error": safe_error_msg,
+                        "api_response": _redact_sensitive_log_value(result),
                     }
             else:
                 # HTTP请求失败（非200状态码）
@@ -9184,19 +9310,22 @@ class RainbowYiPayClient:
                     "message": f"支付接口请求失败 (HTTP {response.status_code})",
                 }
 
-        except requests.exceptions.Timeout:
+        except requests.exceptions.Timeout as e:
             # 请求超时异常
-            logging.error("[彩虹易支付] 请求超时")
+            logging.error("[彩虹易支付] 请求超时: %s", _redact_sensitive_log_text(e), exc_info=True)
             return {"success": False, "message": "支付接口请求超时，请稍后重试"}
 
         except requests.exceptions.RequestException as e:
             # 其他网络请求异常（如网络不通、DNS解析失败等）
-            logging.error(f"[彩虹易支付] 网络请求异常: {type(e).__name__}")
+            logging.error(
+                "[彩虹易支付] 网络请求异常: %s: %s",
+                type(e).__name__, _redact_sensitive_log_text(e), exc_info=True,
+            )
             return {"success": False, "message": "网络请求失败，请稍后重试"}
 
         except Exception as e:
             # 捕获所有未预期的异常
-            logging.error(f"[彩虹易支付] 创建订单异常: {type(e).__name__}")
+            logging.error(f"[彩虹易支付] 创建订单异常: {type(e).__name__}: {_redact_sensitive_log_text(e)}")
             logging.error(traceback.format_exc())
             return {"success": False, "message": "创建订单时发生错误，请稍后重试"}
 

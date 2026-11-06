@@ -12,6 +12,20 @@ MAP_SECRET_FIELDS = (
 )
 
 
+@pytest.fixture(autouse=True)
+def enable_optional_redaction(monkeypatch):
+    monkeypatch.setattr(main, "_log_redaction_enabled", True)
+
+
+def test_console_stays_redacted_while_file_keeps_complete_text_by_default(monkeypatch):
+    monkeypatch.setattr(main, "_log_redaction_enabled", False)
+    message = "\x1b[31mtoken=visible-token password=visible-password\x1b[0m"
+    record = logging.LogRecord("test", logging.ERROR, __file__, 1, message, (), None)
+    assert "visible-token" not in main.SensitiveLogFormatter("%(message)s").format(record)
+    assert "visible-password" not in main.SensitiveLogFormatter("%(message)s").format(record)
+    assert main.NoColorFileFormatter("%(message)s").format(record) == message.replace("\x1b[31m", "").replace("\x1b[0m", "")
+
+
 @pytest.mark.parametrize("field", MAP_SECRET_FIELDS)
 def test_upstream_urllib3_debug_record_redacts_map_credentials(field):
     record = logging.LogRecord(

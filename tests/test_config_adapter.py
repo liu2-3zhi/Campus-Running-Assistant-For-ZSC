@@ -30,6 +30,7 @@ class TestLoggingJsonConfig(unittest.TestCase):
                 "RANDOM_BACKGROUND_IMAGE_DIR": str(root / "backgrounds"),
                 "_logging_configured": False,
                 "_logging_archive_manager": None,
+                "_log_redaction_enabled": False,
                 "_log_buffer": [],
                 "_BACKGROUND_SELECTION_STATE": {},
                 "log_dir": None,
@@ -81,6 +82,34 @@ class TestLoggingJsonConfig(unittest.TestCase):
                 self.assertEqual(handler.archive_manager.max_size_mb, 7)
             self.assertNotIn("读取配置失败", output.getvalue())
             self.assertFalse((root / "logs").exists())
+
+    def test_logging_redaction_is_disabled_by_default(self):
+        with self.isolated_logging({}) as (root, output):
+            logger = main.setup_logging()
+            message = "token=visible-token password=visible-password"
+            logger.error(message)
+            for handler in logger.handlers:
+                handler.flush()
+            self.assertNotIn("visible-token", output.getvalue())
+            self.assertNotIn("visible-password", output.getvalue())
+            for name in ("zx-slm-tool.log", "zx-slm-tool-WARNING.log", "zx-slm-tool-ERROR.log"):
+                self.assertIn(message, (root / "logs" / name).read_text(encoding="utf-8"))
+            payload = {"api_response": {"token": "visible-token"}, "pay_info": "complete-payload"}
+            self.assertEqual(main._redact_sensitive_log_value(payload), payload)
+            self.assertEqual(main._redact_sensitive_display_value(payload)["api_response"], "<redacted>")
+
+    def test_logging_redaction_can_be_explicitly_enabled(self):
+        with self.isolated_logging({"Logging": {"redact_sensitive_logs": "true"}}) as (root, output):
+            logger = main.setup_logging()
+            logger.error("token=visible-token password=visible-password")
+            for handler in logger.handlers:
+                handler.flush()
+            self.assertNotIn("visible-token", output.getvalue())
+            self.assertNotIn("visible-password", (root / "logs" / "zx-slm-tool.log").read_text(encoding="utf-8"))
+
+    def test_default_config_disables_log_redaction(self):
+        config = main._get_default_config()
+        self.assertFalse(config.getboolean("Logging", "redact_sensitive_logs"))
 
     def test_json_without_logging_section_uses_defaults_without_read_failure(self):
         with self.isolated_logging({"System": {"name": "test"}}) as (root, output):

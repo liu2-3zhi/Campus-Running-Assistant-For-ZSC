@@ -160,8 +160,8 @@ class RsaSigner:
             # 这个原文必须与签名时使用的原文完全一致
             content = self._build_string_to_sign(params)
 
-            # 原文可能包含订单、回调地址或其他敏感参数，只记录长度用于排障。
-            logging.info(f"[RSA验签] 待验证原文长度: {len(content)}")
+            # 全局日志格式化器统一应用可选脱敏策略，默认保留验签排障所需原文。
+            logging.info("[RSA验签] 待验证原文: %s, 签名: %s", content, signature)
 
             # 第2步：检查公钥是否已加载
             # 如果初始化时没有提供公钥，则无法进行验签

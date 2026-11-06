@@ -125,11 +125,6 @@ cat > /etc/nginx/nginx_map.conf <<NGINX_MAP_EOF
 map \$remote_addr \$real_forwarded_for {
     default \$proxy_add_x_forwarded_for;
 }
-# HTTP 重定向也会继承 http 级日志，统一排除可能含地图 Key 的查询请求。
-map \$uri \$map_proxy_access_log {
-    default 1;
-    ~^/map-proxy/ 0;
-}
 NGINX_MAP_EOF
 
 # ==========================================
@@ -257,10 +252,8 @@ cat > /etc/nginx/app_locations.conf <<'LOCATIONS_EOF'
             proxy_set_header X-Forwarded-Proto $scheme;
         }
 
-        # 地图 SDK 查询串包含 Key，禁止写入访问日志或经 JSON 日志转发到后端
+        # 地图代理继承完整访问与错误日志，保留查询参数和上游失败现场。
         location ^~ /map-proxy/ {
-            access_log off;
-            error_log /dev/null crit;
             proxy_pass http://127.0.0.1:5000;
             proxy_http_version 1.1;
             proxy_set_header Host $http_host;
@@ -375,9 +368,9 @@ http {
         '}';
     
     # 传统格式访问日志
-    access_log  /var/log/nginx/access.log  main if=$map_proxy_access_log;
+    access_log  /var/log/nginx/access.log  main;
     # JSON格式访问日志（用于程序化处理和转发到Python日志系统）
-    access_log  /var/log/nginx/access_json.log  json_combined if=$map_proxy_access_log;
+    access_log  /var/log/nginx/access_json.log  json_combined;
     
     sendfile        on;
     tcp_nopush      on;
@@ -479,9 +472,9 @@ http {
         '}';
     
     # 传统格式访问日志
-    access_log  /var/log/nginx/access.log  main if=$map_proxy_access_log;
+    access_log  /var/log/nginx/access.log  main;
     # JSON格式访问日志（用于程序化处理和转发到Python日志系统）
-    access_log  /var/log/nginx/access_json.log  json_combined if=$map_proxy_access_log;
+    access_log  /var/log/nginx/access_json.log  json_combined;
     
     sendfile        on;
     tcp_nopush      on;

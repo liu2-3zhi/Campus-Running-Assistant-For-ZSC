@@ -27,6 +27,9 @@ def run_progress(provider, *, first="timeout", terminal=False, hook="capture", s
     if hook == "capture":
         # Snapshot at emission time: later callbacks must not mutate earlier events.
         code += "globalThis.__zxRouteProgress = item => progress.push(JSON.parse(JSON.stringify(item)));\n"
+        # This suite verifies compact redacted progress; raw log-only SDK callbacks
+        # have a separate channel contract in test_sdk_callback_log_channel.py.
+        code += "globalThis.__zxRouteProgress.rawLogsEnabled = false;\n"
     elif hook == "raise":
         code += "globalThis.__zxRouteProgress = () => { throw new Error('diagnostic sink unavailable'); };\n"
     code += "const planner = " + provider_sources()[provider] + ";\n"

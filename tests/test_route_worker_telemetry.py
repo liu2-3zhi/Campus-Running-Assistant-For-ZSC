@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import main
 from background_task_manager import ChromeBrowserPool
 
 
@@ -23,6 +24,7 @@ class RouteWorkerTelemetryTests(unittest.TestCase):
     def context(self):
         return {"diagnostic_id": "telemetry-test", "provider": "amap", "sensitive_values": ["fake-secret", "private-session"]}
 
+    @patch.object(main, "_log_redaction_enabled", True)
     def test_timeout_keeps_progress_pending_requests_and_budget_before_cleanup(self):
         pool, page, listeners = self.pool()
         request = SimpleNamespace(url="https://maps.test/route?key=fake-secret&origin=11.22,33.44", method="GET", resource_type="xhr")
@@ -31,6 +33,7 @@ class RouteWorkerTelemetryTests(unittest.TestCase):
                                            "requestStart": 9, "responseStart": 30, "responseEnd": 31})
 
         def evaluate(_script, args):
+            self.assertFalse(args[4], "redacted worker must disable raw SDK callback logging")
             def progress(payload):
                 listeners["console"](SimpleNamespace(type="debug", text=args[3] + json.dumps(payload)))
             # Filling the browser error ring must not stop progress or request telemetry.
@@ -77,10 +80,12 @@ class RouteWorkerTelemetryTests(unittest.TestCase):
         page.goto.assert_called_once_with("about:blank", wait_until="commit", timeout=1000)
         self.assertIsNone(pool._contexts["private-session"]["route_diagnostic_context"])
 
+    @patch.object(main, "_log_redaction_enabled", True)
     def test_progress_cap_keeps_latest_state_and_next_command_is_isolated(self):
         pool, page, listeners = self.pool()
         markers = []
         def evaluate(_script, args):
+            self.assertFalse(args[4], "the legacy event cap applies to redacted logging")
             markers.append(args[3])
             if len(markers) == 1:
                 for index in range(170):
@@ -182,6 +187,7 @@ class RouteWorkerTelemetryTests(unittest.TestCase):
 
 
 class RealRouteWorkerTelemetryTests(unittest.TestCase):
+    @patch.object(main, "_log_redaction_enabled", True)
     def test_browser_timeout_logs_live_progress_and_pending_http_request(self):
         from playwright.sync_api import sync_playwright
 

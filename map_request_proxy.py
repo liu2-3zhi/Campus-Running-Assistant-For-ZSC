@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import secrets
 import socket
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -86,6 +87,21 @@ _JSONP_CALLBACK_FIELDS = frozenset({"callback", "cb", "jsonp", "jsonpcallback"})
 _JSONP_MIME_TYPES = frozenset({"application/json", "text/json", "text/plain", "application/octet-stream"})
 _JSONP_CALLBACK_PATTERN = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*\Z")
 _TILE_REQUEST_DEADLINE = ContextVar('map_tile_request_deadline', default=None)
+
+
+def _logging_runtime():
+    """Use the already loaded entry point without importing it recursively."""
+    for name in ("__main__", "main"):
+        runtime = sys.modules.get(name)
+        if callable(getattr(runtime, "_redact_sensitive_log_text", None)):
+            return runtime
+    return None
+
+
+def _log_text(value):
+    text = str(value)
+    redact = getattr(_logging_runtime(), "_redact_sensitive_log_text", None)
+    return redact(text) if callable(redact) else text
 
 
 class _TileFlight:
@@ -681,7 +697,7 @@ def _rewrite_css_specifiers(source, upstream_url, app_origin, context_token):
 
 
 class MapProxyAccessLogFilter(logging.Filter):
-    """Hide proxy URLs (especially vendor keys in query strings) in WSGI logs."""
+    """Apply optional proxy URL redaction to WSGI access logs."""
 
     @staticmethod
     def _scrub(value):
@@ -699,6 +715,8 @@ class MapProxyAccessLogFilter(logging.Filter):
         return value
 
     def filter(self, record):
+        if not getattr(_logging_runtime(), "_log_redaction_enabled", False):
+            return True
         record.msg = self._scrub(record.msg)
         record.args = self._scrub(record.args)
         return True
@@ -827,8 +845,9 @@ class _MapProxy:
                 cancellation.check()
                 return upstream, payload
             except (requests.Timeout, requests.ConnectionError, requests.exceptions.ChunkedEncodingError) as error:
-                logging.warning('[MapProxy] provider=%s host=%s stage=tile attempt=%d error=%s elapsed_ms=%d',
-                                provider, host, attempt, type(error).__name__, int((time.monotonic() - started) * 1000))
+                logging.warning('[MapProxy] provider=%s host=%s stage=tile attempt=%d error=%s detail=%s elapsed_ms=%d',
+                                provider, host, attempt, type(error).__name__, _log_text(error),
+                                int((time.monotonic() - started) * 1000))
                 if upstream is not None:
                     upstream.close()
                     upstream = None
@@ -1221,11 +1240,10 @@ class _MapProxy:
                              provider, host, source, "tile" if tile_kind else stage, status, queue_ms,
                              int((time.monotonic() - upstream_started) * 1000), int((time.monotonic() - request_started) * 1000))
                 return finish(response)
-            except ValueError:
-                return finish(make_response("", 502))
             except Exception as error:
-                logging.warning("[MapProxy] upstream failure provider=%s host=%s stage=%s error=%s elapsed_ms=%d",
-                                provider, host, stage, type(error).__name__, int((time.monotonic() - request_started) * 1000))
+                logging.warning("[MapProxy] upstream failure provider=%s host=%s stage=%s error=%s detail=%s elapsed_ms=%d",
+                                provider, host, stage, type(error).__name__, _log_text(error),
+                                int((time.monotonic() - request_started) * 1000))
                 return finish(make_response("", 502))
             finally:
                 try:

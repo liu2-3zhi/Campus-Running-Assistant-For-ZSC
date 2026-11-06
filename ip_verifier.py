@@ -465,11 +465,14 @@ class IPVerifier:
                 else:
                     # HTTP 状态码不是 200，获取失败
                     logging.warning(
-                        f"[IP验证] 获取 IPv4 公网地址失败，状态码: {response_v4.status_code if response_v4 else 'N/A'}")
+                        f"[IP验证] 获取 IPv4 公网地址失败，URL: http://4.ipw.cn, "
+                        f"状态码: {response_v4.status_code if response_v4 is not None else 'N/A'}, "
+                        f"响应头: {_main()._redact_sensitive_log_value(dict(response_v4.headers) if response_v4 is not None else {})}, "
+                        f"响应内容: {_main()._redact_sensitive_log_text(response_v4.text if response_v4 is not None else '')}")
                     self._public_ip_cache["ipv4"] = None
             except Exception as e:
                 # 网络异常或其他错误
-                logging.warning(f"[IP验证] 获取 IPv4 公网地址异常: {str(e)}")
+                logging.warning(f"[IP验证] 获取 IPv4 公网地址异常: {_main()._redact_sensitive_log_text(str(e))}")
                 self._public_ip_cache["ipv4"] = None
 
             # --- 获取 IPv6 公网地址 ---
@@ -505,11 +508,14 @@ class IPVerifier:
                 else:
                     # HTTP 状态码不是 200，获取失败
                     logging.warning(
-                        f"[IP验证] 获取 IPv6 公网地址失败，状态码: {response_v6.status_code if response_v6 else 'N/A'}")
+                        f"[IP验证] 获取 IPv6 公网地址失败，URL: http://6.ipw.cn, "
+                        f"状态码: {response_v6.status_code if response_v6 is not None else 'N/A'}, "
+                        f"响应头: {_main()._redact_sensitive_log_value(dict(response_v6.headers) if response_v6 is not None else {})}, "
+                        f"响应内容: {_main()._redact_sensitive_log_text(response_v6.text if response_v6 is not None else '')}")
                     self._public_ip_cache["ipv6"] = None
             except Exception as e:
                 # 网络异常或其他错误（例如：服务器不支持 IPv6）
-                logging.warning(f"[IP验证] 获取 IPv6 公网地址异常: {str(e)}")
+                logging.warning(f"[IP验证] 获取 IPv6 公网地址异常: {_main()._redact_sensitive_log_text(str(e))}")
                 self._public_ip_cache["ipv6"] = None
 
             # 更新缓存时间戳为当前时间
@@ -627,26 +633,44 @@ class IPVerifier:
         token, challenge = _main()._create_payment_verify_probe(ttl_seconds=15)
         verify_url = _main()._build_payment_verify_probe_url(base_url, token)
         try:
+            logging.debug(
+                f"[本机验证] 发起 probe 请求 - URL: {_main()._redact_sensitive_log_text(verify_url)}, "
+                f"请求参数: {_main()._redact_sensitive_log_value({'challenge': challenge})}"
+            )
             response = _main().requests.post(
                 verify_url,
                 json={"challenge": challenge},
                 timeout=5,
             )
+            logging.debug(
+                f"[本机验证] probe 响应 - 状态码: {response.status_code}, "
+                f"响应头: {_main()._redact_sensitive_log_value(response.headers)}, "
+                f"响应内容: {_main()._redact_sensitive_log_text(response.text)}"
+            )
 
             if response.status_code != 200:
                 logging.warning(
-                    f"[本机验证] probe 请求失败 - 状态码: {response.status_code}"
+                    f"[本机验证] probe 请求失败 - 状态码: {response.status_code}, "
+                    f"URL: {_main()._redact_sensitive_log_text(verify_url)}, "
+                    f"响应头: {_main()._redact_sensitive_log_value(dict(response.headers))}, "
+                    f"响应内容: {_main()._redact_sensitive_log_text(response.text)}"
                 )
                 return False
 
             try:
                 response_data = response.json()
             except ValueError as e:
-                logging.warning(f"[本机验证] probe 响应JSON解析失败: {str(e)}")
+                logging.warning(
+                    f"[本机验证] probe 响应JSON解析失败: {_main()._redact_sensitive_log_text(str(e))}, "
+                    f"响应内容: {_main()._redact_sensitive_log_text(response.text)}"
+                )
                 return False
 
             if not response_data.get("success"):
-                logging.warning("[本机验证] probe 接口返回失败")
+                logging.warning(
+                    f"[本机验证] probe 接口返回失败 - "
+                    f"响应数据: {_main()._redact_sensitive_log_value(response_data)}"
+                )
                 return False
 
             if not _main()._is_payment_verify_probe_consumed(token):
@@ -656,16 +680,26 @@ class IPVerifier:
             logging.info(f"[本机验证] app_host probe 验证通过: {base_url}")
             return True
 
-        except _main().requests.exceptions.Timeout:
-            logging.warning(f"[本机验证] 请求超时 - {_main()._redact_sensitive_log_text(base_url)}")
+        except _main().requests.exceptions.Timeout as e:
+            logging.warning(
+                f"[本机验证] 请求超时 - {_main()._redact_sensitive_log_text(verify_url)}, "
+                f"错误详情: {_main()._redact_sensitive_log_text(str(e))}"
+            )
             return False
 
-        except _main().requests.exceptions.ConnectionError:
-            logging.warning(f"[本机验证] 连接失败 - {_main()._redact_sensitive_log_text(base_url)}")
+        except _main().requests.exceptions.ConnectionError as e:
+            logging.warning(
+                f"[本机验证] 连接失败 - {_main()._redact_sensitive_log_text(verify_url)}, "
+                f"错误详情: {_main()._redact_sensitive_log_text(str(e))}"
+            )
             return False
 
         except Exception as e:
-            logging.error(f"[本机验证] 验证过程异常: {type(e).__name__}")
+            logging.error(
+                f"[本机验证] 验证过程异常: {type(e).__name__}, "
+                f"URL: {_main()._redact_sensitive_log_text(verify_url)}, "
+                f"错误详情: {_main()._redact_sensitive_log_text(str(e))}"
+            )
             return False
 
         finally:

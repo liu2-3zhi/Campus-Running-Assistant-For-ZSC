@@ -69,6 +69,8 @@ bash After_pip_install.sh
 python main.py --host 0.0.0.0 --port 5000 --log-level info
 ```
 
+持久化日志默认不脱敏，保留请求参数、响应正文和异常详情。`configs/config.json` 中的 `Logging.redact_sensitive_logs` 默认值为 `false`；旧配置缺少该项时也按 `false` 处理。需要对 Python 落盘日志脱敏时可显式设为 `true`，修改后重启服务生效。控制台、Web 日志列表/详情和实时通知始终脱敏，不受该开关影响。后台 SDK 原始回调仅供服务端日志使用；详细网络、SDK 回调和后台执行过程可通过 `--log-level debug` 查看。Nginx 原生访问与错误日志保留完整请求。
+
 ## 容器运行
 
 项目已经提供可直接拉取的镜像：

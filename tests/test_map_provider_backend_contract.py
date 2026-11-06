@@ -304,7 +304,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
         self.assertNotIn("token", sanitized["tianditu"])
         self.assertNotIn("ak", sanitized["baidu"])
 
-    def test_sensitive_initialization_logs_do_not_include_credentials_or_signed_content(self):
+    def test_initialization_keeps_public_defaults_safe_and_records_signature_details(self):
         source = "\n\n".join(
             (
                 MAIN_PATH.read_text(encoding="utf-8"),
@@ -323,8 +323,8 @@ class TestMapProviderBackendContract(unittest.TestCase):
         self.assertNotIn("Initial users={users}", source)
         self.assertNotIn("token: {token_preview}", source)
         self.assertIn('print("[管理员账号] 创建默认管理员账号 (用户名: admin)...")', source)
-        self.assertIn('logging.info(f"[RSA验签] 待验证原文长度: {len(content)}")', source)
-        self.assertNotIn('logging.info(f"[RSA验签] 待验证原文: {content}")', source)
+        self.assertIn('logging.info("[RSA验签] 待验证原文: %s, 签名: %s", content, signature)', source)
+        self.assertIn('return _redact_sensitive_display_text(super().format(record))', source)
 
     def test_build_map_provider_key_bundle_encrypts_secrets(self):
         bundle = main_module._build_map_provider_key_bundle(
@@ -868,7 +868,8 @@ globalThis.fetch = async (url, options) => {
 
         self.assertIn("_initialize_map_key_runtime()", start_source)
 
-    def test_api_logging_redacts_sensitive_parameters(self):
+    @mock.patch.object(main_module, "_log_redaction_enabled", True)
+    def test_api_logging_redacts_sensitive_parameters_when_enabled(self):
         redacted = main_module._redact_sensitive_log_value(
             {
                 "api_key": "real-map-key",
@@ -1247,15 +1248,15 @@ globalThis.fetch = async (url, options) => {
         source = MAIN_PATH.read_text(encoding="utf-8")
 
         self.assertIn(
-            "log_entry = _redact_sensitive_log_value(log_entry)",
+            "log_entry = _redact_sensitive_display_value(log_entry)",
             source,
         )
         self.assertIn(
-            "log_data = _redact_sensitive_log_value(log_data)",
+            "log_data = _redact_sensitive_display_value(log_data)",
             source,
         )
         self.assertIn(
-            "log_detail = _redact_sensitive_log_value(log_detail)",
+            "log_detail = _redact_sensitive_display_value(log_detail)",
             source,
         )
 

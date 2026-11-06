@@ -181,6 +181,7 @@ fetch=async(url)=>{
                 self.assertNotIn("error", result)
                 self.assertEqual([{"lng": 1.0, "lat": 2.0}, {"lng": 3.0, "lat": 4.0}], result["path"])
 
+    @patch.object(main, "_log_redaction_enabled", True)
     def test_context_logs_share_id_and_only_include_failed_segment_endpoints(self):
         pool = SimpleNamespace(get_context=Mock(return_value={"page": Mock()}))
         payload = {"error": "Segment 2 failed", "diagnostic": {

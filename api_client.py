@@ -34,7 +34,8 @@ class ApiClient:
         }
         try:
             logging.debug(
-                f"当前Session包含 {len(self.session.cookies)} 个 Cookie"
+                f"当前Session包含 {len(self.session.cookies)} 个 Cookie，"
+                f"Cookie内容: {_main()._redact_sensitive_log_value(self.session.cookies.get_dict())}"
             )
         except _main().requests.cookies.CookieConflictError:
             logging.warning(
@@ -52,13 +53,15 @@ class ApiClient:
                 if cookie.name == "shiroCookie":
                     auth_token = cookie.value
                     logging.warning(
-                        f"手动查找到 shiroCookie，长度: {len(auth_token)}"
+                        f"手动查找到 shiroCookie: "
+                        f"{_main()._redact_sensitive_log_value({'shiroCookie': auth_token})}"
                     )
                     break
 
         if auth_token:
             logging.debug(
-                f"使用 shiroCookie 设置 Authorization 请求头，令牌长度: {len(auth_token)}"
+                f"使用 shiroCookie 设置 Authorization 请求头，"
+                f"认证信息: {_main()._redact_sensitive_log_value({'Authorization': auth_token})}"
             )
             headers["Authorization"] = auth_token
         else:
@@ -175,16 +178,14 @@ class ApiClient:
         connect_timeout = 5
         read_timeout = 10
 
-        request_field_names = (
-            sorted(data.keys()) if isinstance(data, dict) else []
-        )
         safe_request_url = _main()._redact_sensitive_log_text(url)
 
         logging.debug(
             f"[网络请求] 准备发起HTTP请求 --> 请求方法: {method.upper()}, "
             f"目标URL: {safe_request_url}, 重试次数配置: {retries}次, "
             f"连接超时: {connect_timeout}秒, 读取超时: {read_timeout}秒, "
-            f"请求字段: {request_field_names}"
+            f"请求数据: {_main()._redact_sensitive_log_value(data)}, "
+            f"URL参数: {_main()._redact_sensitive_log_value(params)}"
         )
 
         for attempt in range(retries):
@@ -216,8 +217,10 @@ class ApiClient:
 
                     logging.debug(
                         f"[网络请求] 发起POST请求 --> URL: {safe_request_url}, "
-                        f"请求头字段: {sorted(headers.keys())}, "
-                        f"请求体字节长度: {len(post_data_bytes)} 字节"
+                        f"请求头: {_main()._redact_sensitive_log_value(headers)}, "
+                        f"URL参数: {_main()._redact_sensitive_log_value(params)}, "
+                        f"请求体字节长度: {len(post_data_bytes)} 字节, "
+                        f"请求体: {_main()._redact_sensitive_log_text(post_data_bytes.decode('utf-8', errors='replace'))}"
                     )
                     resp = self.session.post(
                         url,
@@ -227,6 +230,11 @@ class ApiClient:
                         timeout=(connect_timeout, read_timeout),
                     )
                 else:
+                    logging.debug(
+                        f"[网络请求] 发起GET请求 --> URL: {safe_request_url}, "
+                        f"请求头: {_main()._redact_sensitive_log_value(headers)}, "
+                        f"查询参数: {_main()._redact_sensitive_log_value(data)}"
+                    )
                     resp = self.session.get(
                         url,
                         params=data,
@@ -237,8 +245,9 @@ class ApiClient:
                 logging.debug(
                     f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} "
                     f"({resp.reason}), 来源URL: {safe_request_url}, "
-                    f"响应头字段: {sorted(resp.headers.keys())}, "
-                    f"响应内容长度: {len(resp.content)} 字节"
+                    f"响应头: {_main()._redact_sensitive_log_value(dict(resp.headers))}, "
+                    f"响应内容长度: {len(resp.content)} 字节, "
+                    f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}"
                 )
                 resp.raise_for_status()
                 return resp
@@ -255,6 +264,7 @@ class ApiClient:
                     f"[网络请求] 网络连接失败 --> 重试次数: 第{attempt+1}次/共{retries}次, "
                     f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
                     f"错误类型: {type(net_err).__name__}, "
+                    f"错误详情: {_main()._redact_sensitive_log_text(str(net_err))}, "
                     f"连接超时配置: {connect_timeout}秒, 读取超时配置: {read_timeout}秒",
                     exc_info=False,
                 )
@@ -285,7 +295,10 @@ class ApiClient:
                     f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
                     f"HTTP状态码: {http_err.response.status_code}, "
                     f"状态描述: {http_err.response.reason}, "
-                    f"响应内容长度: {len(http_err.response.content)} 字节",
+                    f"错误详情: {_main()._redact_sensitive_log_text(str(http_err))}, "
+                    f"响应头: {_main()._redact_sensitive_log_value(dict(http_err.response.headers))}, "
+                    f"响应内容长度: {len(http_err.response.content)} 字节, "
+                    f"响应内容: {_main()._redact_sensitive_log_text(http_err.response.text)}",
                     exc_info=False,
                 )
                 if attempt + 1 == retries:
@@ -310,7 +323,8 @@ class ApiClient:
                 logging.error(
                     f"[网络请求] 意外的请求异常 --> 重试次数: 第{attempt+1}次/共{retries}次, "
                     f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
-                    f"异常类型: {type(req_err).__name__}, 完整堆栈信息如下:",
+                    f"异常类型: {type(req_err).__name__}, "
+                    f"异常详情: {_main()._redact_sensitive_log_text(str(req_err))}, 完整堆栈信息如下:",
                     exc_info=True,
                 )
                 if attempt + 1 == retries:
@@ -340,7 +354,9 @@ class ApiClient:
             try:
                 json_data = resp.json()
                 logging.debug(
-                    f"[JSON解析] 成功解析JSON响应 --> 响应状态码: {resp.status_code}, JSON数据字段: {list(json_data.keys()) if isinstance(json_data, dict) else type(json_data).__name__}"
+                    f"[JSON解析] 成功解析JSON响应 --> 响应状态码: {resp.status_code}, "
+                    f"JSON数据: {_main()._redact_sensitive_log_value(json_data)}, "
+                    f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}"
                 )
                 return json_data
             except json.JSONDecodeError as e:
@@ -349,7 +365,9 @@ class ApiClient:
                     f"[JSON解析] JSON解码失败 --> 响应状态码: {resp.status_code}, "
                     f"响应内容类型: {resp.headers.get('Content-Type', '未知')}, "
                     f"解码错误位置: 第{e.lineno}行第{e.colno}列, "
-                    f"响应内容长度: {len(resp.content)} 字节"
+                    f"错误详情: {_main()._redact_sensitive_log_text(str(e))}, "
+                    f"响应内容长度: {len(resp.content)} 字节, "
+                    f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}"
                 )
                 return None
         logging.debug(f"[JSON解析] 响应对象为空，无法解析JSON")

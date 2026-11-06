@@ -43,9 +43,9 @@ _BUDGET_SECONDS = 4.0
 _SOCKET_TIMEOUT_SECONDS = 1.0
 
 
-def route_network_environment():
-    """Return only runtime versions and proxy-variable presence, never values."""
-    return {
+def route_network_environment(include_details=False):
+    """Keep the public default safe; optionally include full server-log details."""
+    result = {
         "platform": sys.platform,
         "python_version": ".".join(str(value) for value in sys.version_info[:3]),
         "proxy_env_present": {name: name in os.environ for name in _PROXY_VARIABLES},
@@ -53,6 +53,9 @@ def route_network_environment():
         "browser_proxy_usage": "unknown",
         "proxy_env_confirms_browser_proxy": False,
     }
+    if include_details:
+        result["proxy_env"] = {name: os.environ[name] for name in _PROXY_VARIABLES if name in os.environ}
+    return result
 
 
 def select_route_probe_hosts(provider, hosts):
@@ -72,15 +75,18 @@ def select_route_probe_hosts(provider, hosts):
     return selected
 
 
-def _failure_fields(error):
+def _failure_fields(error, include_details=False):
     try:
         number = getattr(error, "errno", None)
     except Exception:
         number = None
-    return {
+    result = {
         "error_type": type(error).__name__[:80],
         "errno": number if isinstance(number, int) and not isinstance(number, bool) else None,
     }
+    if include_details:
+        result["error_message"] = str(error)
+    return result
 
 
 def _close(resource):
@@ -110,7 +116,7 @@ def _selected_addresses(rows):
     return selected
 
 
-def _run_probe(provider, hosts, emit, slots):
+def _run_probe(provider, hosts, emit, slots, include_details=False):
     started = monotonic()
     deadline = started + _BUDGET_SECONDS
 
@@ -129,7 +135,7 @@ def _run_probe(provider, hosts, emit, slots):
         return min(_SOCKET_TIMEOUT_SECONDS, remaining)
 
     try:
-        report("start", "started", environment=route_network_environment(), port=443,
+        report("start", "started", environment=route_network_environment(include_details=include_details), port=443,
                budget_s=_BUDGET_SECONDS, dns_cancellable=False,
                dns_timeout_control="system", sends_http=False)
         for host in hosts:
@@ -149,7 +155,7 @@ def _run_probe(provider, hosts, emit, slots):
             except Exception as error:
                 report("dns", "error", host=host,
                        duration_ms=round((monotonic() - dns_started) * 1000),
-                       dns_cancellable=False, dns_timeout_control="system", **_failure_fields(error))
+                       dns_cancellable=False, dns_timeout_control="system", **_failure_fields(error, include_details))
                 continue
             for family, (ip, address) in selected.items():
                 if monotonic() >= deadline:
@@ -174,12 +180,12 @@ def _run_probe(provider, hosts, emit, slots):
                     report("tls", "ok", **fields, duration_ms=round((monotonic() - stage_started) * 1000))
                 except Exception as error:
                     report(stage, "error", **fields,
-                           duration_ms=round((monotonic() - stage_started) * 1000), **_failure_fields(error))
+                           duration_ms=round((monotonic() - stage_started) * 1000), **_failure_fields(error, include_details))
                 finally:
                     _close(secured)
                     _close(raw)
     except Exception as error:
-        report("worker", "error", **_failure_fields(error))
+        report("worker", "error", **_failure_fields(error, include_details))
     finally:
         try:
             report("finished", "finished", budget_exhausted=monotonic() >= deadline,
@@ -188,7 +194,7 @@ def _run_probe(provider, hosts, emit, slots):
             slots.release()
 
 
-def schedule_route_network_probe(provider, hosts, emit):
+def schedule_route_network_probe(provider, hosts, emit, include_details=False):
     """Start at most two bounded daemon probes; never resolve or wait here.
 
     False means rejected input, occupied capacity, or an unavailable worker.
@@ -208,7 +214,7 @@ def schedule_route_network_probe(provider, hosts, emit):
         acquired = slots.acquire(blocking=False)
         if not acquired:
             return False
-        Thread(target=_run_probe, args=(provider, hosts, emit, slots),
+        Thread(target=_run_probe, args=(provider, hosts, emit, slots, include_details),
                name="RouteNetworkProbe", daemon=True).start()
         return True
     except Exception:

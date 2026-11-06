@@ -4869,7 +4869,7 @@ def start_web_server(args_param):
         limit = int(_main().request.args.get("limit", 100))
 
         logs = _main().auth_system.get_login_history(username, limit)
-        return _main().jsonify({"success": True, "logs": logs})
+        return _main().jsonify({"success": True, "logs": _main()._redact_sensitive_display_value(logs)})
 
     @app.route("/auth/get_user_school_accounts", methods=["GET"])
     @login_required  # 只需要登录即可，权限过滤在数据层通过get_initial_data实现
@@ -6141,7 +6141,7 @@ def start_web_server(args_param):
         for log_file in log_files:
             try:
                 with open(log_file, "r", encoding="utf-8") as f:
-                    all_log_content.extend(f.readlines())
+                    all_log_content.extend(_main()._redact_sensitive_display_text(line) for line in f)
             except (FileNotFoundError, PermissionError, UnicodeDecodeError) as e:
                 logging.debug(f"[日志读取] 无法读取日志文件 {log_file}: {e}")
                 continue
@@ -6170,7 +6170,7 @@ def start_web_server(args_param):
                     "total_lines": total_lines,
                     "limit": limit,
                 },
-                "filters": {"keyword": keyword_expr},
+                "filters": {"keyword": _main()._redact_sensitive_display_text(keyword_expr)},
             }
         )
 
@@ -7748,7 +7748,7 @@ def start_web_server(args_param):
         limit = int(_main().request.args.get("limit", 100))
 
         logs = _main().auth_system.get_audit_logs(username, action, limit)
-        return _main().jsonify({"success": True, "logs": logs})
+        return _main().jsonify({"success": True, "logs": _main()._redact_sensitive_display_value(logs)})
 
     @app.route("/sms-reply-webhook", methods=["GET"])
     def sms_reply_webhook():
@@ -8052,7 +8052,7 @@ def start_web_server(args_param):
                     # 返回成功响应
                     return _main().jsonify({
                         "success": True,
-                        "logs": logs,
+                        "logs": _main()._redact_sensitive_display_value(logs),
                         "total": total,
                         "limit": limit
                     })
@@ -8118,7 +8118,7 @@ def start_web_server(args_param):
             return _main().jsonify(
                 {
                     "success": True,
-                    "logs": history,
+                    "logs": _main()._redact_sensitive_display_value(history),
                     "total": len(history),
                 }
             )
@@ -8145,7 +8145,7 @@ def start_web_server(args_param):
             limit = int(_main().request.args.get("limit", 100))
             logs = _main().auth_system.get_audit_logs(username, action, limit)
 
-            return _main().jsonify({"success": True, "logs": logs, "total": len(logs)})
+            return _main().jsonify({"success": True, "logs": _main()._redact_sensitive_display_value(logs), "total": len(logs)})
 
         except Exception as e:
             app.logger.error(f"[审计日志] 查询失败：{str(e)}")
@@ -9811,7 +9811,8 @@ def start_web_server(args_param):
             response_text = response.text.strip()
             logging.debug(
                 f"[短信配置] 查询余额响应状态码: {response.status_code}, "
-                f"响应长度: {len(response.content or b'')}"
+                f"响应长度: {len(response.content or b'')}, "
+                f"响应正文: {_main()._redact_sensitive_log_text(response.text)}"
             )
             lines = response_text.split("\n")
             if lines and lines[0] == "0":
@@ -9899,7 +9900,7 @@ def start_web_server(args_param):
             records = records[:100]
             _ = getattr(_main().g, "api_instance", None)
 
-            return _main().jsonify({"success": True, "records": records})
+            return _main().jsonify({"success": True, "records": _main()._redact_sensitive_display_value(records)})
         except Exception as e:
             app.logger.error(f"[短信历史] 获取历史失败：{str(e)}")
             return _main().jsonify({"success": False, "message": "获取历史失败"}), 500
@@ -13943,7 +13944,7 @@ def start_web_server(args_param):
                 safe_params = _main()._redact_sensitive_log_value(params)
                 logging.debug(
                     f"API调用: 方法={method}, 参数类型={type(params)}, "
-                    f"参数内容={str(safe_params)[:200]}"
+                    f"参数内容={safe_params}"
                 )
 
                 if params:
@@ -14953,13 +14954,14 @@ def start_web_server(args_param):
                     {"success": False, "message": f"API Key无效: {error_info}"}
                 )
 
-        except _main().requests.exceptions.Timeout:
+        except _main().requests.exceptions.Timeout as e:
+            logging.warning("[高德Key验证] 请求超时: %s", _main()._redact_sensitive_log_text(e), exc_info=True)
             return _main().jsonify({"success": False, "message": "验证超时，请检查网络连接"})
         except _main().requests.exceptions.RequestException as e:
-            logging.warning(f"[高德Key验证] 网络请求失败: {type(e).__name__}")
+            logging.warning(f"[高德Key验证] 网络请求失败: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
             return _main().jsonify({"success": False, "message": "网络请求失败，请稍后重试"})
         except Exception as e:
-            logging.error(f"[高德Key验证] 验证失败: {type(e).__name__}")
+            logging.error(f"[高德Key验证] 验证失败: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
             return _main().jsonify({"success": False, "message": "验证失败，请稍后重试"})
 
     # ============================================================
@@ -16454,7 +16456,7 @@ def start_web_server(args_param):
         except json.JSONDecodeError as e:
             logging.error(
                 f"[验证码HTML页面] JSON解析失败: {captcha_id[:8]}... - "
-                f"{type(e).__name__}"
+                f"{type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             return (
                 '<html><body><p style="color: red; text-align: center; padding: 20px;">验证码数据损坏</p></body></html>',
@@ -16464,7 +16466,7 @@ def start_web_server(args_param):
         except IOError as e:
             logging.error(
                 f"[验证码HTML页面] 文件读取失败: {captcha_id[:8]}... - "
-                f"{type(e).__name__}"
+                f"{type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             return (
                 '<html><body><p style="color: red; text-align: center; padding: 20px;">读取验证码失败</p></body></html>',
@@ -16474,7 +16476,7 @@ def start_web_server(args_param):
         except Exception as e:
             logging.error(
                 f"[验证码HTML页面] 未知错误: {captcha_id[:8]}... - "
-                f"{type(e).__name__}",
+                f"{type(e).__name__}: {_main()._redact_sensitive_log_text(e)}",
                 exc_info=True,
             )
             return (
@@ -18078,10 +18080,11 @@ def start_web_server(args_param):
                 timeout=15
             )
 
-            # 只记录响应状态和长度，避免平台返回的订单或凭据字段进入日志。
+            # 按日志开关记录完整响应，便于排查平台业务错误和格式错误。
             logging.info(
                 f"[易支付查询] API响应状态码: {response.status_code}, "
-                f"响应长度: {len(response.content or b'')}"
+                f"响应长度: {len(response.content or b'')}, "
+                f"响应正文: {_main()._redact_sensitive_log_text(response.text)}"
             )
 
             # ========== 第6步：解析查询响应 ==========
@@ -18101,7 +18104,7 @@ def start_web_server(args_param):
             except Exception as e:
                 # JSON解析失败
                 logging.error(
-                    f"[易支付查询] API响应JSON解析失败，异常类型: {type(e).__name__}"
+                    f"[易支付查询] API响应JSON解析失败，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
                 )
                 return {
                     "success": False,
@@ -18137,7 +18140,7 @@ def start_web_server(args_param):
                 logging.warning(
                     f"[易支付查询] 查询失败 - "
                     f"错误码: {result_code}, "
-                    f"错误信息长度: {len(str(result_msg))}"
+                    f"错误原因: {_main()._redact_sensitive_log_text(result_msg)}"
                 )
 
                 return {
@@ -18145,9 +18148,9 @@ def start_web_server(args_param):
                     "message": "平台订单查询失败，请稍后重试"
                 }
 
-        except _main().requests.exceptions.Timeout:
+        except _main().requests.exceptions.Timeout as e:
             # 请求超时
-            logging.error("[易支付查询] 请求超时")
+            logging.error("[易支付查询] 请求超时: %s", _main()._redact_sensitive_log_text(e), exc_info=True)
             return {
                 "success": False,
                 "message": "查询请求超时，请稍后重试"
@@ -18156,7 +18159,7 @@ def start_web_server(args_param):
         except _main().requests.exceptions.RequestException as e:
             # 网络错误
             logging.error(
-                f"[易支付查询] 网络错误，异常类型: {type(e).__name__}"
+                f"[易支付查询] 网络错误，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             return {
                 "success": False,
@@ -18166,7 +18169,7 @@ def start_web_server(args_param):
         except Exception as e:
             # 其他未预期的异常
             logging.error(
-                f"[易支付查询] 未知异常，异常类型: {type(e).__name__}"
+                f"[易支付查询] 未知异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             return {
@@ -18298,10 +18301,11 @@ def start_web_server(args_param):
                 timeout=20
             )
 
-            # 只记录响应状态和长度，避免订单列表内容进入日志。
+            # 按日志开关记录完整平台响应。
             logging.info(
                 f"[易支付订单列表] API响应状态码: {response.status_code}, "
-                f"响应长度: {len(response.content or b'')}"
+                f"响应长度: {len(response.content or b'')}, "
+                f"响应正文: {_main()._redact_sensitive_log_text(response.text)}"
             )
 
             # ========== 第6步：解析查询响应 ==========
@@ -18322,7 +18326,7 @@ def start_web_server(args_param):
             except Exception as e:
                 # JSON解析失败
                 logging.error(
-                    f"[易支付订单列表] API响应JSON解析失败，异常类型: {type(e).__name__}"
+                    f"[易支付订单列表] API响应JSON解析失败，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
                 )
                 return {
                     "success": False,
@@ -18360,7 +18364,7 @@ def start_web_server(args_param):
                 logging.warning(
                     f"[易支付订单列表] 查询失败 - "
                     f"错误码: {result_code}, "
-                    f"错误信息长度: {len(str(result_msg))}"
+                    f"错误原因: {_main()._redact_sensitive_log_text(result_msg)}"
                 )
 
                 return {
@@ -18368,9 +18372,9 @@ def start_web_server(args_param):
                     "message": "平台订单列表查询失败，请稍后重试"
                 }
 
-        except _main().requests.exceptions.Timeout:
+        except _main().requests.exceptions.Timeout as e:
             # 请求超时
-            logging.error("[易支付订单列表] 请求超时")
+            logging.error("[易支付订单列表] 请求超时: %s", _main()._redact_sensitive_log_text(e), exc_info=True)
             return {
                 "success": False,
                 "message": "查询请求超时，请稍后重试"
@@ -18379,7 +18383,7 @@ def start_web_server(args_param):
         except _main().requests.exceptions.RequestException as e:
             # 网络错误
             logging.error(
-                f"[易支付订单列表] 网络错误，异常类型: {type(e).__name__}"
+                f"[易支付订单列表] 网络错误，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             return {
                 "success": False,
@@ -18389,7 +18393,7 @@ def start_web_server(args_param):
         except Exception as e:
             # 其他未预期的异常
             logging.error(
-                f"[易支付订单列表] 未知异常，异常类型: {type(e).__name__}"
+                f"[易支付订单列表] 未知异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             return {
@@ -18876,10 +18880,11 @@ def start_web_server(args_param):
                 timeout=30
             )
 
-            # 只记录响应状态和长度，避免退款平台返回内容进入日志。
+            # 按日志开关记录完整平台响应。
             logging.info(
                 f"[退款请求] API响应状态码: {response.status_code}, "
-                f"响应长度: {len(response.content or b'')}"
+                f"响应长度: {len(response.content or b'')}, "
+                f"响应正文: {_main()._redact_sensitive_log_text(response.text)}"
             )
 
             # ========== 第12步：解析退款响应 ==========
@@ -18900,7 +18905,7 @@ def start_web_server(args_param):
             except Exception as e:
                 # JSON解析失败
                 logging.error(
-                    f"[退款请求] API响应JSON解析失败，异常类型: {type(e).__name__}"
+                    f"[退款请求] API响应JSON解析失败，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
                 )
                 return _main().jsonify({
                     "success": False,
@@ -19000,7 +19005,7 @@ def start_web_server(args_param):
                     f"[退款请求] 退款失败 - "
                     f"订单号: {trade_no}, "
                     f"错误码: {result_code}, "
-                    f"错误信息长度: {len(str(result_msg))}"
+                    f"错误原因: {_main()._redact_sensitive_log_text(result_msg)}"
                 )
 
                 # 写入失败日志
@@ -19030,7 +19035,7 @@ def start_web_server(args_param):
 
             # 记录详细的异常信息（包含堆栈跟踪）
             logging.error(
-                f"[退款请求] 处理退款请求时发生异常，异常类型: {type(e).__name__}"
+                f"[退款请求] 处理退款请求时发生异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
 
@@ -19347,7 +19352,8 @@ def start_web_server(args_param):
                         "success": False,                      # 操作失败
                         "message": result["message"],          # 失败原因
                         "error_code": result.get("error_code", ""),
-                        "error": result.get("error", "")       # 详细错误信息（如果有）
+                        "error": result.get("error", ""),      # 详细错误信息（如果有）
+                        "api_response": result.get("api_response"),
                     }
                 )
 
@@ -19360,7 +19366,7 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有未预期的异常
             # 记录错误日志和堆栈跟踪
-            logging.error(f"[支付订单] 创建订单时发生异常: {type(e).__name__}")
+            logging.error(f"[支付订单] 创建订单时发生异常: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
             logging.error(traceback.format_exc())
 
             # 返回通用错误响应
@@ -19542,7 +19548,7 @@ def start_web_server(args_param):
             })
 
         except Exception as e:
-            logging.error(f"[支付订单] 查询订单异常，异常类型: {type(e).__name__}")
+            logging.error(f"[支付订单] 查询订单异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
             logging.error(traceback.format_exc())
             return _main().jsonify({"success": False, "message": "查询订单失败，请稍后重试"}), 500
 
@@ -19647,7 +19653,7 @@ def start_web_server(args_param):
                 "order": _build_payment_order_response(order_data),
             })
         except Exception as e:
-            logging.error(f"[账单主动查询] 查询异常，异常类型: {type(e).__name__}")
+            logging.error(f"[账单主动查询] 查询异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
             logging.error(traceback.format_exc())
             return _main().jsonify({"success": False, "message": "主动查询失败，请稍后重试"}), 500
 
@@ -19721,7 +19727,7 @@ def start_web_server(args_param):
                 "order": _build_payment_order_response(order_data),
             })
         except Exception as e:
-            logging.error(f"[账单本地查询] 查询异常，异常类型: {type(e).__name__}")
+            logging.error(f"[账单本地查询] 查询异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
             logging.error(traceback.format_exc())
             return _main().jsonify({"success": False, "message": "本地查询失败，请稍后重试"}), 500
 
@@ -20099,10 +20105,11 @@ def start_web_server(args_param):
             # 但在某些错误情况下（如网络异常、配置错误），可能返回字符串类型的错误信息
             if not isinstance(result, dict):
                 # 如果返回值不是字典类型，说明发生了异常
-                # 只记录返回值类型，避免把平台响应或支付链接写入日志。
+                # 保留异常返回值，便于排查平台协议或客户端实现问题。
                 logging.error(
                     f"[欠费支付] create_order 返回值类型错误: "
-                    f"期望dict, 实际{type(result).__name__}"
+                    f"期望dict, 实际{type(result).__name__}, "
+                    f"返回值: {_main()._redact_sensitive_log_value(result)}"
                 )
 
                 # 返回友好的错误信息给前端
@@ -20133,6 +20140,9 @@ def start_web_server(args_param):
                         # 失败信息
                         "success": False,                      # 操作失败
                         "message": result.get("message", "创建支付订单失败"),
+                        "error_code": result.get("error_code", ""),
+                        "error": result.get("error", ""),
+                        "api_response": result.get("api_response"),
                     }
                 )
                 return _main().jsonify({
@@ -20296,7 +20306,7 @@ def start_web_server(args_param):
             # 捕获所有未预期的异常
             # 记录完整的堆栈信息，便于调试
             logging.error(
-                f"[欠费支付] 创建订单异常，异常类型: {type(e).__name__}"
+                f"[欠费支付] 创建订单异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
 
@@ -20509,6 +20519,19 @@ def start_web_server(args_param):
             )
 
             if not result.get("success", False):
+                _write_payment_log(
+                    user_id=_main().g.user,
+                    order_id=out_trade_no,
+                    action="create_order_failed",
+                    log_data={
+                        "status": "failed", "amount": amount_str,
+                        "product_name": product_name, "pay_type": pay_type,
+                        "message": result.get("message", "创建支付订单失败"),
+                        "error_code": result.get("error_code"),
+                        "error": result.get("error", result.get("message")),
+                        "api_response": result.get("api_response"),
+                    },
+                )
                 return _main().jsonify({"success": False, "message": result.get("message", "创建支付订单失败")}), 400
 
             pay_type = result.get("pay_type", pay_type)
@@ -20625,7 +20648,7 @@ def start_web_server(args_param):
             })
         except Exception as e:
             logging.error(
-                f"[账单支付] 创建订单失败，异常类型: {type(e).__name__}",
+                f"[账单支付] 创建订单失败，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}",
                 exc_info=True,
             )
             return _main().jsonify({
@@ -21168,7 +21191,7 @@ def start_web_server(args_param):
                     # 文件读取或解析失败，记录日志并跳过
                     logging.warning(
                         f"[订单列表] 读取订单文件失败: {filename}, "
-                        f"异常类型: {type(e).__name__}"
+                        f"异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
                     )
                     continue
 
@@ -21194,7 +21217,7 @@ def start_web_server(args_param):
 
         except Exception as e:
             logging.error(
-                f"[订单列表] 查询订单列表异常，异常类型: {type(e).__name__}"
+                f"[订单列表] 查询订单列表异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             return _main().jsonify({
@@ -21379,7 +21402,7 @@ def start_web_server(args_param):
             logging.error(
                 f"[订单查询] 查询订单异常 - "
                 f"用户: {g.user}, 订单号: {trade_no}, "
-                f"异常类型: {type(e).__name__}"
+                f"异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
 
@@ -21618,7 +21641,7 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有异常
             logging.error(
-                f"[支付配置] 管理支付配置接口异常，异常类型: {type(e).__name__}"
+                f"[支付配置] 管理支付配置接口异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             return _main().jsonify({
@@ -21770,7 +21793,7 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有异常
             logging.error(
-                f"[支付方式管理] 添加支付方式失败，异常类型: {type(e).__name__}"
+                f"[支付方式管理] 添加支付方式失败，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             return _main().jsonify({
@@ -21955,7 +21978,7 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有异常
             logging.error(
-                f"[支付方式管理] 管理支付方式失败，异常类型: {type(e).__name__}"
+                f"[支付方式管理] 管理支付方式失败，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             return _main().jsonify({
@@ -22388,7 +22411,7 @@ def start_web_server(args_param):
             # 捕获所有异常
             # 记录错误日志，包括详细的堆栈跟踪信息
             logging.error(
-                f"[价格配置] 管理价格配置接口异常，异常类型: {type(e).__name__}"
+                f"[价格配置] 管理价格配置接口异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             # 返回 500 错误响应
@@ -22857,7 +22880,7 @@ def start_web_server(args_param):
             # 捕获所有异常
             # 记录错误日志，包括详细的堆栈跟踪信息
             logging.error(
-                f"[易支付配置] 管理易支付配置接口异常，异常类型: {type(e).__name__}"
+                f"[易支付配置] 管理易支付配置接口异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             # 返回 500 错误响应
@@ -23081,7 +23104,7 @@ def start_web_server(args_param):
                         with open(file_path, 'r', encoding='utf-8') as f:
                             log_entry = json.load(f)
                         # 兼容旧日志文件，返回前再次递归脱敏。
-                        log_entry = _main()._redact_sensitive_log_value(log_entry)
+                        log_entry = _main()._redact_sensitive_display_value(log_entry)
 
                         # 检查日志的user_id是否匹配当前用户
                         log_user_id = log_entry.get('user_id', '')
@@ -23300,7 +23323,7 @@ def start_web_server(args_param):
                     with open(log_filepath, "r", encoding="utf-8") as f:
                         log_data = json.load(f)
                     # 兼容旧日志文件，返回前再次递归脱敏。
-                    log_data = _main()._redact_sensitive_log_value(log_data)
+                    log_data = _main()._redact_sensitive_display_value(log_data)
 
                     # 提取用户ID并添加到用户集合
                     user_id = log_data.get("user_id", "")
@@ -23367,7 +23390,7 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有异常
             logging.error(
-                f"[支付日志] 获取支付日志列表异常，异常类型: {type(e).__name__}"
+                f"[支付日志] 获取支付日志列表异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             return _main().jsonify({
@@ -23494,8 +23517,8 @@ def start_web_server(args_param):
                 # 使用UTF-8编码确保中文内容正确显示
                 with open(log_filepath, "r", encoding="utf-8") as f:
                     log_detail = json.load(f)
-                # 兼容旧日志文件，返回前再次递归脱敏。
-                log_detail = _main()._redact_sensitive_log_value(log_detail)
+                # 展示始终脱敏，与日志文件是否保留原文无关，也兼容历史日志。
+                log_detail = _main()._redact_sensitive_display_value(log_detail)
 
                 # 记录操作日志（用于审计）
                 # 记录谁在什么时候查看了哪条日志
@@ -23504,7 +23527,7 @@ def start_web_server(args_param):
                     f"用户: {g.user}, log_id: {log_id}"
                 )
 
-                # 返回成功响应，内容已完成递归脱敏。
+                # 返回当前日志策略处理后的内容。
                 return _main().jsonify({
                     "success": True,
                     "log_detail": log_detail
@@ -23524,7 +23547,7 @@ def start_web_server(args_param):
                 # 读取文件时的其他异常
                 logging.error(
                     f"[支付日志详情] 读取日志文件失败 - "
-                    f"log_id: {log_id}, 异常类型: {type(e).__name__}"
+                    f"log_id: {log_id}, 异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
                 )
                 return _main().jsonify({
                     "success": False,
@@ -23535,7 +23558,7 @@ def start_web_server(args_param):
             # 捕获所有未预期的异常
             # 记录详细的错误日志（包含堆栈跟踪）
             logging.error(
-                f"[支付日志详情] 获取日志详情异常，异常类型: {type(e).__name__}"
+                f"[支付日志详情] 获取日志详情异常，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             return _main().jsonify({
@@ -23678,7 +23701,7 @@ def start_web_server(args_param):
                     # 读取单个订单文件失败，记录日志但继续处理其他订单
                     logging.error(
                         f"[通知统计] 读取订单文件失败: {filename}, "
-                        f"异常类型: {type(e).__name__}"
+                        f"异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
                     )
                     continue
 
@@ -23698,7 +23721,7 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有异常
             logging.error(
-                f"[通知统计] 获取统计信息失败，异常类型: {type(e).__name__}"
+                f"[通知统计] 获取统计信息失败，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             return _main().jsonify({
@@ -23779,7 +23802,7 @@ def start_web_server(args_param):
                         # 这种情况可能是文件损坏或格式错误
                         logging.warning(
                             f"[管理员查询订单] 本地文件读取失败，"
-                            f"异常类型: {type(e).__name__} - "
+                            f"异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)} - "
                             f"将尝试从平台查询"
                         )
 
@@ -24034,7 +24057,7 @@ def start_web_server(args_param):
                     # 注意：即使保存失败，也不影响返回订单信息给调用方
                     logging.error(
                         f"[管理员查询订单] 保存订单到本地失败，"
-                        f"异常类型: {type(e).__name__} - "
+                        f"异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)} - "
                         f"订单号: {out_trade_no}"
                     )
 
@@ -24077,7 +24100,7 @@ def start_web_server(args_param):
 
         except Exception as e:
             # 捕获所有异常
-            logging.error(f"[管理员查询订单] 处理失败，异常类型: {type(e).__name__}")
+            logging.error(f"[管理员查询订单] 处理失败，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}")
             logging.error(traceback.format_exc())
             return _main().jsonify({
                 "success": False,
@@ -24146,7 +24169,7 @@ def start_web_server(args_param):
 
             except Exception as e:
                 logging.error(
-                    f"[管理员获取订单详情] 读取订单文件失败，异常类型: {type(e).__name__}"
+                    f"[管理员获取订单详情] 读取订单文件失败，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
                 )
                 return _main().jsonify({
                     "success": False,
@@ -24155,7 +24178,7 @@ def start_web_server(args_param):
 
         except Exception as e:
             logging.error(
-                f"[管理员获取订单详情] 处理请求时发生错误，异常类型: {type(e).__name__}"
+                f"[管理员获取订单详情] 处理请求时发生错误，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             return _main().jsonify({
                 "success": False,
@@ -24501,7 +24524,7 @@ def start_web_server(args_param):
                         except Exception as e:
                             logging.warning(
                                 f"[管理员拉取订单] 读取现有订单失败: {out_trade_no}, "
-                                f"异常类型: {type(e).__name__}"
+                                f"异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
                             )
 
                     # 保存订单到本地文件（使用增量更新模式）
@@ -24559,7 +24582,7 @@ def start_web_server(args_param):
                     # 保存单个订单失败，记录错误但继续处理其他订单
                     failed_count += 1
                     logging.error(
-                        f"[管理员拉取订单] 保存订单失败，异常类型: {type(e).__name__}"
+                        f"[管理员拉取订单] 保存订单失败，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
                     )
                     continue
 
@@ -24599,7 +24622,7 @@ def start_web_server(args_param):
         except Exception as e:
             # 捕获所有异常
             logging.error(
-                f"[管理员拉取订单] 处理失败，异常类型: {type(e).__name__}"
+                f"[管理员拉取订单] 处理失败，异常类型: {type(e).__name__}: {_main()._redact_sensitive_log_text(e)}"
             )
             logging.error(traceback.format_exc())
             return _main().jsonify({
@@ -26415,7 +26438,7 @@ def start_web_server(args_param):
             total = len(logs)
             start_idx = (page - 1) * page_size
             page_logs = logs[start_idx:start_idx + page_size]
-            return _main().jsonify({"success": True, "logs": page_logs, "total": total, "page": page, "page_size": page_size})
+            return _main().jsonify({"success": True, "logs": _main()._redact_sensitive_display_value(page_logs), "total": total, "page": page, "page_size": page_size})
         except Exception as e:
             logging.error(f"[管理员账单] 获取账单日志失败: {e}", exc_info=True)
             return _main().jsonify({"success": False, "message": f"获取账单日志失败: {str(e)}"}), 500
@@ -27395,7 +27418,7 @@ def start_web_server(args_param):
             )
             log_msg = (
                 f"[请求开始] {request.method} {request.path} "
-                f"query={'<redacted>' if request.path.startswith('/map-proxy/') else request.query_string.decode('utf-8', errors='ignore')[:512]}"
+                f"query={_main()._redact_sensitive_log_text(request.query_string.decode('utf-8', errors='replace'))}"
             )
             if is_noisy_path:
                 logging.debug(log_msg)

@@ -4,6 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import main
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,7 +19,9 @@ def load_method(filename, class_name, method_name, namespace):
 
 
 def test_server_log_and_frontend_message_are_independent():
-    runtime = SimpleNamespace(socketio=Mock(), _redact_sensitive_log_value=lambda value: value)
+    runtime = SimpleNamespace(socketio=Mock(), _redact_sensitive_log_value=lambda value: value,
+                              _redact_sensitive_display_value=main._redact_sensitive_display_value,
+                              _redact_sensitive_display_text=main._redact_sensitive_display_text)
     namespace = {"_main": lambda: runtime, "logging": Mock(), "threading": __import__("threading")}
     notify = load_method("api_runtime.py", "Api", "log_and_notify_frontend", namespace)
     api = SimpleNamespace(_web_session_id="session")
@@ -29,7 +33,9 @@ def test_server_log_and_frontend_message_are_independent():
 
 
 def test_server_log_is_written_without_websocket():
-    namespace = {"_main": lambda: SimpleNamespace(socketio=None, _redact_sensitive_log_value=lambda value: value), "logging": Mock()}
+    namespace = {"_main": lambda: SimpleNamespace(socketio=None, _redact_sensitive_log_value=lambda value: value,
+                 _redact_sensitive_display_value=main._redact_sensitive_display_value,
+                 _redact_sensitive_display_text=main._redact_sensitive_display_text), "logging": Mock()}
     notify = load_method("api_runtime.py", "Api", "log_and_notify_frontend", namespace)
     notify(SimpleNamespace(), "message")
     namespace["logging"].info.assert_called_once_with("message")

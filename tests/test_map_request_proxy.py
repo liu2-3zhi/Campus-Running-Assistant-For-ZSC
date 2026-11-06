@@ -5,10 +5,11 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from urllib.parse import urlencode, urlsplit
 
 import urllib3
+import main
 from flask import Flask, g, request
 
 from map_request_proxy import (
@@ -348,7 +349,8 @@ class MapRequestProxyTests(unittest.TestCase):
         self.config.data["frontend_proxy_enabled"] = False
         self.assertEqual(self.client.get("/map-proxy/amap/https/webapi.amap.com/maps").status_code, 404)
 
-    def test_query_values_are_absent_from_access_log_records(self):
+    @patch.object(main, "_log_redaction_enabled", True)
+    def test_query_values_are_absent_from_access_log_records_when_enabled(self):
         record = logging.LogRecord("werkzeug", logging.INFO, "", 0, '%s - "GET /map-proxy/amap/https/webapi.amap.com/maps?key=secret&jscode=secret HTTP/1.1" 200 -', ("127.0.0.1",), None)
         self.assertTrue(MapProxyAccessLogFilter().filter(record))
         self.assertNotIn("secret", record.getMessage())

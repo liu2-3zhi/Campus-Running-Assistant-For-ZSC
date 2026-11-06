@@ -43,7 +43,7 @@ class RouteNetworkContextTests(unittest.TestCase):
         pool, page, listeners = fixture.pool()
         page.evaluate.side_effect = lambda script, args: exercise(listeners, pool, args)
         with patch.object(background_task_manager, "schedule_route_network_probe",
-                          scheduler or (lambda *_args: False), create=True), self.assertLogs(level="INFO") as logs:
+                          scheduler or (lambda *_args, **_kwargs: False), create=True), self.assertLogs(level="INFO") as logs:
             result = pool._do_execute_js(
                 "private-session", "script", [], diagnostic_context=context or fixture.context(),
                 deadline_epoch_ms=time.time() * 1000 + 30000)
@@ -51,6 +51,7 @@ class RouteNetworkContextTests(unittest.TestCase):
                   for record in logs.records if " worker=" in record.getMessage()]
         return result, events, "\n".join(record.getMessage() for record in logs.records)
 
+    @patch.object(main, "_log_redaction_enabled", True)
     def test_actual_request_origins_are_logged_without_header_or_referrer_secrets(self):
         def exercise(listeners, _pool, _args):
             req = request()
@@ -99,6 +100,7 @@ class RouteNetworkContextTests(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertNotIn("transport-secret", text)
 
+    @patch.object(main, "_log_redaction_enabled", True)
     def test_timeout_snapshot_collects_transport_from_responses_received_before_failure(self):
         def exercise(listeners, _pool, _args):
             req = request("https://restapi.amap.com/v3/log/init?key=fake-secret")
@@ -145,6 +147,7 @@ class RouteNetworkContextTests(unittest.TestCase):
         self.assertEqual(transport["transport"]["remote_ip"], "203.0.113.17")
         self.assertEqual(result["result"]["diagnostic"]["worker"]["network"]["finished"], 1)
 
+    @patch.object(main, "_log_redaction_enabled", True)
     def test_failures_survive_success_event_cap_and_ignore_blob_traffic(self):
         def exercise(listeners, _pool, _args):
             for index in range(35):
@@ -181,7 +184,7 @@ class RouteNetworkContextTests(unittest.TestCase):
 
     def test_delayed_probe_callback_keeps_original_diagnostic_id(self):
         callbacks = []
-        def scheduler(_provider, _hosts, emit):
+        def scheduler(_provider, _hosts, emit, *, include_details=False):
             callbacks.append(emit)
             return True
 
@@ -212,11 +215,12 @@ class RouteNetworkContextTests(unittest.TestCase):
         self.assertNotIn("next-command", probe)
         self.assertTrue(any("network_probe_scheduled" in record.getMessage() for record in logs.records))
 
+    @patch.object(main, "_log_redaction_enabled", True)
     def test_http_errors_survive_network_and_browser_event_caps(self):
         for status in (429, 503):
             with self.subTest(status=status):
                 scheduled = []
-                def scheduler(*args):
+                def scheduler(*args, **_kwargs):
                     scheduled.append(args)
                     return True
                 def exercise(listeners, _pool, _args):
@@ -288,7 +292,7 @@ class RouteNetworkContextTests(unittest.TestCase):
 
     def test_successful_planning_does_not_create_background_network_probes(self):
         scheduled = []
-        def scheduler(*args):
+        def scheduler(*args, **_kwargs):
             scheduled.append(args)
             return True
         def exercise(listeners, _pool, _args):
@@ -310,7 +314,7 @@ class RouteNetworkContextTests(unittest.TestCase):
         for provider, url, status, reason in cases:
             with self.subTest(provider=provider):
                 scheduled = []
-                def scheduler(selected_provider, hosts, _emit):
+                def scheduler(selected_provider, hosts, _emit, *, include_details=False):
                     scheduled.append((selected_provider, hosts))
                     return True
                 def exercise(listeners, _pool, args):
@@ -327,6 +331,7 @@ class RouteNetworkContextTests(unittest.TestCase):
                 self.assertEqual(scheduled[0][0], provider)
                 self.assertTrue(any(item["event"] == "network_probe_scheduled" for item in events))
 
+    @patch.object(main, "_log_redaction_enabled", True)
     def test_main_entry_keeps_provider_domain_readable_while_redacting_real_credentials(self):
         plan = {"provider": "amap", "actual_mode": "walking", "plugins": ["AMap.Walking"],
                 "provider_config": {"provider": "amap", "display_name": "高德",
@@ -379,6 +384,7 @@ class RouteNetworkContextTests(unittest.TestCase):
 
 
 class RealRouteNetworkContextTests(unittest.TestCase):
+    @patch.object(main, "_log_redaction_enabled", True)
     def test_browser_emits_actual_referrer_and_remote_endpoint_without_private_query(self):
         from playwright.sync_api import sync_playwright
 
