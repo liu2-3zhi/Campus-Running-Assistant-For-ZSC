@@ -1315,6 +1315,11 @@ class Api:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(json_data, f, ensure_ascii=False, indent=2)
 
+            auth_system = getattr(_main(), "auth_system", None)
+            invalidate_cache = getattr(auth_system, "invalidate_user_list_cache", None)
+            if callable(invalidate_cache):
+                invalidate_cache()
+
             # 记录成功保存的日志
             logging.debug(
                 f"成功保存用户 {auth_username} 的 school_accounts，共 {len(json_data)} 个账户 "

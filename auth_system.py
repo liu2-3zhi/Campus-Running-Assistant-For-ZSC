@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections
+import copy
 import configparser
 import datetime
 import hashlib
@@ -29,6 +30,7 @@ from theme_background_state import (
 PASSWORD_VISIBILITY_ALL = "all"
 PASSWORD_VISIBILITY_OWN = "own"
 PASSWORD_VISIBILITY_NONE = "none"
+USER_LIST_CACHE_REFRESH_SECONDS = 2.0
 
 # 各内置权限组对新增权限的默认值（仅用于回填缺失键，不覆盖已有配置）
 BUILTIN_PERMISSION_DEFAULTS = {
@@ -65,10 +67,120 @@ class AuthSystem:
         # 原因: register_user 方法持有锁时会调用 unbind_phone_from_user，后者也会请求锁。
         # 如果使用普通 Lock 会导致死锁，RLock 允许同一线程多次获取锁。
         self.lock = threading.RLock()
+        self._user_list_cache_lock = threading.RLock()
+        self._user_list_cache = None
+        self._user_list_cache_signature = None
         logging.info("线程锁已创建（使用threading.RLock以防止递归死锁）")
         self._synchronize_super_admin_permissions()
+        self._start_user_list_cache_worker()
         logging.info("AuthSystem初始化完成")
         logging.info("=" * 80)
+
+    def _start_user_list_cache_worker(self):
+        self._user_list_cache_stop = threading.Event()
+        self._user_list_cache_thread = threading.Thread(
+            target=self._user_list_cache_worker,
+            name="UserListCacheWorker",
+            daemon=True,
+        )
+        self._user_list_cache_thread.start()
+
+    def _ensure_user_list_cache_state(self):
+        if not hasattr(self, "_user_list_cache_lock"):
+            self._user_list_cache_lock = threading.RLock()
+        if not hasattr(self, "_user_list_cache"):
+            self._user_list_cache = None
+        if not hasattr(self, "_user_list_cache_signature"):
+            self._user_list_cache_signature = None
+
+    def _user_list_cache_paths(self):
+        paths = []
+        system_accounts_dir = _main().SYSTEM_ACCOUNTS_DIR
+        if os.path.isdir(system_accounts_dir):
+            paths.extend(
+                os.path.join(system_accounts_dir, name)
+                for name in os.listdir(system_accounts_dir)
+                if name.endswith(".json") and name != "_index.json"
+            )
+        user_accounts_dir = os.path.join(_main().SCHOOL_ACCOUNTS_DIR, "user_accounts")
+        if os.path.isdir(user_accounts_dir):
+            paths.extend(
+                os.path.join(user_accounts_dir, name)
+                for name in os.listdir(user_accounts_dir)
+                if name.endswith(".json")
+            )
+        return sorted(set(paths))
+
+    def _user_list_cache_signature_for_paths(self, paths):
+        signature = []
+        for path in paths:
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            signature.append((path, stat.st_mtime_ns, stat.st_size))
+        return tuple(signature)
+
+    def _current_user_list_cache_signature(self):
+        return self._user_list_cache_signature_for_paths(self._user_list_cache_paths())
+
+    def _user_list_cache_worker(self):
+        while not self._user_list_cache_stop.wait(USER_LIST_CACHE_REFRESH_SECONDS):
+            try:
+                signature = self._current_user_list_cache_signature()
+                if signature != self._user_list_cache_signature:
+                    self._refresh_user_list_cache(signature)
+            except Exception:
+                logging.exception("[用户列表缓存] 后台刷新失败")
+
+    def _get_cached_user_list(self):
+        self._ensure_user_list_cache_state()
+        signature = self._current_user_list_cache_signature()
+        with self._user_list_cache_lock:
+            if self._user_list_cache is not None and signature == self._user_list_cache_signature:
+                return copy.deepcopy(self._user_list_cache)
+            return self._refresh_user_list_cache(signature)
+
+    def _refresh_user_list_cache(self, signature):
+        with self._user_list_cache_lock:
+            for _attempt in range(2):
+                current_signature = self._current_user_list_cache_signature()
+                if self._user_list_cache is not None and current_signature == self._user_list_cache_signature:
+                    return copy.deepcopy(self._user_list_cache)
+                users = self._read_user_list_uncached()
+                after_signature = self._current_user_list_cache_signature()
+                if current_signature == after_signature:
+                    self._user_list_cache = users
+                    self._user_list_cache_signature = after_signature
+                    return copy.deepcopy(users)
+            logging.warning("[用户列表缓存] 刷新期间文件持续变化，暂不替换现有快照")
+            return copy.deepcopy(self._user_list_cache or [])
+
+    def invalidate_user_list_cache(self):
+        self._ensure_user_list_cache_state()
+        with self._user_list_cache_lock:
+            self._user_list_cache = None
+            self._user_list_cache_signature = None
+
+    def _save_user_data(self, user_file, user_data):
+        with open(user_file, "w", encoding="utf-8") as f:
+            json.dump(user_data, f, indent=2, ensure_ascii=False)
+        self.invalidate_user_list_cache()
+
+    def _update_user_list_login(self, auth_username, last_login, ip_address):
+        self._ensure_user_list_cache_state()
+        with self._user_list_cache_lock:
+            if self._user_list_cache is None:
+                return
+            for user in self._user_list_cache:
+                if user.get("auth_username") == auth_username:
+                    user["last_login"] = last_login
+                    user["last_login_ip"] = ip_address or None
+                    break
+            self._user_list_cache_signature = self._current_user_list_cache_signature()
+
+    def stop_user_list_cache_worker(self):
+        self._user_list_cache_stop.set()
 
     def _load_config(self):
         """加载配置文件（增强：处理错误并提示用户修复）"""
@@ -213,9 +325,7 @@ class AuthSystem:
 
                         if user_data.get("phone") == phone:
                             user_data["phone"] = ""
-                            with open(user_file, "w", encoding="utf-8") as f:
-                                json.dump(user_data, f, indent=2,
-                                          ensure_ascii=False)
+                            self._save_user_data(user_file, user_data)
                             logging.info(
                                 f"[手机号解绑] 已成功解绑用户 {bound_username} 的手机号。"
                             )
@@ -796,6 +906,26 @@ class AuthSystem:
         )
         return {}
 
+    def _load_user_school_account_names(self, auth_username):
+        """只读取用户绑定的学校账号名称，用于列表快照。"""
+        if not auth_username or auth_username == "guest":
+            return []
+        user_accounts_file = self._get_user_accounts_file(auth_username)
+        try:
+            with open(user_accounts_file, "r", encoding="utf-8") as f:
+                accounts = json.load(f)
+        except FileNotFoundError:
+            return []
+        except Exception as e:
+            logging.error(
+                "[用户学校账号] 读取用户 %s 的学校账号摘要失败: %s",
+                auth_username,
+                e,
+                exc_info=True,
+            )
+            return []
+        return list(accounts.keys()) if isinstance(accounts, dict) else []
+
     def _update_user_file_group(self, username, new_group):
         """
         (辅助函数) 更新 system_accounts 中用户JSON文件内的 group 字段。
@@ -809,8 +939,7 @@ class AuthSystem:
 
                 if user_data.get("group") != new_group:
                     user_data["group"] = new_group
-                    with open(user_file, "w", encoding="utf-8") as f:
-                        json.dump(user_data, f, indent=2, ensure_ascii=False)
+                    self._save_user_data(user_file, user_data)
                     logging.debug(
                         f"[权限同步] 已更新用户文件 {os.path.basename(user_file)} 的权限组为 {new_group}"
                     )
@@ -1039,8 +1168,7 @@ class AuthSystem:
                     user_data["2fa_secret"] = secret
                     user_data["2fa_enabled"] = False
 
-                    with open(user_file, "w", encoding="utf-8") as f:
-                        json.dump(user_data, f, indent=2, ensure_ascii=False)
+                    self._save_user_data(user_file, user_data)
 
                 totp = _main().pyotp.TOTP(secret)
                 uri = totp.provisioning_uri(
@@ -1071,9 +1199,7 @@ class AuthSystem:
                     totp = _main().pyotp.TOTP(secret)
                     if totp.verify(verification_code):
                         user_data["2fa_enabled"] = True
-                        with open(user_file, "w", encoding="utf-8") as f:
-                            json.dump(user_data, f, indent=2,
-                                      ensure_ascii=False)
+                        self._save_user_data(user_file, user_data)
                         return {"success": True, "message": "2FA已启用"}
                     return {"success": False, "message": "验证码错误"}
             return {"success": False, "message": "用户不存在"}
@@ -1155,8 +1281,7 @@ class AuthSystem:
 
             logging.debug(f"register_user: 保存用户数据到文件: {user_file}")
             print(f"[用户注册] 保存用户数据到文件...")
-            with open(user_file, "w", encoding="utf-8") as f:
-                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            self._save_user_data(user_file, user_data)
 
             # 更新 system_accounts/_index.json 索引
             user_hash = hashlib.sha256(str(auth_username).encode()).hexdigest()
@@ -1272,6 +1397,7 @@ class AuthSystem:
 
             with open(user_file, "w", encoding="utf-8") as f:
                 json.dump(user_data, f, indent=2, ensure_ascii=False)
+            self._update_user_list_login(auth_username, user_data["last_login"], ip_address)
 
             super_admin = self.config.get(
                 "Admin", "super_admin", fallback="admin")
@@ -1490,8 +1616,7 @@ class AuthSystem:
                 with open(user_file, "r", encoding="utf-8") as f:
                     user_data = json.load(f)
                 user_data["group"] = new_group
-                with open(user_file, "w", encoding="utf-8") as f:
-                    json.dump(user_data, f, indent=2, ensure_ascii=False)
+                self._save_user_data(user_file, user_data)
 
             return {"success": True, "message": "权限组已更新"}
 
@@ -1547,7 +1672,11 @@ class AuthSystem:
             return {"success": True, "message": "权限组已删除"}
 
     def list_users(self):
-        """列出所有用户"""
+        """列出所有用户，优先从文件变化感知的内存快照读取。"""
+        return self._get_cached_user_list()
+
+    def _read_user_list_uncached(self):
+        """从用户资料和学校账号文件重建用户列表快照。"""
         users = []
         for filename in os.listdir(_main().SYSTEM_ACCOUNTS_DIR):
             if filename == "_index.json" or not filename.endswith(".json"):
@@ -1568,8 +1697,7 @@ class AuthSystem:
                 last_ip = user_data.get("last_login_ip", None)
                 last_city = user_data.get("last_login_city") or "未知"
 
-                school_accounts_data = self._load_user_school_accounts(auth_username) or {}
-                school_accounts = list(school_accounts_data.keys())
+                school_accounts = self._load_user_school_account_names(auth_username)
 
                 users.append(
                     {
@@ -1630,8 +1758,7 @@ class AuthSystem:
                             -max_sessions:
                         ]
 
-                with open(user_file, "w", encoding="utf-8") as f:
-                    json.dump(user_data, f, indent=2, ensure_ascii=False)
+                self._save_user_data(user_file, user_data)
 
     def get_user_sessions(self, auth_username):
         """获取用户关联的会话ID列表"""
@@ -1662,8 +1789,7 @@ class AuthSystem:
                 ):
                     user_data["session_ids"].remove(session_id)
 
-                    with open(user_file, "w", encoding="utf-8") as f:
-                        json.dump(user_data, f, indent=2, ensure_ascii=False)
+                    self._save_user_data(user_file, user_data)
 
     def reset_user_password(self, auth_username, new_password):
         """重置用户密码（管理员功能）"""
@@ -1677,8 +1803,7 @@ class AuthSystem:
 
             user_data["password"] = self._encrypt_password(new_password)
 
-            with open(user_file, "w", encoding="utf-8") as f:
-                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            self._save_user_data(user_file, user_data)
 
             logging.info(f"管理员重置密码: {auth_username}")
             return {"success": True, "message": "密码已重置"}
@@ -1697,8 +1822,7 @@ class AuthSystem:
             # 可选：是否重置secret，通常保留secret以便用户重新开启时无需重新绑定，
             # 或者清空secret强制用户重新绑定。这里选择仅禁用。
 
-            with open(user_file, "w", encoding="utf-8") as f:
-                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            self._save_user_data(user_file, user_data)
 
             logging.info(f"管理员强制关闭2FA: {auth_username}")
             return {"success": True, "message": "2FA已强制关闭"}
@@ -1715,8 +1839,7 @@ class AuthSystem:
 
             user_data["avatar_url"] = avatar_url
 
-            with open(user_file, "w", encoding="utf-8") as f:
-                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            self._save_user_data(user_file, user_data)
 
             return {"success": True, "message": "头像已更新"}
 
@@ -1736,8 +1859,7 @@ class AuthSystem:
 
             user_data["theme"] = normalized_theme
 
-            with open(user_file, "w", encoding="utf-8") as f:
-                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            self._save_user_data(user_file, user_data)
 
             return {
                 "success": True,
@@ -1783,8 +1905,7 @@ class AuthSystem:
 
             user_data["max_sessions"] = max_sessions
 
-            with open(user_file, "w", encoding="utf-8") as f:
-                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            self._save_user_data(user_file, user_data)
 
             if max_sessions == 1:
                 msg = f"已设置为单会话模式：用户每次只能保持1个活跃会话"
@@ -1845,8 +1966,7 @@ class AuthSystem:
             # 步骤5：将更新后的用户数据写回文件
             # indent=2: 格式化输出，每层缩进2个空格，提高可读性
             # ensure_ascii=False: 允许保存中文字符，不转义为Unicode
-            with open(user_file, "w", encoding="utf-8") as f:
-                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            self._save_user_data(user_file, user_data)
 
             # 步骤6：根据设置的次数值生成友好的提示消息
             if available_runs == -1:
@@ -1878,8 +1998,7 @@ class AuthSystem:
             user_data["banned"] = True
             user_data["banned_at"] = time.time()
 
-            with open(user_file, "w", encoding="utf-8") as f:
-                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            self._save_user_data(user_file, user_data)
 
             logging.info(f"用户已封禁: {auth_username}")
             return {"success": True, "message": "用户已封禁"}
@@ -1897,8 +2016,7 @@ class AuthSystem:
             user_data["banned"] = False
             user_data["unbanned_at"] = time.time()
 
-            with open(user_file, "w", encoding="utf-8") as f:
-                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            self._save_user_data(user_file, user_data)
 
             logging.info(f"用户已解封: {auth_username}")
             return {"success": True, "message": "用户已解封"}
@@ -2158,8 +2276,7 @@ class AuthSystem:
                 "requested_at": now_ts,
                 "execute_at": execute_at,
             }
-            with open(user_file, "w", encoding="utf-8") as f:
-                json.dump(user_data, f, indent=2, ensure_ascii=False)
+            self._save_user_data(user_file, user_data)
             return {"success": True, "execute_at": execute_at}
 
     def get_account_cancellation_status(self, auth_username):
@@ -2185,8 +2302,7 @@ class AuthSystem:
 
                     user_data["last_used_school_account"] = school_username
 
-                    with open(user_file, "w", encoding="utf-8") as f:
-                        json.dump(user_data, f, indent=2, ensure_ascii=False)
+                    self._save_user_data(user_file, user_data)
                 except Exception as e:
                     logging.error(
                         f"更新用户 {auth_username} 的 last_used_school_account 失败: {e}"
@@ -2220,8 +2336,7 @@ class AuthSystem:
                 remaining_sessions = old_sessions[-keep_count:] if keep_count else []
                 user_data["session_ids"] = remaining_sessions + [new_session_id]
 
-                with open(user_file, "w", encoding="utf-8") as f:
-                    json.dump(user_data, f, indent=2, ensure_ascii=False)
+                self._save_user_data(user_file, user_data)
 
                 valid_sessions_to_remove = [
                     s
