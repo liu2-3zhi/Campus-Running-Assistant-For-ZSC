@@ -18907,87 +18907,358 @@ function closeImportResultModal() {
   closeModalElement("import-result-modal");
 }
 
+let legacyMultiImportProgress = null;
+let legacyMultiImportDrag = null;
+
+function buildLegacyImportPreviewHtml(records) {
+  const rows = records
+    .map((record) => {
+      const username = escapeHtml(record.username || "");
+      const tag = record.tag ? ` · ${escapeHtml(record.tag)}` : "";
+      const passwordState = record.password_present ? "密码已填写" : "缺少密码";
+      const passwordColor = record.password_present ? "#15803d" : "#b45309";
+      return `<li style="display:flex;justify-content:space-between;gap:12px;align-items:center;padding:7px 9px;border:1px solid rgba(148,163,184,.25);border-radius:8px;text-align:left"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${username}${tag}</span><span style="flex:none;font-size:12px;color:${passwordColor}">${passwordState}</span></li>`;
+    })
+    .join("");
+  return `<div style="text-align:left"><p style="margin:0 0 8px;color:#64748b;font-size:13px">确认后才会逐个校验登录；预览阶段不会覆盖系统密码。</p><ul style="display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto;margin:0;padding:0;list-style:none">${rows}</ul></div>`;
+}
+
+function ensureLegacyImportProgressPanel() {
+  let panel = document.getElementById("multi-import-progress-panel");
+  if (panel) return panel;
+
+  panel = document.createElement("div");
+  panel.id = "multi-import-progress-panel";
+  panel.style.cssText = [
+    "position:fixed",
+    "left:16px",
+    "top:16px",
+    "z-index:60000",
+    "width:min(360px,calc(100vw - 16px))",
+    "padding:12px",
+    "border:1px solid #bae6fd",
+    "border-radius:12px",
+    "background:rgba(255,255,255,.96)",
+    "box-shadow:0 18px 45px rgba(15,23,42,.2)",
+    "font-size:12px",
+  ].join(";");
+  panel.innerHTML = `
+    <div data-role="drag" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-bottom:8px;border-bottom:1px solid #e2e8f0;cursor:move;font-size:14px;font-weight:700;color:#1e293b">
+      <span>导入进度</span><span data-role="file" style="max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:400;color:#64748b"></span>
+    </div>
+    <div style="padding-top:10px;color:#475569">
+      <div style="display:flex;justify-content:space-between"><span data-role="status">准备中</span><span data-role="count">0/0</span></div>
+      <div style="height:8px;margin-top:8px;overflow:hidden;border-radius:999px;background:#f1f5f9"><div data-role="bar" style="height:100%;width:0%;border-radius:999px;background:#0ea5e9;transition:width .2s"></div></div>
+      <p data-role="current" style="margin:8px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></p>
+      <p data-role="error" style="margin:6px 0 0;overflow-wrap:anywhere;color:#dc2626"></p>
+      <div data-role="summary" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px;padding:8px;border-radius:8px;background:#f8fafc"></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px"><button data-role="stop" type="button" style="padding:4px 10px;border:0;border-radius:6px;background:#dc2626;color:white;cursor:pointer">停止导入</button></div>
+    </div>`;
+
+  document.body.appendChild(panel);
+  panel.querySelector('[data-role="drag"]').addEventListener(
+    "pointerdown",
+    startLegacyImportDrag,
+  );
+  panel.querySelector('[data-role="stop"]').addEventListener(
+    "click",
+    stopLegacyImportProgress,
+  );
+  return panel;
+}
+
+function updateLegacyImportProgressPanel() {
+  if (!legacyMultiImportProgress) return;
+  const panel = ensureLegacyImportProgressPanel();
+  const state = legacyMultiImportProgress;
+  const statusText =
+    state.status === "running"
+      ? "正在校验登录"
+      : state.status === "waiting-password"
+        ? "等待补密码"
+        : state.status === "completed"
+          ? "导入完成"
+          : state.status === "stopped"
+            ? "已停止"
+            : "导入异常";
+  panel.querySelector('[data-role="file"]').textContent = state.fileName || "";
+  panel.querySelector('[data-role="status"]').textContent = statusText;
+  panel.querySelector('[data-role="count"]').textContent = `${state.processed}/${state.total}`;
+  panel.querySelector('[data-role="bar"]').style.width = `${Math.round((state.processed / Math.max(state.total, 1)) * 100)}%`;
+  panel.querySelector('[data-role="current"]').textContent = state.currentUsername
+    ? `当前账号：${state.currentUsername}`
+    : "";
+  panel.querySelector('[data-role="error"]').textContent = state.errorMessage || "";
+  panel.querySelector('[data-role="summary"]').innerHTML =
+    `<span>新增：${state.added}</span><span>已存在：${state.alreadyExists}</span><span>缺密码：${state.missingPassword}</span><span>执行中跳过：${state.skippedRunning}</span><span>失败：${state.failed}</span>`;
+  const stopButton = panel.querySelector('[data-role="stop"]');
+  const active = state.status === "running" || state.status === "waiting-password";
+  stopButton.textContent = active ? "停止导入" : "关闭";
+  stopButton.disabled = active && state.stopRequested;
+  stopButton.style.opacity = stopButton.disabled ? "0.6" : "1";
+  stopButton.style.cursor = stopButton.disabled ? "default" : "pointer";
+}
+
+function startLegacyImportDrag(event) {
+  if (!legacyMultiImportProgress || event.button !== 0) return;
+  const panel = ensureLegacyImportProgressPanel();
+  const rect = panel.getBoundingClientRect();
+  legacyMultiImportDrag = {
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top,
+  };
+  window.addEventListener("pointermove", moveLegacyImportDrag);
+  window.addEventListener("pointerup", endLegacyImportDrag);
+  event.preventDefault();
+}
+
+function moveLegacyImportDrag(event) {
+  if (!legacyMultiImportDrag) return;
+  const panel = ensureLegacyImportProgressPanel();
+  const width = panel.offsetWidth || 360;
+  const height = panel.offsetHeight || 250;
+  const left = Math.max(8, Math.min(window.innerWidth - width - 8, event.clientX - legacyMultiImportDrag.offsetX));
+  const top = Math.max(8, Math.min(window.innerHeight - height - 8, event.clientY - legacyMultiImportDrag.offsetY));
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+}
+
+function endLegacyImportDrag() {
+  if (!legacyMultiImportDrag) return;
+  legacyMultiImportDrag = null;
+  window.removeEventListener("pointermove", moveLegacyImportDrag);
+  window.removeEventListener("pointerup", endLegacyImportDrag);
+}
+
+function stopLegacyImportProgress() {
+  if (!legacyMultiImportProgress) return;
+  const state = legacyMultiImportProgress;
+  if (state.status === "running" || state.status === "waiting-password") {
+    const wasWaitingForPassword = state.status === "waiting-password";
+    state.stopRequested = true;
+    state.status = "stopped";
+    if (wasWaitingForPassword && typeof abandonRemainingMissingPasswords === "function") {
+      abandonRemainingMissingPasswords();
+    }
+    updateLegacyImportProgressPanel();
+    return;
+  }
+  const panel = document.getElementById("multi-import-progress-panel");
+  if (panel) panel.remove();
+  endLegacyImportDrag();
+  legacyMultiImportProgress = null;
+}
+
+async function runMultiImportProgress(records, fileName, preview) {
+  legacyMultiImportProgress = {
+    status: "running",
+    fileName,
+    total: records.length,
+    processed: 0,
+    currentUsername: "",
+    added: 0,
+    alreadyExists: 0,
+    missingPassword: 0,
+    skippedRunning: 0,
+    failed: 0,
+    stopRequested: false,
+    errorMessage: "",
+  };
+  updateLegacyImportProgressPanel();
+
+  const result = {
+    success: true,
+    message: "",
+    total_rows: preview?.total_rows ?? records.length,
+    imported_count: 0,
+    added: [],
+    already_exists: [],
+    accounts_missing_password: [],
+    skipped_running: [],
+    invalid_username: [],
+    invalid_password: [],
+    duplicate_in_file: Array.isArray(preview?.duplicate_in_file)
+      ? preview.duplicate_in_file.slice()
+      : [],
+    failed_names: [],
+    failed: [],
+  };
+
+  for (let index = 0; index < records.length; index += 1) {
+    const state = legacyMultiImportProgress;
+    if (!state || state.stopRequested) break;
+    const record = records[index];
+    state.currentUsername = record.username;
+    try {
+      const item = await callPythonAPI("multi_import_account", {
+        username: record.username,
+        password: record.password || "",
+        tag: record.tag || undefined,
+      });
+      if (item?.accounts) renderMultiAccountList(item.accounts);
+      if (item?.success !== false) {
+        result.added.push(record.username);
+        state.added += 1;
+      } else if (item.reason === "already_exists") {
+        result.already_exists.push(record.username);
+        state.alreadyExists += 1;
+      } else if (item.reason === "skipped_no_password") {
+        result.accounts_missing_password.push({
+          username: record.username,
+          tag: record.tag || null,
+        });
+        state.missingPassword += 1;
+      } else if (item.reason === "account_running") {
+        result.skipped_running.push(record.username);
+        state.skippedRunning += 1;
+      } else if (item.reason === "invalid_username") {
+        result.invalid_username.push(record.username);
+        state.failed += 1;
+      } else if (item.reason === "invalid_password") {
+        result.invalid_password.push(record.username);
+        state.failed += 1;
+      } else {
+        result.failed_names.push(record.username);
+        state.failed += 1;
+      }
+    } catch (error) {
+      state.errorMessage = error?.message || "请求失败";
+      result.failed_names.push(record.username);
+      state.failed += 1;
+    }
+    state.processed = index + 1;
+    updateLegacyImportProgressPanel();
+  }
+
+  if (legacyMultiImportProgress) {
+    legacyMultiImportProgress.currentUsername = "";
+    if (legacyMultiImportProgress.stopRequested) {
+      legacyMultiImportProgress.status = "stopped";
+    }
+    updateLegacyImportProgressPanel();
+  }
+  result.imported_count = result.added.length;
+  result.already_exists_count = result.already_exists.length;
+  result.skipped_count = result.accounts_missing_password.length;
+  result.skipped_running_count = result.skipped_running.length;
+  result.invalid_username_count = result.invalid_username.length;
+  result.invalid_password_count = result.invalid_password.length;
+  result.failed_count = result.failed_names.length;
+  result.message = `导入完成：新增 ${result.added.length} 个，已存在跳过 ${result.already_exists.length} 个，缺密码跳过 ${result.accounts_missing_password.length} 个`;
+  return result;
+}
+
+async function readLegacyImportFile(file) {
+  const fileName = file.name;
+  const fileExt = fileName.split(".").pop().toLowerCase();
+  if (!["xlsx", "xls", "csv"].includes(fileExt)) {
+    await swal.fire({
+      title: "错误",
+      text: "文件格式不支持，请选择 .xlsx, .xls, 或 .csv 文件。",
+      icon: "error",
+    });
+    return null;
+  }
+  logMessage_Info(`正在读取文件: ${fileName}`);
+  const base64Content = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(new Error("读取文件失败。"));
+    reader.readAsDataURL(file);
+  });
+  return { fileName, base64Content };
+}
+
 async function multi_importFromExcel() {
+  if (
+    legacyMultiImportProgress &&
+    (legacyMultiImportProgress.status === "running" ||
+      legacyMultiImportProgress.status === "waiting-password")
+  ) {
+    await swal.fire({
+      title: "导入进行中",
+      text: "请先停止或完成当前导入。",
+      icon: "info",
+      confirmButtonText: "知道了",
+    });
+    return;
+  }
   const input = document.createElement("input");
   input.type = "file";
   input.accept = ".xlsx, .xls, .csv";
-
   input.onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) {
       logMessage_Info("未选择文件。");
       return;
     }
-
-    const fileName = file.name;
-    const fileExt = fileName.split(".").pop().toLowerCase();
-    if (!["xlsx", "xls", "csv"].includes(fileExt)) {
-      // showModalAlert("文件格式不支持，请选择 .xlsx, .xls, 或 .csv 文件。");
-      swal.fire({
-        title: "错误",
-        text: "文件格式不支持，请选择 .xlsx, .xls, 或 .csv 文件。",
-        icon: "error",
-      });
-      return;
-    }
-
-    logMessage_Info(`正在读取文件: ${fileName}`);
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-
-    reader.onload = async () => {
-      try {
-        const base64Content = reader.result.split(",")[1];
-        const result = await callPythonAPI(
-          "multi_import_accounts",
-          fileName,
-          base64Content,
-        );
-
-        if (result && result.success) {
-          logMessage_Info(result.message || "导入完成。");
-          if (result.accounts) {
-            renderMultiAccountList(result.accounts);
-          }
-          // 导入结果只出一个弹窗，且必须等缺密码补全流程结束后再弹
-          missingFlowDoneCallback = () => showImportResultModal(result, fileName);
-          if (
-            result.accounts_missing_password &&
-            result.accounts_missing_password.length > 0
-          ) {
-            // 缺密码账号逐个弹窗让用户补密码
-            startMissingPasswordFlow(result.accounts_missing_password);
-          } else {
-            flushMissingFlowDone();
-          }
-        } else {
-          // showModalAlert(`导入失败: ${result.message || "未知错误"}`);
-          swal.fire({
-            title: "错误",
-            text: `导入失败: ${result.message || "未知错误"}`,
-            icon: "error",
-          });
-        }
-      } catch (err) {
-        logMessage_Error("导入文件时出错:", err);
-        // showModalAlert(`导入失败: ${err.message}`);
-        swal.fire({
+    try {
+      const loaded = await readLegacyImportFile(file);
+      if (!loaded) return;
+      const { fileName, base64Content } = loaded;
+      const preview = await callPythonAPI(
+        "multi_preview_import_accounts",
+        fileName,
+        base64Content,
+      );
+      if (!preview || !preview.success) {
+        await swal.fire({
           title: "错误",
-          text: `导入失败: ${err.message}`,
+          text: `导入失败: ${preview?.message || "未知错误"}`,
           icon: "error",
         });
+        return;
       }
-    };
+      const records = Array.isArray(preview.records) ? preview.records : [];
+      if (!records.length) {
+        await swal.fire({
+          title: "未检测到账号",
+          text: "文件中没有可导入的账号。",
+          icon: "info",
+          confirmButtonText: "知道了",
+        });
+        return;
+      }
+      const confirmed = await swal.fire({
+        title: `当前检测到 ${preview.detected_count ?? records.length} 个账号`,
+        html: buildLegacyImportPreviewHtml(records),
+        icon: "info",
+        width: "min(92vw, 720px)",
+        showCancelButton: true,
+        confirmButtonText: "确认导入",
+        cancelButtonText: "取消",
+      });
+      if (!confirmed?.isConfirmed) return;
 
-    reader.onerror = () => {
-      logMessage_Error("读取文件失败。");
-      // showModalAlert("读取文件失败。");
-      swal.fire({
+      const result = await runMultiImportProgress(records, fileName, preview);
+      // 结果弹窗必须等缺密码流程收尾后再显示。
+      missingFlowDoneCallback = () => {
+        if (legacyMultiImportProgress) {
+          legacyMultiImportProgress.status = legacyMultiImportProgress.stopRequested
+            ? "stopped"
+            : "completed";
+          updateLegacyImportProgressPanel();
+        }
+        showImportResultModal(result, fileName);
+      };
+      if (
+        result.accounts_missing_password?.length > 0 &&
+        !legacyMultiImportProgress?.stopRequested
+      ) {
+        legacyMultiImportProgress.status = "waiting-password";
+        updateLegacyImportProgressPanel();
+        startMissingPasswordFlow(result.accounts_missing_password);
+      } else {
+        flushMissingFlowDone();
+      }
+    } catch (err) {
+      logMessage_Error("导入文件时出错:", err);
+      await swal.fire({
         title: "错误",
-        text: "读取文件失败。",
+        text: `导入失败: ${err.message}`,
         icon: "error",
       });
-    };
+    }
   };
   input.click();
 }

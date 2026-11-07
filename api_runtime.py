@@ -8510,6 +8510,197 @@ class Api:
                 f"Template generation failed: {traceback.format_exc()}")
             return {"success": False, "message": f"生成失败: {e}"}
 
+    def _parse_import_records(self, filename, base64_content):
+        """解析导入文件，供预览和逐账号导入共用。
+
+        这里只负责识别账号列、密码列和标记列，并记录密码是否为空。
+        不读取当前账号密码，不调用登录校验，也不写入任何账号状态。
+        """
+        try:
+            file_data = base64.b64decode(base64_content)
+            file_stream = io.BytesIO(file_data)
+            ext = os.path.splitext(str(filename or ""))[1].lower()
+            logging.info(
+                f"正在预览上传的文件 {filename}（大小：{len(file_data)} 字节）"
+            )
+        except Exception as e:
+            logging.error(f"解码Base64内容失败: {e}")
+            return {"success": False, "message": f"文件处理失败: {e}"}
+
+        def _parse_raw_rows():
+            if ext == ".xlsx":
+                try:
+                    wb = _main().openpyxl.load_workbook(
+                        file_stream,
+                        data_only=True,
+                        read_only=True,
+                        keep_links=False,
+                    )
+                except TypeError as e:
+                    warnings.warn(f"样式解析失败，已忽略样式: {e}")
+                    file_stream.seek(0)
+                    wb = _main().openpyxl.load_workbook(
+                        file_stream,
+                        data_only=True,
+                        read_only=True,
+                        keep_links=False,
+                        keep_vba=False,
+                    )
+                sh = wb.active
+                return [list(row) for row in sh.iter_rows(values_only=True)]
+
+            if ext == ".xls":
+                file_stream.seek(0)
+                book = _main().xlrd.open_workbook(
+                    file_contents=file_stream.read()
+                )
+                sh = book.sheet_by_index(0)
+                return [
+                    [sh.cell_value(r, c) for c in range(sh.ncols)]
+                    for r in range(sh.nrows)
+                ]
+
+            if ext == ".csv":
+                file_stream.seek(0)
+                text_stream = io.TextIOWrapper(
+                    file_stream, encoding="utf-8-sig", newline=""
+                )
+                text = text_stream.read()
+                if not text.strip():
+                    return []
+                try:
+                    delimiter = csv.Sniffer().sniff(
+                        text[:4096], delimiters=",;\t"
+                    ).delimiter
+                except Exception:  # nosec B110 - Sniffer 失败时退回逗号
+                    delimiter = ","
+                return list(csv.reader(io.StringIO(text), delimiter=delimiter))
+
+            return None
+
+        try:
+            raw_rows = _parse_raw_rows()
+            if raw_rows is None:
+                return {"success": False, "message": f"不支持的导入格式: {ext}"}
+
+            rows = [
+                [_normalize_import_cell(cell) for cell in row]
+                for row in raw_rows
+            ]
+            rows = [row for row in rows if any(row)]
+
+            header = _detect_import_header(rows)
+            if header is not None:
+                start_index, account_col, password_col, tag_col = header
+                data_rows = rows[start_index:]
+            else:
+                account_col, password_col, tag_col = _infer_import_columns(rows)
+                data_rows = rows
+
+            def _cell(row, column):
+                if column is None or column < 0 or column >= len(row):
+                    return ""
+                return row[column]
+
+            records = []
+            missing_password = []
+            duplicate_in_file = []
+            seen_usernames = set()
+            total_rows = 0
+            for row in data_rows:
+                username = _cell(row, account_col).strip()
+                if not username:
+                    continue
+                total_rows += 1
+                if username in seen_usernames:
+                    duplicate_in_file.append(username)
+                    continue
+                seen_usernames.add(username)
+                password = _cell(row, password_col).strip()
+                tag = _cell(row, tag_col).strip() or None
+                record = {
+                    "username": username,
+                    "password": password,
+                    "password_present": bool(password),
+                    "tag": tag,
+                }
+                records.append(record)
+                if not password:
+                    missing_password.append(username)
+
+            return {
+                "success": True,
+                "records": records,
+                "detected_count": len(records),
+                "total_rows": total_rows,
+                "missing_password": missing_password,
+                "duplicate_in_file": duplicate_in_file,
+            }
+        except Exception as e:
+            logging.error(
+                f"预览多账号导入失败，详细错误信息: {traceback.format_exc()}"
+            )
+            return {"success": False, "message": f"文件解析失败: {e}"}
+
+    def multi_preview_import_accounts(self, filename, base64_content):
+        """只读检测导入文件，不触发密码校验、登录或账号写入。"""
+        return self._parse_import_records(filename, base64_content)
+
+    def multi_import_account(self, username, password="", tag=None):
+        """执行确认后的单账号导入，沿用现有登录验证和覆盖保护。"""
+        username = _normalize_import_cell(username)
+        password = _normalize_import_cell(password)
+        if not _main().is_valid_school_username(username):
+            return {
+                "success": False,
+                "reason": "invalid_username",
+                "message": "学号必须是至少4位数字（纯数字）",
+                "username": username,
+            }
+
+        # 文件里没有密码时，确认后的流程才允许回退到当前用户已有凭据。
+        # 该值只在服务端传给既有登录验证链路，不回传到预览结果。
+        if not password:
+            auth_username = getattr(self, "auth_username", None)
+            if auth_username:
+                try:
+                    accounts = self._load_user_school_accounts(auth_username) or {}
+                    account_info = accounts.get(username)
+                    if isinstance(account_info, dict):
+                        password = _normalize_import_cell(
+                            account_info.get("password")
+                        )
+                    elif isinstance(account_info, str):
+                        password = account_info.strip()
+                except Exception as e:
+                    logging.warning(
+                        f"确认导入时读取账号 {username} 的系统密码失败: {e}"
+                    )
+
+        # 内存中的已加载账号可能比磁盘快照更新；只在确认阶段作为回退值使用。
+        if not password:
+            account = getattr(self, "accounts", {}).get(username)
+            password = _normalize_import_cell(
+                getattr(account, "password", "") if account else ""
+            )
+
+        if not password:
+            return {
+                "success": False,
+                "reason": "skipped_no_password",
+                "action": "request_password",
+                "message": "缺少密码",
+                "username": username,
+                "tag": tag,
+            }
+
+        return self.multi_add_account(
+            username,
+            password,
+            tag=tag,
+            only_if_missing=False,
+        )
+
     def multi_import_accounts(self, filename, base64_content):
         """从文件导入账号密码，支持 .xlsx/.xls/.csv（仅Web模式，从内存流处理）
 

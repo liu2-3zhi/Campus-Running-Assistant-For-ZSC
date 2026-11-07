@@ -13840,8 +13840,10 @@ def start_web_server(args_param):
                 "multi_remove_selected_accounts": "execute_multi_account",
                 "multi_remove_all_accounts": "execute_multi_account",
                 "multi_get_all_config_users": "execute_multi_account",
+                "multi_import_account": "execute_multi_account",
                 "multi_load_accounts_from_config": "execute_multi_account",
                 "multi_import_accounts": "execute_multi_account",
+                "multi_preview_import_accounts": "execute_multi_account",
                 "multi_export_accounts_summary": "execute_multi_account",
                 "multi_download_import_template": "execute_multi_account",
                 "multi_refresh_all_statuses": "execute_multi_account",
@@ -14023,6 +14025,8 @@ def start_web_server(args_param):
                     "exit_multi_account_mode",
                     "enter_single_account_mode",
                     "multi_add_account",
+                    "multi_import_account",
+                    "multi_import_accounts",
                     "multi_remove_account",
                 ]
                 if method in auto_save_methods:

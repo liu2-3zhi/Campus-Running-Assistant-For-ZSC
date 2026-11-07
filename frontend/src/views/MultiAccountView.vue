@@ -51,10 +51,175 @@ const manualInput = reactive({
 // Global params
 const globalParams = reactive({})
 
+// Import preview/confirmed-run state.  The preview never mutates this state;
+// it is only populated after the user confirms the SweetAlert list.
+const importTask = reactive({
+  visible: false,
+  status: 'idle', // idle | running | stopping | completed | stopped | error
+  fileName: '',
+  total: 0,
+  processed: 0,
+  currentUsername: '',
+  added: 0,
+  alreadyExists: 0,
+  missingPassword: 0,
+  skippedRunning: 0,
+  failed: 0,
+  stopRequested: false,
+  errorMessage: '',
+  left: 16,
+  top: 16,
+})
+const importDrag = reactive({
+  dragging: false,
+  offsetX: 0,
+  offsetY: 0,
+})
+let importRunToken = 0
+
 async function checkedAPI(method, ...args) {
   const result = await callAPI(method, ...args)
   if (result?.success === false) throw new Error(result.message || '操作失败')
   return result
+}
+
+function escapeImportPreviewHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+function buildImportPreviewHtml(records) {
+  const rows = records.map((record) => {
+    const username = escapeImportPreviewHtml(record.username)
+    const tag = record.tag ? ` · ${escapeImportPreviewHtml(record.tag)}` : ''
+    const passwordState = record.password_present ? '密码已填写' : '缺少密码'
+    const passwordClass = record.password_present ? 'color:#15803d' : 'color:#b45309'
+    return `<li style="display:flex;justify-content:space-between;gap:12px;align-items:center;padding:7px 9px;border:1px solid rgba(148,163,184,.25);border-radius:8px;text-align:left"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${username}${tag}</span><span style="flex:none;font-size:12px;${passwordClass}">${passwordState}</span></li>`
+  }).join('')
+  return `<div style="text-align:left"><p style="margin:0 0 8px;color:#64748b;font-size:13px">确认后才会逐个校验登录；预览阶段不会覆盖系统密码。</p><ul style="display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto;margin:0;padding:0;list-style:none">${rows}</ul></div>`
+}
+
+function resetImportTask(records, fileName) {
+  Object.assign(importTask, {
+    visible: true,
+    status: 'running',
+    fileName,
+    total: records.length,
+    processed: 0,
+    currentUsername: '',
+    added: 0,
+    alreadyExists: 0,
+    missingPassword: 0,
+    skippedRunning: 0,
+    failed: 0,
+    stopRequested: false,
+    errorMessage: '',
+  })
+}
+
+function stopImport() {
+  if (importTask.status !== 'running') return
+  importTask.stopRequested = true
+  importTask.status = 'stopping'
+}
+
+function closeImportTask() {
+  if (importTask.status === 'running' || importTask.status === 'stopping') return
+  importTask.visible = false
+}
+
+function startImportDrag(event) {
+  if (event.button !== 0) return
+  importDrag.dragging = true
+  importDrag.offsetX = event.clientX - importTask.left
+  importDrag.offsetY = event.clientY - importTask.top
+  window.addEventListener('pointermove', moveImportDrag)
+  window.addEventListener('pointerup', endImportDrag)
+  event.preventDefault()
+}
+
+function moveImportDrag(event) {
+  if (!importDrag.dragging) return
+  const panelWidth = 360
+  const panelHeight = 250
+  importTask.left = Math.max(8, Math.min(window.innerWidth - panelWidth - 8, event.clientX - importDrag.offsetX))
+  importTask.top = Math.max(8, Math.min(window.innerHeight - panelHeight - 8, event.clientY - importDrag.offsetY))
+}
+
+function endImportDrag() {
+  if (!importDrag.dragging) return
+  importDrag.dragging = false
+  window.removeEventListener('pointermove', moveImportDrag)
+  window.removeEventListener('pointerup', endImportDrag)
+}
+
+function recordImportResult(result) {
+  if (result?.success !== false) {
+    importTask.added += 1
+    return
+  }
+  switch (result.reason) {
+    case 'already_exists':
+      importTask.alreadyExists += 1
+      break
+    case 'skipped_no_password':
+      importTask.missingPassword += 1
+      break
+    case 'account_running':
+      importTask.skippedRunning += 1
+      break
+    default:
+      importTask.failed += 1
+      break
+  }
+}
+
+async function runImportTask(records, fileName) {
+  if (importTask.status === 'running' || importTask.status === 'stopping') return
+  const runToken = ++importRunToken
+  resetImportTask(records, fileName)
+
+  for (let index = 0; index < records.length; index += 1) {
+    if (runToken !== importRunToken || importTask.stopRequested) break
+    const record = records[index]
+    importTask.currentUsername = record.username
+    try {
+      const result = await callAPI('multi_import_account', {
+        username: record.username,
+        password: record.password || '',
+        tag: record.tag || undefined,
+      })
+      recordImportResult(result)
+    } catch (error) {
+      importTask.failed += 1
+      importTask.errorMessage = error?.message || '请求失败'
+      appStore.addLog(`导入 ${record.username} 失败: ${importTask.errorMessage}`, 'ERROR', 'Multi')
+      importTask.processed = index + 1
+      break
+    }
+    importTask.processed = index + 1
+  }
+
+  if (runToken !== importRunToken) return
+  importTask.currentUsername = ''
+  if (importTask.stopRequested || importTask.status === 'stopping') {
+    importTask.status = 'stopped'
+    appStore.addLog(`已停止导入（${importTask.processed}/${importTask.total}）`, 'WARN', 'Multi')
+  } else if (importTask.errorMessage) {
+    importTask.status = 'error'
+  } else {
+    importTask.status = 'completed'
+    appStore.addLog(
+      `Excel 导入完成（新增 ${importTask.added}，已存在 ${importTask.alreadyExists}，缺密码 ${importTask.missingPassword}，执行中跳过 ${importTask.skippedRunning}，失败 ${importTask.failed}）: ${fileName}`,
+      'INFO',
+      'Multi',
+    )
+  }
+  await loadAccounts()
 }
 
 // Computed
@@ -440,6 +605,7 @@ function openManualAccount() {
 
 // --- Import/Export ---
 async function importExcel() {
+  if (importTask.status === 'running' || importTask.status === 'stopping') return
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = '.xlsx,.xls,.csv'
@@ -453,31 +619,40 @@ async function importExcel() {
         reader.onerror = reject
         reader.readAsDataURL(file)
       })
-      const result = await checkedAPI('multi_import_accounts', {
+      const preview = await checkedAPI('multi_preview_import_accounts', {
         base64_content: String(base64).split(',')[1],
         filename: file.name,
       })
-      // 导入结果汇总成功 / 跳过 / 失败全部结果
-      const parts = [
-        `新增 ${result?.imported_count ?? 0}`,
-        `已存在 ${result?.already_exists_count ?? 0}`,
-        `缺密码 ${result?.skipped_count ?? 0}`,
-      ]
-      if (result?.duplicate_in_file_count) parts.push(`文件内重复 ${result.duplicate_in_file_count}`)
-      if (result?.skipped_running_count) parts.push(`执行中跳过 ${result.skipped_running_count}`)
-      if (result?.invalid_username_count) parts.push(`学号格式不对 ${result.invalid_username_count}`)
-      if (result?.invalid_password_count) parts.push(`密码含中文 ${result.invalid_password_count}`)
-      appStore.addLog(`Excel 导入完成（${parts.join('，')}）: ${file.name}`, 'INFO', 'Multi')
-      if (result?.skipped_count) {
-        appStore.addLog(
-          `有 ${result.skipped_count} 个账号缺少密码未导入，请在旧版界面的多账号面板中用"添加"按钮逐个补全密码。`,
-          'WARN',
-          'Multi',
-        )
+      const records = Array.isArray(preview?.records) ? preview.records : []
+      if (!records.length) {
+        await window.Swal?.fire({
+          title: '未检测到账号',
+          text: '文件中没有可导入的账号。',
+          icon: 'info',
+          confirmButtonText: '知道了',
+        })
+        return
       }
-      await loadAccounts()
+
+      const confirmed = await window.Swal?.fire({
+        title: `当前检测到 ${preview?.detected_count ?? records.length} 个账号`,
+        html: buildImportPreviewHtml(records),
+        icon: 'info',
+        width: 'min(92vw, 720px)',
+        showCancelButton: true,
+        confirmButtonText: '确认导入',
+        cancelButtonText: '取消',
+      })
+      if (!confirmed?.isConfirmed) return
+      await runImportTask(records, file.name)
     } catch (err) {
       appStore.addLog(`Excel 导入失败: ${err.message}`, 'ERROR', 'Multi')
+      await window.Swal?.fire({
+        title: '导入失败',
+        text: err.message || '文件读取或检测失败。',
+        icon: 'error',
+        confirmButtonText: '知道了',
+      })
     }
   }
   input.click()
@@ -714,6 +889,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   viewMounted = false
+  importRunToken += 1
+  importTask.stopRequested = true
+  endImportDrag()
   if (socketStatusUnsubscribe) {
     socketStatusUnsubscribe()
     socketStatusUnsubscribe = null
@@ -754,6 +932,52 @@ watch([() => appStore.multiPositions, () => mapStore.isMapReady, () => mapStore.
 </script>
 
 <template>
+<div
+  v-if="importTask.visible"
+  id="multi-import-progress-panel"
+  class="fixed z-[60000] w-[min(360px,calc(100vw-16px))] rounded-xl border border-sky-200 bg-white/95 p-3 shadow-2xl backdrop-blur"
+  :style="{ position: 'fixed', left: `${importTask.left}px`, top: `${importTask.top}px` }"
+>
+  <div
+    class="flex cursor-move items-center justify-between gap-2 border-b border-slate-200 pb-2 text-sm font-bold text-slate-800"
+    @pointerdown="startImportDrag"
+  >
+    <span>导入进度</span>
+    <span class="text-xs font-normal text-slate-500">{{ importTask.fileName }}</span>
+  </div>
+  <div class="mt-3 space-y-2 text-xs text-slate-600">
+    <div class="flex items-center justify-between">
+      <span>{{ importTask.status === 'running' || importTask.status === 'stopping' ? '正在校验登录' : importTask.status === 'completed' ? '导入完成' : importTask.status === 'stopped' ? '已停止' : '导入异常' }}</span>
+      <span>{{ importTask.processed }}/{{ importTask.total }}</span>
+    </div>
+    <div class="h-2 overflow-hidden rounded-full bg-slate-100">
+      <div
+        class="h-full rounded-full bg-sky-500 transition-all"
+        :style="{ width: `${Math.round((importTask.processed / Math.max(importTask.total, 1)) * 100)}%` }"
+      ></div>
+    </div>
+    <p v-if="importTask.currentUsername" class="truncate">当前账号：{{ importTask.currentUsername }}</p>
+    <p v-if="importTask.errorMessage" class="break-words text-red-600">{{ importTask.errorMessage }}</p>
+    <div class="grid grid-cols-2 gap-1 rounded-lg bg-slate-50 p-2">
+      <span>新增：{{ importTask.added }}</span>
+      <span>已存在：{{ importTask.alreadyExists }}</span>
+      <span>缺密码：{{ importTask.missingPassword }}</span>
+      <span>执行中跳过：{{ importTask.skippedRunning }}</span>
+      <span>失败：{{ importTask.failed }}</span>
+    </div>
+    <div class="flex justify-end gap-2 pt-1">
+      <button
+        v-if="importTask.status === 'running' || importTask.status === 'stopping'"
+        class="btn btn-danger !py-1 !px-3 text-xs"
+        :disabled="importTask.status === 'stopping'"
+        @click="stopImport"
+      >
+        {{ importTask.status === 'stopping' ? '正在停止…' : '停止导入' }}
+      </button>
+      <button v-else class="btn btn-ghost !py-1 !px-3 text-xs" @click="closeImportTask">关闭</button>
+    </div>
+  </div>
+</div>
 <main
         id="multi-account-app" v-if="!appStore.isMobile"
         class="md:h-screen md:overflow-hidden h-screen w-screen grid grid-cols-1 lg:grid-cols-[530px_1fr] xl:grid-cols-[530px_1fr] gap-4 p-4"
