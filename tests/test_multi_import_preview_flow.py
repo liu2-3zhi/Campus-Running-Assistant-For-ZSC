@@ -2,6 +2,7 @@
 
 import base64
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 import main as main_module
@@ -78,6 +79,74 @@ class ImportPreviewTests(_PreviewBase):
 
 
 class ConfirmedImportTests(_PreviewBase):
+    def test_confirmed_import_waits_for_login_verification(self):
+        api = self._api()
+        account = _PreviewAccount("10001", password="new-password")
+        account.user_data.id = ""
+        account.is_first_login_verified = False
+        account.is_verifying = True
+        api.accounts = {"10001": account}
+
+        result = api.multi_import_account(
+            username="10001", password="new-password", tag="A组"
+        )
+
+        self.assertTrue(result["success"])
+        self.assertTrue(result["pending_verification"])
+        self.assertFalse(result["login_verified"])
+
+    def test_import_status_exposes_verified_and_verifying_states(self):
+        api = object.__new__(main_module.Api)
+        api._is_multi_account_execution_active = mock.Mock(return_value=False)
+        api._get_school_account_gender_from_backup = mock.Mock(return_value="")
+        account = SimpleNamespace(
+            username="10001",
+            user_data=SimpleNamespace(id="", name="", gender=""),
+            all_run_data=[],
+            summary={},
+            status_text="首次验证中...",
+            tag="",
+            current_position=None,
+            progress_pct=0,
+            progress_text="",
+            progress_extra="",
+            is_first_login_verified=False,
+            is_verifying=True,
+        )
+        api.accounts = {"10001": account}
+
+        pending = api.multi_get_all_accounts_status()
+        self.assertFalse(pending["accounts"][0]["login_verified"])
+        self.assertTrue(pending["accounts"][0]["login_verifying"])
+        self.assertEqual(
+            pending["accounts"][0]["login_verification_status"], "verifying"
+        )
+
+        account.user_data.id = "student-id"
+        account.is_first_login_verified = True
+        account.is_verifying = False
+        account.status_text = "获取数据..."
+        verified = api.multi_get_all_accounts_status()
+        self.assertTrue(verified["accounts"][0]["login_verified"])
+        self.assertFalse(verified["accounts"][0]["login_verifying"])
+        self.assertEqual(
+            verified["accounts"][0]["login_verification_status"], "verified"
+        )
+
+        account.user_data.id = ""
+        account.is_first_login_verified = False
+        account.status_text = "验证失败: 密码错误"
+        failed = api.multi_get_all_accounts_status()
+        self.assertFalse(failed["accounts"][0]["login_verified"])
+        self.assertFalse(failed["accounts"][0]["login_verifying"])
+        self.assertEqual(
+            failed["accounts"][0]["login_verification_status"], "failed"
+        )
+        self.assertEqual(
+            failed["accounts"][0]["login_verification_message"],
+            "验证失败: 密码错误",
+        )
+
     def test_confirmed_import_falls_back_to_saved_password_and_allows_override(self):
         api = self._api()
         api._load_user_school_accounts.return_value = {

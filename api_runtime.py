@@ -8038,6 +8038,7 @@ class Api:
         except Exception:  # nosec B110 - 清理失败不阻塞重登
             pass
         acc.user_data.id = ""
+        acc.is_verifying = True
         threading.Thread(
             target=self._multi_refresh_worker, args=(acc,), daemon=True
         ).start()
@@ -8167,7 +8168,12 @@ class Api:
                 if not acc.device_ua:
                     acc.device_ua = _main().ApiClient.generate_random_ua()
 
-                if not acc.is_first_login_verified:
+                verification_attempt = bool(
+                    getattr(acc, "is_verifying", False)
+                    or not acc.is_first_login_verified
+                    or self._pending_account_password(acc) is not None
+                )
+                if verification_attempt:
                     acc.is_verifying = True
                     if not preserve_now:
                         self._update_account_status_js(
@@ -8187,15 +8193,21 @@ class Api:
                     # 新密码验证失败：回滚成原有密码，绝不把可用凭据弄丢
                     self._rollback_pending_account_password(acc)
 
-                    if not acc.is_first_login_verified:
+                    if verification_attempt:
                         acc.is_verifying = False
-                        acc.is_first_login_verified = False
+                        if not acc.is_first_login_verified:
+                            acc.is_first_login_verified = False
+                            acc.log_and_notify_frontend(
+                                f"首次登录验证失败: {fail_msg}"
+                            )
+                        else:
+                            acc.log_and_notify_frontend(
+                                f"密码重新验证失败: {fail_msg}"
+                            )
                         if not preserve_now:
-                            # 显示具体的错误信息
                             self._update_account_status_js(
                                 acc, status_text=f"验证失败: {fail_msg}"
                             )
-                        acc.log_and_notify_frontend(f"首次登录验证失败: {fail_msg}")
                     else:
                         if not preserve_now:
                             # 已验证过的账号刷新失败，也显示具体原因
@@ -8238,6 +8250,8 @@ class Api:
                         self._save_config(
                             acc.username, acc.password, acc.device_ua
                         )
+                    if verification_attempt:
+                        acc.is_verifying = False
 
                 self._update_account_status_js(
                     acc, name=acc.user_data.name, status_text="获取数据..."
@@ -8379,6 +8393,32 @@ class Api:
             _main().save_session_state(self._web_session_id, self, force_save=True)
         return self.multi_get_all_accounts_status()
 
+    def _get_account_login_verification(self, acc):
+        """返回导入流程使用的稳定登录验证状态。"""
+        user_data = getattr(acc, "user_data", None)
+        login_verified = bool(
+            getattr(acc, "is_first_login_verified", False)
+            and getattr(user_data, "id", "")
+        )
+        login_verifying = bool(getattr(acc, "is_verifying", False))
+        status_text = str(getattr(acc, "status_text", "") or "")
+        if login_verified:
+            verification_status = "verified"
+        elif login_verifying:
+            verification_status = "verifying"
+        elif "验证失败" in status_text or "刷新失败" in status_text:
+            verification_status = "failed"
+        else:
+            verification_status = "unknown"
+        return {
+            "login_verified": login_verified,
+            "login_verifying": login_verifying,
+            "login_verification_status": verification_status,
+            "login_verification_message": (
+                status_text if verification_status == "failed" else ""
+            ),
+        }
+
     def multi_get_all_accounts_status(self, addition=None):
         """获取所有账号的当前状态，用于刷新前端UI"""
         status_list = []
@@ -8412,6 +8452,8 @@ class Api:
                 if gender and user_data is not None:
                     user_data.gender = gender
 
+            login_verification = self._get_account_login_verification(acc)
+
             status_list.append(
                 {
                     "username": acc.username,
@@ -8425,6 +8467,7 @@ class Api:
                     "progress_pct": getattr(acc, "progress_pct", 0),
                     "progress_text": getattr(acc, "progress_text", ""),
                     "progress_extra": getattr(acc, "progress_extra", ""),
+                    **login_verification,
                 }
             )
 
@@ -8694,12 +8737,34 @@ class Api:
                 "tag": tag,
             }
 
-        return self.multi_add_account(
+        result = self.multi_add_account(
             username,
             password,
             tag=tag,
             only_if_missing=False,
         )
+        if not isinstance(result, dict):
+            return result
+
+        account = getattr(self, "accounts", {}).get(username)
+        if not account or result.get("success") is False:
+            return result
+
+        verification = self._get_account_login_verification(account)
+        result = dict(result)
+        result.update(verification)
+        result["username"] = username
+        result["pending_verification"] = not verification["login_verified"] and verification[
+            "login_verifying"
+        ]
+        if not verification["login_verified"] and not verification["login_verifying"]:
+            result["success"] = False
+            result["reason"] = "verification_failed"
+            result["message"] = (
+                verification["login_verification_message"]
+                or "登录验证未完成"
+            )
+        return result
 
     def multi_import_accounts(self, filename, base64_content):
         """从文件导入账号密码，支持 .xlsx/.xls/.csv（仅Web模式，从内存流处理）

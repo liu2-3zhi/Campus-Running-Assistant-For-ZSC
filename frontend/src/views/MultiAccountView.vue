@@ -55,7 +55,7 @@ const globalParams = reactive({})
 // it is only populated after the user confirms the SweetAlert list.
 const importTask = reactive({
   visible: false,
-  status: 'idle', // idle | running | stopping | completed | stopped | error
+  status: 'idle', // idle | running | verifying | stopping | completed | stopped | error
   fileName: '',
   total: 0,
   processed: 0,
@@ -76,6 +76,8 @@ const importDrag = reactive({
   offsetY: 0,
 })
 let importRunToken = 0
+const IMPORT_VERIFICATION_INTERVAL_MS = 500
+const IMPORT_VERIFICATION_TIMEOUT_MS = 60_000
 
 async function checkedAPI(method, ...args) {
   const result = await callAPI(method, ...args)
@@ -100,7 +102,7 @@ function buildImportPreviewHtml(records) {
     const passwordClass = record.password_present ? 'color:#15803d' : 'color:#b45309'
     return `<li style="display:flex;justify-content:space-between;gap:12px;align-items:center;padding:7px 9px;border:1px solid rgba(148,163,184,.25);border-radius:8px;text-align:left"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${username}${tag}</span><span style="flex:none;font-size:12px;${passwordClass}">${passwordState}</span></li>`
   }).join('')
-  return `<div style="text-align:left"><p style="margin:0 0 8px;color:#64748b;font-size:13px">确认后才会逐个校验登录；预览阶段不会覆盖系统密码。</p><ul style="display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto;margin:0;padding:0;list-style:none">${rows}</ul></div>`
+  return `<div style="text-align:left"><!-- <p style="margin:0 0 8px;color:#64748b;font-size:13px">确认后才会逐个校验登录；预览阶段不会覆盖系统密码。</p> --><ul style="display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto;margin:0;padding:0;list-style:none">${rows}</ul></div>`
 }
 
 function resetImportTask(records, fileName) {
@@ -122,7 +124,7 @@ function resetImportTask(records, fileName) {
 }
 
 function stopImport() {
-  if (importTask.status !== 'running') return
+  if (importTask.status !== 'running' && importTask.status !== 'verifying') return
   importTask.stopRequested = true
   importTask.status = 'stopping'
 }
@@ -178,8 +180,35 @@ function recordImportResult(result) {
   }
 }
 
+async function waitForImportVerification(username, shouldStop = () => false) {
+  const deadline = Date.now() + IMPORT_VERIFICATION_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    if (shouldStop()) {
+      return { success: false, reason: 'stopped', message: '已停止等待当前账号验证' }
+    }
+    const snapshot = await callAPI('multi_get_all_accounts_status')
+    const account = snapshot?.accounts?.find((item) => item.username === username)
+    if (!account) {
+      return { success: false, reason: 'verification_failed', message: '导入账号未出现在当前账号列表中' }
+    }
+    if (account.login_verified === true) {
+      return { success: true, login_verified: true, username }
+    }
+    if (account.login_verifying === false && account.login_verification_status === 'failed') {
+      return {
+        success: false,
+        reason: 'verification_failed',
+        message: account.login_verification_message || account.status_text || '登录验证失败',
+        username,
+      }
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, IMPORT_VERIFICATION_INTERVAL_MS))
+  }
+  return { success: false, reason: 'verification_timeout', message: '登录验证超时', username }
+}
+
 async function runImportTask(records, fileName) {
-  if (importTask.status === 'running' || importTask.status === 'stopping') return
+  if (importTask.status === 'running' || importTask.status === 'verifying' || importTask.status === 'stopping') return
   const runToken = ++importRunToken
   resetImportTask(records, fileName)
 
@@ -188,11 +217,21 @@ async function runImportTask(records, fileName) {
     const record = records[index]
     importTask.currentUsername = record.username
     try {
-      const result = await callAPI('multi_import_account', {
+      let result = await callAPI('multi_import_account', {
         username: record.username,
         password: record.password || '',
         tag: record.tag || undefined,
       })
+      if (result?.pending_verification) {
+        importTask.status = 'verifying'
+        const verificationResult = await waitForImportVerification(
+          record.username,
+          () => importTask.stopRequested,
+        )
+        if (verificationResult.reason === 'stopped') break
+        result = verificationResult
+        importTask.status = 'running'
+      }
       recordImportResult(result)
     } catch (error) {
       importTask.failed += 1
@@ -605,7 +644,7 @@ function openManualAccount() {
 
 // --- Import/Export ---
 async function importExcel() {
-  if (importTask.status === 'running' || importTask.status === 'stopping') return
+  if (importTask.status === 'running' || importTask.status === 'verifying' || importTask.status === 'stopping') return
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = '.xlsx,.xls,.csv'
@@ -947,7 +986,7 @@ watch([() => appStore.multiPositions, () => mapStore.isMapReady, () => mapStore.
   </div>
   <div class="mt-3 space-y-2 text-xs text-slate-600">
     <div class="flex items-center justify-between">
-      <span>{{ importTask.status === 'running' || importTask.status === 'stopping' ? '正在校验登录' : importTask.status === 'completed' ? '导入完成' : importTask.status === 'stopped' ? '已停止' : '导入异常' }}</span>
+      <span>{{ importTask.status === 'verifying' ? '等待登录验证' : importTask.status === 'running' || importTask.status === 'stopping' ? '正在提交导入' : importTask.status === 'completed' ? '导入完成' : importTask.status === 'stopped' ? '已停止' : '导入异常' }}</span>
       <span>{{ importTask.processed }}/{{ importTask.total }}</span>
     </div>
     <div class="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -967,12 +1006,12 @@ watch([() => appStore.multiPositions, () => mapStore.isMapReady, () => mapStore.
     </div>
     <div class="flex justify-end gap-2 pt-1">
       <button
-        v-if="importTask.status === 'running' || importTask.status === 'stopping'"
+        v-if="importTask.status === 'running' || importTask.status === 'verifying' || importTask.status === 'stopping'"
         class="btn btn-danger !py-1 !px-3 text-xs"
         :disabled="importTask.status === 'stopping'"
         @click="stopImport"
       >
-        {{ importTask.status === 'stopping' ? '正在停止…' : '停止导入' }}
+        {{ importTask.status === 'stopping' ? '正在停止…' : importTask.status === 'verifying' ? '停止等待' : '停止导入' }}
       </button>
       <button v-else class="btn btn-ghost !py-1 !px-3 text-xs" @click="closeImportTask">关闭</button>
     </div>

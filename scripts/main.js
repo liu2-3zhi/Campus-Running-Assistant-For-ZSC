@@ -18909,6 +18909,8 @@ function closeImportResultModal() {
 
 let legacyMultiImportProgress = null;
 let legacyMultiImportDrag = null;
+const LEGACY_IMPORT_VERIFICATION_INTERVAL_MS = 500;
+const LEGACY_IMPORT_VERIFICATION_TIMEOUT_MS = 60000;
 
 function buildLegacyImportPreviewHtml(records) {
   const rows = records
@@ -18920,7 +18922,7 @@ function buildLegacyImportPreviewHtml(records) {
       return `<li style="display:flex;justify-content:space-between;gap:12px;align-items:center;padding:7px 9px;border:1px solid rgba(148,163,184,.25);border-radius:8px;text-align:left"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${username}${tag}</span><span style="flex:none;font-size:12px;color:${passwordColor}">${passwordState}</span></li>`;
     })
     .join("");
-  return `<div style="text-align:left"><p style="margin:0 0 8px;color:#64748b;font-size:13px">确认后才会逐个校验登录；预览阶段不会覆盖系统密码。</p><ul style="display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto;margin:0;padding:0;list-style:none">${rows}</ul></div>`;
+  return `<div style="text-align:left"><!-- <p style="margin:0 0 8px;color:#64748b;font-size:13px">确认后才会逐个校验登录；预览阶段不会覆盖系统密码。</p> --><ul style="display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto;margin:0;padding:0;list-style:none">${rows}</ul></div>`;
 }
 
 function ensureLegacyImportProgressPanel() {
@@ -18972,15 +18974,17 @@ function updateLegacyImportProgressPanel() {
   const panel = ensureLegacyImportProgressPanel();
   const state = legacyMultiImportProgress;
   const statusText =
-    state.status === "running"
-      ? "正在校验登录"
-      : state.status === "waiting-password"
-        ? "等待补密码"
-        : state.status === "completed"
-          ? "导入完成"
-          : state.status === "stopped"
-            ? "已停止"
-            : "导入异常";
+    state.status === "verifying"
+      ? "等待登录验证"
+      : state.status === "running"
+        ? "正在提交导入"
+        : state.status === "waiting-password"
+          ? "等待补密码"
+          : state.status === "completed"
+            ? "导入完成"
+            : state.status === "stopped"
+              ? "已停止"
+              : "导入异常";
   panel.querySelector('[data-role="file"]').textContent = state.fileName || "";
   panel.querySelector('[data-role="status"]').textContent = statusText;
   panel.querySelector('[data-role="count"]').textContent = `${state.processed}/${state.total}`;
@@ -18992,7 +18996,10 @@ function updateLegacyImportProgressPanel() {
   panel.querySelector('[data-role="summary"]').innerHTML =
     `<span>新增：${state.added}</span><span>已存在：${state.alreadyExists}</span><span>缺密码：${state.missingPassword}</span><span>执行中跳过：${state.skippedRunning}</span><span>失败：${state.failed}</span>`;
   const stopButton = panel.querySelector('[data-role="stop"]');
-  const active = state.status === "running" || state.status === "waiting-password";
+  const active =
+    state.status === "running" ||
+    state.status === "verifying" ||
+    state.status === "waiting-password";
   stopButton.textContent = active ? "停止导入" : "关闭";
   stopButton.disabled = active && state.stopRequested;
   stopButton.style.opacity = stopButton.disabled ? "0.6" : "1";
@@ -19030,10 +19037,64 @@ function endLegacyImportDrag() {
   window.removeEventListener("pointerup", endLegacyImportDrag);
 }
 
+async function waitForLegacyImportVerification(username, shouldStop = () => false) {
+  const deadline = Date.now() + LEGACY_IMPORT_VERIFICATION_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (shouldStop()) {
+      return {
+        success: false,
+        reason: "stopped",
+        message: "已停止等待当前账号验证",
+      };
+    }
+    const snapshot = await callPythonAPI("multi_get_all_accounts_status");
+    const account = (snapshot?.accounts || []).find(
+      (item) => item.username === username,
+    );
+    if (!account) {
+      return {
+        success: false,
+        reason: "verification_failed",
+        message: "导入账号未出现在当前账号列表中",
+      };
+    }
+    if (account.login_verified === true) {
+      return { success: true, login_verified: true, username };
+    }
+    if (
+      account.login_verifying === false &&
+      account.login_verification_status === "failed"
+    ) {
+      return {
+        success: false,
+        reason: "verification_failed",
+        message:
+          account.login_verification_message ||
+          account.status_text ||
+          "登录验证失败",
+        username,
+      };
+    }
+    await new Promise((resolve) =>
+      window.setTimeout(resolve, LEGACY_IMPORT_VERIFICATION_INTERVAL_MS),
+    );
+  }
+  return {
+    success: false,
+    reason: "verification_timeout",
+    message: "登录验证超时",
+    username,
+  };
+}
+
 function stopLegacyImportProgress() {
   if (!legacyMultiImportProgress) return;
   const state = legacyMultiImportProgress;
-  if (state.status === "running" || state.status === "waiting-password") {
+  if (
+    state.status === "running" ||
+    state.status === "verifying" ||
+    state.status === "waiting-password"
+  ) {
     const wasWaitingForPassword = state.status === "waiting-password";
     state.stopRequested = true;
     state.status = "stopped";
@@ -19090,12 +19151,23 @@ async function runMultiImportProgress(records, fileName, preview) {
     const record = records[index];
     state.currentUsername = record.username;
     try {
-      const item = await callPythonAPI("multi_import_account", {
+      let item = await callPythonAPI("multi_import_account", {
         username: record.username,
         password: record.password || "",
         tag: record.tag || undefined,
       });
       if (item?.accounts) renderMultiAccountList(item.accounts);
+      if (item?.pending_verification) {
+        state.status = "verifying";
+        updateLegacyImportProgressPanel();
+        const verificationResult = await waitForLegacyImportVerification(
+          record.username,
+          () => state.stopRequested,
+        );
+        if (verificationResult.reason === "stopped") break;
+        item = verificationResult;
+        state.status = "running";
+      }
       if (item?.success !== false) {
         result.added.push(record.username);
         state.added += 1;
@@ -19173,6 +19245,7 @@ async function multi_importFromExcel() {
   if (
     legacyMultiImportProgress &&
     (legacyMultiImportProgress.status === "running" ||
+      legacyMultiImportProgress.status === "verifying" ||
       legacyMultiImportProgress.status === "waiting-password")
   ) {
     await swal.fire({
