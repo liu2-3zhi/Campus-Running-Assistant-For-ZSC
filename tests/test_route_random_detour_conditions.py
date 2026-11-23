@@ -208,6 +208,48 @@ class TestRouteRandomDetourConditions(unittest.TestCase):
             self.assertEqual(len(call["waypoints"]), 2)
             self.assertIn("Detour", call["guard_label"])
 
+    def test_connected_detour_keeps_long_first_road_edge(self):
+        base = [(113.39 + i * 0.0001, 22.53) for i in range(60)]
+        total = _path_length(self.runtime, base)
+        self.runtime.DETOUR_MAX_ROUNDS = 1
+
+        def planner(session_id, waypoints, **kwargs):
+            start, end = map(tuple, waypoints)
+            road_point = (start[0], start[1] + 0.001)
+            return {
+                "path": [{"lng": p[0], "lat": p[1]} for p in (start, road_point, end)],
+                "provider": "stub",
+            }
+
+        result = self._build([base[0], base[-1]], base, total + 2000.0, planner)
+        self.assertTrue(
+            any(point[1] > 22.5309 for point in result),
+            "A connected leg's 111 m first edge must survive seam validation",
+        )
+        self.assertLessEqual(_path_length(self.runtime, result), total + 2000.5)
+
+    def test_disconnected_detour_still_rejects_large_seam(self):
+        base = [(113.39 + i * 0.0001, 22.53) for i in range(60)]
+        total = _path_length(self.runtime, base)
+        self.runtime.DETOUR_MAX_ROUNDS = 1
+        requests = []
+
+        def planner(session_id, waypoints, **kwargs):
+            start, end = map(tuple, waypoints)
+            requests.append((start, end))
+            disconnected_start = (start[0], start[1] + 0.001)
+            return {
+                "path": [{"lng": p[0], "lat": p[1]} for p in (disconnected_start, end)],
+                "provider": "stub",
+            }
+
+        result = self._build([base[0], base[-1]], base, total + 2000.0, planner)
+        self.assertTrue(requests)
+        self.assertTrue(
+            all(abs(point[1] - 22.53) < 1e-9 for point in result),
+            "A genuinely disconnected 111 m seam must remain rejected",
+        )
+
     def test_candidate_distance_below_minimum_falls_back(self):
         # 只有一个打卡点且紧贴折返点 -> 不满足最小距离 -> 回退到道路网络上前方点
         base = [(113.39 + i * 0.0001, 22.53) for i in range(60)]

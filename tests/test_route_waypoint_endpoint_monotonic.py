@@ -127,6 +127,20 @@ class TestRouteWaypointEndpointMonotonic(unittest.TestCase):
         self.assertEqual(coords[0], WAYPOINTS[0])
         self.assertEqual(coords[-1], WAYPOINTS[-1])
 
+    def test_single_segment_extends_endpoints_without_backtracking(self):
+        waypoints = [(116.0, 39.0), (116.004, 39.0)]
+        route = [(116.001, 39.0), (116.002, 39.0), (116.003, 39.0)]
+        completed = self._complete(route, waypoints)
+        coords = [(point["lng"], point["lat"]) for point in completed]
+        self.assertEqual(coords, [waypoints[0], *route, waypoints[-1]])
+
+    def test_final_endpoint_is_not_inserted_inside_road_geometry(self):
+        waypoints = [(116.0, 39.0), (116.004, 39.0)]
+        route = [(116.0, 39.0), (116.003, 39.0), (116.006, 39.0)]
+        completed = self._complete(route, waypoints)
+        coords = [(point["lng"], point["lat"]) for point in completed]
+        self.assertEqual(coords, [*route, waypoints[-1]])
+
     def test_duplicate_waypoints_do_not_break_alignment(self):
         """重复打卡点（首尾同坐标）不应破坏顺序对齐。"""
         completed = self._complete(ROUTE, WAYPOINTS)

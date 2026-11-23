@@ -5195,11 +5195,8 @@ class Api:
             leg = _detour_dedupe_points(geometry)
             if len(leg) < 2:
                 return 0.0
-            if final_path and final_path[-1] == leg[0]:
-                leg = leg[1:]
-            if not leg:
-                return 0.0
             if final_path:
+                # 先检查两段真正的接缝，再删除重合端点；道路首条边可能长于接缝阈值。
                 seam = self._calculate_distance_m(
                     final_path[-1][0],
                     final_path[-1][1],
@@ -5212,6 +5209,8 @@ class Api:
                         f"[折返规划] 跳过 seam={seam:.1f}m 的拼接段，避免生成直线跳点"
                     )
                     return 0.0
+            if final_path and final_path[-1] == leg[0]:
+                leg = leg[1:]
             gain = _leg_distance([final_path[-1]] + leg) if final_path else _leg_distance(leg)
             final_path.extend(leg)
             added += gain

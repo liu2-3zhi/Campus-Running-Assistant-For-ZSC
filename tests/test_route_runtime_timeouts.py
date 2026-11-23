@@ -68,8 +68,18 @@ const lateDeliveries = [];
 const aborts = [];
 const scripts = new Set();
 function responseKind(attempt) {
+    if (scenario.segmentPaths) { return scenario.segmentPaths[attempt - 1] === null ? 'failure' : 'success'; }
     if (scenario.terminal) { return 'timeout'; }
     return attempt === 1 ? scenario.first : 'success';
+}
+function successfulPath(attempt, fallback) {
+    const path = scenario.segmentPaths && scenario.segmentPaths[attempt - 1];
+    return path ? path.map(([lng, lat]) => ({lng, lat})) : fallback;
+}
+function encodeTencentPath(path) {
+    const coordinates = path.flatMap(point => [point.lat, point.lng]);
+    return coordinates.map((value, index) => index < 2 ? value
+        : Math.round((value - coordinates[index - 2]) * 1000000));
 }
 function scheduleReply(deliver, attempt) {
     const kind = responseKind(attempt);
@@ -108,7 +118,8 @@ globalThis.document = {
             scheduleReply(kind => callback(kind === 'failure'
                 ? {status: 510, message: 'RETRY_FAILURE'}
                 : {status: 0, result: {routes: [{polyline: kind === 'poison'
-                    ? [70, 80, 20000, 20000] : [2, 1, 2000000, 2000000]}]}}), attempt);
+                    ? [70, 80, 20000, 20000] : encodeTencentPath(successfulPath(attempt,
+                        [{lng: 1, lat: 2}, {lng: 3, lat: 4}]))}]}}), attempt);
         }
     }
 };
@@ -118,7 +129,7 @@ class AmapSearch {
         const attempt = beginRequest('amap');
         scheduleReply(kind => callback(kind === 'failure' ? 'error' : 'complete',
             kind === 'failure' ? {info: 'SERVICE_NOT_AVAILABLE'} : {routes: [{steps: [{path:
-                kind === 'poison' ? [{lng: 80, lat: 70}, {lng: 81, lat: 71}] : [start, end]
+                kind === 'poison' ? [{lng: 80, lat: 70}, {lng: 81, lat: 71}] : successfulPath(attempt, [start, end])
             }]}]}), attempt);
     }
 }
@@ -135,7 +146,7 @@ class BaiduSearch {
         const attempt = beginRequest('baidu');
         scheduleReply(kind => {
             this.status = kind === 'failure' ? 7 : 0;
-            const path = kind === 'poison' ? [{lng: 80, lat: 70}, {lng: 81, lat: 71}] : [start, end];
+            const path = kind === 'poison' ? [{lng: 80, lat: 70}, {lng: 81, lat: 71}] : successfulPath(attempt, [start, end]);
             this.options.onSearchComplete({getPlan: () => kind === 'failure' ? null : {
                 getNumRoutes: () => 1, getRoute: () => ({getPath: () => path})
             }});
@@ -161,7 +172,9 @@ globalThis.fetch = (url, {signal}) => {
     const kind = responseKind(attempt);
     const points = JSON.parse(new URL(url).searchParams.get('postStr'));
     const body = reply => reply === 'failure' ? 'RETRY_FAILURE'
-        : `<result><routelatlon>${reply === 'poison' ? '80,70;81,71' : points.orig + ';' + points.dest}</routelatlon></result>`;
+        : `<result><routelatlon>${reply === 'poison' ? '80,70;81,71' : scenario.segmentPaths
+            ? successfulPath(attempt, []).map(point => point.lng + ',' + point.lat).join(';')
+            : points.orig + ';' + points.dest}</routelatlon></result>`;
     const response = reply => ({ok: reply !== 'failure', status: reply === 'failure' ? 503 : 200,
                                text: async () => body(reply)});
     function pendingReply(resolve, reject, bodyOnly) {
@@ -181,13 +194,15 @@ globalThis.fetch = (url, {signal}) => {
 
 
 def run_scenario(provider, mode, *, first="timeout", late="poison", terminal=False,
-                 retries=1, body_timeout=False):
+                 retries=1, body_timeout=False, waypoints=None, segment_paths=None, fallback=False):
     params = {"api_retries": retries, "api_retry_delay_s": 0.1,
-              "api_queue_interval_s": 0, "api_fallback_line": False,
+              "api_queue_interval_s": 0, "api_fallback_line": fallback,
               "_map_error_retry_policy": map_error_retry_policy(provider)}
-    args = [[[1, 2], [3, 4]], "fake-key", params]
+    args = [waypoints if waypoints is not None else [[1, 2], [3, 4]], "fake-key", params]
     args += [[], mode] if provider == "amap" else [mode]
     scenario = {"first": first, "late": late, "terminal": terminal, "bodyTimeout": body_timeout}
+    if segment_paths is not None:
+        scenario["segmentPaths"] = segment_paths
     code = "const scenario = " + json.dumps(scenario) + ";\n" + HARNESS
     code += "\nconst planner = " + provider_sources()[provider] + ";\n"
     code += "const args = " + json.dumps(args) + ";\n"
@@ -231,10 +246,10 @@ def test_timeout_then_success_ignores_prior_attempt_callback(provider, mode, lat
     payload = run_scenario(provider, mode, late=late)
     result = payload["result"]
     assert "error" not in result
-    assert len(result["path"]) == 2
-    for actual, expected in zip(result["path"], ((1, 2), (3, 4))):
-        assert actual["lng"] == pytest.approx(expected[0], abs=0.00001)
-        assert actual["lat"] == pytest.approx(expected[1], abs=0.00001)
+    assert result["path"][0] == {"lng": 1, "lat": 2}
+    assert result["path"][-1] == {"lng": 3, "lat": 4}
+    assert all(0.99 < point["lng"] < 3.01 and 1.99 < point["lat"] < 4.01
+               for point in result["path"])
     first = {"amap": "timeout", "tencent": "exception", "tianditu": "AbortError", "baidu": "timeout"}[provider]
     second = {"amap": "complete", "tencent": "0", "tianditu": "response", "baidu": "0"}[provider]
     assert_diagnostics(payload, [first, second])

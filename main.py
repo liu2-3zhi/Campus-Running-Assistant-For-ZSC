@@ -1520,25 +1520,29 @@ def _plan_route_path_with_amap_runtime(session_id, page, waypoints, provider_pla
                     }
                 }
                 for (let i = 0; i < segmentCount; i += 1) {
-                    const segmentPath = segmentPaths[i];
-                    const realStart = waypoints[i];
-                    const realEnd = waypoints[i + 1];
+                    let segmentPath = segmentPaths[i];
+                    // 成功路线也可能吸附到路网：保留每段道路几何，并直线补齐原始 GCJ-02 端点。
+                    const realStart = { lng: Number(waypointsPy[i][0]), lat: Number(waypointsPy[i][1]) };
+                    const realEnd = { lng: Number(waypointsPy[i + 1][0]), lat: Number(waypointsPy[i + 1][1]) };
                     if (!segmentPath) {
                         if (useFallback) {
-                            const fallbackPath = [
-                                { lng: Number(realStart.lng), lat: Number(realStart.lat) },
-                                { lng: Number(realEnd.lng), lat: Number(realEnd.lat) },
-                            ];
-                            allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
-                            continue;
+                            segmentPath = [realStart, realEnd];
+                        } else {
+                            return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                         }
-                        return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                     }
-                    if (i > 0) {
-                        allPath.push(...segmentPath.slice(1));
-                    } else {
-                        allPath.push(...segmentPath);
+                    const completedSegment = segmentPath.slice();
+                    const first = completedSegment[0];
+                    if (!first || first.lng !== realStart.lng || first.lat !== realStart.lat) {
+                        completedSegment.unshift(realStart);
                     }
+                    const last = completedSegment[completedSegment.length - 1];
+                    if (last.lng !== realEnd.lng || last.lat !== realEnd.lat) {
+                        completedSegment.push(realEnd);
+                    }
+                    const previous = allPath[allPath.length - 1];
+                    const sharedEndpoint = previous && previous.lng === realStart.lng && previous.lat === realStart.lat;
+                    allPath.push(...completedSegment.slice(sharedEndpoint ? 1 : 0));
                 }
 
                 return diagnosticResult({ path: allPath });
@@ -1888,25 +1892,29 @@ def _plan_route_path_with_tencent_runtime(session_id, page, waypoints, provider_
                 }
             }
             for (let i = 0; i < segmentCount; i += 1) {
-                const segmentPath = segmentPaths[i];
-                const realStart = waypoints[i];
-                const realEnd = waypoints[i + 1];
+                let segmentPath = segmentPaths[i];
+                // 成功路线也可能吸附到路网：保留每段道路几何，并直线补齐原始 GCJ-02 端点。
+                const realStart = { lng: Number(waypointsPy[i][0]), lat: Number(waypointsPy[i][1]) };
+                const realEnd = { lng: Number(waypointsPy[i + 1][0]), lat: Number(waypointsPy[i + 1][1]) };
                 if (!segmentPath) {
                     if (useFallback) {
-                        const fallbackPath = [
-                            { lng: realStart.lng, lat: realStart.lat },
-                            { lng: realEnd.lng, lat: realEnd.lat },
-                        ];
-                        allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
-                        continue;
+                        segmentPath = [realStart, realEnd];
+                    } else {
+                        return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                     }
-                    return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                 }
-                if (i > 0) {
-                    allPath.push(...segmentPath.slice(1));
-                } else {
-                    allPath.push(...segmentPath);
+                const completedSegment = segmentPath.slice();
+                const first = completedSegment[0];
+                if (!first || first.lng !== realStart.lng || first.lat !== realStart.lat) {
+                    completedSegment.unshift(realStart);
                 }
+                const last = completedSegment[completedSegment.length - 1];
+                if (last.lng !== realEnd.lng || last.lat !== realEnd.lat) {
+                    completedSegment.push(realEnd);
+                }
+                const previous = allPath[allPath.length - 1];
+                const sharedEndpoint = previous && previous.lng === realStart.lng && previous.lat === realStart.lat;
+                allPath.push(...completedSegment.slice(sharedEndpoint ? 1 : 0));
             }
 
             return diagnosticResult({ path: allPath });
@@ -2323,25 +2331,29 @@ def _plan_route_path_with_tianditu_runtime(session_id, page, waypoints, provider
                 }
             }
             for (let i = 0; i < segmentCount; i += 1) {
-                const segmentPath = segmentPaths[i];
-                const realStart = waypoints[i];
-                const realEnd = waypoints[i + 1];
+                let segmentPath = segmentPaths[i];
+                // 道路点已转为 GCJ-02；端点使用原始输入，避免坐标往返转换引入偏移。
+                const realStart = { lng: Number(waypointsPy[i][0]), lat: Number(waypointsPy[i][1]) };
+                const realEnd = { lng: Number(waypointsPy[i + 1][0]), lat: Number(waypointsPy[i + 1][1]) };
                 if (!segmentPath) {
                     if (useFallback) {
-                        const fallbackPath = [
-                            tdtCoordinateToGcj02(realStart),
-                            tdtCoordinateToGcj02(realEnd),
-                        ];
-                        allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
-                        continue;
+                        segmentPath = [realStart, realEnd];
+                    } else {
+                        return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                     }
-                    return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                 }
-                if (i > 0) {
-                    allPath.push(...segmentPath.slice(1));
-                } else {
-                    allPath.push(...segmentPath);
+                const completedSegment = segmentPath.slice();
+                const first = completedSegment[0];
+                if (!first || first.lng !== realStart.lng || first.lat !== realStart.lat) {
+                    completedSegment.unshift(realStart);
                 }
+                const last = completedSegment[completedSegment.length - 1];
+                if (last.lng !== realEnd.lng || last.lat !== realEnd.lat) {
+                    completedSegment.push(realEnd);
+                }
+                const previous = allPath[allPath.length - 1];
+                const sharedEndpoint = previous && previous.lng === realStart.lng && previous.lat === realStart.lat;
+                allPath.push(...completedSegment.slice(sharedEndpoint ? 1 : 0));
             }
 
             return diagnosticResult({ path: allPath });
@@ -2723,25 +2735,29 @@ def _plan_route_path_with_baidu_runtime(session_id, page, waypoints, provider_pl
                 }
             }
             for (let i = 0; i < segmentCount; i += 1) {
-                const segmentPath = segmentPaths[i];
-                const realStart = waypoints[i];
-                const realEnd = waypoints[i + 1];
+                let segmentPath = segmentPaths[i];
+                // 道路点已转为 GCJ-02；端点使用原始输入，避免坐标往返转换引入偏移。
+                const realStart = { lng: Number(waypointsPy[i][0]), lat: Number(waypointsPy[i][1]) };
+                const realEnd = { lng: Number(waypointsPy[i + 1][0]), lat: Number(waypointsPy[i + 1][1]) };
                 if (!segmentPath) {
                     if (useFallback) {
-                        const fallbackPath = [
-                            bd09ToGcj02(Number(realStart.lng), Number(realStart.lat)),
-                            bd09ToGcj02(Number(realEnd.lng), Number(realEnd.lat)),
-                        ];
-                        allPath.push(...(i > 0 ? fallbackPath.slice(1) : fallbackPath));
-                        continue;
+                        segmentPath = [realStart, realEnd];
+                    } else {
+                        return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                     }
-                    return diagnosticResult({ error: `Segment ${i + 1} failed after ${diagnostic.waves} waves (${diagnostic.segments[i].attempts} attempts): ${segmentErrors[i] || 'Unknown error'}` }, i + 1);
                 }
-                if (i > 0) {
-                    allPath.push(...segmentPath.slice(1));
-                } else {
-                    allPath.push(...segmentPath);
+                const completedSegment = segmentPath.slice();
+                const first = completedSegment[0];
+                if (!first || first.lng !== realStart.lng || first.lat !== realStart.lat) {
+                    completedSegment.unshift(realStart);
                 }
+                const last = completedSegment[completedSegment.length - 1];
+                if (last.lng !== realEnd.lng || last.lat !== realEnd.lat) {
+                    completedSegment.push(realEnd);
+                }
+                const previous = allPath[allPath.length - 1];
+                const sharedEndpoint = previous && previous.lng === realStart.lng && previous.lat === realStart.lat;
+                allPath.push(...completedSegment.slice(sharedEndpoint ? 1 : 0));
             }
 
             return diagnosticResult({ path: allPath });
@@ -2841,9 +2857,8 @@ def _complete_route_path_with_waypoint_endpoints(path, waypoints):
 
     现在的做法：
     1. 先用动态规划把打卡点按顺序单调对齐到路线点（最小化总偏移）；
-    2. 对齐误差超过阈值的打卡点，替换其对应的那一段路线点（原地替换，
-       不会把打卡点搬到路径末尾，也不会产生跨段的直线）；
-    3. 首尾打卡点按同样的阈值在两端补齐。
+    2. 对齐误差超过阈值的中间打卡点，在对应位置插入，保留既有道路点；
+    3. 首尾打卡点只在两端补齐，不在道路几何内部再次插入，避免折返。
     """
     if not isinstance(path, list) or not isinstance(waypoints, list) or len(waypoints) < 2:
         return path
@@ -2886,6 +2901,8 @@ def _complete_route_path_with_waypoint_endpoints(path, waypoints):
 
     replacements = {}
     for waypoint_index, route_index in enumerate(aligned):
+        if waypoint_index in (0, len(normalized_waypoints) - 1):
+            continue
         waypoint = normalized_waypoints[waypoint_index]
         if _route_points_are_close(route_points[route_index], waypoint):
             continue
