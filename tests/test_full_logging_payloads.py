@@ -84,7 +84,9 @@ def test_route_log_keeps_raw_error_and_full_diagnostic_before_public_sanitizer(m
     diagnostic = {"response": {"token": "original-secret", "message": "detail " * 900 + " diagnostic-tail"}}
     monkeypatch.setattr(main, "_plan_route_path_with_amap_runtime", lambda *args, **kwargs: {"error": reason, "diagnostic": diagnostic})
     with caplog.at_level(logging.DEBUG):
-        result = main._plan_route_path_with_provider_runtime("session-1", [[1, 2], [3, 4]])
+        result = main._plan_route_path_with_provider_runtime(
+            "session-1", [[1, 2], [3, 4]], runtime_config=main._get_default_config(),
+        )
     assert reason in caplog.text
     assert "diagnostic-tail" in caplog.text
     assert "original-secret" not in result["error"]

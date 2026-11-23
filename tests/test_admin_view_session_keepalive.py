@@ -113,6 +113,8 @@ class AdminViewOriginKeepaliveTests(unittest.TestCase):
             session_file_locks_lock=threading.Lock(),
             SESSION_STORAGE_DIR=str(session_dir),
             SESSION_INDEX_FILE=str(session_dir / "_index.json"),
+            CONFIG_FILE=str(Path(self._temp_dir.name) / 'configs/config.json'),
+            CONFIG_JSON_FILE=str(Path(self._temp_dir.name) / 'configs/config.json'),
             chrome_pool=None,
             create=True,
         )

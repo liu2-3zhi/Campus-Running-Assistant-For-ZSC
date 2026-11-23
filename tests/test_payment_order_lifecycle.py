@@ -33,6 +33,17 @@ from main import (
 
 
 class TestPaymentOrderLifecycle(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        isolated_paths = mock.patch.multiple(
+            main_module,
+            PAYMENT_ORDERS_DIR=directory.name,
+            QR_CACHE_INDEX_FILE=os.path.join(directory.name, 'qr_cache_index.json'),
+        )
+        isolated_paths.start()
+        self.addCleanup(isolated_paths.stop)
+
     def _create_order_with_platform_error(self, platform_result):
         config = configparser.ConfigParser()
         config.add_section("Rainbow_YiPay")

@@ -340,7 +340,7 @@ def test_cli_plan_runs_from_another_directory_without_mysql_configuration(tmp_pa
     result = subprocess.run([sys.executable, str(script), "--root", str(root), "plan"], cwd=tmp_path, env=env, capture_output=True, text=True, encoding="utf-8")
 
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)["records"] == 1
+    assert json.loads(result.stdout)["records"] == 2
     assert "fixture-secret" not in result.stdout + result.stderr
 
 
@@ -385,7 +385,7 @@ def test_database_commands_read_mysql_settings_without_changing_runtime_mode(tmp
         received.append(settings)
         return MemoryStore()
 
-    assert migration.main(["--root", str(tmp_path), "init"], store_factory=database) == 0
+    assert migration.main(["--root", str(tmp_path), '--backend', 'mysql', "init"], store_factory=database) == 0
     assert received[0].backend == "mysql"
     assert received[0].user == "test-user"
     assert os.environ["APP_STORAGE_BACKEND"] == "file"
@@ -402,7 +402,7 @@ def test_real_policy_rejects_unregistered_namespace_without_creating_target(tmp_
     assert not target.exists()
 
 
-def test_real_policy_keeps_custom_logs_and_bootstrap_outside_import_and_export(tmp_path):
+def test_real_policy_migrates_bootstrap_and_keeps_custom_logs_outside(tmp_path):
     from business_storage import StoragePolicy
     root = tmp_path / "source"
     config = {"System": {"school_accounts_dir": "business/school"}, "Logging": {"log_dir": "business/school/logs"}}
@@ -418,9 +418,9 @@ def test_real_policy_keeps_custom_logs_and_bootstrap_outside_import_and_export(t
     target = tmp_path / "export"
     migration.export_documents(policy, store, target)
 
-    assert set(store.documents) == {("school_accounts", "user_accounts/a.json")}
+    assert set(store.documents) == {("school_accounts", "user_accounts/a.json"), ('configs', 'config.json')}
     assert (target / "business/school/user_accounts/a.json").read_bytes() == b'{"ua":"device-A"}'
-    assert not (target / "configs/config.json").exists()
+    assert json.loads((target / "configs/config.json").read_bytes()) == config
     assert not (target / "logs").exists()
     assert not (target / "business/school/logs").exists()
     assert {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in original} == original

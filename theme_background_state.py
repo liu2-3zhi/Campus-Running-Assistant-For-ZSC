@@ -4,7 +4,7 @@ import datetime
 import functools
 import json
 import logging
-from storage_io import os, open
+from storage_io import os, open, is_managed_path
 import sys
 import threading
 import uuid
@@ -126,6 +126,10 @@ class BackgroundStateStore:
 
     def save(self, state: dict) -> None:
         with self.lock:
+            if is_managed_path(self.path):
+                with open(self.path, "w", encoding="utf-8") as fp:
+                    json.dump(state, fp, indent=2, ensure_ascii=False)
+                return
             temp_path = f"{self.path}.{uuid.uuid4().hex}.tmp"
             try:
                 with open(temp_path, "x", encoding="utf-8") as fp:

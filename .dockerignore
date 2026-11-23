@@ -66,6 +66,7 @@ desktop.ini
 /tokens
 /config.ini
 /permissions.json
+/trusted_ips.txt
 /background_tasks/
 messages.json
 /.vscode
@@ -81,6 +82,7 @@ auto_attendance_config.json
 /uploads
 /configs
 /Remove_Acoount
+/remove
 /User_Billing
 *.back
 /.claude

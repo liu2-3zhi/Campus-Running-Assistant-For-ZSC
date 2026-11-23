@@ -16,31 +16,19 @@ services:
       # 注意：此挂载未使用 :ro，保持读写是为了支持应用在运行时上传/更新 SSL 证书
       #（例如修复跨文件系统操作、自动续期等）。如果不需要写入，请改为使用 :ro 以提高安全性。
       - ./ssl:/app/ssl
-      # 配置文件挂载
-      # - ./config.ini:/app/config.ini
-      # 数据持久化目录
+      # 数据库、日志与资源目录；业务配置和账号数据仅保存在数据库中。
       - ./cache:/app/cache
       - ./logs:/app/logs
-      - ./messages.json:/app/messages.json
-      - ./permissions.json:/app/permissions.json
-      - ./reminders.json:/app/reminders.json
-      - ./background_tasks:/app/background_tasks
-      - ./school_accounts:/app/school_accounts
-      - ./sessions:/app/sessions
-      - ./tokens:/app/tokens
-      - ./system_accounts:/app/system_accounts
-      - ./payment_orders:/app/payment_orders
-      - ./payment_methods.json:/app/payment_methods.json
-      - ./trusted_ips.txt:/app/trusted_ips.txt
-      - ./configs:/app/configs
+      - ./data:/app/data
       - ./uploads:/app/uploads
-      - ./Remove_Acoount:/app/Remove_Acoount
-      - ./User_Billing:/app/User_Billing
-      - ./amap_watermark_control.json:/app/amap_watermark_control.json
+      - ./system_accounts/images:/app/system_accounts/images
       - ./random_background_image:/app/random_background_image
 
     environment:
-      - PYTHONUNBUFFERED=1
+      PYTHONUNBUFFERED: "1"
+      APP_STORAGE_BACKEND: sqlite
+      APP_STORAGE_ROOT: /app
+      SQLITE_DATABASE_PATH: /app/data/application.sqlite3
     restart: unless-stopped
     
     # 限制Docker容器日志大小

@@ -15,11 +15,17 @@ from test_mysql_store import live_store
 import storage_io
 
 
-@pytest.fixture(params=['memory', 'mysql'])
+@pytest.fixture(params=['memory', 'sqlite', 'mysql'])
 def database_runtime(tmp_path, monkeypatch, request):
-    store = MemoryStore() if request.param == 'memory' else request.getfixturevalue('live_store')
+    if request.param == 'sqlite':
+        from persistence.engine import DatabaseSettings
+        from persistence.store import RelationalStore
+        store = RelationalStore(DatabaseSettings(root=tmp_path))
+        store.init_schema(ready=True)
+    else:
+        store = MemoryStore() if request.param == 'memory' else request.getfixturevalue('live_store')
     policy = StoragePolicy(tmp_path)
-    monkeypatch.setattr(storage_io, 'get_runtime', lambda: StorageRuntime('mysql', policy, store))
+    monkeypatch.setattr(storage_io, 'get_runtime', lambda *paths: StorageRuntime('sqlite' if request.param == 'sqlite' else 'mysql', policy, store))
     runtime = SimpleNamespace(
         SYSTEM_ACCOUNTS_DIR=str(tmp_path / 'system_accounts'),
         SCHOOL_ACCOUNTS_DIR=str(tmp_path / 'school_accounts'),
@@ -29,7 +35,11 @@ def database_runtime(tmp_path, monkeypatch, request):
     )
     for module in (auth_system, api_runtime, runtime_models):
         monkeypatch.setattr(module, '_main', lambda: runtime)
-    return tmp_path, policy, store, runtime
+    try:
+        yield tmp_path, policy, store, runtime
+    finally:
+        if request.param == 'sqlite':
+            store.database.dispose()
 
 
 def test_user_data_and_cache_signature_are_database_backed(database_runtime):
@@ -69,6 +79,21 @@ def test_user_token_and_guest_token_round_trip_in_database(database_runtime):
     assert len(guest) > 20
     assert store.get('tokens', 'guests/guest-session.json') is not None
     assert not list((root / 'tokens').glob('*.json'))
+
+
+def test_same_school_account_keeps_owner_credentials_and_ua_isolated(database_runtime):
+    root, policy, store, runtime = database_runtime
+    api = object.__new__(api_runtime.Api)
+    api._get_user_accounts_file = lambda owner: str(root / 'school_accounts/user_accounts' / (owner + '.json'))
+    api._load_school_account_stats_from_ini = lambda user: {'overdue_count': 0, 'completed_count': 0}
+    api._save_school_account_stats_to_ini = lambda *args: None
+    for owner in ('one', 'two'):
+        api._save_user_school_accounts(owner, {'10001': {'password': 'password-' + owner, 'ua': 'ua-' + owner}})
+    for owner in ('one', 'two'):
+        actual = api._load_user_school_accounts(owner)['10001']
+        assert actual['password'] == 'password-' + owner
+        assert actual['ua'] == 'ua-' + owner
+    assert not list(root.rglob('*.json'))
 
 
 def test_business_log_file_stays_on_disk(database_runtime):

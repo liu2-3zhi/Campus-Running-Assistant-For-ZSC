@@ -88,12 +88,12 @@ class Policy:
         return self.root / key
 
 
-@pytest.fixture
-def backend(tmp_path, monkeypatch):
+@pytest.fixture(params=['sqlite', 'mysql'])
+def backend(tmp_path, monkeypatch, request):
     root = tmp_path / "managed"
     root.mkdir()
-    runtime = SimpleNamespace(backend="mysql", policy=Policy(root), store=MemoryStore())
-    monkeypatch.setattr(storage_io, "get_runtime", lambda: runtime)
+    runtime = SimpleNamespace(backend=request.param, policy=Policy(root), store=MemoryStore())
+    monkeypatch.setattr(storage_io, "get_runtime", lambda *paths: runtime)
     return runtime, root
 
 
@@ -104,7 +104,7 @@ def real_policy_backend(tmp_path, monkeypatch):
     policy = StoragePolicy(tmp_path, {"System": {"school_accounts_dir": "business/school"},
                                       "Logging": {"log_dir": "business/school/logs"}})
     runtime = SimpleNamespace(backend="mysql", policy=policy, store=MemoryStore())
-    monkeypatch.setattr(storage_io, "get_runtime", lambda: runtime)
+    monkeypatch.setattr(storage_io, "get_runtime", lambda *paths: runtime)
     return runtime, tmp_path
 
 
@@ -127,7 +127,7 @@ def live_mysql_backend(tmp_path, monkeypatch):
     store = MySQLDocumentStore(settings)
     store.init_schema()
     runtime = StorageRuntime("mysql", StoragePolicy(tmp_path, {}), store)
-    monkeypatch.setattr(storage_io, "get_runtime", lambda: runtime)
+    monkeypatch.setattr(storage_io, "get_runtime", lambda *paths: runtime)
     try:
         yield runtime, tmp_path
     finally:
@@ -141,9 +141,8 @@ def live_mysql_backend(tmp_path, monkeypatch):
             connection.close()
 
 
-def test_file_backend_delegates_and_never_mutates_standard_library(backend, tmp_path):
+def test_unmanaged_paths_delegate_and_never_mutate_standard_library(backend, tmp_path):
     runtime, _ = backend
-    runtime.backend = "file"
     path = tmp_path / "plain.json"
     with storage_io.open(path, "w", encoding="utf-8") as target:
         target.write("physical")
@@ -151,6 +150,14 @@ def test_file_backend_delegates_and_never_mutates_standard_library(backend, tmp_
     assert not runtime.store.documents
     assert standard_os.path.exists is not storage_io.os.path.exists
     assert standard_configparser.ConfigParser is not storage_io.configparser.ConfigParser
+
+
+def test_file_backend_cannot_be_enabled_through_the_compatibility_adapter(backend):
+    from business_storage import StorageConfigurationError
+    runtime, root = backend
+    runtime.backend = 'file'
+    with pytest.raises(StorageConfigurationError, match='frozen'):
+        storage_io.open(root / 'business.json', 'w', encoding='utf-8')
 
 
 def test_managed_open_never_falls_back_to_stale_files_and_commits_unicode(backend):
@@ -279,6 +286,21 @@ def test_logs_and_binary_assets_remain_physical_even_in_mysql(backend, tmp_path)
         target.write(b"image")
     assert log.read_text() == "log"
     assert (root / "photo.png").read_bytes() == b"image"
+    assert storage_io.os.path.exists(root / 'photo.png')
+    assert storage_io.os.path.lexists(root / 'photo.png')
+    assert storage_io.os.path.isfile(root / 'photo.png')
+    assert not runtime.store.documents
+
+
+def test_real_policy_preserves_nested_binary_asset_visibility(real_policy_backend):
+    runtime, root = real_policy_backend
+    avatar = root / 'system_accounts/images/avatar.png'
+    avatar.parent.mkdir(parents=True)
+    avatar.write_bytes(b'image')
+    assert storage_io.os.path.exists(avatar)
+    assert storage_io.os.path.lexists(avatar)
+    assert storage_io.os.path.isfile(avatar)
+    assert storage_io.glob.glob(str(avatar.parent / '*.png')) == [str(avatar)]
     assert not runtime.store.documents
 
 
@@ -386,9 +408,11 @@ def test_real_policy_merges_settings_and_custom_account_paths(real_policy_backen
     account = root / "business/school/user/accounts.ini"
     runtime.store.put("school_accounts", "user/accounts.ini", b"[Config]\nua=isolated\n")
     runtime.store.put("settings", "messages.json", b"new-settings")
+    runtime.store.put("configs", "config.json", b"database-config")
     assert storage_io.open(root / "messages.json", "rb").read() == b"new-settings"
     assert storage_io.open(root / "unmanaged.json", "rb").read() == b"unmanaged"
-    assert storage_io.open(config, "rb").read() == b"local-bootstrap"
+    assert storage_io.open(config, "rb").read() == b"database-config"
+    assert config.read_bytes() == b"local-bootstrap"
     assert storage_io.open(log, "rb").read() == b"log"
     assert set(storage_io.os.listdir(account.parent)) == {"accounts.ini"}
     parser = storage_io.configparser.ConfigParser()

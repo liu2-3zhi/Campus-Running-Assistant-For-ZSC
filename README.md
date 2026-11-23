@@ -10,18 +10,18 @@
 ## 功能特点
 
 - 提供校园跑相关场景的 Web 化管理入口
-- 启动时自动初始化配置、权限文件与默认管理员账号
+- 全新数据库启动时初始化配置、权限与默认管理员账号
 - 支持自动签到配置与会话持久化
 - 支持支付订单状态流转、二维码缓存与支付方式配置
 - 提供 `/health` 健康检查与 Nginx 访问日志转发能力
 - 支持主题样式与随机背景缓存
 - 内置支付商品名生成器，当前已注册 `lomei` 与 `travel_service` 两种模式
 
-## 可选 MySQL 存储
+## 数据库存储
 
-默认继续使用文件存储，也可将账号、会话、Token、订单及其他受管 JSON/INI 业务数据保存到外部 MySQL。日志目录和日志挂载保持不变，图片、上传与证书继续保留在磁盘。
+默认创建 SQLite 数据库 `data/application.sqlite3` 用于本地开发和测试，也可连接外部 MySQL/MariaDB。文件运行后端已冻结并拒绝；账号、会话、Token、订单、账单、主配置与信任 IP 等结构化资料按领域拆表保存，核心类型列为权威来源，多账号 UA 按用户绑定隔离。日志位置与挂载不变，图片、上传、缓存与证书继续保留在原磁盘路径。
 
-启用前须停服，使用 `tools/migrate_storage.py` 完成导入和校验；支持幂等重试、冲突检查及导出回退。`run/docker-compose.mysql.yml` 仅提供外部数据库连接配置，不包含 MySQL 服务。本版本仅支持单个应用实例。配置、迁移和恢复步骤见 [MySQL 数据存储与迁移](docs/mysql-storage.md)。
+旧数据须停写后通过 `tools/migrate_storage.py` 的 `--backend sqlite` 或 `--backend mysql` 离线导入并独立核验；导出可供备份或再次导入数据库，不恢复文件后端。Compose 直接在 `environment` 配置连接变量，不使用 env 文件；`run/docker-compose.mysql.yml` 只连接外部数据库，不内置 MySQL。旧受管目录挂载已移除，迁移须另行只读挂载完整源目录。本版本仅支持单个应用实例。操作与测试工具见[数据库存储与离线迁移](docs/mysql-storage.md)，结构说明见[数据库优先存储设计](docs/database-first-design.md)。
 
 ## 本地运行
 
@@ -43,7 +43,7 @@ python main.py --host 127.0.0.1 --port 5000
 bash After_pip_install.sh
 ```
 
-首次启动时，程序会自动创建 `configs/config.json`、`permissions.json` 以及默认管理员账号。若相关配置或数据文件缺失，程序也会尝试自动补齐或重建。
+全新环境首次启动时，程序会初始化默认 SQLite 数据库，在数据库中保存配置、权限和默认管理员账号。发现尚未迁移的旧受管文件时会拒绝直接启动空库；请先按迁移指南导入并核验。数据库错误不会回退旧文件，也不会以重建默认资料掩盖已有数据缺失。
 
 默认管理员账号：
 

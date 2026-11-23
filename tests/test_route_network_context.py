@@ -341,7 +341,9 @@ class RouteNetworkContextTests(unittest.TestCase):
         with patch.object(main, "chrome_pool", pool, create=True), patch.object(
             main, "_plan_route_with_map_provider", return_value=plan
         ), patch.object(main, "resolve_backend_page_origin", return_value=("https://origin.test", "global")), self.assertLogs(level="INFO") as logs:
-            result = main._plan_route_path_with_provider_runtime("private-session", [[1, 2], [3, 4]])
+            result = main._plan_route_path_with_provider_runtime(
+                "private-session", [[1, 2], [3, 4]], runtime_config=main._get_default_config(),
+            )
         starts = [record.getMessage() for record in logs.records if "phase=start " in record.getMessage()]
         self.assertEqual(len(starts), 1)
         self.assertIn("provider=amap ", starts[0])

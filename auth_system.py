@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 from storage_io import os, open
+from business_storage import StorageError
 import secrets
 import sys
 import threading
@@ -354,6 +355,8 @@ class AuthSystem:
             try:
                 with open(_main().PERMISSIONS_FILE, "r", encoding="utf-8") as f:
                     return json.load(f)
+            except StorageError:
+                raise
             except Exception:
                 return default_perms
 
@@ -372,6 +375,8 @@ class AuthSystem:
             )
             return perms
 
+        except StorageError:
+            raise
         except (json.JSONDecodeError, Exception) as e:
             logging.error(
                 f"_load_permissions: 读取权限文件异常 ({type(e).__name__}): {e}"
@@ -393,6 +398,8 @@ class AuthSystem:
             try:
                 with open(_main().PERMISSIONS_FILE, "r", encoding="utf-8") as f:
                     return json.load(f)
+            except StorageError:
+                raise
             except Exception:
                 return default_perms
 

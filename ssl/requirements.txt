@@ -18,3 +18,4 @@ BeautifulSoup4
 werkzeug
 fake-useragent
 PyMySQL
+SQLAlchemy>=2.0,<3

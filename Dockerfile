@@ -134,21 +134,16 @@ ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone
 
-# 预创建运行期所需文件与目录，避免启动时因缺失路径报错
+# 仅预创建标记文件与目录，业务文档由数据库保存。
 RUN touch /app/ssh
-RUN touch /app/config.ini
 RUN mkdir -p /app/cache
 RUN mkdir -p /app/logs
-RUN touch /app/messages.json
-RUN touch /app/permissions.json
-RUN touch /app/reminders.json
 RUN mkdir -p /app/background_tasks
 RUN mkdir -p /app/school_accounts
 RUN mkdir -p /app/sessions
 RUN mkdir -p /app/tokens
 RUN mkdir -p /app/system_accounts
 RUN mkdir -p /app/payment_orders
-RUN touch /app/payment_methods.json
 RUN mkdir -p /app/configs
 RUN mkdir -p /app/uploads
 

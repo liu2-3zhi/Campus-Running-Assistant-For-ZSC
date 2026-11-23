@@ -1,6 +1,7 @@
 import configparser
 import datetime
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -18,6 +19,13 @@ from main import (
 
 
 class TestThemeBackgroundBinding(unittest.TestCase):
+    @staticmethod
+    def _theme_service():
+        # Binding resolution needs theme methods, without account startup.
+        service = AuthSystem.__new__(AuthSystem)
+        service.lock = threading.RLock()
+        return service
+
     def test_default_theme_prefers_unexpired_binding_for_pc_target(self):
         with tempfile.TemporaryDirectory() as d:
             cache_dir = Path(d)
@@ -29,7 +37,7 @@ class TestThemeBackgroundBinding(unittest.TestCase):
                 ttl_seconds=1800,
             )
 
-            auth_system = AuthSystem()
+            auth_system = self._theme_service()
             with patch.object(
                 auth_system,
                 "_peek_default_theme_background_images",
@@ -57,7 +65,7 @@ class TestThemeBackgroundBinding(unittest.TestCase):
                 ttl_seconds=1,
             )
 
-            auth_system = AuthSystem()
+            auth_system = self._theme_service()
             future_now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
                 seconds=5
             )
@@ -95,7 +103,7 @@ class TestThemeBackgroundBinding(unittest.TestCase):
 
             api = Api.__new__(Api)
             api._web_session_id = "sid-api"
-            auth_system = AuthSystem()
+            auth_system = self._theme_service()
 
             with patch("main.auth_system", auth_system, create=True), patch(
                 "main.os.path.abspath", return_value=str(cache_dir.parent / "main.py")

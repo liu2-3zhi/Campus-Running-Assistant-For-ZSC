@@ -296,6 +296,7 @@ class TestMapServerRuntime(unittest.TestCase):
                 "session-1",
                 [{"lng": 113.1, "lat": 22.1}, {"lng": 113.2, "lat": 22.2}],
                 provider="tencent",
+                runtime_config=main._get_default_config(),
                 app_base_url="http://guangzhou.zelly.cn",
             )
 

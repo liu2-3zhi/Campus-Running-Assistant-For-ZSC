@@ -1,4 +1,4 @@
-"""Explicit, module-local filesystem adapters for the optional document store.
+"""Module-local compatibility I/O over database-backed business entities.
 
 Only paths accepted by StoragePolicy are redirected. Import these names in a
 business module; standard library modules and builtins are never patched.
@@ -15,27 +15,37 @@ import shutil as _shutil
 import stat as _stat
 
 
-def get_runtime():
-    from business_storage import get_runtime as runtime_factory
-    return runtime_factory()
+def get_runtime(*paths):
+    from business_storage import get_runtime as runtime_factory, get_runtime_for_paths
+    return get_runtime_for_paths(*paths) if paths else runtime_factory()
 
 
-def _runtime():
-    runtime = get_runtime()
-    return runtime if runtime.backend == "mysql" else None
+def _runtime(*paths):
+    runtime = get_runtime(*paths)
+    if runtime is None:
+        return None
+    if runtime.backend not in {"sqlite", "mysql"}:
+        from business_storage import StorageConfigurationError
+        raise StorageConfigurationError('The file storage backend is frozen; use sqlite or mysql')
+    return runtime
+
+
+def is_managed_path(path):
+    """Report whether a compatibility path belongs to database storage."""
+    return _identify(path) is not None
 
 
 def _identify(path, runtime=None):
     if isinstance(path, int):
         return None
-    runtime = runtime if runtime is not None else _runtime()
+    runtime = runtime if runtime is not None else _runtime(path)
     return runtime.policy.identify(path) if runtime is not None else None
 
 
 def _directory(path, runtime=None):
     if isinstance(path, int):
         return None
-    runtime = runtime if runtime is not None else _runtime()
+    runtime = runtime if runtime is not None else _runtime(path)
     return runtime.policy.directory(path) if runtime is not None else None
 
 
@@ -200,7 +210,7 @@ class _ManagedFile:
 
 def open(file, mode="r", buffering=-1, encoding=None, errors=None, newline=None,
          closefd=True, opener=None):
-    runtime = _runtime()
+    runtime = _runtime(file)
     identity = _identify(file, runtime) if runtime is not None else None
     if identity is None:
         return _builtins.open(file, mode, buffering, encoding, errors, newline, closefd, opener)
@@ -223,27 +233,29 @@ class _PathProxy:
         return getattr(_os.path, name)
 
     def exists(self, path):
-        runtime = _runtime()
+        runtime = _runtime(path)
         identity = _identify(path, runtime) if runtime is not None else None
         if identity is not None:
             return runtime.store.get(*identity) is not None
-        return self.isdir(path) if _directory(path, runtime) is not None else _os.path.exists(path)
+        if _os.path.exists(path):
+            return True
+        return self.isdir(path) if _directory(path, runtime) is not None else False
 
     def lexists(self, path):
-        runtime = _runtime()
+        runtime = _runtime(path)
         if runtime is not None and (_identify(path, runtime) is not None or _directory(path, runtime) is not None):
             return self.exists(path)
         return _os.path.lexists(path)
 
     def isfile(self, path):
-        runtime = _runtime()
+        runtime = _runtime(path)
         identity = _identify(path, runtime) if runtime is not None else None
         if identity is not None:
             return runtime.store.get(*identity) is not None
         return _os.path.isfile(path)
 
     def isdir(self, path):
-        runtime = _runtime()
+        runtime = _runtime(path)
         identity = _directory(path, runtime) if runtime is not None else None
         if identity is not None:
             prefix, documents = _directory_documents(runtime, identity)
@@ -267,7 +279,7 @@ class _OSProxy:
         return getattr(_os, name)
 
     def stat(self, path, *, dir_fd=None, follow_symlinks=True):
-        runtime = _runtime()
+        runtime = _runtime(path) if dir_fd is None else None
         identity = _identify(path, runtime) if runtime is not None and dir_fd is None else None
         if identity is not None:
             document = runtime.store.get(*identity)
@@ -286,7 +298,7 @@ class _OSProxy:
                                {"st_atime_ns": mtime_ns, "st_mtime_ns": mtime_ns, "st_ctime_ns": mtime_ns})
 
     def listdir(self, path="."):
-        runtime = _runtime()
+        runtime = _runtime(path)
         identity = _directory(path, runtime) if runtime is not None else None
         if identity is None:
             return _os.listdir(path)
@@ -307,7 +319,7 @@ class _OSProxy:
         return [_os.fsencode(name) if binary else name for name in sorted(names)]
 
     def remove(self, path, *, dir_fd=None):
-        runtime = _runtime()
+        runtime = _runtime(path) if dir_fd is None else None
         identity = _identify(path, runtime) if runtime is not None and dir_fd is None else None
         if identity is None:
             return _os.remove(path, dir_fd=dir_fd)
@@ -322,7 +334,7 @@ class _OSProxy:
         return _os.makedirs(name, mode=mode, exist_ok=exist_ok)
 
     def replace(self, source, destination, *, src_dir_fd=None, dst_dir_fd=None):
-        runtime = _runtime()
+        runtime = _runtime(source, destination)
         source_id = _identify(source, runtime) if runtime is not None and src_dir_fd is None else None
         target_id = _identify(destination, runtime) if runtime is not None and dst_dir_fd is None else None
         if source_id is None and target_id is None:
@@ -354,7 +366,7 @@ class _OSProxy:
             runtime.store.delete(*source_id, expected_revision=document.revision)
 
     def rename(self, source, destination, *, src_dir_fd=None, dst_dir_fd=None):
-        runtime = _runtime()
+        runtime = _runtime(source, destination)
         if runtime is None or (_identify(source, runtime) is None and _identify(destination, runtime) is None):
             return _os.rename(source, destination, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
         return self.replace(source, destination, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
@@ -371,8 +383,7 @@ class _GlobProxy:
         return list(self.iglob(pathname, root_dir=root_dir, dir_fd=dir_fd, recursive=recursive, include_hidden=include_hidden))
 
     def iglob(self, pathname, *, root_dir=None, dir_fd=None, recursive=False, include_hidden=False):
-        runtime = _runtime()
-        if runtime is None or dir_fd is not None:
+        if dir_fd is not None:
             yield from _glob.iglob(pathname, root_dir=root_dir, dir_fd=dir_fd, recursive=recursive, include_hidden=include_hidden)
             return
         binary = isinstance(_os.fspath(pathname), bytes)
@@ -389,7 +400,8 @@ class _GlobProxy:
             if _glob.has_magic(part):
                 break
             anchor = _os.path.join(anchor, part)
-        if (runtime.policy.directory(anchor) is None
+        runtime = _runtime(anchor)
+        if (runtime is None or runtime.policy.directory(anchor) is None
                 and runtime.policy.identify(anchor) is None):
             yield from _glob.iglob(pathname, root_dir=root_dir, dir_fd=dir_fd, recursive=recursive, include_hidden=include_hidden)
             return
@@ -462,7 +474,7 @@ class _ShutilProxy:
         return getattr(_shutil, name)
 
     def _copy(self, source, destination, preserve, follow_symlinks=True):
-        runtime = _runtime()
+        runtime = _runtime(source, destination)
         if os.path.isdir(destination):
             destination = _os.path.join(destination, _os.path.basename(source))
         source_id = _identify(source, runtime) if runtime is not None else None
@@ -491,7 +503,7 @@ class _ShutilProxy:
         return self._copy(source, destination, True, follow_symlinks)
 
     def move(self, source, destination, copy_function=None):
-        runtime = _runtime()
+        runtime = _runtime(source, destination)
         if runtime is None:
             return _shutil.move(source, destination, copy_function=copy_function or _shutil.copy2)
         if os.path.isdir(destination):
@@ -546,7 +558,7 @@ class _ShutilProxy:
         return preserved
 
     def rmtree(self, path, ignore_errors=False, onerror=None, *, dir_fd=None, onexc=None):
-        runtime = _runtime()
+        runtime = _runtime(path) if dir_fd is None else None
         identity = _directory(path, runtime) if runtime is not None and dir_fd is None else None
         if identity is None:
             kwargs = {"ignore_errors": ignore_errors, "onerror": onerror, "dir_fd": dir_fd}

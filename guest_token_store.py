@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
-from storage_io import os, open
+from storage_io import os, open, is_managed_path
 import secrets
 import threading
 import time
@@ -32,6 +32,10 @@ class GuestTokenStore:
         return data
 
     def _save_index(self, data: dict) -> None:
+        if is_managed_path(self.index_path):
+            with open(self.index_path, 'w', encoding='utf-8') as fp:
+                json.dump(data, fp, indent=2, ensure_ascii=False)
+            return
         temp_path = f"{self.index_path}.{os.getpid()}.tmp"
         with open(temp_path, "w", encoding="utf-8") as fp:
             json.dump(data, fp, indent=2, ensure_ascii=False)

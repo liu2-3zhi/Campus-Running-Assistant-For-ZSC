@@ -13,6 +13,9 @@ from map_error_catalog import map_error_retry_policy
 
 class TestRouteRuntimeDiagnostics(unittest.TestCase):
     def setUp(self):
+        configuration = patch.object(main, '_read_config_ini', return_value=main._get_default_config())
+        configuration.start()
+        self.addCleanup(configuration.stop)
         origin = patch.object(main, "resolve_backend_page_origin", return_value=("https://runtime.test", "request"))
         origin.start()
         self.addCleanup(origin.stop)

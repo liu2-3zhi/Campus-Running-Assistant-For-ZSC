@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-import os
+from storage_io import open, os
+from business_storage import StorageError
+from sqlalchemy.exc import SQLAlchemyError
 import re
 
 
@@ -142,6 +144,8 @@ def _load_trusted_ip_networks(file_path=None):
                     networks.append(entry_value)
     except FileNotFoundError as exc:
         load_failure = exc
+    except (StorageError, SQLAlchemyError):
+        raise
     except Exception as exc:
         load_failure = exc
     else:

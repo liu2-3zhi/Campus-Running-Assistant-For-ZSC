@@ -361,8 +361,9 @@ class TestHealthMonitoringTieredVisibility(unittest.TestCase):
             "payment_timeout_minutes": "900",
         }
 
-        with mock.patch.object(main_module, "_safe_get_config_for_health", return_value=cfg), \
-             mock.patch.object(main_module, "PAYMENT_ORDERS_DIR", ".", create=True), \
+        with tempfile.TemporaryDirectory() as orders_dir, \
+             mock.patch.object(main_module, "_safe_get_config_for_health", return_value=cfg), \
+             mock.patch.object(main_module, "PAYMENT_ORDERS_DIR", orders_dir, create=True), \
              mock.patch.object(main_module, "_load_qr_cache_index", side_effect=ValueError("bad json"), create=True):
             component = main_module._check_payment_system_health()
 

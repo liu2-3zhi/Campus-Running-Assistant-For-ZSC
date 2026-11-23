@@ -170,7 +170,10 @@ def planned(payload):
     ), patch.object(main, "resolve_backend_page_origin", return_value=("https://runtime.test", "request")), patch.object(
         main, "_plan_route_path_with_baidu_runtime", return_value=copy.deepcopy(payload)
     ):
-        return main._plan_route_path_with_provider_runtime("test-session", [[113.39, 22.52], [113.40, 22.53]])
+        return main._plan_route_path_with_provider_runtime(
+            "test-session", [[113.39, 22.52], [113.40, 22.53]],
+            runtime_config=main._get_default_config(),
+        )
 
 
 def auth_error(message=AUTH_MESSAGE):

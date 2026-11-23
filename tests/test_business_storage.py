@@ -6,9 +6,9 @@ import pytest
 from business_storage import StorageSettings, StoragePolicy, StorageConfigurationError
 
 
-def test_default_file_mode_does_not_require_mysql_credentials(tmp_path):
+def test_default_sqlite_mode_does_not_require_mysql_credentials(tmp_path):
     settings = StorageSettings.from_env({}, root=tmp_path)
-    assert settings.backend == 'file'
+    assert settings.backend == 'sqlite'
     assert settings.root == tmp_path.resolve()
 
 
@@ -32,18 +32,21 @@ def test_policy_only_routes_business_documents_and_preserves_logs(tmp_path):
     policy = StoragePolicy(tmp_path)
     assert policy.identify(tmp_path / 'school_accounts' / '10001.ini') == ('school_accounts', '10001.ini')
     assert policy.identify(tmp_path / 'payment_orders' / 'order.json') == ('payment_orders', 'order.json')
-    for name in ('logs/a.json', 'logs/payment_logs/a.json', 'uploads/a.json', 'cache/a.json', 'system_accounts/images/a.png', 'configs/config.json', 'random_background_image/index.json'):
+    for name in ('logs/a.json', 'logs/payment_logs/a.json', 'uploads/a.json', 'cache/a.json', 'system_accounts/images/a.png', 'random_background_image/index.json'):
         assert policy.identify(tmp_path / name) is None, name
+    assert policy.identify(tmp_path / 'configs/config.json') == ('configs', 'config.json')
+    assert policy.identify(tmp_path / 'trusted_ips.txt') == ('settings', 'trusted_ips.txt')
     assert policy.identify(tmp_path / 'random_background_image/background_state.json') == ('background_state', 'background_state.json')
     assert policy.identify(tmp_path / 'arbitrary.json') is None
 
 
-def test_password_file_trims_only_line_endings(tmp_path):
+def test_connection_password_comes_from_environment_not_a_file(tmp_path):
     password_file = tmp_path / 'secret'
     password_file.write_bytes(b'password-ending-in-rn\r\n')
     settings = StorageSettings.from_env({'APP_STORAGE_BACKEND': 'mysql', 'MYSQL_USER': 'test',
-        'MYSQL_DATABASE': 'test', 'MYSQL_PASSWORD_FILE': str(password_file)}, root=tmp_path)
-    assert settings.password == 'password-ending-in-rn'
+        'MYSQL_DATABASE': 'test', 'MYSQL_PASSWORD': 'environment-test-password',
+        'MYSQL_PASSWORD_FILE': str(password_file)}, root=tmp_path)
+    assert settings.password == 'environment-test-password'
 
 
 def test_custom_directories_and_custom_logs_are_used(tmp_path):

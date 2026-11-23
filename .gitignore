@@ -38,3 +38,4 @@ auto_attendance_config.json
 /.superpowers/
 /docs/superpowers
 /frontend/node_modules
+/data/*.sqlite3*

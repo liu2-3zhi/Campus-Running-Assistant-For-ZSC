@@ -12,7 +12,7 @@ import io
 import json
 import logging
 import math
-from storage_io import os, open
+from storage_io import os, open, is_managed_path
 import queue
 import random
 import sys
@@ -804,12 +804,13 @@ class Api:
                 f"normalize_chinese_config_to_english 保留了 [stats] 节 - 文件: {path}"
             )
 
-        try:
-            backup_path = f"{path}.bak"
-            with open(backup_path, "wb") as bf:
-                bf.write(raw)
-        except Exception:
-            pass
+        if not is_managed_path(path):
+            try:
+                backup_path = f"{path}.bak"
+                with open(backup_path, "wb") as bf:
+                    bf.write(raw)
+            except Exception:
+                pass
 
         with open(path, "w", encoding="utf-8") as f:
             cfg_en.write(f)
@@ -1962,7 +1963,8 @@ class Api:
         if password is not None:
             cfg_to_save.set("Config", "password", password)
         else:
-            if not cfg_to_save.has_option("Config", "password"):
+            if (not cfg_to_save.has_option("Config", "password")
+                    and not is_managed_path(user_ini_path)):
                 backup_path = f"{user_ini_path}.bak"
                 if os.path.exists(backup_path):
                     try:

@@ -64,6 +64,7 @@ class ImportResult:
     skipped_conflict: int
     skipped_empty: int
     verification: VerificationReport
+    issues: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -113,7 +114,7 @@ def build_plan(policy, *, skip_empty=False):
         after = path.stat()
         if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
             raise MigrationError(f"读取过程中源文件发生变化：{namespace}/{key}；请先停止应用")
-        if not content.strip():
+        if not content.strip() and path.suffix.lower() != '.txt':
             if skip_empty:
                 skipped.append(identity)
                 continue
@@ -134,6 +135,20 @@ def _database_documents(store):
     return records
 
 
+def _equivalent(entry, document, store):
+    if _digest(document.content) != document.digest:
+        return False
+    if not getattr(store, 'normalized', False):
+        return _digest(document.content) == entry.digest
+    from persistence.store import parse_content
+    expected = parse_content(entry.key, entry.content)
+    actual = parse_content(document.key, document.content)
+    # Canonical serialization distinguishes true/1, null/missing and strings.
+    canonical = lambda value: json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
+    return (canonical(expected) == canonical(actual)
+            and document.source_sha256 == entry.digest)
+
+
 def _verify_plan(plan, store):
     expected = {(entry.namespace, entry.key): entry for entry in plan.entries}
     actual = _database_documents(store)
@@ -141,8 +156,7 @@ def _verify_plan(plan, store):
     extra = tuple(sorted(actual.keys() - expected.keys()))
     different = tuple(sorted(
         identity for identity in expected.keys() & actual.keys()
-        if _digest(actual[identity].content) != expected[identity].digest
-        or actual[identity].digest != _digest(actual[identity].content)
+        if not _equivalent(expected[identity], actual[identity], store)
     ))
     return VerificationReport(len(expected), len(actual), missing, different, extra)
 
@@ -154,15 +168,46 @@ def verify_documents(policy, store, *, skip_empty=False):
 
 def import_documents(policy, store, *, conflict="error", batch_size=100, skip_empty=False):
     """Import without changing originals; commits are resumable, verified batches."""
+    plan = build_plan(policy, skip_empty=skip_empty)
+    return _import_with_aliases(plan, store, lambda: build_plan(policy, skip_empty=skip_empty),
+                                conflict=conflict, batch_size=batch_size)
+
+
+def _import_with_aliases(plan, store, reload_source, **options):
+    if not getattr(store, 'normalized', False):
+        return _import_plan(plan, store, reload_source, **options)
+    from persistence.validation import build_owner_aliases
+    previous = getattr(store, 'migration_owner_aliases', {})
+    store.migration_owner_aliases = build_owner_aliases(plan.entries)
+    try:
+        return _import_plan(plan, store, reload_source, **options)
+    finally:
+        store.migration_owner_aliases = previous
+
+
+def _import_plan(plan, store, reload_source, *, conflict='error', batch_size=100):
     if conflict not in {"error", "skip", "overwrite"}:
         raise MigrationError("未知冲突策略")
     if not isinstance(batch_size, int) or batch_size < 1:
         raise MigrationError("batch_size 必须为正整数")
-    plan = build_plan(policy, skip_empty=skip_empty)
+    issues = ()
+    if getattr(store, 'normalized', False):
+        # Encode all records before the first destination mutation. Malformed
+        # historical values must not create a half-converted domain model.
+        for entry in plan.entries:
+            try:
+                store._encode(entry.namespace, entry.key, store._identity(entry.namespace, entry.key), entry.content)
+            except Exception as exc:
+                raise MigrationError(f'Domain preflight failed: {entry.namespace}/{entry.key} ({type(exc).__name__})') from None
+        from persistence.validation import validate_entries
+        issues = tuple(validate_entries(plan.entries))
+        if any(issue['severity'] == 'error' for issue in issues):
+            raise MigrationError('Source identity validation failed; inspect the read-only preflight report')
     pending, unchanged, skipped = [], 0, 0
+    current_documents = _database_documents(store)
     for entry in plan.entries:
-        existing = store.get(entry.namespace, entry.key)
-        if existing is not None and _digest(existing.content) == entry.digest and existing.digest == entry.digest:
+        existing = current_documents.get((entry.namespace, entry.key))
+        if existing is not None and _equivalent(entry, existing, store):
             unchanged += 1
             continue
         if existing is not None and conflict == "error":
@@ -176,15 +221,20 @@ def import_documents(policy, store, *, conflict="error", batch_size=100, skip_em
     for offset in range(0, len(pending), batch_size):
         batch = pending[offset:offset + batch_size]
         with store.transaction():
-            for entry, revision in batch:
-                options = {"mtime_ns": entry.mtime_ns}
-                if revision is None:
-                    options["create_only"] = True
-                else:
-                    options["expected_revision"] = revision
-                store.put(entry.namespace, entry.key, entry.content, **options)
+            if hasattr(store, 'create_many') and all(revision is None for _, revision in batch):
+                store.create_many([entry for entry, _ in batch])
+            else:
+                for entry, revision in batch:
+                    options = {"mtime_ns": entry.mtime_ns}
+                    if getattr(store, 'normalized', False):
+                        options['source_sha256'] = entry.digest
+                    if revision is None:
+                        options["create_only"] = True
+                    else:
+                        options["expected_revision"] = revision
+                    store.put(entry.namespace, entry.key, entry.content, **options)
         imported += len(batch)
-    fresh_plan = build_plan(policy, skip_empty=skip_empty)
+    fresh_plan = reload_source()
     original = {(item.namespace, item.key): (item.digest, item.mtime_ns) for item in plan.entries}
     current = {(item.namespace, item.key): (item.digest, item.mtime_ns) for item in fresh_plan.entries}
     if original != current or plan.skipped_empty != fresh_plan.skipped_empty:
@@ -196,7 +246,29 @@ def import_documents(policy, store, *, conflict="error", batch_size=100, skip_em
                 f"导入后校验失败：缺失 {len(verification.missing)}，不同 {len(verification.different)}，多余 {len(verification.extra)}；未标记就绪"
             )
         store.mark_ready()
-    return ImportResult(imported, unchanged, skipped, len(plan.skipped_empty), verification)
+    return ImportResult(imported, unchanged, skipped, len(plan.skipped_empty), verification, issues)
+
+
+def _legacy_plan(source):
+    source.check_ready()
+    entries = []
+    for document in _database_documents(source).values():
+        if document.digest != _digest(document.content):
+            raise VerificationError('Legacy source checksum mismatch')
+        _validate_content(document.key, document.content)
+        entries.append(SourceEntry(document.namespace, document.key,
+            Path(document.namespace) / document.key, document.content, document.mtime_ns, document.digest))
+    return MigrationPlan(tuple(sorted(entries, key=lambda entry: (entry.namespace, entry.key))))
+
+
+def import_legacy_store(source, target, *, conflict='error', batch_size=100):
+    """Read schema-v1 documents without updating or marking the source store."""
+    plan = _legacy_plan(source)
+    return _import_with_aliases(plan, target, lambda: _legacy_plan(source), conflict=conflict, batch_size=batch_size)
+
+
+def verify_legacy_store(source, target):
+    return _verify_plan(_legacy_plan(source), target)
 
 
 def _export_relative_path(policy, document):
@@ -253,10 +325,13 @@ def export_documents(policy, store, target):
 def _parser():
     parser = argparse.ArgumentParser(description="停止应用后显式迁移结构化业务数据；日志和原文件位置保持不变。")
     parser.add_argument("--root", type=Path, default=None, help="数据根目录，默认 APP_STORAGE_ROOT 或项目目录")
+    parser.add_argument('--backend', choices=('sqlite', 'mysql'), default=None, help='目标数据库，默认进程配置或 SQLite')
+    parser.add_argument('--source', choices=('files', 'legacy-mysql'), default='files', help='只读源，legacy-mysql 读取 v1 文档表')
+    parser.add_argument('--legacy-table-prefix', default='app_', help='旧 MySQL 文档表前缀，目标须用其他前缀或数据库')
     commands = parser.add_subparsers(dest="command", required=True)
     plan = commands.add_parser("plan", help="只验证文件并汇总范围，不连接数据库")
     plan.add_argument("--skip-empty", action="store_true")
-    commands.add_parser("init", help="显式建立 MySQL 表，不导入数据，不标记就绪")
+    commands.add_parser("init", help="显式建立关系化表，不导入数据，不标记就绪")
     importer = commands.add_parser("import", help="导入并核验，成功后标记就绪")
     importer.add_argument("--stopped", action="store_true", required=True, help="确认应用及所有写入进程已停止")
     importer.add_argument("--conflict", choices=("error", "skip", "overwrite"), default="error")
@@ -272,6 +347,7 @@ def _parser():
 
 def main(argv=None, *, store_factory=None):
     args = _parser().parse_args(argv)
+    store = None
     try:
         from business_storage import StoragePolicy, StorageSettings
         root = args.root or os.environ.get("APP_STORAGE_ROOT") or Path(__file__).resolve().parent
@@ -281,29 +357,43 @@ def main(argv=None, *, store_factory=None):
             summary = {"operation": "plan", "records": len(plan.entries), "bytes": plan.total_bytes,
                        "skipped_empty": len(plan.skipped_empty), "by_namespace": dict(Counter(entry.namespace for entry in plan.entries))}
         else:
-            if args.command == "import":
+            if args.command == "import" and args.source == 'files':
                 build_plan(policy, skip_empty=args.skip_empty)
             environment = dict(os.environ)
-            environment["APP_STORAGE_BACKEND"] = "mysql"
+            if args.backend:
+                environment['APP_STORAGE_BACKEND'] = args.backend
             settings = StorageSettings.from_env(environ=environment, root=root)
             if store_factory is None:
-                from business_storage import MySQLDocumentStore
-                store_factory = MySQLDocumentStore
+                from persistence.store import RelationalStore
+                store_factory = RelationalStore
             store = store_factory(settings)
+            source_store = None
+            if args.source == 'legacy-mysql' and args.command in ('import', 'verify'):
+                from business_storage import MySQLDocumentStore
+                source_settings = StorageSettings.from_env(environ=dict(environment, APP_STORAGE_BACKEND='mysql', MYSQL_TABLE_PREFIX=args.legacy_table_prefix), root=root)
+                if settings.backend == 'mysql' and settings.table_prefix == source_settings.table_prefix:
+                    raise MigrationError('旧库和目标使用相同前缀；请先导出或使用不同目标库/表前缀')
+                source_store = MySQLDocumentStore(source_settings)
             if args.command == "init":
                 store.init_schema()
                 summary = {"operation": "init", "ok": True, "data_imported": False}
             elif args.command == "import":
-                result = import_documents(policy, store, conflict=args.conflict, batch_size=args.batch_size, skip_empty=args.skip_empty)
+                if source_store is not None:
+                    result = import_legacy_store(source_store, store, conflict=args.conflict, batch_size=args.batch_size)
+                else:
+                    result = import_documents(policy, store, conflict=args.conflict, batch_size=args.batch_size, skip_empty=args.skip_empty)
                 summary = {"operation": "import", "ok": True, "imported": result.imported, "unchanged": result.unchanged,
-                           "skipped_conflict": result.skipped_conflict, "skipped_empty": result.skipped_empty, "ready": True}
+                           "skipped_conflict": result.skipped_conflict, "skipped_empty": result.skipped_empty, "ready": True, 'issues': list(result.issues)}
             elif args.command == "verify":
-                result = verify_documents(policy, store, skip_empty=args.skip_empty)
+                result = verify_legacy_store(source_store, store) if source_store is not None else verify_documents(policy, store, skip_empty=args.skip_empty)
                 summary = {"operation": "verify", "ok": result.ok, "source_records": result.expected, "database_records": result.actual,
                            "missing": len(result.missing), "different": len(result.different), "extra": len(result.extra)}
                 print(json.dumps(summary, ensure_ascii=False))
                 return 0 if result.ok else 1
             else:
+                config = store.get('configs', 'config.json')
+                if config is not None:
+                    policy = StoragePolicy(root, config=json.loads(config.content))
                 result = export_documents(policy, store, args.output)
                 summary = {"operation": "export", "ok": True, "exported": result.exported, "bytes": result.total_bytes}
         print(json.dumps(summary, ensure_ascii=False))
@@ -315,6 +405,9 @@ def main(argv=None, *, store_factory=None):
         # Connection errors can contain passwords or DSNs. Report type only.
         print(json.dumps({"ok": False, "error": f"迁移失败（{type(exc).__name__}）；未输出连接凭据或记录正文"}, ensure_ascii=False), file=sys.stderr)
         return 2
+    finally:
+        if store is not None and hasattr(store, 'database'):
+            store.database.dispose()
 
 
 if __name__ == "__main__":

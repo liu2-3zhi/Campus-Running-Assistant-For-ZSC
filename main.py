@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import ast
-from storage_io import glob, os, open, shutil, configparser
+from storage_io import glob, os, open, shutil, configparser, is_managed_path
 from business_storage import require_storage_ready, StorageError
 import math
 import tempfile
@@ -5651,7 +5651,7 @@ AUDIT_LOG_FILE = None
 
 def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="json"):
     """
-    备份损坏的文件并用默认内容重置
+    备份损坏的非受管外部文件并用默认内容重置；数据库文档拒绝隐式恢复。
 
     功能说明：
         当文件读取异常（特别是JSON解析错误）时，此函数会：
@@ -5672,18 +5672,15 @@ def _backup_and_reset_corrupted_file(file_path, default_content="", file_type="j
         bool: 如果成功备份并重置返回True，否则返回False
 
     异常处理：
-        所有异常都会被捕获并记录到日志中，确保不会影响主业务逻辑
+        受管数据库路径抛出 StorageError；外部文件错误记录日志并返回 False。
 
     示例:
-        # JSON文件，默认内容为空字典
-        _backup_and_reset_corrupted_file(os.path.join("configs", "config.json"), {}, "json")
-
-        # JSON文件，默认内容为空列表
-        _backup_and_reset_corrupted_file("messages.json", [], "json")
-
-        # JSON文件，默认内容为空对象
-        _backup_and_reset_corrupted_file(os.path.join("configs", "config.json"), {}, "json")
+        _backup_and_reset_corrupted_file("external-config.json", {}, "json")
     """
+    if is_managed_path(file_path):
+        raise StorageError(
+            "Database documents cannot be implicitly backed up or reset; explicit repair is required"
+        )
     try:
         # 首先检查源文件是否存在
         # 如果文件不存在，则无需备份，直接返回False
@@ -6561,6 +6558,8 @@ def _write_config_with_comments(config_obj, filepath):
                                     }
                                 else:
                                     data[_sec] = {}
+                except StorageError:
+                    raise
                 except Exception as _merge_err:
                     logging.warning(
                         f"[配置写入] 读取现有 JSON 配置用于合并失败，将继续仅写入传入配置: {_merge_err}"
@@ -6570,6 +6569,10 @@ def _write_config_with_comments(config_obj, filepath):
 
                 abs_filepath = os.path.abspath(resolved_filepath)
                 parent_dir = os.path.dirname(abs_filepath) or "."
+                if is_managed_path(abs_filepath):
+                    with open(abs_filepath, 'w', encoding='utf-8') as destination:
+                        json.dump(data, destination, indent=2, ensure_ascii=False)
+                    return
                 os.makedirs(parent_dir, exist_ok=True)
                 with tempfile.NamedTemporaryFile(
                     "w", encoding="utf-8", delete=False, dir=parent_dir, suffix=".tmp"
@@ -7630,6 +7633,8 @@ def _migrate_ini_to_json(ini_config, json_path: str):
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         logging.info(f"[配置迁移] config.ini 已迁移至 {json_path}")
+    except StorageError:
+        raise
     except Exception as e:
         logging.warning(f"[配置迁移] 迁移到 JSON 失败（非致命）: {e}")
 
@@ -7647,6 +7652,8 @@ def _create_default_json_config(json_path: str):
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         logging.info(f"[配置初始化] 已创建默认 JSON 配置文件: {json_path}")
+    except StorageError:
+        raise
     except Exception as e:
         logging.warning(f"[配置初始化] 创建默认 JSON 配置失败（非致命）: {e}")
 
@@ -7658,7 +7665,7 @@ def _read_config_ini(config_file=CONFIG_FILE):
     读取规则：
       1. 仅使用 ./configs/config.json（返回 JsonConfigAdapter）
       2. 若文件不存在，自动创建默认 config.json
-      3. 若文件损坏，自动备份后重建默认 config.json
+      3. 受管数据库配置损坏时显式失败；外部文件保留备份后重建的兼容行为
 
     参数:
         config_file: JSON 文件路径，默认为 CONFIG_JSON_FILE
@@ -7669,7 +7676,7 @@ def _read_config_ini(config_file=CONFIG_FILE):
     说明:
         - 使用 RawConfigParser / JsonConfigAdapter 保持键名的大小写
         - 统一使用 utf-8 编码读取
-        - 包含错误处理，读取失败时记录日志并返回 None
+        - 数据库存储错误向上传播，禁止回退默认配置；其他外部读取错误返回 None
     """
     try:
         json_cfg_path = config_file or CONFIG_FILE
@@ -7688,6 +7695,8 @@ def _read_config_ini(config_file=CONFIG_FILE):
             with open(json_cfg_path, "r", encoding="utf-8") as vf:
                 json.load(vf)
         except json.JSONDecodeError:
+            if is_managed_path(json_cfg_path):
+                raise StorageError("Database application configuration is corrupt; explicit repair is required") from None
             backup_file = f"{json_cfg_path}.corrupted.{int(time.time())}.bak"
             try:
                 shutil.copy2(json_cfg_path, backup_file)
@@ -7702,6 +7711,8 @@ def _read_config_ini(config_file=CONFIG_FILE):
         logging.debug(f"[配置] 已从 {json_cfg_path} 加载 JSON 配置")
         return adapter
 
+    except StorageError:
+        raise
     except Exception as e:
         # 捕获所有可能的异常（文件不存在、权限问题、编码错误等）
         # 记录错误日志，包含完整的堆栈信息以便调试
@@ -7725,6 +7736,8 @@ def _create_config_ini():
         print("[配置文件] config.json 已存在，检查是否需要更新...")
         try:
             existing_config = JsonConfigAdapter(config_file)
+        except StorageError:
+            raise
         except Exception as e:
             # 捕获所有解析错误（包括重复项、格式错误等），备份并重置
             print(f"\n[错误] 读取配置文件 '{config_file}' 失败: {e}")
@@ -7767,6 +7780,8 @@ def _create_config_ini():
                 _write_config_with_comments(existing_config, config_file)
                 logging.info("配置文件已更新：自动补全缺失参数")
                 print("[配置文件] 配置文件已更新并保存（包含详细注释）")
+            except StorageError:
+                raise
             except Exception as e:
                 print(f"[错误] 保存更新后的 config.json 失败: {e}")
                 logging.error(f"保存更新后的 config.json 失败: {e}")

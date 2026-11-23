@@ -1,8 +1,8 @@
-"""Opt-in MySQL document storage; the default filesystem remains unchanged."""
+"""Database-first runtime policy and frozen v1 document migration support."""
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import hashlib
 import json
 import os
@@ -10,14 +10,12 @@ from pathlib import Path, PurePosixPath
 import re
 import threading
 import time
+from persistence.engine import (DatabaseError, DatabaseConfigurationError,
+                                DatabaseSettings as StorageSettings)
 
 
-class StorageError(RuntimeError):
-    pass
-
-
-class StorageConfigurationError(StorageError):
-    pass
+StorageError = DatabaseError
+StorageConfigurationError = DatabaseConfigurationError
 
 
 class ConflictError(StorageError):
@@ -28,66 +26,11 @@ ANY_REVISION = object()
 SCHEMA_VERSION = '1'
 
 
-@dataclass(frozen=True)
-class StorageSettings:
-    backend: str = 'file'
-    root: Path = field(default_factory=lambda: Path(__file__).resolve().parent)
-    host: str = '127.0.0.1'
-    port: int = 3306
-    user: str = ''
-    password: str = field(default='', repr=False)
-    database: str = ''
-    table_prefix: str = 'app_'
-    connect_timeout: int = 5
-    read_timeout: int = 15
-    write_timeout: int = 15
-    ssl_ca: str | None = None
-
-    @classmethod
-    def from_env(cls, environ=None, root=None):
-        env = os.environ if environ is None else environ
-        backend = str(env.get('APP_STORAGE_BACKEND', 'file')).strip().lower()
-        if backend not in {'file', 'mysql'}:
-            raise StorageConfigurationError('APP_STORAGE_BACKEND must be file or mysql')
-        root = Path(root or env.get('APP_STORAGE_ROOT') or Path(__file__).resolve().parent).resolve()
-        if backend == 'file':
-            return cls(backend=backend, root=root)
-
-        def integer(name, default, maximum=3600):
-            try:
-                value = int(env.get(name, default))
-            except (TypeError, ValueError):
-                raise StorageConfigurationError(f'{name} must be an integer') from None
-            if not 1 <= value <= maximum:
-                raise StorageConfigurationError(f'{name} is outside the allowed range')
-            return value
-
-        prefix = str(env.get('MYSQL_TABLE_PREFIX', 'app_'))
-        if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,39}', prefix):
-            raise StorageConfigurationError('MYSQL_TABLE_PREFIX must contain only letters, numbers and underscores')
-        user, database = str(env.get('MYSQL_USER', '')).strip(), str(env.get('MYSQL_DATABASE', '')).strip()
-        if not user or not database:
-            raise StorageConfigurationError('MySQL mode requires MYSQL_USER and MYSQL_DATABASE')
-        password = env.get('MYSQL_PASSWORD', '')
-        password_file = env.get('MYSQL_PASSWORD_FILE')
-        if password_file:
-            try:
-                password = Path(password_file).read_text(encoding='utf-8').rstrip(chr(13) + chr(10))
-            except OSError:
-                raise StorageConfigurationError('Cannot read MYSQL_PASSWORD_FILE') from None
-        return cls(backend=backend, root=root, host=str(env.get('MYSQL_HOST', '127.0.0.1')),
-                   port=integer('MYSQL_PORT', 3306, 65535), user=user, password=password,
-                   database=database, table_prefix=prefix,
-                   connect_timeout=integer('MYSQL_CONNECT_TIMEOUT', 5),
-                   read_timeout=integer('MYSQL_READ_TIMEOUT', 15),
-                   write_timeout=integer('MYSQL_WRITE_TIMEOUT', 15),
-                   ssl_ca=env.get('MYSQL_SSL_CA') or None)
-
-
 class StoragePolicy:
     """Map only known business documents; logs and binary assets never route."""
     SINGLE_FILES = frozenset({'permissions.json', 'messages.json', 'reminders.json',
-                              'payment_methods.json', 'amap_watermark_control.json'})
+                              'payment_methods.json', 'amap_watermark_control.json',
+                              'trusted_ips.txt'})
 
     def __init__(self, root, config=None):
         self.root = Path(root).resolve()
@@ -172,8 +115,6 @@ class StoragePolicy:
         namespace, prefix = directory
         key = prefix + path.name
         if path.suffix.lower() not in {'.json', '.ini'}:
-            return None
-        if namespace == 'configs' and key == 'config.json':
             return None
         if namespace == 'background_state' and key != 'background_state.json':
             return None
@@ -409,35 +350,99 @@ class MySQLDocumentStore:
 class StorageRuntime:
     backend: str
     policy: StoragePolicy | None = None
-    store: MySQLDocumentStore | None = None
+    store: object | None = None
 
 
 _runtime = None
 _runtime_lock = threading.RLock()
-_file_runtime = StorageRuntime('file')
+
+def _create_relational_store(settings):
+    from persistence.store import RelationalStore
+    return RelationalStore(settings)
+
+
+def _stored_config(store):
+    document = store.get('configs', 'config.json')
+    if document is None:
+        return {}
+    try:
+        config = json.loads(document.content.decode('utf-8-sig'))
+    except (UnicodeError, ValueError):
+        raise StorageConfigurationError('Database application configuration is invalid') from None
+    if not isinstance(config, dict):
+        raise StorageConfigurationError('Database application configuration must be an object')
+    return config
 
 
 def get_runtime():
-    """Lazy opt-in initialization; default file mode never connects to MySQL."""
+    """Initialize database storage without importing or falling back to files."""
     global _runtime
     if _runtime is not None:
         return _runtime
-    backend = os.environ.get('APP_STORAGE_BACKEND', 'file').strip().lower()
-    if backend == 'file':
-        return _file_runtime
     with _runtime_lock:
         if _runtime is None:
             settings = StorageSettings.from_env()
             if settings.root != Path(__file__).resolve().parent:
-                raise StorageConfigurationError('MySQL application root must match the code directory; use --root only for offline migration')
+                raise StorageConfigurationError('Database application root must match the code directory; use --root only for offline migration')
             if Path.cwd().resolve() != settings.root:
-                raise StorageConfigurationError('Start the MySQL application with its working directory set to the application root')
-            policy = StoragePolicy(settings.root)
-            store = MySQLDocumentStore(settings)
-            store.check_ready()
+                raise StorageConfigurationError('Start the database application with its working directory set to the application root')
+            new_sqlite = settings.backend == 'sqlite' and (
+                str(settings.sqlite_path) == ':memory:' or not settings.sqlite_path.exists())
+            if new_sqlite:
+                # This policy is used only to detect legacy input. Once a
+                # database is ready, its own configuration controls runtime paths.
+                try:
+                    source_policy = StoragePolicy(settings.root)
+                except StorageConfigurationError:
+                    raise StorageConfigurationError(
+                        'Legacy business configuration requires explicit migration; run tools/migrate_storage.py plan/import before starting'
+                    ) from None
+                if next(iter(source_policy.iter_files()), None) is not None:
+                    raise StorageConfigurationError(
+                        'Legacy business files require explicit migration; run tools/migrate_storage.py plan/import before starting'
+                    )
+            store = _create_relational_store(settings)
+            if new_sqlite:
+                store.init_schema(ready=True)
+            else:
+                store.check_ready()
+            policy = StoragePolicy(settings.root, _stored_config(store))
             _runtime = StorageRuntime(settings.backend, policy, store)
     return _runtime
 
 
 def require_storage_ready():
     return get_runtime()
+
+
+def get_runtime_for_paths(*paths):
+    """Avoid initializing business storage for standalone resource I/O.
+
+    Application configuration is in the default managed scope and bootstraps
+    the full database policy before custom directories are used. Once ready,
+    that policy also covers custom paths outside the application directory.
+    """
+    if _runtime is not None:
+        return _runtime
+    root = os.environ.get('APP_STORAGE_ROOT') or Path(__file__).resolve().parent
+    policy = StoragePolicy(root, {})
+    for path in paths:
+        if isinstance(path, int):
+            continue
+        if policy.identify(path) is not None or policy.directory(path) is not None:
+            return get_runtime()
+    return None
+
+
+def get_entrypoint_ssl_settings():
+    """Expose only deployment booleans, never configuration or credentials."""
+    config = _stored_config(get_runtime().store)
+    ssl = config.get('SSL', {})
+    if not isinstance(ssl, dict):
+        raise StorageConfigurationError('Database SSL configuration must be an object')
+    def boolean(name):
+        value = ssl.get(name, config.get(name, False))
+        if isinstance(value, (bool, int, float)):
+            return bool(value)
+        return isinstance(value, str) and value.strip().lower() in {'true', '1', 'yes', 'on'}
+    return {name: boolean(name) for name in ('ssl_enabled', 'https_only')}

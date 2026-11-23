@@ -378,6 +378,11 @@ class TestRouteRandomDetourConditions(unittest.TestCase):
 class TestDetourLegCache(unittest.TestCase):
     def setUp(self):
         api_runtime._DETOUR_LEG_CACHE.clear()
+        module = api_runtime._main()
+        configuration = module._get_default_config()
+        read_configuration = mock.patch.object(module, '_read_config_ini', return_value=configuration)
+        read_configuration.start()
+        self.addCleanup(read_configuration.stop)
 
     def test_cache_reuses_planned_leg(self):
         runtime = _make_runtime()

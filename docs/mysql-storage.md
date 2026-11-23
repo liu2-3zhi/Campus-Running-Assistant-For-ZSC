@@ -1,160 +1,135 @@
-# MySQL 数据存储与迁移
+# 数据库存储与离线迁移
 
-应用默认仍使用文件存储。启用 MySQL 后，受管的结构化业务文件由数据库保存，原文件保留作为迁移前快照。日志继续使用现有目录、文件名、写入方式与归档机制。此功能不自动迁移数据，也不会在数据库断线时回退写入旧文件。
+运行后端只有 SQLite 和 MySQL/MariaDB。默认创建本地 `data/application.sqlite3` 供开发测试使用；`APP_STORAGE_BACKEND=file` 已冻结并显式拒绝。数据库不可用、未初始化或迁移未完成时不会回退旧 JSON/INI。架构边界见[数据库优先存储设计](database-first-design.md)和[实施计划](database-first-plan.md)。
 
-## 范围与限制
+本版本只支持**单个应用实例**。数据库事务和修订号不能替代任务、账号执行和账单操作的进程内锁；不要启动多个应用副本共同操作同一数据库。
 
-迁移范围由应用和工具共用的 `StoragePolicy` 决定，包括系统账号、学校账号 JSON/INI、权限、会话、Token、后台任务、订单、账单、留言、提醒、删除账号备份，以及策略允许的其他结构化配置。索引文件原样保存，不重新计算 Token 或重建账号身份。
+## 范围与关系化结构
 
-以下内容继续保留在磁盘，不进入迁移或导出：
+运行期和迁移工具共用 `StoragePolicy` 白名单，覆盖系统账号、学校账号 JSON/INI、权限、会话、Token、后台任务、订单、账单、留言、提醒、背景绑定、删除账号归档及受管配置。`configs/config.json`、`trusted_ips.txt` 也进入数据库，不再作为持续更新的本地权威配置。
 
-- 整棵默认或自定义日志目录，包括 JSON/JSONL、支付日志、审计日志和归档。
-- 本地引导配置 `configs/config.json`。其中的目录配置用于确定迁移范围，文件本身不存入数据库。
-- 图片、上传文件、地图及其他缓存、SSL 证书和私钥。
-- 未被策略明确允许的其他文件。
+SQLite 与 MySQL v2 使用相同的领域表：身份/权限、学校账号及用户绑定、会话/Token、任务、支付/账单/退款、内容、背景和配置。兼容 registry 只保存文档定位、结构布局、修订号、时间及摘要，不以通用 BLOB 保存整份业务正文。核心字段由独立类型列决定，动态扩展留在实体的扩展 JSON；兼容重建保留字段存在性与原 JSON 类型，并反映核心 SQL 列的改动。
 
-本版本仍按**单个应用实例**运行。启用 MySQL 不会把进程内的任务执行锁、账号锁和账单锁自动变成分布式锁；不要据此启动多个应用副本同时操作同一数据库。
+- 金额使用整数分，迁移以 `Decimal` 严格检查精度，不静默舍入。时间戳等数值在 SQLite 使用双精度，在 MySQL 使用 `DECIMAL(65,30)` 并以 Decimal 精确传输；扩展 JSON 的浮点数以十六进制表示编码、大整数以字符串表示编码，重建时恢复原类型，避免原生 MySQL JSON 的末位舍入。
+- 学校账号全局资料与用户绑定分离，UA 按系统用户 owner + 学校账号绑定隔离；同一学号绑定给不同用户时不能共用 UA。
+- 订单、账单关联和退款拆表。账单仍属于学校账号，不因创建订单的系统用户删除而级联丢失。
+- 用户 Token 仍按用户保存，游客 Token 按 UUID 保存；兼容旧索引不改变生命周期。
+- 应用配置按 section/key 或叶子值拆行，不把整份配置正文塞入一个通用 JSON 记录。
 
-数据库需要预先创建；应用不会创建数据库或数据库账号。准备专用账号，使用 UTF-8/utf8mb4 数据库，并为迁移初始化授予建表权限、为运行期授予相应表的读写权限。安装依赖使用 `python -m pip install -r ssl/requirements.txt`。
+日志位置、文件名、归档和挂载**保持不变**。默认或自定义日志目录整棵排除，包括 JSON/JSONL 状态、支付/账单日志及审计归档。图片、头像、上传、随机背景、地图和其他缓存、SSL 证书与私钥及白名单外文件继续留在原磁盘路径。
 
-## 配置
+来源文档数不等于实体行数，不能只比较总行数判断成功。v2 校验比较重建后的语义、类型、摘要及来源映射；导出可能使用规范化 JSON/INI 排版，不保证与原文件逐字节相同。源文件保持只读。
 
-连接信息来自环境变量，不写入前端配置或迁移输出。示例中的密码为占位符，部署时使用实际环境变量或部署系统的 secret。
+## 配置与启动
 
-```dotenv
-# 不配置时仍为 file。迁移前保持 file，核验完成后再改成 mysql。
-APP_STORAGE_BACKEND=file
-APP_STORAGE_ROOT=/app
+依赖安装使用 `python -m pip install -r ssl/requirements.txt`。全新环境首次启动可初始化默认 SQLite 数据库、配置和管理员；发现尚未迁移的旧受管文件时会拒绝直接启动空库，应先离线导入。MySQL 数据库和专用账号须预先创建，使用 UTF-8/utf8mb4；初始化需要建表权限，运行需要相应表读写权限。应用不创建数据库或数据库账号。
 
-MYSQL_HOST=database.example.com
-MYSQL_PORT=3306
-MYSQL_USER=campus_app
-MYSQL_PASSWORD=replace-with-your-own-password
-MYSQL_DATABASE=campus_running
-MYSQL_TABLE_PREFIX=app_
-MYSQL_CONNECT_TIMEOUT=5
-MYSQL_READ_TIMEOUT=15
-MYSQL_WRITE_TIMEOUT=15
-# 远端 MySQL 配置受信任 CA 时启用；未使用时不设置此变量。
-# MYSQL_SSL_CA=/run/secrets/mysql-ca.pem
-```
+| 变量 | 用途 |
+| --- | --- |
+| `APP_STORAGE_BACKEND` | `sqlite`（默认）或 `mysql`；拒绝 `file` |
+| `APP_STORAGE_ROOT` | 应用根目录，容器内为 `/app` |
+| `SQLITE_DATABASE_PATH` | SQLite 文件位置，默认 `data/application.sqlite3` |
+| `MYSQL_HOST` / `MYSQL_PORT` | 外部数据库地址和端口 |
+| `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE` | 专用账号、密码和数据库 |
+| `MYSQL_TABLE_PREFIX` | 表前缀，仅允许以字母开头的字母、数字、下划线 |
+| `MYSQL_CONNECT_TIMEOUT` / `MYSQL_READ_TIMEOUT` / `MYSQL_WRITE_TIMEOUT` | 连接、读、写超时秒数 |
+| `MYSQL_SSL_CA` | 进程可读的受信任 CA 文件，使用时同时挂载证书 |
 
-MySQL 必需配置为 `MYSQL_USER`、`MYSQL_DATABASE` 及实际连接所需凭据。`MYSQL_HOST`、端口、超时和表前缀可覆盖默认值；`MYSQL_TABLE_PREFIX` 只允许以字母开头的字母、数字和下划线。配置 `MYSQL_SSL_CA` 时，路径指向应用/迁移进程可读的 CA 文件。不要把生产连接密码放入 Git、命令参数、测试样本或问题截图。
+Docker 直接在 Compose `environment` 填写连接变量，不使用 `.env`、`env_file` 或 `--env-file`。仓库示例仅含占位值；实际值在本地部署配置中修改，**不得提交真实凭据**。离线测试可使用当前进程环境，不把密码放入命令参数、报告、测试样本或文档。
 
-首版运行期要求 `APP_STORAGE_ROOT` 与实际应用代码根目录一致，例如容器内为 `/app`；应用中仍有按模块 `__file__` 构造的路径，不能仅改变此变量或当前工作目录来重定向运行数据。运行时还须在应用代码根目录启动；设置不同运行根目录或工作目录会显式拒绝启动，避免出现一部分写数据库、一部分写磁盘的混合状态。
+运行期代码根目录、`APP_STORAGE_ROOT` 和当前工作目录必须一致，防止数据库与物理路径混用。离线 CLI 的 `--root` 可指向独立可信源目录；工具从源 `configs/config.json` 读取自定义业务目录和日志目录以确定迁移范围，不启动应用。
 
-离线迁移 CLI 的 `--root` 允许任意可信的源数据目录，优先于 `APP_STORAGE_ROOT`，缺省为项目目录。它不启动应用，也不受上述运行根目录限制。工具从源根目录的 `configs/config.json` 读取 `System` 的学校账号、系统账号、会话及 Token 自定义目录，以及 `Logging.log_dir`；默认日志目录始终排除。
+## 停服后迁移文件副本
 
-`init/import/verify/export` 命令显式连接 MySQL，即使当前 `APP_STORAGE_BACKEND=file`，也不会修改该环境变量或应用配置。`plan` 不要求 MySQL 连接信息，不建立数据库连接。
+先停止应用及所有写入进程，备份源文件、数据库和磁盘资源。`--stopped` 表示操作人员已确认停写，不会自动停止服务。来源必须完整、可信、反映当前业务状态；迁移期间不得重启写入者。
 
-## 停服迁移
-
-先备份当前数据、引导配置、图片/上传等磁盘资源。备份应位于业务根目录之外。停止应用及所有可能修改业务数据的进程，保留 MySQL 服务运行。迁移工具不会代替用户停止进程；`--stopped` 表示你已完成停写确认。
-
-在已设置上述 `MYSQL_*` 环境变量的终端中执行：
+全局参数放在子命令前。`plan` 仅扫描、解析和预检文件，不连接数据库；`init/import/verify/export` 由 `--backend sqlite/mysql` 选择目标。示例 `/legacy` 为只读源挂载，连接配置由进程或 Compose 提供：
 
 ```bash
-# 1. 查看允许范围、数量、字节数并校验全部源文件；不连接 MySQL。
-python tools/migrate_storage.py --root /app plan
-
-# 2. 显式创建/检查所需数据表；此命令不导入文件、不标记迁移完成。
-python tools/migrate_storage.py --root /app init
-
-# 3. 导入并校验全部记录。原文件不改动；默认遇到不同内容即中止。
-python tools/migrate_storage.py --root /app import --stopped
-
-# 4. 独立核对受管文件与数据库的记录数量及 SHA256。
-python tools/migrate_storage.py --root /app verify
+python tools/migrate_storage.py --root /legacy --backend mysql plan
+python tools/migrate_storage.py --root /legacy --backend mysql init
+python tools/migrate_storage.py --root /legacy --backend mysql import --stopped
+python tools/migrate_storage.py --root /legacy --backend mysql verify
 ```
 
-Windows 原生部署将 `/app` 换成自己的项目或数据根目录；工具可从任意工作目录通过脚本绝对路径调用。Docker 部署在应用停止后，用相同镜像、原持久化挂载及相同 `MYSQL_*` 环境运行一次性迁移容器，并将命令入口覆盖为 `python`；不要同时启动原应用进程。
+`init` 只创建/检查 v2 表，不导入、不标记就绪。导入前预检全部来源及类型，开始后关闭就绪标志；重新核对来源与目标全部通过才标记可运行。`import` 和独立 `verify` 均成功后再启动应用。
 
-确认 `import` 和 `verify` 都以退出码 0 结束后，将应用环境中的 `APP_STORAGE_BACKEND` 改为 `mysql`，再启动应用。保留原有日志目录和磁盘资源挂载。MySQL 未初始化、未完成迁移或连接失败时，应用应报告错误；不要通过清空数据库、自动创建默认数据或写回旧文件掩盖错误。
+测试 SQLite 时改用 `--backend sqlite`，并把 `SQLITE_DATABASE_PATH` 设置在**源目录之外**。未显式指定时，CLI 的默认数据库位于 `--root` 下的 `data/application.sqlite3`，不能让目标落入只读源挂载。Compose 已将其固定为 `/app/data/application.sqlite3`。
 
-工具只输出操作、记录数、字节数、冲突/校验数量及错误类型，不打印密码、Token、连接 DSN 或记录正文。退出码 0 表示命令成功；`verify` 不一致返回 1；配置、格式、冲突或运行错误返回 2。
+空文件或纯空白文件默认拒绝。确认只是预建占位文件时，可在 `plan/import/verify` 分别添加 `--skip-empty`，输出会显示跳过数；不能以此掩盖应有数据损坏。JSON 拒绝非标准 NaN 等数值，INI 使用兼容解析器预检。
 
-## Docker Compose 覆盖配置
+默认 `--conflict error` 拒绝同标识不同内容，一致记录幂等跳过。`--conflict overwrite` 显式以来源覆盖冲突；`--conflict skip` 保留冲突，但最终不一致仍使校验失败。`--batch-size` 默认 100，每批事务独立提交；失败回滚当前批，已提交批次保留，修复后用相同来源和参数重试。数据库多余记录不会自动删除，也不能在存在差异时标记就绪。身份或权限归属冲突必须明确处理，不推断默认 owner 或更宽权限。
 
-新增 run/docker-compose.mysql.yml 是可选覆盖文件；原 run/docker-compose.yml 保持不变。覆盖文件仅给应用传入外部 MySQL 的主机、端口和连接凭据，不内置数据库服务、数据库卷、专用网络或启动依赖。请事先准备可从应用容器访问的外部 MySQL 实例及专用数据库账号。
+## Docker Compose
 
-以下示例从 `run` 目录执行。先确认使用的应用镜像包含本次数据库和迁移工具代码；旧镜像不会因增加覆盖文件而自动获得新功能。
+`run/docker-compose.yml` 默认 SQLite，通过 `./data:/app/data` 持久化。`run/docker-compose.mysql.yml` 只覆盖应用的外部 MySQL 连接变量，**没有内置 MySQL 服务、数据库卷或数据库启动依赖**。确认镜像包含当前代码后，在本地编辑占位连接值。容器内 `localhost` 指向自身，应使用应用容器可达的数据库地址。
+
+旧配置、账号、会话、Token 等受管目录的运行挂载已移除。升级需将停写后的完整旧数据根目录另行只读挂载到 `/legacy`，不能假定旧文件仍位于容器 `/app`。以下从 `run` 目录执行，替换示例源路径：
 
 ```bash
-cd run
-cp mysql.env.example mysql.env
-# 编辑 mysql.env，设置外部 MYSQL_HOST/PORT 和应用账号凭据。不要将 mysql.env 加入 Git。
-docker compose --env-file mysql.env -f docker-compose.yml -f docker-compose.mysql.yml config --quiet
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml config --quiet
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml stop python-running-helper
 
-# 停止已有应用，保留原数据和日志挂载。此时不启动应用服务。
-docker compose --env-file mysql.env -f docker-compose.yml -f docker-compose.mysql.yml stop python-running-helper
-# 按顺序执行一次性工具容器；--no-deps 避免附带启动应用进程。
-docker compose --env-file mysql.env -f docker-compose.yml -f docker-compose.mysql.yml run --rm --no-deps --entrypoint python python-running-helper tools/migrate_storage.py --root /app plan
-docker compose --env-file mysql.env -f docker-compose.yml -f docker-compose.mysql.yml run --rm --no-deps --entrypoint python python-running-helper tools/migrate_storage.py --root /app init
-docker compose --env-file mysql.env -f docker-compose.yml -f docker-compose.mysql.yml run --rm --no-deps --entrypoint python python-running-helper tools/migrate_storage.py --root /app import --stopped
-docker compose --env-file mysql.env -f docker-compose.yml -f docker-compose.mysql.yml run --rm --no-deps --entrypoint python python-running-helper tools/migrate_storage.py --root /app verify
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml run --rm --no-deps --entrypoint python -v "/path/to/stopped-data:/legacy:ro" python-running-helper tools/migrate_storage.py --root /legacy --backend mysql plan
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml run --rm --no-deps --entrypoint python -v "/path/to/stopped-data:/legacy:ro" python-running-helper tools/migrate_storage.py --root /legacy --backend mysql init
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml run --rm --no-deps --entrypoint python -v "/path/to/stopped-data:/legacy:ro" python-running-helper tools/migrate_storage.py --root /legacy --backend mysql import --stopped
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml run --rm --no-deps --entrypoint python -v "/path/to/stopped-data:/legacy:ro" python-running-helper tools/migrate_storage.py --root /legacy --backend mysql verify
 
-# 只有导入和独立校验均成功后，才启动应用。
-docker compose --env-file mysql.env -f docker-compose.yml -f docker-compose.mysql.yml up -d python-running-helper
+# 只有导入和独立校验均成功后才启动。
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d python-running-helper
 ```
 
-覆盖配置不会替换或移动原日志挂载 `./logs:/app/logs`，也不改变应用的 Docker 日志轮转设置。配置文件里的自定义日志路径继续按原部署挂载；数据库只保存允许的业务文件。
+SQLite 容器迁移沿用相同只读源挂载，去掉 MySQL 覆盖文件并改用 `--backend sqlite`；数据库保留在 `./data`。数据库或导出结果不能仅保存在一次性容器可写层。原 `./logs:/app/logs`、Docker 日志轮转及 SSL、上传和图片资源挂载保留；自定义日志仍按原位置挂载。数据库可用性、TLS、账号授权及长期备份由现有外部数据库部署负责。
 
-外部 MySQL 的创建、备份、账号授权、TLS 和可用性由现有数据库部署负责；此覆盖文件不负责安装或启动数据库。MYSQL_HOST 必须是应用容器可达的地址，不能用容器内的 localhost 指代宿主机数据库。迁移工具会实际检查连接，数据库不可用时不会启动文件回退。
+## 从 v1 MySQL 文档表升级
 
-导出容器必须显式挂载恢复目录，否则一次性容器删除后导出文件也会丢失。例如先停应用，再执行：
+`--source legacy-mysql` 在 `import/verify` 时只读 v1 文档表。当前 MySQL 连接变量用于来源，目标由 `--backend` 选择；同库 MySQL 目标必须使用不同前缀，不能覆盖旧表。示例先把进程或本地 Compose 中 `MYSQL_TABLE_PREFIX` 改为 `app_v2_`，来源前缀单独指定：
 
 ```bash
-docker compose --env-file mysql.env -f docker-compose.yml -f docker-compose.mysql.yml run --rm --no-deps --entrypoint python -v "$PWD/mysql-export:/restore" python-running-helper tools/migrate_storage.py --root /app export --stopped --output /restore/campus-data
+python tools/migrate_storage.py --root /legacy --backend mysql init
+python tools/migrate_storage.py --root /legacy --backend mysql --source legacy-mysql --legacy-table-prefix app_ import --stopped
+python tools/migrate_storage.py --root /legacy --backend mysql --source legacy-mysql --legacy-table-prefix app_ verify
 ```
 
-## 空文件、冲突与恢复
+当前 CLI 没有独立的第二组源连接参数，不能分别指定另一台源服务器；迁入 SQLite 时将目标文件置于源目录之外。`plan` 始终是文件来源预检，不是 v1 数据库清点。
 
-导入前先验证全部 JSON/INI。JSON 需要有效 UTF-8（可带 BOM），不接受 NaN 等非标准数值；INI 按无插值、兼容重复选项的解析器验证。原始字节原样存储，不统一重排 JSON、不重新编码密码和 Token。
+v1 未保存原本地主配置 `configs/config.json` 和信任 IP，单独升级文档表不能代表这些资料已补齐；必须另行核对保留配置及完整范围。整理统一文件迁移源时，要包含 v1 上线后的最新业务内容，不能直接使用陈旧物理快照。不能把资料缺失静默当成成功迁移或默认重建。
 
-空文件或只有空白的文件默认拒绝，避免把损坏数据当默认配置。若确认这些是部署预创建的占位文件，可显式跳过：
+## 可复现迁移测试与受控清库
+
+`tools/test_storage_migration.py` 默认使用临时 SQLite，读取副本、导入、幂等重试、独立核验，再导出至新目录并重新导入第二个 SQLite。源目录全部文件的 SHA256、大小和修改时间在前后核对。报告必须是源目录外的全新文件：
 
 ```bash
-python tools/migrate_storage.py --root /app plan --skip-empty
-python tools/migrate_storage.py --root /app import --stopped --skip-empty
-python tools/migrate_storage.py --root /app verify --skip-empty
+python tools/test_storage_migration.py --source-root /legacy --report /reports/sqlite-migration.json
 ```
 
-跳过数量会显示在输出中。这不会把空文件导入数据库，也不会修改源文件。若源文件应包含真实数据，应从备份恢复，不能用 `--skip-empty` 掩盖数据损坏。
+临时 SQLite 测试结束后清理，不代替部署的持久 `init/import/verify`。报告不包含业务正文和凭据，源副本始终只读。
 
-默认 `--conflict error` 在写入前发现目标同标识不同内容即中止。同标识且内容 SHA256 相同的记录幂等跳过，重复运行不会无谓增加修订号。`--conflict overwrite` 显式使用文件内容覆盖不同的数据库记录；已有修订号参与并发冲突检查。`--conflict skip` 保留冲突记录，但最终只要与源文件不同，校验仍失败，不会把不一致视为迁移成功。
-
-`--batch-size` 默认为 100。每批在事务中写入，一批失败则回滚该批；前面已提交批次保留。修复问题后使用相同目录、数据库及参数重新执行导入，已一致记录自动跳过。迁移结束前会重新读取源文件并核对数据库，源数据变化、数据库缺失、多余或内容不同时均拒绝标记就绪。不要在导入过程中重新启动应用。
+目标 MySQL 显式传 `--backend mysql`。只有已授权清理专用测试库、且确认所有写入进程停止时才使用：
 
 ```bash
-python tools/migrate_storage.py --root /app import --stopped --batch-size 100 --conflict overwrite
+python tools/test_storage_migration.py --source-root /legacy --backend mysql --reset-target --stopped --backup-dir /backups/mysql --report /reports/mysql-migration.json
 ```
 
-数据库多余记录不会被迁移工具自动删除。应先确认是否选错数据库、根目录或旧实例；需要删除时由操作人员备份并明确处理，然后重新核验。
+清库前先完成 SQLite 全量预检、复核源未变，再备份指定库并重新读取备份校验，锁内比对当前数据库与备份后才清理。目标库不符、无有效备份、内容变化或无法完整盘点时拒绝；不删除数据库和账号，不操作其他库。连接凭据仅从进程环境读取。测试连接默认校验 TLS；确有受信任指纹时可显式设置测试工具 `MYSQL_SSL_CERT_SHA256`，不能把首次得到的未知指纹直接视为信任依据。
 
-## 导出与回退
+备份格式 v2 保存 DDL、全部显式列、列元数据、数据和多级摘要，包含 INVISIBLE 列。生成列值参与校验，恢复 INSERT 只写 `writable_columns`。TIMESTAMP 固定 UTC 读取，清单记录时区、SQL mode、客户端字符集和连接排序规则，结束后恢复原会话设置。备份目录必须位于仓库和源目录之外，按敏感业务数据保管。
 
-MySQL 上线后，原文件不会持续更新。回退必须先停止应用，将数据库中的最新数据导出到**全新目录**，不能直接切回迁移前的旧文件。导出会验证命名空间、文档键和 SHA256，拒绝绝对键、`..`、反斜线、盘符和受管范围外路径；不覆盖已有目标目录。
+当前工具仅接受可完整盘点的 InnoDB 基础表及无环库内外键。视图、触发器、例程、事件、非 InnoDB 表、外库引用、外键环或不足权限均明确拒绝，不会漏备后继续清理；需要目标库完整对象可见性及锁表权限。删除时保持外键检查，按子表先于父表执行。MySQL DDL 隐式提交，删除途中失败不能靠事务回滚；应保留已校验备份，停止后续迁移，按清单恢复 DDL、会话语义及可写列数据。当前没有自动恢复命令，备份成功不等于已完成恢复演练。
+
+权限检查接受目标数据库或全局作用域的 `ALL PRIVILEGES`，也接受 MySQL 8.4 将完整数据库级静态权限展开后的等价显式枚举；缺少任一必需权限、仅表级/其他库授权或存在部分撤销时仍拒绝，不因此放宽对象盘点。
+
+## 导出、恢复与验收
+
+导出只写全新目录，校验记录、命名空间、键及路径范围，拒绝路径穿越和白名单外位置，不覆盖旧目录。容器导出必须显式挂载输出目录：
 
 ```bash
-python tools/migrate_storage.py --root /app export --stopped --output /restore/campus-data
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml stop python-running-helper
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml run --rm --no-deps --entrypoint python -v "/path/to/exports:/restore" python-running-helper tools/migrate_storage.py --root /app --backend mysql export --stopped --output /restore/campus-data
 ```
 
-导出保留原始字节及修改时间。目录布局按当前本地策略映射，包括位于 root 内的自定义账号/会话目录。若自定义业务目录位于 root 之外，当前版本明确拒绝导出；先规划统一根目录，不能丢失外部目录布局或把数据库键直接当系统路径写入。
+导出包含数据库主配置、信任 IP 和受管业务资料，按当前策略映射目录并保留可用修改时间；不包含日志、图片、上传、缓存和证书。根目录以外的自定义业务目录会被拒绝导出，需先规划可信相对布局。磁盘资源仍需独立备份；导出写盘失败返回非零并保留现场，检查后换全新目录重试。
 
-导出不携带 `configs/config.json`、日志、图片、上传和证书。将对应的本地引导配置和磁盘资源从可信备份单独放回恢复目录；自定义目录部署必须保留相同的相对布局。离线核验或再次导入时，可将导出目录作为新的 `--root` 执行 `plan/import/verify`。
+导出用于备份、交换和再次导入 SQLite/MySQL，**不表示恢复文件运行后端**。上线后旧文件不会同步更新，禁止将陈旧来源与导出合并，避免删除记录复活。恢复目标仍为独立数据库，停写导入和独立核验后再切换连接配置。
 
-恢复文件模式时，先备份现有文件，再将导出内容恢复到干净的受管数据目录或对应容器挂载，不能直接与迁移前的 JSON/INI 合并，否则数据库中已经删除的旧记录会重新出现。混合目录中的图片和日志须按原位置单独保留。设置 APP_STORAGE_BACKEND=file 后按原部署方式启动；日志挂载和位置保持原配置，不随数据导出移动。
-
-导出写盘失败会返回非零并保留目标目录现场，不会宣称成功；检查后选择另一个全新目录重试。恢复之前先完成文件备份与摘要核验。受控单元测试不能代替本机数据库联通、实际账号和业务流程的部署验收。
-
-## 本轮验证记录
-
-- 完整 Python 回归（启用隔离真实 MySQL 集成）：2059 项通过、3 项跳过；JavaScript 回归：638 项通过。Python 仅出现现有 Eventlet 弃用警告。
-- MySQL 存储、I/O、迁移和真实业务入口专项：95 项通过；另有外部 MySQL Compose 合并配置检查通过。
-- 迁移单元与 CLI 测试：32 项通过，使用临时目录、MemoryStore 和真实 StoragePolicy；包括 Windows 旧编码环境下 UTF-8 帮助输出。
-- 使用隔离的真实 MySQL 8.4 测试库和临时数据运行 CLI：`plan → init → import → verify → export` 成功，导出数据重新导入第二个独立表前缀后再次校验成功。
-- 六条测试记录包含自定义账号目录、INI、中文 JSON、系统账号索引、Token 和 Token 索引；原始字节与修改时间保持不变，默认/自定义日志及引导配置未进入数据库或导出目录。
-- 重复导入六条记录全部幂等跳过；数据库多出一条记录时 `verify` 返回退出码 1。真实事务中注入第二批写入失败，验证当前批回滚、前批保留、就绪标志仍关闭；重试后成功补完。
-- `docker compose --env-file mysql.env.example -f docker-compose.yml -f docker-compose.mysql.yml config` 验证通过。已确认合并后只有应用服务，没有内置 MySQL 服务、数据库卷或额外网络，且原应用全部挂载和日志配置不变；没有启动真实部署服务。
-
-以上数据库测试只使用隔离临时样本和独立测试表，结束后删除本轮测试表；未迁移当前项目的真实业务数据，未证明真实账号登录、支付、签到或跑步流程的线上验收结果。
+数据层报告不代替登录、多账号 UA、会话、支付和任务验收。SQLite 测试不能证明外部 MySQL 联通、权限和部署成功；实际部署须检查独立 `verify`、数据库 ready 状态、日志和关键业务入口。

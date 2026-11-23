@@ -211,6 +211,29 @@ class TestPaymentJumpHardening(unittest.TestCase):
 
 
 class TestTrustedProxyIpHandling(unittest.TestCase):
+    def setUp(self):
+        import business_storage
+        import trusted_ip
+        from persistence.engine import DatabaseSettings
+        from persistence.store import RelationalStore
+
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        self.store = RelationalStore(DatabaseSettings(root=root))
+        self.store.init_schema(ready=True)
+        self.addCleanup(self.store.database.dispose)
+        self.store.put('settings', 'trusted_ips.txt', b'127.0.0.1\n')
+        runtime = business_storage.StorageRuntime('sqlite', business_storage.StoragePolicy(root, {}), self.store)
+        for patcher in (
+            mock.patch.object(business_storage, '_runtime', runtime),
+            mock.patch.object(main_module, 'TRUSTED_IPS_FILE', str(root / 'trusted_ips.txt')),
+            mock.patch.object(trusted_ip, '_trusted_ip_networks_cache', None),
+            mock.patch.object(trusted_ip, '_trusted_ip_networks_cache_mtime', None),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_untrusted_peer_cannot_override_client_ip(self):
         self.assertTrue(
             hasattr(main_module, "_select_forwarded_client_ip"),
@@ -238,8 +261,10 @@ class TestTrustedProxyIpHandling(unittest.TestCase):
         )
         self.assertEqual(resolved, "8.8.8.8")
 
-    def test_trusted_ips_file_exists(self):
-        self.assertTrue(Path(main_module.TRUSTED_IPS_FILE).is_file())
+    def test_trusted_ips_configuration_exists_only_in_database(self):
+        self.assertTrue(main_module.os.path.isfile(main_module.TRUSTED_IPS_FILE))
+        self.assertIsNotNone(self.store.get('settings', 'trusted_ips.txt'))
+        self.assertFalse(Path(main_module.TRUSTED_IPS_FILE).exists())
 
 
 class TestTrustedIpFileFormats(unittest.TestCase):

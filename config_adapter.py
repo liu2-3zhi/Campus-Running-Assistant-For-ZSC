@@ -3,14 +3,14 @@ from __future__ import annotations
 import ast
 from storage_io import configparser
 import json
-from storage_io import os, open
+from storage_io import os, open, is_managed_path
 import tempfile
 import threading
 
 
 class JsonConfigAdapter:
     """
-    configparser.RawConfigParser 兼容适配器，底层使用 JSON 文件存储。
+    configparser.RawConfigParser 兼容适配器，受管配置使用数据库存储。
 
     JSON 文件格式（与 config.ini 一一对应）：
     {
@@ -177,10 +177,9 @@ class JsonConfigAdapter:
         return False
 
     def write(self, fileobj=None):
-        """将当前配置写回 JSON 文件（fileobj 参数保留以兼容 configparser 接口）。"""
+        """保存配置；受管路径直接提交数据库，不经过磁盘临时文件。"""
         abs_path = os.path.abspath(self._path)
         parent_dir = os.path.dirname(abs_path)
-        os.makedirs(parent_dir, exist_ok=True)
         with self._write_lock:
             data = {}
             for section, options in self._data.items():
@@ -199,6 +198,11 @@ class JsonConfigAdapter:
                         continue
                     section_data[key] = value if isinstance(value, (dict, list)) else str(value)
                 data[section] = section_data
+            if is_managed_path(abs_path):
+                with open(abs_path, 'w', encoding='utf-8') as destination:
+                    json.dump(data, destination, indent=2, ensure_ascii=False)
+                return
+            os.makedirs(parent_dir, exist_ok=True)
             with tempfile.NamedTemporaryFile(
                 "w", encoding="utf-8", delete=False, dir=parent_dir, suffix=".tmp"
             ) as tmpf:

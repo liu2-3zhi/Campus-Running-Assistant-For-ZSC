@@ -150,8 +150,12 @@ def isolated_business(tmp_path, monkeypatch):
     app.add_url_rule("/auth/switch_session", "switch", switch, methods=["POST"])
     client = app.test_client()
     client.set_cookie("auth_token", credentials["isolated-manager"])
-    return SimpleNamespace(runtime=runtime, sessions=sessions, namespace=namespace,
-                           credentials=credentials, client=client, root=tmp_path)
+    try:
+        yield SimpleNamespace(runtime=runtime, sessions=sessions, namespace=namespace,
+                              credentials=credentials, client=client, root=tmp_path)
+    finally:
+        runtime.auth_system._user_list_cache_stop.set()
+        runtime.auth_system._user_list_cache_thread.join(timeout=2)
 
 
 def capture_business(environment):
