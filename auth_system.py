@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import collections
 import copy
-import configparser
+from storage_io import configparser
 import datetime
 import hashlib
 import json
 import logging
-import os
+from storage_io import os, open
 import secrets
 import sys
 import threading

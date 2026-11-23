@@ -4,7 +4,7 @@ import copy
 import datetime
 import json
 import logging
-import os
+from storage_io import os, open
 import secrets
 import threading
 import time

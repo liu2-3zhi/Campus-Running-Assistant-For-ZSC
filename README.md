@@ -17,6 +17,12 @@
 - 支持主题样式与随机背景缓存
 - 内置支付商品名生成器，当前已注册 `lomei` 与 `travel_service` 两种模式
 
+## 可选 MySQL 存储
+
+默认继续使用文件存储，也可将账号、会话、Token、订单及其他受管 JSON/INI 业务数据保存到外部 MySQL。日志目录和日志挂载保持不变，图片、上传与证书继续保留在磁盘。
+
+启用前须停服，使用 `tools/migrate_storage.py` 完成导入和校验；支持幂等重试、冲突检查及导出回退。`run/docker-compose.mysql.yml` 仅提供外部数据库连接配置，不包含 MySQL 服务。本版本仅支持单个应用实例。配置、迁移和恢复步骤见 [MySQL 数据存储与迁移](docs/mysql-storage.md)。
+
 ## 本地运行
 
 以下示例以 Linux / macOS 为例：

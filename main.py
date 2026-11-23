@@ -5,7 +5,8 @@
 from __future__ import annotations
 
 import ast
-import glob
+from storage_io import glob, os, open, shutil, configparser
+from business_storage import require_storage_ready, StorageError
 import math
 import tempfile
 import threading
@@ -3909,6 +3910,9 @@ def _try_import_builtin(module_name, display_name=None, use_print=False):
     try:
         module = __import__(module_name)
         _buffer_log("INFO", f"[导入检查] ✓ {display_name} 导入成功")
+        if module_name in {"os", "shutil", "configparser"}:
+            import storage_io
+            return getattr(storage_io, module_name)
         return module
     except ImportError as e:
         _import_failures.append(
@@ -4262,7 +4266,7 @@ def import_standard_libraries():
         ("base64", "import base64"),
         ("bisect", "import bisect"),
         ("collections", "import collections"),
-        ("configparser", "import configparser"),
+        ("configparser", "from storage_io import configparser"),
         ("copy", "import copy"),
         ("csv", "import csv"),
         ("datetime", "import datetime"),
@@ -4288,10 +4292,10 @@ def import_standard_libraries():
         ("functools", "import functools"),
         # ("ipaddress", "import ipaddress"),
         ("string", "import string"),
-        ("shutil", "import shutil"),
+        ("shutil", "from storage_io import shutil"),
         ("concurrent.futures", "import concurrent.futures"),
         ("tempfile", "import tempfile"),
-        ("os", "import os"),
+        ("os", "from storage_io import os"),
         ("codecs", "import codecs"),
     ]
 
@@ -11734,6 +11738,12 @@ def main():
 
     if getattr(args, "daily_restart_helper", False):
         return _run_daily_restart_helper(args)
+
+    try:
+        require_storage_ready()
+    except StorageError as storage_error:
+        print(f"[存储初始化失败] {storage_error}")
+        raise SystemExit(1) from None
 
     if not _acquire_single_instance_lock():
         print(

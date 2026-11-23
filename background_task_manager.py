@@ -5,7 +5,7 @@ import copy
 import hashlib
 import json
 import logging
-import os
+from storage_io import os, open
 import random
 import string
 import threading

@@ -17,3 +17,4 @@ eventlet
 BeautifulSoup4
 werkzeug
 fake-useragent
+PyMySQL

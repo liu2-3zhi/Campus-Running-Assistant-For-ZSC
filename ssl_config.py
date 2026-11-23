@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import logging
-import os
+from storage_io import os, open
 import ssl
 
 import cryptography

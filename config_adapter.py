@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import ast
-import configparser
+from storage_io import configparser
 import json
-import os
+from storage_io import os, open
 import tempfile
 import threading
 

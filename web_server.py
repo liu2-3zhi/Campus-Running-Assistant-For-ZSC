@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import concurrent
-import configparser
+from storage_io import configparser
 import copy
 import datetime
 import functools
@@ -14,11 +14,11 @@ import ipaddress
 import json
 import logging
 import math
-import os
+from storage_io import os, open
 import random
 import re
 import secrets
-import shutil
+from storage_io import shutil
 import socket
 import subprocess
 import sys

@@ -86,3 +86,5 @@ auto_attendance_config.json
 /.claude
 /random_background_image
 /docs/superpowers
+.env
+run/mysql.env

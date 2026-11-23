@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
-import os
+from storage_io import os, open
 import secrets
 import threading
 import time

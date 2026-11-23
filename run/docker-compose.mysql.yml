@@ -1,0 +1,17 @@
+# Optional overlay: docker compose --env-file mysql.env -f docker-compose.yml -f docker-compose.mysql.yml ...
+# External MySQL only; the base file retains all data/log mounts and networks.
+services:
+  python-running-helper:
+    environment:
+      APP_STORAGE_BACKEND: mysql
+      APP_STORAGE_ROOT: /app
+      MYSQL_HOST: ${MYSQL_HOST:?Set external MYSQL_HOST in mysql.env}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_USER: ${MYSQL_USER:?Set MYSQL_USER in mysql.env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in mysql.env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in mysql.env}
+      MYSQL_TABLE_PREFIX: ${MYSQL_TABLE_PREFIX:-app_}
+      MYSQL_CONNECT_TIMEOUT: ${MYSQL_CONNECT_TIMEOUT:-5}
+      MYSQL_READ_TIMEOUT: ${MYSQL_READ_TIMEOUT:-15}
+      MYSQL_WRITE_TIMEOUT: ${MYSQL_WRITE_TIMEOUT:-15}
+      MYSQL_SSL_CA: ${MYSQL_SSL_CA:-}

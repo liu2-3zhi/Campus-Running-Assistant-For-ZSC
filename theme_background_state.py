@@ -4,7 +4,7 @@ import datetime
 import functools
 import json
 import logging
-import os
+from storage_io import os, open
 import sys
 import threading
 import uuid

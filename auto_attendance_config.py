@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import configparser
+from storage_io import configparser
 import datetime
 import json
 import logging
-import os
+from storage_io import os, open
 
 
 from main_runtime import _main

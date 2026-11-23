@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import bisect
 import collections
-import configparser
+from storage_io import configparser
 import copy
 import csv
 import datetime
@@ -12,7 +12,7 @@ import io
 import json
 import logging
 import math
-import os
+from storage_io import os, open
 import queue
 import random
 import sys

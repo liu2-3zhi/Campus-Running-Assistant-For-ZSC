@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import logging
 import mimetypes
-import os
+from storage_io import os, open
 import threading
 import uuid
 
