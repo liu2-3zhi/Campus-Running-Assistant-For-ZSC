@@ -189,6 +189,212 @@ test('multi-account controls use the backend methods and arguments', async () =>
   assert.equal(ctx.calls.find(call => call[0] === 'set_multi_run_only_incomplete')[1].flag, true)
 })
 
+test('stop-all cancels selected accounts still waiting for their startup delay', async () => {
+  let releaseDelay
+  let delayStarted
+  const delayed = new Promise(resolve => { delayStarted = resolve })
+  const ctx = setupComponent('views/MultiAccountView.vue', {
+    globals: { setTimeout(callback) { releaseDelay = callback; delayStarted(); return 1 } },
+  })
+  ctx.state.selectedIds.value.add('student-a')
+  const pendingStart = ctx.state.startSelected()
+  await delayed
+  await ctx.state.stopAll()
+  releaseDelay()
+  await pendingStart
+
+  assert.deepEqual(ctx.calls.map(call => call[0]), ['multi_stop_all_accounts'])
+  assert.equal(ctx.app.logs.some(log => log.msg.startsWith('已启动')), false)
+})
+
+test('stop-all prevents the next selected account from starting after a pending start returns', async () => {
+  const calls = []
+  let releaseStart
+  let firstStarted
+  const started = new Promise(resolve => { firstStarted = resolve })
+  const ctx = setupComponent('views/MultiAccountView.vue', {
+    callAPI: async (method, ...args) => {
+      calls.push([method, ...args])
+      if (method === 'multi_start_single_account' && calls.length === 1) {
+        firstStarted()
+        return new Promise(resolve => { releaseStart = resolve })
+      }
+      return { success: true }
+    },
+  })
+  ctx.state.delaySettings.useDelay = false
+  ctx.state.selectedIds.value.add('student-a')
+  ctx.state.selectedIds.value.add('student-b')
+  const pendingStart = ctx.state.startSelected()
+  await started
+  const pendingStop = ctx.state.stopAll()
+  releaseStart({ success: true })
+  await Promise.all([pendingStart, pendingStop])
+
+  assert.deepEqual(calls.map(call => call[0]), ['multi_start_single_account', 'multi_stop_all_accounts', 'multi_stop_all_accounts'])
+  assert.equal(ctx.app.logs.some(log => log.msg.startsWith('已启动')), false)
+})
+
+for (const action of ['startAll', 'startAccount']) {
+  test(`stop-all invalidates the pending ${action} eligibility check`, async () => {
+    let releaseCheck
+    let checkStarted
+    const checking = new Promise(resolve => { checkStarted = resolve })
+    const ctx = setupComponent('views/MultiAccountView.vue', {
+      checkOverdueBeforeStart: () => new Promise(resolve => { releaseCheck = resolve; checkStarted() }),
+    })
+    ctx.app.multiAccounts = [{ username: 'student-a' }]
+    const pendingStart = ctx.state[action]({ username: 'student-a' })
+    await checking
+    await ctx.state.stopAll()
+    releaseCheck(true)
+    await pendingStart
+
+    assert.deepEqual(ctx.calls.map(call => call[0]), ['multi_stop_all_accounts'])
+  })
+}
+
+test('a fresh Vue multi-account start is allowed after stop-all', async () => {
+  const ctx = setupComponent('views/MultiAccountView.vue')
+  ctx.app.multiAccounts = [{ username: 'student-a' }]
+  await ctx.state.stopAll()
+  await ctx.state.startAll()
+  assert.deepEqual(ctx.calls.map(call => call[0]), ['multi_stop_all_accounts', 'multi_start_all_accounts'])
+})
+
+for (const action of ['startSelected', 'startAll', 'startAccount']) {
+  test(`Vue stop-all catches an already-sent ${action} request handled after its first stop`, async () => {
+    const methods = []
+    let running = false
+    let deliverStart
+    let notifyStart
+    const dispatched = new Promise(resolve => { notifyStart = resolve })
+    const ctx = setupComponent('views/MultiAccountView.vue', {
+      callAPI: async method => {
+        methods.push(method)
+        if (method.startsWith('multi_start_')) {
+          notifyStart()
+          return new Promise(resolve => { deliverStart = () => { running = true; resolve({ success: true }) } })
+        }
+        if (method === 'multi_stop_all_accounts') running = false
+        return { success: true }
+      },
+    })
+    ctx.app.multiAccounts = [{ username: 'student-a' }]
+    ctx.state.delaySettings.useDelay = false
+    ctx.state.selectedIds.value.add('student-a')
+    const pendingStart = ctx.state[action]({ username: 'student-a' })
+    await dispatched
+    const pendingStop = ctx.state.stopAll()
+    assert.equal(methods.at(-1), 'multi_stop_all_accounts', 'the first stop must dispatch immediately')
+    deliverStart()
+    await Promise.all([pendingStart, pendingStop])
+    assert.equal(running, false, 'the final stop must catch the delayed start')
+    assert.equal(methods.filter(method => method === 'multi_stop_all_accounts').length, 2)
+  })
+}
+
+test('Vue blocks new starts until stop-all has finished', async () => {
+  const methods = []
+  let finishStop
+  const ctx = setupComponent('views/MultiAccountView.vue', {
+    callAPI: async method => {
+      methods.push(method)
+      if (method === 'multi_stop_all_accounts') return new Promise(resolve => { finishStop = resolve })
+      return { success: true }
+    },
+  })
+  ctx.app.multiAccounts = [{ username: 'student-a' }]
+  ctx.state.selectedIds.value.add('student-a')
+  ctx.state.delaySettings.useDelay = false
+  const pendingStop = ctx.state.stopAll()
+  await ctx.state.startAll()
+  await ctx.state.startSelected()
+  await ctx.state.startAccount({ username: 'student-a' })
+  assert.deepEqual(methods, ['multi_stop_all_accounts'])
+  finishStop({ success: true })
+  await pendingStop
+})
+
+test('Vue reports failure when the final stop after a dispatched start is rejected', async () => {
+  let deliverStart
+  let notifyStart
+  const dispatched = new Promise(resolve => { notifyStart = resolve })
+  let stopCount = 0
+  const ctx = setupComponent('views/MultiAccountView.vue', {
+    callAPI: async method => {
+      if (method.startsWith('multi_start_')) {
+        notifyStart()
+        return new Promise(resolve => { deliverStart = resolve })
+      }
+      stopCount += 1
+      return stopCount === 1 ? { success: true } : { success: false, message: '停止请求未接受' }
+    },
+  })
+  ctx.app.multiAccounts = [{ username: 'student-a' }]
+  const pendingStart = ctx.state.startAll()
+  await dispatched
+  const pendingStop = ctx.state.stopAll()
+  deliverStart({ success: true })
+  await Promise.all([pendingStart, pendingStop])
+  assert.equal(ctx.app.logs.some(log => log.msg === '已发送全部停止指令'), false)
+  assert.ok(ctx.app.logs.some(log => log.level === 'ERROR' && log.msg.includes('停止请求未接受')))
+})
+
+test('Vue account start skips the current task wait without a new payment preflight', async () => {
+  let paymentChecks = 0
+  let forceOverrides = 0
+  const ctx = setupComponent('views/MultiAccountView.vue', {
+    checkOverdueBeforeStart: async () => { paymentChecks += 1; return false },
+    consumeOverdueForceOverride: () => { forceOverrides += 1; return { bypass_overdue: true, waive_charge: true } },
+    callAPI: async (method, ...args) => {
+      ctx.calls.push([method, ...args])
+      return { success: true, wait_skipped: true }
+    },
+  })
+
+  await ctx.state.startAccount({ username: 'student-a', can_skip_wait: true })
+
+  assert.equal(paymentChecks, 0)
+  assert.equal(forceOverrides, 0)
+  assert.equal(ctx.calls.length, 1)
+  assert.equal(ctx.calls[0][0], 'multi_start_single_account')
+  assert.equal(ctx.calls[0][1].username, 'student-a')
+  assert.equal(ctx.calls[0][1].bypass_overdue, false)
+  assert.equal(ctx.calls[0][1].waive_charge, false)
+  assert.ok(ctx.app.logs.some(log => log.msg === '已跳过任务间等待'))
+})
+
+test('Vue account start retains payment checks unless the backend allows skipping a wait', async () => {
+  let paymentChecks = 0
+  const ctx = setupComponent('views/MultiAccountView.vue', {
+    checkOverdueBeforeStart: async () => { paymentChecks += 1; return false },
+  })
+
+  await ctx.state.startAccount({ username: 'student-a', can_skip_wait: false, status_text: '任务间等待 925s' })
+
+  assert.equal(paymentChecks, 1)
+  assert.equal(ctx.calls.length, 0)
+})
+
+test('Vue account start uses the latest pushed eligibility when the current wait begins and ends', async () => {
+  let paymentChecks = 0
+  const ctx = setupComponent('views/MultiAccountView.vue', {
+    checkOverdueBeforeStart: async () => { paymentChecks += 1; return false },
+  })
+  ctx.app.multiAccounts = [{ username: 'student-a', can_skip_wait: false }]
+  ctx.app.handleMultiStatusUpdate({ username: 'student-a', data: { can_skip_wait: true } })
+  await ctx.state.startAccount(ctx.app.multiAccounts[0])
+  ctx.app.handleMultiStatusUpdate({ username: 'student-a', data: { can_skip_wait: false } })
+  await ctx.state.startAccount(ctx.app.multiAccounts[0])
+
+  assert.equal(paymentChecks, 1)
+  assert.equal(ctx.calls.length, 1)
+  assert.equal(ctx.calls[0][0], 'multi_start_single_account')
+  assert.equal(ctx.calls[0][1].bypass_overdue, false)
+  assert.equal(ctx.calls[0][1].waive_charge, false)
+})
+
 test('Vue start-all forwards skip-overdue decisions to the backend', async () => {
   const ctx = setupComponent('views/MultiAccountView.vue', {
     checkOverdueBeforeStart: async (_accounts, options) => {

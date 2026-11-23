@@ -597,14 +597,21 @@ async function openMultiAccountExpandedView() {
           } else if (action === "refresh") {
             await callPythonAPI("multi_refresh_single_status", username);
           } else if (action === "start") {
-            const canStart = await checkOverdueBeforeStart(username);
-            if (canStart) {
-              const overdueOverride = _consumeOverdueForceOverride();
+            if (stoppingMultiAccounts) return;
+            const startGeneration = multiAccountStartGeneration;
+            const skipWait = cachedMultiAccounts.find(
+              (account) => account.username === username,
+            )?.can_skip_wait === true;
+            const canStart = skipWait || await checkOverdueBeforeStart(username);
+            if (canStart && startGeneration === multiAccountStartGeneration) {
+              const overdueOverride = skipWait
+                ? { bypass_overdue: false, waive_charge: false }
+                : _consumeOverdueForceOverride();
               const runOnly =
                 document.getElementById(
                   "multi-run-only-incomplete-check",
                 )?.checked ?? true;
-              const result = await callPythonAPI(
+              const result = await callMultiAccountStart(
                 "multi_start_single_account",
                 username,
                 runOnly,
@@ -784,22 +791,29 @@ function renderMultiAccountList(accounts) {
     listDiv.querySelectorAll(".btn-account-start").forEach(
       (b) =>
         (b.onclick = async (e) => {
+          if (stoppingMultiAccounts) return;
+          const startGeneration = multiAccountStartGeneration;
           // ========== 添加欠费检查 ==========
           // 在开始单个账号前，检查该账号是否有欠费
           const username = e.target.dataset.username;
-          const canStart = await checkOverdueBeforeStart(username);
-          if (!canStart) {
+          const skipWait = cachedMultiAccounts.find(
+            (account) => account.username === username,
+          )?.can_skip_wait === true;
+          const canStart = skipWait || await checkOverdueBeforeStart(username);
+          if (!canStart || startGeneration !== multiAccountStartGeneration) {
             // 欠费检查未通过，直接返回不启动任务
             return;
           }
-          const overdueOverride = _consumeOverdueForceOverride();
+          const overdueOverride = skipWait
+            ? { bypass_overdue: false, waive_charge: false }
+            : _consumeOverdueForceOverride();
           // ========== 欠费检查结束 ==========
 
           const checkboxId = isMobile
             ? "mobile-multi-only-incomplete-check"
             : "multi-run-only-incomplete-check";
           const runOnly = document.getElementById(checkboxId)?.checked ?? true;
-          const result = await callPythonAPI(
+          const result = await callMultiAccountStart(
             "multi_start_single_account",
             username,
             runOnly,
@@ -1016,6 +1030,8 @@ function multi_getSelectedUsernames() {
 }
 
 async function multi_startSelected() {
+  if (stoppingMultiAccounts) return;
+  const startGeneration = multiAccountStartGeneration;
   // ========== 步骤1：获取选中的账号列表 ==========
   // 通过复选框获取用户选择要启动的账号
   const usernames = multi_getSelectedUsernames();
@@ -1036,7 +1052,7 @@ async function multi_startSelected() {
   // 【重要】这里传入选中的账号列表，只检查这些账号的欠费情况
   // 不再检查用户的所有账号，避免误报未选中账号的欠费
   const canStart = await checkOverdueBeforeStart(usernames);
-  if (!canStart) {
+  if (!canStart || startGeneration !== multiAccountStartGeneration) {
     // 欠费检查未通过，用户选择不缴费或取消，直接返回不启动任务
     return;
   }
@@ -1051,14 +1067,16 @@ async function multi_startSelected() {
     $("multi-run-only-incomplete-check")?.checked ?? true;
 
   for (const u of usernames) {
+    if (startGeneration !== multiAccountStartGeneration) return;
     try {
       if (use_delay && max_delay >= min_delay) {
         const d = Math.random() * (max_delay - min_delay) + min_delay;
         await new Promise((res) => setTimeout(res, d * 10));
       }
+      if (startGeneration !== multiAccountStartGeneration) return;
 
       // 调用后端 API 启动单个账号
-      const result = await callPythonAPI(
+      const result = await callMultiAccountStart(
         "multi_start_single_account",
         u,
         run_only_incomplete,

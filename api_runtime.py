@@ -456,6 +456,7 @@ class Api:
         self.accounts: dict[str, _main().AccountSession] = {}
         self.multi_run_stop_flag = threading.Event()
         self.multi_run_stop_flag.set()
+        self._multi_stop_generation = 0
 
         self._load_tasks_lock = threading.RLock()
         self._load_tasks_inflight = False
@@ -8483,6 +8484,7 @@ class Api:
                     "status_text": acc.status_text,
                     "summary": acc.summary,
                     "tag": acc.tag,
+                    "can_skip_wait": self._can_skip_multi_task_wait(acc),
                     "tasks": tasks_simple,
                     "current_position": current_pos,
                     "progress_pct": getattr(acc, "progress_pct", 0),
@@ -9288,6 +9290,22 @@ class Api:
         worker = getattr(acc, "worker_thread", None)
         return bool(worker and worker.is_alive())
 
+    def _get_multi_execution_lock(self):
+        execution_lock = getattr(self, "multi_execution_lock", None)
+        if execution_lock is None:
+            execution_lock = threading.RLock()
+            self.multi_execution_lock = execution_lock
+            self.multi_active_executions = set()
+        return execution_lock
+
+    def _can_skip_multi_task_wait(self, acc):
+        return bool(
+            getattr(acc, "_multi_task_gap_wait_event", None) is not None
+            and self._is_multi_account_execution_active(acc)
+            and not acc.stop_event.is_set()
+            and not self.multi_run_stop_flag.is_set()
+        )
+
     def _claim_single_school_account_execution(self):
         user_data = getattr(self, "user_data", None)
         user_info = getattr(self, "user_info", {}) or {}
@@ -9364,8 +9382,12 @@ class Api:
         if execution_lock is not None and username is not None:
             with execution_lock:
                 getattr(self, "multi_active_executions", set()).discard(username)
-                if getattr(acc, "worker_thread", None) is worker_thread:
+                # The worker body may already have cleared its reference in its finally.
+                current_worker = getattr(acc, "worker_thread", None)
+                if current_worker is worker_thread or current_worker is None:
                     acc.worker_thread = None
+                    if acc.stop_event.is_set():
+                        self._update_account_status_js(acc, status_text="已停止")
         _main()._release_school_account_execution(
             getattr(acc, "_school_account_execution_token", None)
         )
@@ -9385,18 +9407,20 @@ class Api:
         acc: _main().AccountSession,
         delay: float,
         run_only_incomplete: bool,
+        *,
+        stop_generation: int | None = None,
     ) -> bool:
         """Start at most one execution thread for an account."""
+        if stop_generation is None:
+            stop_generation = getattr(self, "_multi_stop_generation", 0)
         username = getattr(acc, "username", None)
         if not username:
             return False
-        execution_lock = getattr(self, "multi_execution_lock", None)
-        if execution_lock is None:
-            execution_lock = threading.RLock()
-            self.multi_execution_lock = execution_lock
-            self.multi_active_executions = set()
+        execution_lock = self._get_multi_execution_lock()
 
         with execution_lock:
+            if stop_generation != getattr(self, "_multi_stop_generation", 0):
+                return False
             active_executions = getattr(self, "multi_active_executions", set())
             if username in active_executions:
                 return False
@@ -9492,9 +9516,20 @@ class Api:
             包含 success 和 message 的字典
             如果存在欠费，还会包含 error_code 和 overdue_accounts
         """
+        stop_generation = getattr(self, "_multi_stop_generation", 0)
         # 步骤1：检查账号是否存在
         if username not in self.accounts:
             return {"success": False, "message": "账号不存在"}
+
+        acc = self.accounts[username]
+        with self._get_multi_execution_lock():
+            wait_event = getattr(acc, "_multi_task_gap_wait_event", None)
+            skip_wait = self._can_skip_multi_task_wait(acc)
+            if skip_wait:
+                wait_event.set()
+        if skip_wait:
+            self.log_and_notify_frontend(f"已跳过账号 {username} 的任务间等待。")
+            return {"success": True, "wait_skipped": True, "message": "已跳过任务间等待"}
 
         # 步骤2：欠费检查（仅在付费模式下执行）
         if self._payment_required_for_overdue_gate():
@@ -9531,7 +9566,10 @@ class Api:
             acc,
             0,
             bool(run_only_incomplete),
+            stop_generation=stop_generation,
         ):
+            if stop_generation != getattr(self, "_multi_stop_generation", 0):
+                return {"success": False, "message": "启动已取消"}
             self.log_and_notify_frontend(f"账号 {username} 正在执行其它操作。")
             return {"success": False, "message": "该账号正在运行或刷新，请稍后重试"}
         self.log_and_notify_frontend(f"已启动账号: {username}")
@@ -9609,6 +9647,7 @@ class Api:
             包含 success 和 message 的字典
             如果存在欠费，还会包含 error_code 和 overdue_accounts
         """
+        stop_generation = getattr(self, "_multi_stop_generation", 0)
         # 步骤1：检查账号列表是否为空
         if not self.accounts:
             self.log_and_notify_frontend("账号列表为空，无法开始。请先添加账号。")
@@ -9691,8 +9730,6 @@ class Api:
         # 步骤4：准备启动所有账号
         self.log_and_notify_frontend("开始执行所有账号...")
         self._update_multi_global_buttons()
-        if self.multi_run_stop_flag.is_set():
-            self.multi_run_stop_flag.clear()
 
         num_accounts = len(account_list)
         delays = [0] * num_accounts
@@ -9716,6 +9753,7 @@ class Api:
             delays,
             use_delay,
             run_only_incomplete,
+            stop_generation=stop_generation,
         )
 
         if started_threads == 0:
@@ -9739,24 +9777,26 @@ class Api:
         logging.info("API调用: multi_stop_all_accounts - 停止所有多账号任务的运行")
         # 停止后清掉“此次不计费”状态，下一次启动必须重新明确申请豁免。
         self.waive_charge_active = False
-        if not self.accounts:
-            self.log_and_notify_frontend("当前无账号，无需停止。")
+        with self._get_multi_execution_lock():
+            # A stop cancels in-flight starts even before their worker threads exist.
+            self._multi_stop_generation = getattr(self, "_multi_stop_generation", 0) + 1
             self.multi_run_stop_flag.set()
+            accounts = list(self.accounts.values())
+            stopping_accounts = []
+            for acc in accounts:
+                acc.stop_event.set()
+                if self._is_multi_account_execution_active(acc):
+                    stopping_accounts.append(acc)
+        if not accounts:
+            self.log_and_notify_frontend("当前无账号，无需停止。")
             return {"success": False, "message": "当前无账号，无需停止。"}
 
-        if self.multi_run_stop_flag.is_set():
-            return {"success": True}
-
-        self.log_and_notify_frontend("正在发送停止信号...")
-        self.multi_run_stop_flag.set()
-        for acc in self.accounts.values():
-            acc.stop_event.set()
-        self._update_multi_global_buttons()
+        for acc in stopping_accounts:
+            with self._get_multi_execution_lock():
+                if acc.stop_event.is_set():
+                    status = "正在停止..." if self._is_multi_account_execution_active(acc) else "已停止"
+                    self._update_account_status_js(acc, status_text=status)
         self.log_and_notify_frontend("所有任务将在当前步骤完成后停止。")
-        self._update_multi_global_buttons()
-
-        time.sleep(1)
-
         self._update_multi_global_buttons()
         return {"success": True}
 
@@ -9796,6 +9836,7 @@ class Api:
             acc.progress_extra = progress_extra
             update_data["progress_extra"] = progress_extra
 
+        update_data["can_skip_wait"] = self._can_skip_multi_task_wait(acc)
         session_id = getattr(self, "_web_session_id", None)
         if update_data and session_id and _main().socketio:
             try:
@@ -9824,8 +9865,11 @@ class Api:
             )
             return
 
-        active_accounts = []
+        startable_accounts = []
+        running_count = 0
         for acc in self.accounts.values():
+            running = self._is_multi_account_execution_active(acc)
+            running_count += int(running)
             total = acc.summary.get("total", 0)
             expired = acc.summary.get("expired", 0)
             not_started = acc.summary.get("not_started", 0)
@@ -9835,32 +9879,13 @@ class Api:
                 (executable > 0) if self.multi_run_only_incomplete else (
                     candidates > 0)
             )
-            if has_tasks:
-                active_accounts.append(acc)
+            if has_tasks and not running:
+                startable_accounts.append(acc)
 
-        total_active = len(active_accounts)
-        running_count = sum(
-            1
-            for acc in active_accounts
-            if self._is_multi_account_execution_active(acc)
-        )
-
-        if total_active == 0:
-            start_disabled = True
-            stop_disabled = True
-            exit_disabled = False
-        elif running_count == 0:
-            start_disabled = False
-            stop_disabled = True
-            exit_disabled = False
-        elif running_count == total_active:
-            start_disabled = True
-            stop_disabled = False
-            exit_disabled = True
-        else:
-            start_disabled = False
-            stop_disabled = False
-            exit_disabled = True
+        # Login and worker cleanup may have no executable summary but still need Stop.
+        start_disabled = not startable_accounts
+        stop_disabled = running_count == 0
+        exit_disabled = running_count > 0
 
         try:
             _main().socketio.emit(
@@ -10272,9 +10297,13 @@ class Api:
             total_tasks = task_index
         if total_tasks <= 0:
             total_tasks = task_index
+        if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
+            return "aborted"
         details_resp = acc.api_client.get_run_details(
             run_data.errand_id, acc.user_data.id, run_data.errand_schedule
         )
+        if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
+            return "aborted"
         if not (details_resp and details_resp.get("success")):
             acc.log_and_notify_frontend(f"获取任务详情失败，跳过。")
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
@@ -10312,6 +10341,8 @@ class Api:
                 guard_label="MultiAccountPathPlanning",
                 app_base_url=getattr(self, "_web_app_base_url", None),
             )
+            if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
+                return "aborted"
             if path_coords and path_coords.get("path"):
                 api_path_coords = path_coords["path"]
                 for notice in path_coords.get("notices", []):
@@ -11057,20 +11088,34 @@ class Api:
                     )
                     should_break_worker = False
                     end_time = time.time() + wait_time
-                    while time.time() < end_time:
-                        if acc.stop_event.is_set() or self.multi_run_stop_flag.is_set():
-                            should_break_worker = True
-                            break
-                        remaining = end_time - time.time()
-                        self._update_account_status_js(
-                            acc,
-                            status_text=(
-                                f"任务间等待 {remaining:.0f}s: "
-                                f"下一个 {next_task_index}/"
-                                f"{effective_total_for_wait} · {next_task_name}"
-                            ),
-                        )
-                        time.sleep(1)
+                    wait_event = threading.Event()
+                    with self._get_multi_execution_lock():
+                        acc._multi_task_gap_wait_event = wait_event
+                    try:
+                        while time.time() < end_time:
+                            if acc.stop_event.is_set() or self.multi_run_stop_flag.is_set():
+                                should_break_worker = True
+                                break
+                            remaining = end_time - time.time()
+                            self._update_account_status_js(
+                                acc,
+                                status_text=(
+                                    f"任务间等待 {remaining:.0f}s: "
+                                    f"下一个 {next_task_index}/"
+                                    f"{effective_total_for_wait} · {next_task_name}"
+                                ),
+                            )
+                            if wait_event.wait(timeout=max(0, min(1.0, remaining))):
+                                break
+                    finally:
+                        with self._get_multi_execution_lock():
+                            if getattr(acc, "_multi_task_gap_wait_event", None) is wait_event:
+                                acc._multi_task_gap_wait_event = None
+                    should_break_worker = (
+                        should_break_worker
+                        or acc.stop_event.is_set()
+                        or self.multi_run_stop_flag.is_set()
+                    )
                     if should_break_worker:
                         aborted = True
                         self._update_account_status_js(acc, status_text="已中止")
@@ -11230,10 +11275,15 @@ class Api:
         return self._start_multi_account_threads(*args, **kwargs)
 
     def _start_multi_account_threads(
-        self, account_list, delays, use_delay, run_only_incomplete
+        self, account_list, delays, use_delay, run_only_incomplete,
+        *, stop_generation: int | None = None,
     ):
+        if stop_generation is None:
+            stop_generation = getattr(self, "_multi_stop_generation", 0)
         started_threads = 0
         for i, acc in enumerate(account_list):
+            if stop_generation != getattr(self, "_multi_stop_generation", 0):
+                break
             if self._is_multi_account_execution_active(acc):
                 acc.log_and_notify_frontend("已在运行，本次'全部开始'将跳过此账号。")
                 continue
@@ -11243,6 +11293,7 @@ class Api:
                 acc,
                 delay,
                 run_only_incomplete,
+                stop_generation=stop_generation,
             ):
                 started_threads += 1
             else:

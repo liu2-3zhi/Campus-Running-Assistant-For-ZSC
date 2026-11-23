@@ -151,6 +151,24 @@ class TestFailingSubmissionPath(unittest.TestCase):
 
         self.api._finalize_run.assert_not_called()
 
+    def test_stop_during_path_planning_skips_generation_and_submission(self):
+        self.api._submit_chunk_with_retries = mock.Mock(return_value=True)
+
+        def stop_before_return(*_args, **_kwargs):
+            self.api.multi_run_stop_flag.set()
+            return {"path": [{"lng": 113.1, "lat": 22.1}, {"lng": 113.2, "lat": 22.2}]}
+
+        with mock.patch.object(
+            main_module, "_plan_route_path_with_provider_runtime", side_effect=stop_before_return
+        ), mock.patch.object(main_module, "chrome_pool", object(), create=True):
+            outcome = self.api._run_single_multi_account_task(
+                self.acc, self.run, 1, "测试任务", attempted_count=1, planned_total=1
+            )
+
+        self.assertEqual(outcome, "aborted")
+        self.api._build_route_path_with_random_detours.assert_not_called()
+        self.api._submit_chunk_with_retries.assert_not_called()
+
     def test_failing_submission_logs_task_failure(self):
         self._run_with_submission_result(False)
 

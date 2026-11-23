@@ -3938,6 +3938,10 @@ let availableThemeStyles = [];
 
 let cachedMultiAccounts = [];
 let activeExpandedMultiAccountRefresh = null;
+let multiAccountStartGeneration = 0;
+const multiAccountPendingStarts = new Set();
+let multiAccountStopPromise = null;
+let stoppingMultiAccounts = false;
 
 let runAccumulatedMs = 0;
 let draftTotalDist = 0;
@@ -19367,7 +19371,19 @@ async function multi_exportToExcel() {
     logMessage_Info(`汇总已导出：${result.filename}`);
   }
 }
+async function callMultiAccountStart(method, ...args) {
+  const request = callPythonAPI(method, ...args);
+  multiAccountPendingStarts.add(request);
+  try {
+    return await request;
+  } finally {
+    multiAccountPendingStarts.delete(request);
+  }
+}
+
 async function multi_startAll() {
+  if (stoppingMultiAccounts) return;
+  const startGeneration = multiAccountStartGeneration;
   // ========== 步骤1：检查账号数量 ==========
   // 从页面上显示的账号计数元素获取账号总数
   const count = parseInt($("multi-account-count").textContent || "0", 10);
@@ -19390,7 +19406,7 @@ async function multi_startAll() {
       skipOverdue = true;
     },
   });
-  if (!canStart) {
+  if (!canStart || startGeneration !== multiAccountStartGeneration) {
     return;
   }
   const overdueOverride = _consumeOverdueForceOverride();
@@ -19400,7 +19416,7 @@ async function multi_startAll() {
   const max_delay = parseInt($("multi-max-delay-input").value) || 300;
   const run_only_incomplete = $("multi-run-only-incomplete-check").checked;
 
-  const result = await callPythonAPI(
+  const result = await callMultiAccountStart(
     "multi_start_all_accounts",
     min_delay,
     max_delay,
@@ -19410,6 +19426,7 @@ async function multi_startAll() {
     overdueOverride.bypass_overdue,
     overdueOverride.waive_charge,
   );
+  if (startGeneration !== multiAccountStartGeneration) return;
 
   // 检查是否是欠费错误
   // 后端在检测到欠费时会返回特定的错误代码
@@ -19450,7 +19467,42 @@ async function multi_startAll() {
 }
 
 async function multi_stopAll() {
-  await callPythonAPI("multi_stop_all_accounts");
+  multiAccountStartGeneration += 1;
+  if (multiAccountStopPromise) return multiAccountStopPromise;
+  stoppingMultiAccounts = true;
+  const pendingStarts = [...multiAccountPendingStarts];
+  multiAccountStopPromise = (async () => {
+    const sendStop = async () => {
+      const result = await callPythonAPI("multi_stop_all_accounts");
+      if (!result?.success) throw new Error(result?.message || "停止全部账号失败");
+      return result;
+    };
+    try {
+      let result;
+      let stopError = null;
+      try {
+        result = await sendStop();
+      } catch (error) {
+        stopError = error;
+      }
+      if (pendingStarts.length) {
+        // A dispatched start may reach the server after the first stop request.
+        await Promise.allSettled(pendingStarts);
+        result = await sendStop();
+        stopError = null;
+      }
+      if (stopError) throw stopError;
+      return result;
+    } catch (error) {
+      logMessage_Error("停止全部账号失败", error);
+      showModalAlert(error.message || "停止全部账号失败", "错误");
+      return { success: false };
+    } finally {
+      stoppingMultiAccounts = false;
+      multiAccountStopPromise = null;
+    }
+  })();
+  return multiAccountStopPromise;
 }
 
 function selectTaskFromBackend(index) {
@@ -24106,6 +24158,8 @@ async function mobileRefreshMultiAccounts() {
   }
 }
 async function mobileStartAllAccounts() {
+  if (stoppingMultiAccounts) return;
+  const startGeneration = multiAccountStartGeneration;
   try {
     // ========== 步骤1：获取账号总数 ==========
     // 从页面元素中读取账号计数
@@ -24125,7 +24179,7 @@ async function mobileStartAllAccounts() {
         skipOverdue = true;
       },
     });
-    if (!canStart) {
+    if (!canStart || startGeneration !== multiAccountStartGeneration) {
       return;
     }
     const overdueOverride = _consumeOverdueForceOverride();
@@ -24146,7 +24200,7 @@ async function mobileStartAllAccounts() {
 
     // ========== 步骤4：调用后端API启动所有账号 ==========
     showModalAlert(`正在启动全部 ${count} 个账号...`, "提示");
-    const result = await callPythonAPI(
+    const result = await callMultiAccountStart(
       "multi_start_all_accounts",
       min_delay,
       max_delay,
@@ -24156,6 +24210,7 @@ async function mobileStartAllAccounts() {
       overdueOverride.bypass_overdue,
       overdueOverride.waive_charge,
     );
+    if (startGeneration !== multiAccountStartGeneration) return;
 
     // ========== 步骤5：处理返回结果 ==========
     if (!result || !result.success) {
@@ -24171,7 +24226,8 @@ async function mobileStartAllAccounts() {
 }
 async function mobileStopAllAccounts() {
   try {
-    await multi_stopAll();
+    const result = await multi_stopAll();
+    if (!result?.success) return;
     showModalAlert("已发送全部停止指令", "成功");
   } catch (error) {
     console.error("[移动端] 停止全部账号失败:", error);

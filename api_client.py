@@ -3,141 +3,235 @@ from __future__ import annotations
 import json
 import logging
 import random
-import threading
+import re
 import time
 
 
 from main_runtime import _main
 
 
+# 服务端 checkVersion 返回的 version 形如 "1.0.85"，比较时按数字段比，不能按字符串比
+# （"1.0.9" > "1.0.85" 在字符串比较里成立，在版本语义里不成立）。
+_VERSION_NUM_RE = re.compile(r"\d+")
+
+
+def _version_key(value) -> tuple:
+    """把 "1.0.85" 这类版本号转成可比较的整数元组。"""
+    return tuple(int(part) for part in _VERSION_NUM_RE.findall(str(value or "")))
+
+
 class ApiClient:
-    """处理与后端服务器网络请求的类"""
+    """与 zslf.zsc.edu.cn（智慧校园 App）后端通信的请求层。
+
+    本文件的接口形状以 App/H5 产物 `www/app-service.js`（uni-app + luch-request 3.1.0）
+    与线上实测为准，关键约定：
+
+    1. 路径前缀
+       * 非 /run/* 的接口：`{BASE_URL}/app` + 路径，例如 `/appNotice/unreadNumber`
+         -> https://zslf.zsc.edu.cn/app/appNotice/unreadNumber
+       * /run/* 的接口：`{BASE_URL}` + 路径（**不带 /app 前缀**），例如
+         `/run/errand/getErrandList` -> https://zslf.zsc.edu.cn/run/errand/getErrandList
+         （线上 `:9097` 同样可达，但 App 本身走的是不分端口的同域地址，这里跟 App 一致）
+
+    2. 参数位置（luch-request：params -> query string，data -> 请求体）
+       * 除 `/run/errand/{addErrandTrackByData,syncSportData,reportLocation,quickSave}`
+         这四个走 JSON 请求体（App 里写的是 `data: e`）之外，**其余接口一律只用 query**，
+         包括登录 `/login` 和签到 `/run/attendanceRecord/addAttendance`。
+
+    3. 版本号是本项目最容易踩的坑：服务端在 `/run/errand/getErrandDetail` 等"跑步"接口上
+       用**请求头 appVersion** 做最低版本校验（2026-11-23 实测）：
+           appVersion: 1.0.84 -> {"code":200,"data":{"errandDetail":{"startTime":"请更新APP后再进行跑步"}}}
+           appVersion: 1.0.85 -> 正常返回 errandDetail
+       放在 query 里的 appVersion 完全不起作用，不带头或低于阈值一律被判"APP版本过低/超时"。
+       阈值等于商店最新版（`/app/checkVersion` 的 data.version），当前是 1.0.85，
+       所以除了默认值之外还提供 `sync_app_version()` 自动抬到服务端最新版，
+       避免下次商店发版后这条链路又静默坏掉。
+
+    4. 响应体统一为 `{"code": 200, "data": ..., "message": ..., "success": true}`；
+       鉴权失败时 HTTP 状态码本身也是 401（body 同样是这个 JSON 信封），
+       所以 4xx 不能当请求异常处理、更不能重试 —— 要把 body 交给调用方看。
+    """
 
     BASE_URL = "https://zslf.zsc.edu.cn"
-    API_VERSION = 66    # 该变量已被弃用，不再使用
-    NEW_APP_VERSION = "1.0.79"  # 新版本APP的版本号
+    APP_PREFIX = "/app"
+    # /run/* 的基地址。线上实测 `BASE_URL` 与 `BASE_URL + ":9097"` 都通，
+    # App 走的是不分端口的同域地址，这里跟 App 保持一致；需要固定走 9097 改这一行即可。
+    RUN_BASE_URL = BASE_URL
+
+    API_VERSION = 66            # 已弃用：服务端只认请求头 appVersion，query 里的同名参数被忽略
+    NEW_APP_VERSION = "1.0.85"  # 服务端最低版本校验的当前阈值（等于商店最新版）
+    APP_CLIENT_ID = "com.zx.slm"
+    UA_SUFFIX = " uni-app Html5Plus/1.0 (Immersed/29.09091)"
+    JSON_CONTENT_TYPE = "application/json;charset=UTF-8"
+    FORM_CONTENT_TYPE = "application/x-www-form-urlencoded"
+
+    CONNECT_TIMEOUT = 5
+    READ_TIMEOUT = 10
+    MAX_RETRIES = 10
+    RETRY_BACKOFF_SECONDS = 1.5
+    # 只有这些状态码值得重试：408/425/429 + 5xx。4xx 重试 10 次既浪费 15 秒，
+    # 又会把服务端返回的 JSON 错误信封丢掉（原实现就是这么把 401 变成 None 的）。
+    RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504, 505})
+    # 进程级版本号缓存：{base_url: 服务端最新版本}
+    _APP_VERSION_CACHE: dict = {}
 
     def __init__(self, owner_instance):
         self.session = _main().requests.Session()
         self.app = owner_instance
+        # 运行期版本号：默认取类常量，登录前后可被 sync_app_version() 抬到服务端最新版
+        self.app_version = self.NEW_APP_VERSION
+        self._app_version_synced = False
+        # App 的登录契约：/login 返回 data.accessToken，之后把它原样放进 Authorization
+        self._access_token = None
         logging.debug("ApiClient已初始化，创建了新的_main().requests.Session会话实例")
 
+    # ------------------------------------------------------------------ 基础工具
+
+    def _api_url(self, path: str) -> str:
+        """按 App 的路径前缀规则拼出完整 URL。"""
+        if path.startswith("http://") or path.startswith("https://"):
+            return path
+        if path.startswith("/run/"):
+            return f"{self.RUN_BASE_URL}{path}"
+        return f"{self.BASE_URL}{self.APP_PREFIX}{path}"
+
+    def _app_platform(self) -> str:
+        """uni.getSystemInfoSync().osName 的等价物：android / ios。"""
+        os_name = getattr(self.app, "platform", None)
+        if os_name:
+            return str(os_name)
+        ua = getattr(self.app, "device_ua", "") or ""
+        if "iPhone" in ua or "iPad" in ua or "iOS" in ua:
+            return "ios"
+        return "android"
+
+    @staticmethod
+    def _clean_params(params: dict | None) -> dict | None:
+        """丢掉值为 None 的项：urlencode({'a': None}) 会发出 "a=None" 这种脏参数。"""
+        if params is None:
+            return None
+        return {k: v for k, v in params.items() if v is not None}
+
+    def _cookie_token(self) -> str | None:
+        """从 Cookie 里找 shiroCookie（旧版 Web 会话的令牌形态，作为兜底）。"""
+        try:
+            token = self.session.cookies.get_dict().get("shiroCookie")
+            if token:
+                return token
+        except Exception as exc:  # CookieConflictError 等
+            logging.debug(
+                f"Cookie 读取异常（{type(exc).__name__}），改为逐条查找 shiroCookie"
+            )
+        for cookie in self.session.cookies:
+            if cookie.name == "shiroCookie" and cookie.value:
+                return cookie.value
+        return None
+
+    def set_access_token(self, token: str | None):
+        """设置/清除 App 契约里的 accessToken（Authorization 请求头原样携带，不加 Bearer）。"""
+        self._access_token = token or None
+
+    @property
+    def access_token(self) -> str | None:
+        return self._access_token
+
     def _get_headers(self) -> dict:
-        """构建请求头，包含认证信息和设备信息"""
+        """构建请求头，包含认证信息和设备信息（字段对齐 App 的 request 拦截器）"""
         headers = {
             "Connection": "keep-alive",
             "Accept": "application/json, text/plain, */*",
-            "X-Requested-With": "com.zx.slm",
+            "X-Requested-With": self.APP_CLIENT_ID,
             "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-            "User-Agent": self.app.device_ua + " uni-app Html5Plus/1.0 (Immersed/29.09091)",
-            "platform":"android",
+            "User-Agent": (getattr(self.app, "device_ua", "") or "") + self.UA_SUFFIX,
+            "platform": self._app_platform(),
         }
-        try:
-            logging.debug(
-                f"当前Session包含 {len(self.session.cookies)} 个 Cookie，"
-                f"Cookie内容: {_main()._redact_sensitive_log_value(self.session.cookies.get_dict())}"
-            )
-        except _main().requests.cookies.CookieConflictError:
-            logging.warning(
-                "CookieConflictError 即使在使用 get_dict() 时也发送。获取原始cookie列表进行失败....")
-        
-        try:
-            logging.debug(f"尝试获取shiroCookie。")
-            auth_token = self.session.cookies.get_dict().get("shiroCookie")
-        except _main().requests.cookies.CookieConflictError:
-            logging.warning(
-                "CookieConflictError 即使在使用 get_dict() 时也发生，尝试手动查找..."
-            )
-            auth_token = None
-            for cookie in self.session.cookies:
-                if cookie.name == "shiroCookie":
-                    auth_token = cookie.value
-                    logging.warning(
-                        f"手动查找到 shiroCookie: "
-                        f"{_main()._redact_sensitive_log_value({'shiroCookie': auth_token})}"
-                    )
-                    break
+
+        auth_token = self._access_token
+        if not auth_token:
+            auth_token = self._cookie_token()
 
         if auth_token:
             logging.debug(
-                f"使用 shiroCookie 设置 Authorization 请求头，"
-                f"认证信息: {_main()._redact_sensitive_log_value({'Authorization': auth_token})}"
+                "已设置 Authorization 请求头，认证信息: "
+                f"{_main()._redact_sensitive_log_value({'Authorization': auth_token})}"
             )
             headers["Authorization"] = auth_token
         else:
-            logging.debug("未找到shiroCookie认证令牌，将不会设置Authorization请求头")
-            
-        # try:
-        #     logging.debug(f"尝试获取JSESSIONID。")
-        #     JSESSIONID = self.session.cookies.get_dict().get("JSESSIONID")
-        # except _main().requests.cookies.CookieConflictError:
-        #     logging.warning(
-        #         "CookieConflictError 即使在使用 get_dict() 时也发生，尝试手动查找..."            )
-        #     JSESSIONID = None
-        #     for cookie in self.session.cookies:
-        #         if cookie.name == "JSESSIONID":
-        #             JSESSIONID = cookie.value
-        #             logging.warning(
-        #                 f"手动查找到 'JSESSIONID': {JSESSIONID[:10]}..."
-        #             )
-        #             break
-        # if JSESSIONID:
-        #     logging.debug(
-        #         f"找到cookie['JSESSIONID']: {JSESSIONID}"
-        #     )
-        # else:
-        #     logging.debug("未找到JSESSIONID cookie")
-        
-        # try:
-        #     logging.debug(f"尝试获取SESSION。")
-        #     SESSION= self.session.cookies.get_dict().get("SESSION")
-        # except _main().requests.cookies.CookieConflictError:
-        #     logging.warning(
-        #         "CookieConflictError 即使在使用 get_dict() 时也发生，尝试手动查找..."            )
-        #     SESSION = None
-        #     for cookie in self.session.cookies:
-        #         if cookie.name == "SESSION":
-        #             SESSION = cookie.value
-        #             logging.warning(
-        #                 f"手动查找到 'SESSION': {SESSION[:10]}..."
-        #             )
-        #             break
-        # if SESSION:
-        #     logging.debug(
-        #         f"找到cookie['SESSION']: {SESSION}"
-        #     )
-        # else:
-        #     logging.debug("未找到SESSION cookie")
-        # cookie_parts = []
-        # if auth_token:
-        #     cookie_parts.append(f"shiroCookie={auth_token}")
-        # if JSESSIONID:
-        #     cookie_parts.append(f"JSESSIONID={JSESSIONID}")
-        # if SESSION:
-        #     cookie_parts.append(f"SESSION={SESSION}")
-        # headers["Cookie"] = "; ".join(cookie_parts) if cookie_parts else ""
+            logging.debug("既无 accessToken 也无 shiroCookie，将不设置 Authorization 请求头")
 
-        if self.NEW_APP_VERSION:
-            headers["appVersion"] = self.NEW_APP_VERSION
+        # 服务端按这个头做最低版本校验，缺失或过低会返回"请更新APP后再进行跑步"
+        headers["appVersion"] = self.app_version or self.NEW_APP_VERSION
         return headers
 
-    def _request_cancelled_by_stop(self):
-        execution_cancel_event = getattr(
-            self, "_execution_cancel_event", None
+    # ------------------------------------------------------------------ 版本号
+
+    def sync_app_version(self, force: bool = False) -> str:
+        """从 /app/checkVersion 拉服务端最新版本号，只升不降。
+
+        服务端对"跑步"类接口做了最低版本校验，阈值就是商店最新版；把这里拉到最新版，
+        商店发版之后就不需要再回来改常量（原实现把 1.0.79 写死在这里，
+        线上所有跑步接口因此返回"请更新APP后再进行跑步"）。
+
+        结果按 BASE_URL 缓存到进程级，多账号/撞库场景里每个 ApiClient 实例登录时
+        复用同一个结果，不会变成"每次登录多打一次 checkVersion"。
+        """
+        cached = ApiClient._APP_VERSION_CACHE.get(self.BASE_URL)
+        if (
+            cached
+            and not force
+            and _version_key(cached) > _version_key(self.app_version or "")
+        ):
+            self.app_version = cached
+            self._app_version_synced = True
+            return self.app_version
+
+        if self._app_version_synced and not force:
+            return self.app_version
+
+        current = self.app_version or self.NEW_APP_VERSION
+        payload = self._json(
+            self._request(
+                "POST",
+                "/checkVersion",
+                data="",
+                is_post_str=True,
+                force_content_type=self.JSON_CONTENT_TYPE,
+                retries=3,
+            )
         )
+        if isinstance(payload, dict) and payload.get("code") == 200:
+            latest = (payload.get("data") or {}).get("version")
+            if latest:
+                ApiClient._APP_VERSION_CACHE[self.BASE_URL] = str(latest)
+            if latest and _version_key(latest) > _version_key(current):
+                self.app_version = str(latest)
+                logging.info(
+                    f"appVersion 已从服务端同步：{current} -> {self.app_version}"
+                )
+            else:
+                logging.debug(f"appVersion 保持 {current}（服务端最新：{latest}）")
+        else:
+            logging.debug(f"appVersion 同步失败，继续使用 {current}")
+        self._app_version_synced = True
+        return self.app_version
+
+    # ------------------------------------------------------------------ 取消/重试
+
+    def _request_cancelled_by_stop(self):
+        execution_cancel_event = getattr(self, "_execution_cancel_event", None)
         return bool(
             execution_cancel_event is not None
             and execution_cancel_event.is_set()
         )
 
     def _wait_for_retry_or_cancel(self, seconds):
-        execution_cancel_event = getattr(
-            self, "_execution_cancel_event", None
-        )
+        execution_cancel_event = getattr(self, "_execution_cancel_event", None)
         if execution_cancel_event is not None:
             return bool(execution_cancel_event.wait(timeout=seconds))
         time.sleep(seconds)
         return self._request_cancelled_by_stop()
+
+    # ------------------------------------------------------------------ 请求主流程
 
     def _request(
         self,
@@ -147,9 +241,9 @@ class ApiClient:
         params: dict = None,
         is_post_str=False,
         force_content_type: str = None,
+        retries: int = None,
     ) -> _main().requests.Response | None:
-        """统一的网络请求方法（增强：支持取消）"""
-
+        """统一的网络请求方法（支持取消、按状态码区分是否重试）"""
         log_func = self.app.log_and_notify_frontend if hasattr(
             self.app, "log_and_notify_frontend") else self.app.api_bridge.log_and_notify_frontend
         is_offline = (
@@ -158,32 +252,29 @@ class ApiClient:
             else self.app.api_bridge.is_offline_mode
         )
 
-        cancel_requested = self._request_cancelled_by_stop()
-
-        if cancel_requested:
+        if self._request_cancelled_by_stop():
             log_func("操作已取消，跳过网络请求。")
             logging.debug(
-                f"[网络请求] 请求已取消 --> 请求方法: {method.upper()}, 目标URL: {url}, 取消原因: 用户停止操作或系统取消标志已设置"
+                f"[网络请求] 请求已取消 --> 请求方法: {method.upper()}, 目标URL: {url}"
             )
             return None
 
         if is_offline:
             log_func("离线模式：网络请求已被禁用。")
             logging.debug(
-                f"[网络请求] 离线模式已启用，已阻止网络请求 --> 请求方法: {method.upper()}, 目标URL: {url}, 说明: 离线模式下所有网络通信将被禁用"
+                f"[网络请求] 离线模式已启用，已阻止网络请求 --> 请求方法: {method.upper()}, 目标URL: {url}"
             )
             return None
 
-        retries = 10
-        connect_timeout = 5
-        read_timeout = 10
-
-        safe_request_url = _main()._redact_sensitive_log_text(url)
+        retries = max(1, int(retries or self.MAX_RETRIES))
+        full_url = self._api_url(url)
+        params = self._clean_params(params)
+        safe_request_url = _main()._redact_sensitive_log_text(full_url)
 
         logging.debug(
             f"[网络请求] 准备发起HTTP请求 --> 请求方法: {method.upper()}, "
-            f"目标URL: {safe_request_url}, 重试次数配置: {retries}次, "
-            f"连接超时: {connect_timeout}秒, 读取超时: {read_timeout}秒, "
+            f"目标URL: {safe_request_url}, 重试上限: {retries}次, "
+            f"连接超时: {self.CONNECT_TIMEOUT}秒, 读取超时: {self.READ_TIMEOUT}秒, "
             f"请求数据: {_main()._redact_sensitive_log_value(data)}, "
             f"URL参数: {_main()._redact_sensitive_log_value(params)}"
         )
@@ -196,24 +287,20 @@ class ApiClient:
                 headers = self._get_headers()
 
                 if method.upper() == "POST":
-                    post_data_bytes = b""
-
                     if force_content_type:
                         headers["Content-Type"] = force_content_type
-                    elif is_post_str:
-                        headers["Content-Type"] = "application/x-www-form-urlencoded"
                     else:
-                        headers["Content-Type"] = "application/x-www-form-urlencoded"
+                        # App 的默认头就是 application/json；这里对"空体 POST"沿用 JSON 头，
+                        # 对"带表单字段的 POST"退到 x-www-form-urlencoded（Spring 两种都绑定）。
+                        headers["Content-Type"] = self.JSON_CONTENT_TYPE
 
                     if is_post_str:
                         post_data_bytes = (data or "").encode("utf-8")
+                    elif data:
+                        post_data_bytes = _main().urllib.parse.urlencode(data).encode("utf-8")
+                        headers["Content-Type"] = self.FORM_CONTENT_TYPE
                     else:
-                        post_data_bytes = _main().urllib.parse.urlencode(data or {}).encode(
-                            "utf-8"
-                        )
-                    
-                        
-                        
+                        post_data_bytes = b""
 
                     logging.debug(
                         f"[网络请求] 发起POST请求 --> URL: {safe_request_url}, "
@@ -223,34 +310,64 @@ class ApiClient:
                         f"请求体: {_main()._redact_sensitive_log_text(post_data_bytes.decode('utf-8', errors='replace'))}"
                     )
                     resp = self.session.post(
-                        url,
+                        full_url,
                         data=post_data_bytes,
                         params=params,
                         headers=headers,
-                        timeout=(connect_timeout, read_timeout),
+                        timeout=(self.CONNECT_TIMEOUT, self.READ_TIMEOUT),
                     )
                 else:
                     logging.debug(
                         f"[网络请求] 发起GET请求 --> URL: {safe_request_url}, "
                         f"请求头: {_main()._redact_sensitive_log_value(headers)}, "
-                        f"查询参数: {_main()._redact_sensitive_log_value(data)}"
+                        f"查询参数: {_main()._redact_sensitive_log_value(params or data)}"
                     )
                     resp = self.session.get(
-                        url,
-                        params=data,
+                        full_url,
+                        params=params if params is not None else data,
                         headers=headers,
-                        timeout=(connect_timeout, read_timeout),
+                        timeout=(self.CONNECT_TIMEOUT, self.READ_TIMEOUT),
                     )
 
                 logging.debug(
                     f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} "
                     f"({resp.reason}), 来源URL: {safe_request_url}, "
-                    f"响应头: {_main()._redact_sensitive_log_value(dict(resp.headers))}, "
                     f"响应内容长度: {len(resp.content)} 字节, "
                     f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}"
                 )
-                resp.raise_for_status()
-                return resp
+
+                status = resp.status_code
+                if 200 <= status < 300:
+                    return resp
+                if status not in self.RETRYABLE_STATUS:
+                    # 401/403/400/404 这类是服务端的业务答复（body 是 JSON 信封），
+                    # 交给 _json 解析出 message，不能抛异常也不能重试。
+                    logging.warning(
+                        f"[网络请求] 服务端返回不可重试状态码 {status}，直接把响应交回调用方"
+                        f"（URL: {safe_request_url}）"
+                    )
+                    return resp
+
+                log_func(
+                    f"服务器返回错误 (第{attempt+1}次): {status}"
+                )
+                logging.error(
+                    f"[网络请求] 可重试的HTTP状态码 --> 第{attempt+1}次/共{retries}次, "
+                    f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
+                    f"HTTP状态码: {status}, 状态描述: {resp.reason}, "
+                    f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}",
+                    exc_info=False,
+                )
+                if attempt + 1 == retries:
+                    log_func(f"服务器错误: {status}")
+                    logging.error(
+                        f"[网络请求] HTTP请求最终失败 --> 已达到最大重试次数({retries}次), HTTP状态码: {status}"
+                    )
+                    return resp
+                if self._wait_for_retry_or_cancel(self.RETRY_BACKOFF_SECONDS):
+                    log_func("操作已取消，停止重试。")
+                    return None
+                continue
 
             except (
                 _main().requests.exceptions.ConnectionError,
@@ -264,8 +381,7 @@ class ApiClient:
                     f"[网络请求] 网络连接失败 --> 重试次数: 第{attempt+1}次/共{retries}次, "
                     f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
                     f"错误类型: {type(net_err).__name__}, "
-                    f"错误详情: {_main()._redact_sensitive_log_text(str(net_err))}, "
-                    f"连接超时配置: {connect_timeout}秒, 读取超时配置: {read_timeout}秒",
+                    f"错误详情: {_main()._redact_sensitive_log_text(str(net_err))}",
                     exc_info=False,
                 )
                 if attempt + 1 == retries:
@@ -275,42 +391,13 @@ class ApiClient:
                     )
                     logging.error(
                         f"[网络请求] 网络连接最终失败 --> 已达到最大重试次数({retries}次), "
-                        f"目标服务器: {_main()._redact_sensitive_log_text(self.BASE_URL)}, 无法建立连接"
+                        f"目标服务器: {_main()._redact_sensitive_log_text(self.BASE_URL)}"
                     )
                     return None
                 logging.info(
-                    f"[网络请求] 准备重试 --> 等待1.5秒后进行第{attempt+2}次请求尝试"
+                    f"[网络请求] 准备重试 --> 等待{self.RETRY_BACKOFF_SECONDS}秒后进行第{attempt+2}次请求尝试"
                 )
-                if self._wait_for_retry_or_cancel(1.5):
-                    log_func("操作已取消，停止重试。")
-                    return None
-                continue
-
-            except _main().requests.exceptions.HTTPError as http_err:
-                log_func(
-                    f"服务器返回错误 (第{attempt+1}次): {http_err.response.status_code}"
-                )
-                logging.error(
-                    f"[网络请求] HTTP错误 --> 重试次数: 第{attempt+1}次/共{retries}次, "
-                    f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
-                    f"HTTP状态码: {http_err.response.status_code}, "
-                    f"状态描述: {http_err.response.reason}, "
-                    f"错误详情: {_main()._redact_sensitive_log_text(str(http_err))}, "
-                    f"响应头: {_main()._redact_sensitive_log_value(dict(http_err.response.headers))}, "
-                    f"响应内容长度: {len(http_err.response.content)} 字节, "
-                    f"响应内容: {_main()._redact_sensitive_log_text(http_err.response.text)}",
-                    exc_info=False,
-                )
-                if attempt + 1 == retries:
-                    log_func(f"服务器错误: {http_err.response.status_code}")
-                    logging.error(
-                        f"[网络请求] HTTP请求最终失败 --> 已达到最大重试次数({retries}次), HTTP状态码: {http_err.response.status_code}, 请求无法成功完成"
-                    )
-                    return None
-                logging.info(
-                    f"[网络请求] 准备重试 --> 等待1.5秒后进行第{attempt+2}次请求尝试"
-                )
-                if self._wait_for_retry_or_cancel(1.5):
+                if self._wait_for_retry_or_cancel(self.RETRY_BACKOFF_SECONDS):
                     log_func("操作已取消，停止重试。")
                     return None
                 continue
@@ -328,18 +415,16 @@ class ApiClient:
                     exc_info=True,
                 )
                 if attempt + 1 == retries:
-                    log_func(
-                        f"请求最终失败，异常类型: {type(req_err).__name__}"
-                    )
+                    log_func(f"请求最终失败，异常类型: {type(req_err).__name__}")
                     logging.error(
                         f"[网络请求] 请求最终失败 --> 已达到最大重试次数({retries}次), "
                         f"所有重试均失败, 异常类型: {type(req_err).__name__}"
                     )
                     return None
                 logging.info(
-                    f"[网络请求] 准备重试 --> 等待1.5秒后进行第{attempt+2}次请求尝试"
+                    f"[网络请求] 准备重试 --> 等待{self.RETRY_BACKOFF_SECONDS}秒后进行第{attempt+2}次请求尝试"
                 )
-                if self._wait_for_retry_or_cancel(1.5):
+                if self._wait_for_retry_or_cancel(self.RETRY_BACKOFF_SECONDS):
                     log_func("操作已取消，停止重试。")
                     return None
                 continue
@@ -350,170 +435,230 @@ class ApiClient:
         """安全地将Response对象解析为JSON字典"""
         log_func = self.app.log_and_notify_frontend if hasattr(
             self.app, "log_and_notify_frontend") else self.app.api_bridge.log_and_notify_frontend
-        if resp:
-            try:
-                json_data = resp.json()
-                logging.debug(
-                    f"[JSON解析] 成功解析JSON响应 --> 响应状态码: {resp.status_code}, "
-                    f"JSON数据: {_main()._redact_sensitive_log_value(json_data)}, "
-                    f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}"
-                )
-                return json_data
-            except json.JSONDecodeError as e:
-                log_func("服务器响应解析失败。")
-                logging.error(
-                    f"[JSON解析] JSON解码失败 --> 响应状态码: {resp.status_code}, "
-                    f"响应内容类型: {resp.headers.get('Content-Type', '未知')}, "
-                    f"解码错误位置: 第{e.lineno}行第{e.colno}列, "
-                    f"错误详情: {_main()._redact_sensitive_log_text(str(e))}, "
-                    f"响应内容长度: {len(resp.content)} 字节, "
-                    f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}"
-                )
-                return None
-        logging.debug(f"[JSON解析] 响应对象为空，无法解析JSON")
-        return None
+        if resp is None:
+            logging.debug("[JSON解析] 响应对象为空，无法解析JSON")
+            return None
+        try:
+            json_data = resp.json()
+            logging.debug(
+                f"[JSON解析] 成功解析JSON响应 --> 响应状态码: {resp.status_code}, "
+                f"JSON数据: {_main()._redact_sensitive_log_value(json_data)}"
+            )
+            return json_data
+        except ValueError as e:
+            # requests>=2.27 的 JSONDecodeError 继承自 json.JSONDecodeError，但网关
+            # 502/404 时返回的是 HTML，某些路径下抛的是普通 ValueError，一并兜住。
+            log_func("服务器响应解析失败。")
+            logging.error(
+                f"[JSON解析] JSON解码失败 --> 响应状态码: {resp.status_code}, "
+                f"响应内容类型: {resp.headers.get('Content-Type', '未知')}, "
+                f"错误详情: {_main()._redact_sensitive_log_text(str(e))}, "
+                f"响应内容长度: {len(resp.content)} 字节, "
+                f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}"
+            )
+            return None
+
+    # ------------------------------------------------------------------ 账号/会话
 
     def login(self, username, password):
-        return self._json(
+        """登录。
+
+        App 的登录是 `POST /app/login?...&username=..&password=..`（参数在 query，body 为空），
+        成功后从 `data.accessToken` / `data.refreshToken` 取令牌，之后所有请求把
+        accessToken 原样塞进 `Authorization` 头（不加 Bearer 前缀）。
+        """
+        self.sync_app_version()
+        payload = self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}/app/login",
-                data={"username": username, "password": password},
+                "/login",
+                data="",
+                params={"username": username, "password": password},
+                is_post_str=True,
+                force_content_type=self.JSON_CONTENT_TYPE,
+                retries=3,
             )
         )
+        self._apply_login_tokens(payload)
+        return payload
 
-    def get_run_list(self, user_id, offset=0):
+    def _apply_login_tokens(self, payload):
+        """从登录响应里取 token 并落到 Authorization 会用到的地方。"""
+        if not isinstance(payload, dict):
+            return
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return
+        access_token = data.get("accessToken")
+        if not access_token:
+            return
+        self._access_token = access_token
+        logging.debug(
+            "登录成功，已记录 accessToken: "
+            f"{_main()._redact_sensitive_log_value({'accessToken': access_token})}"
+        )
+        refresh_token = data.get("refreshToken")
+        if refresh_token:
+            self._refresh_token = refresh_token
+
+    # ------------------------------------------------------------------ 跑腿（/run/errand/*）
+
+    def get_run_list(self, user_id, offset=0, limit=10, is_finish=None):
+        """跑腿列表。
+
+        App 侧参数：userId / offset / limit / isFinish（isFinish 是页签类型，不传则由后端返回全部）。
+        """
         return self._json(
             self._request(
                 "POST",
-                # 原方案:合并isFinish=0和isFinish=1的接口，减少请求次数
-                # 现方案:不传入isFinish参数，后端默认返回所有状态的跑腿列表，前端根据status字段进行分类统计和显示
-                f"{self.BASE_URL}:9097/run/errand/getErrandList?userId={user_id}&offset={offset}&limit=10",
-                # {
-                #     "userId": user_id,
-                #     "offset": offset,
-                #     "limit": 10,
-                #     "appVersion": self.API_VERSION,
-                # },
+                "/run/errand/getErrandList",
                 data="",
+                params={
+                    "userId": user_id,
+                    "offset": offset,
+                    "limit": str(limit),
+                    "isFinish": is_finish,
+                },
+                is_post_str=True,
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )
 
     def get_run_details(self, errand_id, user_id, errand_schedule_id):
+        """跑腿任务详情。
+
+        注意：该接口受 appVersion 请求头的最低版本校验，版本过低会得到
+        `{"errandDetail":{"startTime":"请更新APP后再进行跑步"}}` 这种"伪成功"响应。
+        """
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}:9097/run/errand/getErrandDetail?errandId={errand_id}&userId={user_id}&errandScheduleId={errand_schedule_id}",
-                # {
-                #     "errandId": errand_id,
-                #     "userId": user_id,
-                #     "errandScheduleId": errand_schedule_id,
-                #     "appVersion": self.API_VERSION,
-                # },
+                "/run/errand/getErrandDetail",
                 data="",
+                params={
+                    "errandId": errand_id,
+                    "userId": user_id,
+                    "errandScheduleId": errand_schedule_id,
+                },
+                is_post_str=True,
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )
 
-    def get_run_history_list(self, user_id, errand_schedule_id):
+    def get_run_history_list(self, user_id, errand_schedule_id, offset=0, limit=10):
+        """跑腿轨迹记录列表（App 侧 limit 传字符串 "10"）。"""
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}:9097/run/errand/getUserErrandTrackRecord?errandScheduleId={errand_schedule_id}&userId={user_id}&offset=0&limit=20",
-                # {
-                #     "errandScheduleId": errand_schedule_id,
-                #     "userId": user_id,
-                #     "offset": 0,
-                #     "limit": 20,
-                #     "appVersion": self.API_VERSION,
-                # },
+                "/run/errand/getUserErrandTrackRecord",
                 data="",
+                params={
+                    "errandScheduleId": errand_schedule_id,
+                    "userId": user_id,
+                    "offset": offset,
+                    "limit": str(limit),
+                },
+                is_post_str=True,
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )
 
     def get_history_track_by_trid(self, trid):
+        """按 trid 取历史轨迹点（App 用的是 POST + query，原实现误用 GET）。"""
         return self._json(
             self._request(
-                "GET",
-                f"{self.BASE_URL}:9097/run/errand/getTrackByTrid?trid={trid}",
-                # {"trid": trid, "appVersion": self.API_VERSION},
+                "POST",
+                "/run/errand/getTrackByTrid",
                 data="",
+                params={"trid": trid},
+                is_post_str=True,
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )
 
     def submit_run_track(self, payload_str):
+        """上报跑腿轨迹。
+
+        App 里这条接口是四个走请求体（`data`）之一：JSON 字符串直接作为 body 提交。
+        """
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}:9097/run/errand/addErrandTrackByData",
+                "/run/errand/addErrandTrackByData",
                 payload_str,
                 is_post_str=True,
-                force_content_type="application/json;charset=UTF-8",
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )
 
     def get_run_info_by_trid(self, trid):
+        """按 trid 取轨迹记录（POST + query）。"""
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}:9097/run/errand/getTrackRecordByTrid?trid={trid}",
-                # {"trid": trid, "appVersion": self.API_VERSION},
+                "/run/errand/getTrackRecordByTrid",
                 data="",
+                params={"trid": trid},
+                is_post_str=True,
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )
 
+    # ------------------------------------------------------------------ 通知
+
     def get_unread_notice_count(self):
-        """获取未读通知数量 (POST, 空body, application/json)"""
+        """获取未读通知数量 (POST, 空body, 无参数)"""
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}/app/appNotice/unreadNumber",
+                "/appNotice/unreadNumber",
                 data="",
                 is_post_str=True,
-                force_content_type="application/json;charset=UTF-8",
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )
 
     def get_notice_list(self, offset=0, limit=10, type_id=0):
-        """获取通知列表 (POST, 空body, 带URL参数)"""
-        params = {"offset": offset, "limit": limit, "typeId": type_id}
+        """获取通知列表 (POST, 空body, query: offset/limit/typeId)"""
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}/app/appNotice/noticeListByType",
+                "/appNotice/noticeListByType",
                 data="",
-                params=params,
+                params={"offset": offset, "limit": str(limit), "typeId": type_id},
                 is_post_str=True,
-                force_content_type="application/json;charset=UTF-8",
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )
 
     def mark_notice_as_read(self, notice_id):
-        """将单个通知设为已读 (POST, 空body, 带URL参数)"""
-        params = {"noticeId": notice_id}
+        """将单个通知设为已读 (POST, 空body, query: noticeId)"""
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}/app/appNotice/updateNoticeIsRead",
+                "/appNotice/updateNoticeIsRead",
                 data="",
-                params=params,
+                params={"noticeId": notice_id},
                 is_post_str=True,
-                force_content_type="application/json;charset=UTF-8",
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )
+
+    # ------------------------------------------------------------------ 设备/UA
 
     @staticmethod
     def generate_random_ua():
         """生成一个随机的、仅限移动端设备的User-Agent字符串。
-        
+
         优先使用 fake_useragent 库（如已安装）生成真实度更高的随机UA；
         若库不可用则回退到内置的安卓设备UA模板列表。
         """
         # ── 方案一：使用 fake_useragent 库（移动端限定）──────────────────────
         try:
             from fake_useragent import UserAgent
-            ua_gen = _main().UserAgent(platforms=["mobile"])
-            ua = ua_gen.random
-            # 如果生成的 UA 不含 Mobile/Android 关键词，则触发回退
+            # 注意：这里必须用刚刚 import 进来的 UserAgent，不能写成 _main().UserAgent
+            # （main 模块里没有这个名字，会被 except 静默吞掉、永远走兜底分支）。
+            ua = UserAgent(platforms=["mobile"]).random
             if "Mobile" in ua or "Android" in ua:
                 return ua
         except Exception:
@@ -558,44 +703,57 @@ class ApiClient:
             f"Version/4.0 {chrome_version} Mobile Safari/537.36"
         )
 
+    # ------------------------------------------------------------------ 签到（/run/attendanceRecord/*）
+
     def get_roll_call_info(self, roll_call_id, user_id):
-        """获取指定签到活动的信息"""
-        params = {"id": roll_call_id, "userId": user_id,
-                  "appVersion": self.API_VERSION}
+        """获取指定签到活动的信息 (query: id/userId)。
+
+        响应 data 形如 {rollCallInfo: {id, status, ...}, attendFinish: 0|1}。
+        """
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}:9097/run/attendanceRecord/getAttendanceByRollCallId",
+                "/run/attendanceRecord/getAttendanceByRollCallId",
                 data="",
-                params=params,
+                params={"id": roll_call_id, "userId": user_id},
                 is_post_str=True,
-                force_content_type="application/json;charset=UTF-8",
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )
 
     def submit_attendance(self, payload: dict):
-        """提交签到记录"""
-        payload["appVersion"] = self.API_VERSION
+        """提交签到记录。
+
+        App 侧字段（全部在 query）：id / userId / name / rollCallId / coordinate /
+        distance / status / reason / signCode。表单体在历史版本里也能被 Spring 绑定，
+        这里跟 App 一致改成 query，并在缺少 id 时用 rollCallId 补齐。
+        """
+        payload = dict(payload or {})
+        payload.setdefault("id", payload.get("rollCallId"))
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}:9097/run/attendanceRecord/addAttendance",
-                data=payload,
-                is_post_str=False,
+                "/run/attendanceRecord/addAttendance",
+                data="",
+                params=payload,
+                is_post_str=True,
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )
 
     def get_attendance_radius(self):
-        """获取服务器设定的签到半径"""
-        params = {"code": "attendanceRadius", "num": 1}
+        """获取服务器设定的签到半径 (query: code=attendanceRadius&num=1)。
+
+        响应 data.info 是 [{name:"radius", code:"<米数>"}]，App 用 name=="radius" 取值。
+        """
         logging.debug("正在从服务器请求签到有效半径配置参数...")
         return self._json(
             self._request(
                 "POST",
-                f"{self.BASE_URL}/app/appFind/getDictTips",
+                "/appFind/getDictTips",
                 data="",
-                params=params,
+                params={"code": "attendanceRadius", "num": "1"},
                 is_post_str=True,
-                force_content_type="application/json;charset=UTF-8",
+                force_content_type=self.JSON_CONTENT_TYPE,
             )
         )

@@ -334,7 +334,7 @@ class TestMultiAccountExecutionParity(unittest.TestCase):
         api._payment_required_for_overdue_gate = lambda: False
         api.log_and_notify_frontend = lambda _message: None
 
-        def start_worker(_acc, _delay, _run_only_incomplete):
+        def start_worker(_acc, _delay, _run_only_incomplete, **_kwargs):
             _acc.status_text = "无任务可执行"
             return True
 

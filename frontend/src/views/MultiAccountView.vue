@@ -25,6 +25,10 @@ const mapStore = useMapStore()
 const loading = ref(false)
 const selectAll = ref(false)
 const selectedIds = ref(new Set())
+let multiAccountStartGeneration = 0
+const multiAccountPendingStarts = new Set()
+let multiAccountStopPromise = null
+let stoppingMultiAccounts = false
 const showParamsModal = ref(false)
 const showNotifications = ref(false)
 const showAdmin = ref(false)
@@ -365,7 +369,19 @@ async function loadAccounts(context = null) {
   }
 }
 
+async function callMultiAccountStart(method, ...args) {
+  const request = checkedAPI(method, ...args)
+  multiAccountPendingStarts.add(request)
+  try {
+    return await request
+  } finally {
+    multiAccountPendingStarts.delete(request)
+  }
+}
+
 async function startAll() {
+  if (stoppingMultiAccounts) return
+  const startGeneration = multiAccountStartGeneration
   if (!accounts.value.length) return
   try {
     let skipOverdue = false
@@ -378,9 +394,9 @@ async function startAll() {
         },
       },
     )
-    if (!canStart) return
+    if (!canStart || startGeneration !== multiAccountStartGeneration) return
     const overdueOverride = consumeOverdueForceOverride()
-    await checkedAPI('multi_start_all_accounts', {
+    await callMultiAccountStart('multi_start_all_accounts', {
       min_delay: delaySettings.minDelay,
       max_delay: delaySettings.maxDelay,
       use_delay: delaySettings.useDelay,
@@ -389,6 +405,7 @@ async function startAll() {
       bypass_overdue: overdueOverride.bypass_overdue,
       waive_charge: overdueOverride.waive_charge,
     })
+    if (startGeneration !== multiAccountStartGeneration) return
     appStore.addLog('已发送全部启动指令', 'INFO', 'Multi')
   } catch (e) {
     appStore.addLog(`全部启动失败: ${e.message}`, 'ERROR', 'Multi')
@@ -396,31 +413,59 @@ async function startAll() {
 }
 
 async function stopAll() {
-  try {
-    await checkedAPI('multi_stop_all_accounts')
-    appStore.addLog('已发送全部停止指令', 'INFO', 'Multi')
-  } catch (e) {
-    appStore.addLog(`全部停止失败: ${e.message}`, 'ERROR', 'Multi')
-  }
+  multiAccountStartGeneration += 1
+  if (multiAccountStopPromise) return multiAccountStopPromise
+  stoppingMultiAccounts = true
+  const pendingStarts = [...multiAccountPendingStarts]
+  multiAccountStopPromise = (async () => {
+    try {
+      let stopError = null
+      try {
+        await checkedAPI('multi_stop_all_accounts')
+      } catch (error) {
+        stopError = error
+      }
+      if (pendingStarts.length) {
+        // A dispatched start may reach the server after the first stop request.
+        await Promise.allSettled(pendingStarts)
+        await checkedAPI('multi_stop_all_accounts')
+        stopError = null
+      }
+      if (stopError) throw stopError
+      appStore.addLog('已发送全部停止指令', 'INFO', 'Multi')
+    } catch (e) {
+      appStore.addLog(`全部停止失败: ${e.message}`, 'ERROR', 'Multi')
+    } finally {
+      stoppingMultiAccounts = false
+      multiAccountStopPromise = null
+    }
+  })()
+  return multiAccountStopPromise
 }
 
 async function startSelected() {
+  if (stoppingMultiAccounts) return
+  const startGeneration = multiAccountStartGeneration
   if (selectedCount.value === 0) return
   try {
     if (!(await checkOverdueBeforeStart([...selectedIds.value]))) return
+    if (startGeneration !== multiAccountStartGeneration) return
     const overdueOverride = consumeOverdueForceOverride()
     for (const username of selectedIds.value) {
+      if (startGeneration !== multiAccountStartGeneration) return
       if (delaySettings.useDelay && delaySettings.maxDelay >= delaySettings.minDelay) {
         const delay = Math.random() * (delaySettings.maxDelay - delaySettings.minDelay) + delaySettings.minDelay
         await new Promise(resolve => setTimeout(resolve, delay * 10))
       }
-      await checkedAPI('multi_start_single_account', {
+      if (startGeneration !== multiAccountStartGeneration) return
+      await callMultiAccountStart('multi_start_single_account', {
         username,
         run_only_incomplete: delaySettings.runOnlyIncomplete,
         bypass_overdue: overdueOverride.bypass_overdue,
         waive_charge: overdueOverride.waive_charge,
       })
     }
+    if (startGeneration !== multiAccountStartGeneration) return
     appStore.addLog(`已启动 ${selectedCount.value} 个选中账号`, 'INFO', 'Multi')
   } catch (e) {
     appStore.addLog(`启动选中账号失败: ${e.message}`, 'ERROR', 'Multi')
@@ -447,16 +492,23 @@ async function refreshAccount(account) {
 }
 
 async function startAccount(account) {
+  if (stoppingMultiAccounts) return
+  const startGeneration = multiAccountStartGeneration
   try {
-    if (!(await checkOverdueBeforeStart([getAccountName(account)]))) return
-    const overdueOverride = consumeOverdueForceOverride()
-    await checkedAPI('multi_start_single_account', {
+    const skipWait = account.can_skip_wait === true
+    if (!skipWait && !(await checkOverdueBeforeStart([getAccountName(account)]))) return
+    if (startGeneration !== multiAccountStartGeneration) return
+    const overdueOverride = skipWait
+      ? { bypass_overdue: false, waive_charge: false }
+      : consumeOverdueForceOverride()
+    const result = await callMultiAccountStart('multi_start_single_account', {
       username: getAccountName(account),
       run_only_incomplete: delaySettings.runOnlyIncomplete,
       bypass_overdue: overdueOverride.bypass_overdue,
       waive_charge: overdueOverride.waive_charge,
     })
-    appStore.addLog(`已启动 ${getAccountName(account)}`, 'INFO', 'Multi')
+    if (startGeneration !== multiAccountStartGeneration) return
+    appStore.addLog(result?.wait_skipped ? '已跳过任务间等待' : `已启动 ${getAccountName(account)}`, 'INFO', 'Multi')
   } catch (e) {
     appStore.addLog(`启动失败: ${e.message}`, 'ERROR', 'Multi')
   }
