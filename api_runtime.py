@@ -25,6 +25,7 @@ from types import SimpleNamespace
 
 
 from main_runtime import _main
+from api_client import ApiClient
 from route_diagnostics import build_route_failure_summary, detailed_route_failure_message, generic_route_failure_message, sanitize_diagnostic
 from theme_background_state import background_files_locked
 
@@ -1353,8 +1354,10 @@ class Api:
         if existing_data:
             if isinstance(existing_data, str):
                 existing_data = {"password": existing_data, "ua": ""}
+                accounts[school_username] = existing_data
 
             if not login_verified:
+                self._persist_missing_school_account_ua(auth_username, school_username, ua)
                 logging.debug(
                     f"school_account {school_username} 已存在，且未验证登录成功，跳过更新"
                 )
@@ -1366,7 +1369,9 @@ class Api:
         if school_username in accounts:
             # 账号已存在，更新密码和UA，保留其他字段
             accounts[school_username]["password"] = password
-            accounts[school_username]["ua"] = ua if ua else ""
+            normalized_ua = ApiClient.normalize_device_ua(ua)
+            if normalized_ua:
+                accounts[school_username]["ua"] = normalized_ua
             logging.debug(
                 f"更新 {school_username} 密码和UA，保留统计数据: "
                 f"overdue_count={accounts[school_username].get('overdue_count', 'N/A')}, "
@@ -1376,7 +1381,7 @@ class Api:
             # 账号不存在，创建新条目（统计数据默认为0）
             accounts[school_username] = {
                 "password": password,
-                "ua": ua if ua else "",
+                "ua": ApiClient.normalize_device_ua(ua),
                 "overdue_count": 0,
                 "completed_count": 0
             }
@@ -1432,6 +1437,23 @@ class Api:
         if isinstance(account_data, dict):
             return account_data.get("ua", "")
         return None
+
+    def _persist_missing_school_account_ua(self, auth_username, school_username, ua):
+        """只补齐已有账号缺失的设备身份，保留密码与已有有效 UA。"""
+        ua = ApiClient.normalize_device_ua(ua)
+        if not auth_username or auth_username == "guest" or not ua:
+            return
+        accounts = self._load_user_school_accounts(auth_username)
+        account_data = accounts.get(school_username)
+        if isinstance(account_data, str):
+            account_data = {"password": account_data, "ua": ""}
+        if not isinstance(account_data, dict):
+            return
+        if ApiClient.normalize_device_ua(account_data.get("ua")):
+            return
+        account_data["ua"] = ua
+        accounts[school_username] = account_data
+        self._save_user_school_accounts(auth_username, accounts)
 
     def _get_auth_user_and_check_admin(self):
         """
@@ -7852,42 +7874,24 @@ class Api:
             username, password, self, tag=final_tag
         )
 
-        # 不再从旧的配置文件/ini 中自动读取 UA 或密码；只使用调用时提供的密码
-        # 如果没有显式提供 UA，则为会话生成随机 UA
-        # 但支持从 school_accounts 中读取已保存的 UA 和密码（兼容新旧格式、权限感知）
+        # 显式密码只决定凭据来源，不能跳过该账号已保存的设备 UA。
+        auth_username, is_admin = self._get_auth_user_and_check_admin()
+        if auth_username:
+            try:
+                accounts = self._load_accounts_by_permission(auth_username)
+                account_info = accounts.get(username)
+                if isinstance(account_info, dict):
+                    if not password:
+                        password = account_info.get("password")
+                    saved_ua = ApiClient.normalize_device_ua(account_info.get("ua"))
+                    if saved_ua:
+                        self.accounts[username].device_ua = saved_ua
+                elif isinstance(account_info, str) and not password:
+                    password = account_info
+            except Exception as e:
+                logging.debug(f"从 school_accounts 读取账号信息失败: {e}")
 
-        # 尝试从 school_accounts 中读取现有账号的 UA 和密码（支持权限检查）
-        if not password:
-            # 使用权限感知方法加载账号信息
-            auth_username, is_admin = self._get_auth_user_and_check_admin()
-
-            if auth_username:
-                try:
-                    # 根据权限加载账号列表（管理员查看所有，普通用户仅查看自己的）
-                    accounts = self._load_accounts_by_permission(auth_username)
-
-                    account_info = accounts.get(username)
-                    if account_info:
-                        if isinstance(account_info, dict):
-                            password = account_info.get("password")
-                            if account_info.get("ua"):
-                                self.accounts[username].device_ua = account_info["ua"]
-                                logging.debug(f"已从配置文件读取账号 {username} 的 UA")
-                        else:
-                            # 旧格式兼容（直接字符串）
-                            password = account_info
-
-                        if password:
-                            logging.info(
-                                f"已从配置文件读取账号 {username} 的密码 (发起用户: {auth_username}, 是否管理员: {is_admin})")
-                    else:
-                        logging.debug(
-                            f"账号 {username} 未在 {('所有' if is_admin else '当前用户的')} 账户列表中找到")
-                except Exception as e:
-                    logging.debug(f"从 school_accounts 读取账号信息失败: {e}")
-
-        if not self.accounts[username].device_ua:
-            self.accounts[username].device_ua = _main().ApiClient.generate_random_ua()
+        self.accounts[username].api_client.ensure_device_ua()
 
         final_password = password or ""
         self.accounts[username].password = final_password
@@ -8193,8 +8197,8 @@ class Api:
             )
 
             if not acc.user_data.id:
-                if not acc.device_ua:
-                    acc.device_ua = _main().ApiClient.generate_random_ua()
+                if not ApiClient.normalize_device_ua(acc.device_ua):
+                    acc.api_client.ensure_device_ua()
 
                 verification_attempt = bool(
                     getattr(acc, "is_verifying", False)
@@ -8481,10 +8485,15 @@ class Api:
                     user_data.gender = gender
 
             login_verification = self._get_account_login_verification(acc)
+            device_ua = ApiClient.normalize_device_ua(getattr(acc, "device_ua", None))
+            ensure_ua = getattr(getattr(acc, "api_client", None), "ensure_device_ua", None)
+            if not device_ua and callable(ensure_ua):
+                device_ua = ApiClient.normalize_device_ua(ensure_ua())
 
             status_list.append(
                 {
                     "username": acc.username,
+                    "device_ua": device_ua,
                     "name": acc.user_data.name or "---",
                     "gender": gender,
                     "status_text": acc.status_text,
@@ -10873,8 +10882,8 @@ class Api:
                 )
             else:
                 self._update_account_status_js(acc, status_text="登录中...")
-                if not acc.device_ua:
-                    acc.device_ua = _main().ApiClient.generate_random_ua()
+                if not ApiClient.normalize_device_ua(acc.device_ua):
+                    acc.api_client.ensure_device_ua()
 
                 if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
                     self._update_account_status_js(acc, status_text="已中止")

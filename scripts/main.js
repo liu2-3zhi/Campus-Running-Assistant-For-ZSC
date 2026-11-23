@@ -17881,8 +17881,10 @@ async function multi_loadAllFromConfig() {
                   ) {
                     account.password = accountData.password;
                   }
-                  // [安全修复] 使用统一的安全常量验证User-Agent长度
+                  // 后端返回的是账号当前使用的 UA；旧配置只用于缺失值补齐。
                   if (
+                    (typeof account.device_ua !== "string" ||
+                      !account.device_ua.trim()) &&
                     accountData.hasOwnProperty("ua") &&
                     typeof accountData.ua === "string" &&
                     accountData.ua.length > 0 &&

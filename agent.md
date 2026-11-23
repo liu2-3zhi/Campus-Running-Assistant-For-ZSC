@@ -336,3 +336,11 @@
 - accessToken 原样写入 Authorization；登录前、注销和清 Cookie 重登时须同时清 accessToken/refreshToken，避免失败登录后继续使用旧身份。版本同步是本项目兼容策略，有效缓存相等也要命中，异常响应不能中断登录或永久标记同步成功；静态源码不能证明服务端最低版本永远等于最新版。
 - 网络诊断保留响应头和原始响应文本，并使用现有日志脱敏 helper；测试客户端须正常执行构造器，避免新增状态因 `__new__` 被跳过而产生假回归。
 - 证据与范围见 `docs/app-service-api-contract-analysis.md`；回归见 `tests/test_api_client_app_contract.py`、`tests/test_attendance_request_contract.py`、`tests/test_api_authentication_lifecycle.py`、`tests/test_network_logging_details.py`。受控传输验证不能代替真实账号的线上验收。
+
+### 多账号 UA 隔离与恢复
+
+- 每个 AccountSession 使用自己的 ApiClient、UA 和设备平台，不能从父 Api 或其他账号借用 UA。显式传入密码时也必须读取该账号已保存的 UA；缺少 UA 才独立生成，不能在每次登录、刷新或重启时重新随机。
+- ApiClient 在实例内带锁记住最后有效 UA，空值、空白和 null/None/undefined 字符串均视为缺失。请求前恢复该账号的有效值并回填所属对象，首次缺失仅生成一次；User-Agent 和 platform 从同一设备值构造。
+- 每账号会话快照保存 device_ua，恢复优先级为该账号快照、该账号 school_accounts、独立生成，必须在刷新线程启动前完成；已存在客户端保留自身有效缓存。状态查询和快照保存也须先修复空 UA。补生成的 UA 写回已有账号缺失的配置字段，仅补 UA，不改密码或覆盖其他有效 UA。不能只保存父会话 device_ua；状态构造不得重复覆盖而丢失 UA 或首次验证标志。更新密码时缺失 UA 不得抹掉原值，旧字符串密码格式须先转为字典。
+- 多账号状态接口返回实际 device_ua。桌面、移动端从 school_accounts 补全账号信息时，保留后端当前 UA，只有缺失时才回退到同账号配置；前端变更同步更新 version.json。
+- 回归见 `tests/test_multi_account_ua_isolation.py`、`tests/test_multi_account_ua_session_state.py`、`tests/multi_account_ua_merge.test.mjs`，覆盖多账号独立身份、并发请求、空值修复、快照往返和前端旧配置覆盖。

@@ -4410,7 +4410,12 @@ async function addMobileAllConfigs() {
                     if (accountData.password) {
                       account.password = accountData.password;
                     }
-                    if (accountData.ua) {
+                    // 保留账号当前 UA，避免旧配置覆盖已隔离的运行时设备。
+                    if (
+                      (typeof account.device_ua !== "string" ||
+                        !account.device_ua.trim()) &&
+                      accountData.ua
+                    ) {
                       account.device_ua = accountData.ua;
                     }
                     updatedCount++;

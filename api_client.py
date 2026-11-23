@@ -4,6 +4,7 @@ import json
 import logging
 import random
 import re
+import threading
 import time
 from urllib.parse import urlencode
 
@@ -73,6 +74,8 @@ class ApiClient:
     def __init__(self, owner_instance):
         self.session = _main().requests.Session()
         self.app = owner_instance
+        self._device_ua_lock = threading.Lock()
+        self._device_ua = self.normalize_device_ua(getattr(owner_instance, "device_ua", None))
         # 运行期版本号：默认取类常量，登录前后可被 sync_app_version() 抬到服务端最新版
         self.app_version = self.NEW_APP_VERSION
         self._app_version_synced = False
@@ -91,12 +94,30 @@ class ApiClient:
             return f"{self.RUN_BASE_URL}{path}"
         return f"{self.BASE_URL}{self.APP_PREFIX}{path}"
 
-    def _app_platform(self) -> str:
+    @staticmethod
+    def normalize_device_ua(value) -> str:
+        """空配置和序列化空值不能作为设备 UA 发送。"""
+        if not isinstance(value, str):
+            return ""
+        value = value.strip()
+        return "" if value.lower() in {"", "null", "none", "undefined"} else value
+
+    def ensure_device_ua(self, fallback: str | None = None) -> str:
+        """仅使用本客户端所属账号的 UA；丢失时恢复，不借用父会话设备。"""
+        with self._device_ua_lock:
+            ua = self.normalize_device_ua(getattr(self.app, "device_ua", None))
+            if not ua:
+                ua = self._device_ua or self.normalize_device_ua(fallback) or self.generate_random_ua()
+            self._device_ua = ua
+            self.app.device_ua = ua
+            return ua
+
+    def _app_platform(self, device_ua: str | None = None) -> str:
         """uni.getSystemInfoSync().osName 的等价物：android / ios。"""
         os_name = getattr(self.app, "platform", None)
         if os_name:
             return str(os_name)
-        ua = getattr(self.app, "device_ua", "") or ""
+        ua = device_ua if device_ua is not None else self.ensure_device_ua()
         if "iPhone" in ua or "iPad" in ua or "iOS" in ua:
             return "ios"
         return "android"
@@ -135,13 +156,14 @@ class ApiClient:
 
     def _get_headers(self) -> dict:
         """构建请求头，包含认证信息和设备信息（字段对齐 App 的 request 拦截器）"""
+        device_ua = self.ensure_device_ua()
         headers = {
             "Connection": "keep-alive",
             "Accept": "*/*",
             "X-Requested-With": self.APP_CLIENT_ID,
             "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-            "User-Agent": (getattr(self.app, "device_ua", "") or "") + self.UA_SUFFIX,
-            "platform": self._app_platform(),
+            "User-Agent": device_ua + self.UA_SUFFIX,
+            "platform": self._app_platform(device_ua),
         }
 
         auth_token = self._access_token
