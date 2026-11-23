@@ -3368,6 +3368,9 @@ class Api:
 
         self._init_state_variables()
         self._load_global_config()
+        set_access_token = getattr(self.api_client, "set_access_token", None)
+        if callable(set_access_token):
+            set_access_token(None)
         self.api_client.session = _main().requests.Session()
         return {"success": True}
 
@@ -8059,6 +8062,9 @@ class Api:
             acc.api_client.session.cookies.clear()
         except Exception:  # nosec B110 - 清理失败不阻塞重登
             pass
+        set_access_token = getattr(acc.api_client, "set_access_token", None)
+        if callable(set_access_token):
+            set_access_token(None)
         acc.user_data.id = ""
         acc.is_verifying = True
         threading.Thread(
@@ -11405,11 +11411,13 @@ class Api:
             client, acc)
         is_precise_checkin = server_radius_m <= 0
 
+        attendance_record_id = None
         try:
             info_resp = client.get_roll_call_info(roll_call_id, user.id)
             if info_resp and info_resp.get("success"):
                 data = info_resp.get("data", {})
                 roll_call_info = data.get("rollCallInfo", {})
+                attendance_record_id = roll_call_info.get("id")
 
                 status = roll_call_info.get("status")
                 finished = data.get("attendFinish")
@@ -11484,7 +11492,8 @@ class Api:
             payload = {
                 "rollCallId": roll_call_id,
                 "userId": user.id,
-                "coordinate": f"{final_lon},{final_lat}",
+                "name": getattr(user, "name", ""),
+                "coordinate": f"{final_lat},{final_lon}",
                 "distance": int(actual_distance),
                 "status": 2,
                 "signCode": sign_code,
@@ -11495,13 +11504,17 @@ class Api:
             payload = {
                 "rollCallId": roll_call_id,
                 "userId": user.id,
-                "coordinate": f"{final_lon},{final_lat}",
+                "name": getattr(user, "name", ""),
+                "coordinate": f"{final_lat},{final_lon}",
                 "distance": int(actual_distance),
                 "status": 1,
                 "signCode": sign_code,
                 "reason": "",
             }
             log_func("正在构建签到信息，检测到是正常签到任务")
+
+        if attendance_record_id is not None:
+            payload["id"] = attendance_record_id
 
         try:
             log_func("正在提交签到...")

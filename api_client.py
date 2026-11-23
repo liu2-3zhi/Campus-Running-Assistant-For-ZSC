@@ -5,7 +5,7 @@ import logging
 import random
 import re
 import time
-
+from urllib.parse import urlencode
 
 from main_runtime import _main
 
@@ -24,28 +24,23 @@ class ApiClient:
     """与 zslf.zsc.edu.cn（智慧校园 App）后端通信的请求层。
 
     本文件的接口形状以 App/H5 产物 `www/app-service.js`（uni-app + luch-request 3.1.0）
-    与线上实测为准，关键约定：
+    为契约参考，关键约定：
 
     1. 路径前缀
        * 非 /run/* 的接口：`{BASE_URL}/app` + 路径，例如 `/appNotice/unreadNumber`
          -> https://zslf.zsc.edu.cn/app/appNotice/unreadNumber
        * /run/* 的接口：`{BASE_URL}` + 路径（**不带 /app 前缀**），例如
          `/run/errand/getErrandList` -> https://zslf.zsc.edu.cn/run/errand/getErrandList
-         （线上 `:9097` 同样可达，但 App 本身走的是不分端口的同域地址，这里跟 App 一致）
+         （App 使用不分端口的同域地址）
 
     2. 参数位置（luch-request：params -> query string，data -> 请求体）
-       * 除 `/run/errand/{addErrandTrackByData,syncSportData,reportLocation,quickSave}`
-         这四个走 JSON 请求体（App 里写的是 `data: e`）之外，**其余接口一律只用 query**，
-         包括登录 `/login` 和签到 `/run/attendanceRecord/addAttendance`。
+       * 本客户端覆盖的登录、查询、通知和签到接口使用 query，body 为空。
+       * 轨迹上传使用 JSON 请求体，原 App 的三个上传接口超时为 30 秒，
+         quickSave 为 15 秒。不能把对象 data 默认编码成表单。
 
-    3. 版本号是本项目最容易踩的坑：服务端在 `/run/errand/getErrandDetail` 等"跑步"接口上
-       用**请求头 appVersion** 做最低版本校验（2026-11-23 实测）：
-           appVersion: 1.0.84 -> {"code":200,"data":{"errandDetail":{"startTime":"请更新APP后再进行跑步"}}}
-           appVersion: 1.0.85 -> 正常返回 errandDetail
-       放在 query 里的 appVersion 完全不起作用，不带头或低于阈值一律被判"APP版本过低/超时"。
-       阈值等于商店最新版（`/app/checkVersion` 的 data.version），当前是 1.0.85，
-       所以除了默认值之外还提供 `sync_app_version()` 自动抬到服务端最新版，
-       避免下次商店发版后这条链路又静默坏掉。
+    3. appVersion 和 platform 是请求头。App 从设备读取实际版本，
+       GET `/app/checkVersion` 用于检查更新。本项目保留 sync_app_version()
+       作为兼容策略，只提升有效版本；静态产物不能证明服务端最低版本阈值。
 
     4. 响应体统一为 `{"code": 200, "data": ..., "message": ..., "success": true}`；
        鉴权失败时 HTTP 状态码本身也是 401（body 同样是这个 JSON 信封），
@@ -54,12 +49,11 @@ class ApiClient:
 
     BASE_URL = "https://zslf.zsc.edu.cn"
     APP_PREFIX = "/app"
-    # /run/* 的基地址。线上实测 `BASE_URL` 与 `BASE_URL + ":9097"` 都通，
-    # App 走的是不分端口的同域地址，这里跟 App 保持一致；需要固定走 9097 改这一行即可。
+    # /run/* 与 App 一样走不分端口的同域地址。
     RUN_BASE_URL = BASE_URL
 
-    API_VERSION = 66            # 已弃用：服务端只认请求头 appVersion，query 里的同名参数被忽略
-    NEW_APP_VERSION = "1.0.85"  # 服务端最低版本校验的当前阈值（等于商店最新版）
+    API_VERSION = 66            # 旧调用兼容常量；App 用请求头 appVersion
+    NEW_APP_VERSION = "1.0.85"  # 版本查询不可用时的兼容默认值
     APP_CLIENT_ID = "com.zx.slm"
     UA_SUFFIX = " uni-app Html5Plus/1.0 (Immersed/29.09091)"
     JSON_CONTENT_TYPE = "application/json;charset=UTF-8"
@@ -67,6 +61,7 @@ class ApiClient:
 
     CONNECT_TIMEOUT = 5
     READ_TIMEOUT = 10
+    TRACK_READ_TIMEOUT = 30
     MAX_RETRIES = 10
     RETRY_BACKOFF_SECONDS = 1.5
     # 只有这些状态码值得重试：408/425/429 + 5xx。4xx 重试 10 次既浪费 15 秒，
@@ -83,6 +78,7 @@ class ApiClient:
         self._app_version_synced = False
         # App 的登录契约：/login 返回 data.accessToken，之后把它原样放进 Authorization
         self._access_token = None
+        self._refresh_token = None
         logging.debug("ApiClient已初始化，创建了新的_main().requests.Session会话实例")
 
     # ------------------------------------------------------------------ 基础工具
@@ -130,6 +126,8 @@ class ApiClient:
     def set_access_token(self, token: str | None):
         """设置/清除 App 契约里的 accessToken（Authorization 请求头原样携带，不加 Bearer）。"""
         self._access_token = token or None
+        if not self._access_token:
+            self._refresh_token = None
 
     @property
     def access_token(self) -> str | None:
@@ -139,7 +137,7 @@ class ApiClient:
         """构建请求头，包含认证信息和设备信息（字段对齐 App 的 request 拦截器）"""
         headers = {
             "Connection": "keep-alive",
-            "Accept": "application/json, text/plain, */*",
+            "Accept": "*/*",
             "X-Requested-With": self.APP_CLIENT_ID,
             "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
             "User-Agent": (getattr(self.app, "device_ua", "") or "") + self.UA_SUFFIX,
@@ -159,7 +157,7 @@ class ApiClient:
         else:
             logging.debug("既无 accessToken 也无 shiroCookie，将不设置 Authorization 请求头")
 
-        # 服务端按这个头做最低版本校验，缺失或过低会返回"请更新APP后再进行跑步"
+        # 与 App 一致把版本放在请求头，不附加到 query。
         headers["appVersion"] = self.app_version or self.NEW_APP_VERSION
         return headers
 
@@ -168,20 +166,15 @@ class ApiClient:
     def sync_app_version(self, force: bool = False) -> str:
         """从 /app/checkVersion 拉服务端最新版本号，只升不降。
 
-        服务端对"跑步"类接口做了最低版本校验，阈值就是商店最新版；把这里拉到最新版，
-        商店发版之后就不需要再回来改常量（原实现把 1.0.79 写死在这里，
-        线上所有跑步接口因此返回"请更新APP后再进行跑步"）。
-
-        结果按 BASE_URL 缓存到进程级，多账号/撞库场景里每个 ApiClient 实例登录时
+        这是本项目的版本兼容策略；App 本身使用设备版本，并单独检查更新。
+        有效结果按 BASE_URL 缓存到进程级，每个 ApiClient 实例登录时
         复用同一个结果，不会变成"每次登录多打一次 checkVersion"。
+        同步失败不标记完成，后续可重试；force=True 可刷新进程缓存。
         """
         cached = ApiClient._APP_VERSION_CACHE.get(self.BASE_URL)
-        if (
-            cached
-            and not force
-            and _version_key(cached) > _version_key(self.app_version or "")
-        ):
-            self.app_version = cached
+        if cached and not force:
+            if _version_key(cached) > _version_key(self.app_version or ""):
+                self.app_version = cached
             self._app_version_synced = True
             return self.app_version
 
@@ -191,28 +184,32 @@ class ApiClient:
         current = self.app_version or self.NEW_APP_VERSION
         payload = self._json(
             self._request(
-                "POST",
+                "GET",
                 "/checkVersion",
-                data="",
-                is_post_str=True,
-                force_content_type=self.JSON_CONTENT_TYPE,
                 retries=3,
             )
         )
-        if isinstance(payload, dict) and payload.get("code") == 200:
-            latest = (payload.get("data") or {}).get("version")
-            if latest:
-                ApiClient._APP_VERSION_CACHE[self.BASE_URL] = str(latest)
-            if latest and _version_key(latest) > _version_key(current):
-                self.app_version = str(latest)
+        data = payload.get("data") if isinstance(payload, dict) else None
+        latest = data.get("version") if isinstance(data, dict) else None
+        if (
+            isinstance(payload, dict)
+            and payload.get("code") == 200
+            and isinstance(latest, str)
+            and re.fullmatch(r"\d+(?:\.\d+)*", latest)
+        ):
+            if _version_key(latest) > _version_key(current):
+                self.app_version = latest
                 logging.info(
                     f"appVersion 已从服务端同步：{current} -> {self.app_version}"
                 )
             else:
                 logging.debug(f"appVersion 保持 {current}（服务端最新：{latest}）")
+            cached = ApiClient._APP_VERSION_CACHE.get(self.BASE_URL)
+            if not cached or _version_key(self.app_version) > _version_key(cached):
+                ApiClient._APP_VERSION_CACHE[self.BASE_URL] = self.app_version
+            self._app_version_synced = True
         else:
             logging.debug(f"appVersion 同步失败，继续使用 {current}")
-        self._app_version_synced = True
         return self.app_version
 
     # ------------------------------------------------------------------ 取消/重试
@@ -237,11 +234,12 @@ class ApiClient:
         self,
         method: str,
         url: str,
-        data: dict = None,
+        data: dict | str | bytes | None = None,
         params: dict = None,
         is_post_str=False,
         force_content_type: str = None,
         retries: int = None,
+        read_timeout: float | None = None,
     ) -> _main().requests.Response | None:
         """统一的网络请求方法（支持取消、按状态码区分是否重试）"""
         log_func = self.app.log_and_notify_frontend if hasattr(
@@ -267,6 +265,7 @@ class ApiClient:
             return None
 
         retries = max(1, int(retries or self.MAX_RETRIES))
+        read_timeout = self.READ_TIMEOUT if read_timeout is None else read_timeout
         full_url = self._api_url(url)
         params = self._clean_params(params)
         safe_request_url = _main()._redact_sensitive_log_text(full_url)
@@ -274,7 +273,7 @@ class ApiClient:
         logging.debug(
             f"[网络请求] 准备发起HTTP请求 --> 请求方法: {method.upper()}, "
             f"目标URL: {safe_request_url}, 重试上限: {retries}次, "
-            f"连接超时: {self.CONNECT_TIMEOUT}秒, 读取超时: {self.READ_TIMEOUT}秒, "
+            f"连接超时: {self.CONNECT_TIMEOUT}秒, 读取超时: {read_timeout}秒, "
             f"请求数据: {_main()._redact_sensitive_log_value(data)}, "
             f"URL参数: {_main()._redact_sensitive_log_value(params)}"
         )
@@ -290,17 +289,20 @@ class ApiClient:
                     if force_content_type:
                         headers["Content-Type"] = force_content_type
                     else:
-                        # App 的默认头就是 application/json；这里对"空体 POST"沿用 JSON 头，
-                        # 对"带表单字段的 POST"退到 x-www-form-urlencoded（Spring 两种都绑定）。
                         headers["Content-Type"] = self.JSON_CONTENT_TYPE
 
-                    if is_post_str:
-                        post_data_bytes = (data or "").encode("utf-8")
-                    elif data:
-                        post_data_bytes = _main().urllib.parse.urlencode(data).encode("utf-8")
-                        headers["Content-Type"] = self.FORM_CONTENT_TYPE
-                    else:
+                    # 字符串保持已有原始 body 契约；对象与 App 的 data:e 一样使用 JSON。
+                    # is_post_str 保留给现有调用，不能让它把 dict 当字符串调用 encode。
+                    if data is None:
                         post_data_bytes = b""
+                    elif isinstance(data, bytes):
+                        post_data_bytes = data
+                    elif isinstance(data, str):
+                        post_data_bytes = data.encode("utf-8")
+                    elif headers["Content-Type"].startswith(self.FORM_CONTENT_TYPE):
+                        post_data_bytes = urlencode(data).encode("utf-8")
+                    else:
+                        post_data_bytes = json.dumps(data, ensure_ascii=False).encode("utf-8")
 
                     logging.debug(
                         f"[网络请求] 发起POST请求 --> URL: {safe_request_url}, "
@@ -314,7 +316,7 @@ class ApiClient:
                         data=post_data_bytes,
                         params=params,
                         headers=headers,
-                        timeout=(self.CONNECT_TIMEOUT, self.READ_TIMEOUT),
+                        timeout=(self.CONNECT_TIMEOUT, read_timeout),
                     )
                 else:
                     logging.debug(
@@ -326,12 +328,13 @@ class ApiClient:
                         full_url,
                         params=params if params is not None else data,
                         headers=headers,
-                        timeout=(self.CONNECT_TIMEOUT, self.READ_TIMEOUT),
+                        timeout=(self.CONNECT_TIMEOUT, read_timeout),
                     )
 
                 logging.debug(
                     f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} "
                     f"({resp.reason}), 来源URL: {safe_request_url}, "
+                    f"响应头: {_main()._redact_sensitive_log_value(dict(resp.headers))}, "
                     f"响应内容长度: {len(resp.content)} 字节, "
                     f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}"
                 )
@@ -442,6 +445,7 @@ class ApiClient:
             json_data = resp.json()
             logging.debug(
                 f"[JSON解析] 成功解析JSON响应 --> 响应状态码: {resp.status_code}, "
+                f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}, "
                 f"JSON数据: {_main()._redact_sensitive_log_value(json_data)}"
             )
             return json_data
@@ -467,6 +471,8 @@ class ApiClient:
         成功后从 `data.accessToken` / `data.refreshToken` 取令牌，之后所有请求把
         accessToken 原样塞进 `Authorization` 头（不加 Bearer 前缀）。
         """
+        self.set_access_token(None)
+        self.session.cookies.clear()
         self.sync_app_version()
         payload = self._json(
             self._request(
@@ -576,10 +582,10 @@ class ApiClient:
             )
         )
 
-    def submit_run_track(self, payload_str):
+    def submit_run_track(self, payload_str: str | dict):
         """上报跑腿轨迹。
 
-        App 里这条接口是四个走请求体（`data`）之一：JSON 字符串直接作为 body 提交。
+        接受 App 同形 JSON 对象或已有 JSON 字符串；使用 App 的 30 秒上传读取超时。
         """
         return self._json(
             self._request(
@@ -588,6 +594,7 @@ class ApiClient:
                 payload_str,
                 is_post_str=True,
                 force_content_type=self.JSON_CONTENT_TYPE,
+                read_timeout=self.TRACK_READ_TIMEOUT,
             )
         )
 
@@ -725,11 +732,10 @@ class ApiClient:
         """提交签到记录。
 
         App 侧字段（全部在 query）：id / userId / name / rollCallId / coordinate /
-        distance / status / reason / signCode。表单体在历史版本里也能被 Spring 绑定，
-        这里跟 App 一致改成 query，并在缺少 id 时用 rollCallId 补齐。
+        distance / status / reason / signCode。id 由调用方从 rollCallInfo.id 取得，
+        不可用 rollCallId 猜测；coordinate 按 App 契约为纬度,经度。
         """
         payload = dict(payload or {})
-        payload.setdefault("id", payload.get("rollCallId"))
         return self._json(
             self._request(
                 "POST",

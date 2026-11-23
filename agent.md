@@ -328,3 +328,11 @@
 - JSONP callback 不属于瓦片内容；已确认端点对 callback 规范化后存严格 JSON，各响应使用自身 callback 并保留存在性 guard，防止卸载后回调异常。必须验证跨 callback 的并发合并和重启命中，拒绝重复字段、尾随脚本、未知字段和错误结果。
 - 减少超时应复用独占租约的 HTTP 连接，等待相同瓦片的 follower 不占上游许可；DNS 队列、瓦片重试和总截止时间都要有界。取消器必须先从连接解绑再释放租约，避免旧请求关闭后续请求正在复用的 socket。
 - 相关测试：`tests/test_offline_billing_http.py`、`tests/offline_frontend_state.test.mjs`、`tests/test_map_tile_cache.py`、`tests/test_map_tile_proxy.py`、`tests/test_map_proxy_transport.py`、`tests/test_map_proxy_deadline_reuse.py`、`tests/browser_map_cache_config_smoke.mjs`。
+
+### 校园 App 请求契约
+
+- 请求契约以产物的最终拦截器及页面调用方为准：普通路径加 `/app`，`/run/*` 走同域根路径；登录、查询、通知及签到使用 POST/query，轨迹使用 JSON body。`checkVersion` 使用 GET。对象 data 不得默认转表单，预编码 JSON 字符串不得二次编码；轨迹上传单独使用 30 秒读取超时。
+- 签到 `id` 来自详情响应 `rollCallInfo.id`，不能用活动参数 `rollCallId` 猜测；name 来自用户资料，coordinate 是“纬度,经度”。不要把这一顺序推广到地图数组或跑步轨迹字段。
+- accessToken 原样写入 Authorization；登录前、注销和清 Cookie 重登时须同时清 accessToken/refreshToken，避免失败登录后继续使用旧身份。版本同步是本项目兼容策略，有效缓存相等也要命中，异常响应不能中断登录或永久标记同步成功；静态源码不能证明服务端最低版本永远等于最新版。
+- 网络诊断保留响应头和原始响应文本，并使用现有日志脱敏 helper；测试客户端须正常执行构造器，避免新增状态因 `__new__` 被跳过而产生假回归。
+- 证据与范围见 `docs/app-service-api-contract-analysis.md`；回归见 `tests/test_api_client_app_contract.py`、`tests/test_attendance_request_contract.py`、`tests/test_api_authentication_lifecycle.py`、`tests/test_network_logging_details.py`。受控传输验证不能代替真实账号的线上验收。

@@ -35,14 +35,14 @@ def response_with_text(text, status=200, reason="OK"):
 
 
 def client_with_session(session):
-    client = api_client.ApiClient.__new__(api_client.ApiClient)
-    client.session = session
-    client.app = SimpleNamespace(
+    owner = SimpleNamespace(
         is_offline_mode=False,
         device_ua="test-agent",
         log_and_notify_frontend=mock.Mock(),
     )
-    return client
+    runtime = SimpleNamespace(requests=SimpleNamespace(Session=lambda: session))
+    with mock.patch.object(api_client, "_main", return_value=runtime):
+        return api_client.ApiClient(owner)
 
 
 @pytest.mark.parametrize("method", ["POST", "GET"])
