@@ -29,3 +29,11 @@
 - 全量 `python -m pytest -q`：1889 项通过、3 项跳过、1 项失败。失败项为 `TestLogRotationResilience.test_single_instance_lock_rejects_a_second_process`：设置 `PYTHONIOENCODING=utf-8` 后子进程输出 UTF-8，而测试父进程仍用 Windows GBK 解码，触发 `UnicodeDecodeError`。统一设置 `PYTHONUTF8=1`、`PYTHONIOENCODING=utf-8` 后单独复跑 `tests/test_log_rotation_resilience.py`，2 项通过。未修改该测试或锁逻辑，也未将此复测称为全量重跑通过。
 
 未使用真实地图服务重放；现有日志没有完整道路几何，无法原样重建该次线上路线。
+
+## 生成轨迹尾端补齐
+
+用户提供的 `task_779c8554c318e5e18d137aef3d3fc469_1795432348.json` 中，`run_coords (gps)` 有 442 个点，红色路径的末点距最后打卡点约 28.94 米；`recommended_coords` 与最后打卡点相距约 0.53 米。旧版地图绘制将红色虚线取自 `run_coords`、绿色线取自 `recommended_coords`，因此该缺口出现在模拟轨迹采样结果，不是 provider 返回路径本身。
+
+模拟轨迹按目标时长采样，并对每段速度加入随机波动。时间耗尽时若累计路程尚未走完整条路径，循环会直接结束。单账号和多账号生成流程现在共用一个尾段补齐函数：在末尾添加从 GPS 当前采样点到最终路径端点的直线，按平均速度计算连接段时间，并将距离和时间计入结果，保证红线到达终点打卡点。
+
+新增 `tests/test_auto_generate_path_endpoint.py` 以持续最低采样速度复现原缺口；回归要求最终坐标精确落在末端航点，并验证尾段时间和距离记账。连同路径规划、接缝、超时、进度、诊断、后端契约和多账号流程共 257 项相关测试通过。

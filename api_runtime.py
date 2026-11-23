@@ -3947,6 +3947,23 @@ class Api:
             lat + random.uniform(-m, m) / 111712.69,
         )
 
+    def _append_simulated_route_endpoint(
+        self, run_coords, destination, avg_speed, actual_total_dist, d_covered, t_elapsed
+    ):
+        """Append a straight GPS tail when time-based sampling stops short of the route end."""
+        if not run_coords:
+            return d_covered, t_elapsed
+        last_coord = run_coords[-1]
+        tail_distance = self._calculate_distance_m(
+            last_coord[0], last_coord[1], destination[0], destination[1]
+        )
+        if tail_distance > 0.01:
+            tail_interval_ms = max(1, round(tail_distance / avg_speed * 1000))
+            run_coords.append((destination[0], destination[1], tail_interval_ms))
+            d_covered = min(actual_total_dist, d_covered + tail_distance)
+            t_elapsed += tail_interval_ms / 1000.0
+        return d_covered, t_elapsed
+
     def process_path(self):
         """
         处理草稿路径，生成带有时间戳的模拟运动轨迹。
@@ -6063,6 +6080,11 @@ class Api:
             t_elapsed += interval
             if d_covered >= actual_total_dist:
                 break
+
+        d_covered, t_elapsed = self._append_simulated_route_endpoint(
+            run_coords, final_geo_path[-1], avg_speed, actual_total_dist,
+            d_covered, t_elapsed,
+        )
 
         if apply_result:
             run.run_coords = run_coords
@@ -10411,6 +10433,11 @@ class Api:
             t_elapsed += interval
             if d_covered >= actual_total_dist:
                 break
+
+        d_covered, t_elapsed = self._append_simulated_route_endpoint(
+            new_run_coords, final_geo_path[-1], avg_speed, actual_total_dist,
+            d_covered, t_elapsed,
+        )
 
         run_data.run_coords = new_run_coords
         run_data.total_run_distance_m = d_covered
