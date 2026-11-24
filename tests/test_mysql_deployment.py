@@ -32,6 +32,7 @@ def test_mysql_overlay_only_connects_application_to_external_database():
     assert service['environment']['MYSQL_HOST'] == 'database.example.com'
     assert service['environment']['MYSQL_PORT'] == '3306'
     assert service['environment']['MYSQL_PASSWORD'] == 'replace-with-your-own-password'
+    assert service['environment']['MYSQL_TABLE_PREFIX'] == ''
     assert base['services']['python-running-helper']['environment']['APP_STORAGE_BACKEND'] == 'sqlite'
     assert base['services']['python-running-helper']['environment']['SQLITE_DATABASE_PATH'] == '/app/data/application.sqlite3'
     assert not (root / 'run/mysql.env.example').exists()

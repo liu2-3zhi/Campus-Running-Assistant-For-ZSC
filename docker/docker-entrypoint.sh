@@ -16,8 +16,17 @@ echo "================================================="
 cd /app
 ssl_values=$(python3 - <<'PY'
 from business_storage import get_entrypoint_ssl_settings
+from persistence.engine import DatabaseError
+import os
+import sys
 
-values = get_entrypoint_ssl_settings()
+try:
+    values = get_entrypoint_ssl_settings()
+except DatabaseError as error:
+    print(f'[存储初始化失败] {error}', file=sys.stderr)
+    if os.environ.get('APP_STORAGE_BACKEND', '').strip().lower() == 'mysql':
+        print('[存储初始化失败] 已有旧库请先停止旧版并运行迁移工具 import/verify；容器运行配置须使用无前缀的 v3 表。', file=sys.stderr)
+    sys.exit(1)
 print(' '.join('true' if values[name] else 'false' for name in ('ssl_enabled', 'https_only')))
 PY
 )

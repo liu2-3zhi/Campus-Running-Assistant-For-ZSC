@@ -158,13 +158,5 @@ RUN find /app/ \
     | parallel -0 -j$(nproc) --verbose dos2unix {}
 
 
-# 启动时再次执行一次换行符修正（双保险），然后启动主程序
-# 额外排除 /app/system_accounts/images，避免处理二进制/图片目录
-ENTRYPOINT ["/bin/sh", "-c", \
-  "echo '==> 开始批量转换换行符(仅针对代码文件)...' && \
-   find /app/ \
-     -type d \\( -path '*/.git' -o -path '/app/logs/archive' -o -path '/app/system_accounts/images' \\) -prune -o \
-     -type f \\( -name '*.py' -o -name '*.sh' -o -name '*.js' -o -name '*.css' -o -name '*.html' \\) -print0 \
-   | parallel -0 -j$(nproc) dos2unix {} && \
-   echo '==> 换行符转换完成，启动主程序...' && \
-   exec /app/docker-entrypoint.sh"]
+# 源码的换行符已在镜像构建阶段转换。启动时不重写挂载目录。
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

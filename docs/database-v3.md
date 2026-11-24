@@ -51,7 +51,7 @@ python tools/migrate_storage.py --root . --backend sqlite verify --database-only
 
 ## 旧数据库迁移
 
-移除目标配置中的 `MYSQL_TABLE_PREFIX`，停止旧版，使用新版程序。源和目标可在同一数据库中，表名集合必须互不重叠。Compose 直接在 `environment` 配置连接参数，不用 env 文件。
+将目标配置中的 `MYSQL_TABLE_PREFIX` 置空，停止旧版，使用新版程序。源和目标可在同一数据库中，表名集合必须互不重叠。Compose 显式设置空值，覆盖镜像可能携带的旧值。修改容器环境后用 `docker compose up -d --force-recreate` 重建。
 
 ```bash
 python tools/migrate_storage.py --backend mysql --source relational-v2 --source-backend mysql --legacy-table-prefix app_ import --stopped

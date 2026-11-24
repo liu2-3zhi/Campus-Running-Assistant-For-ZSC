@@ -5,6 +5,8 @@ services:
     environment:
       APP_STORAGE_BACKEND: mysql
       APP_STORAGE_ROOT: /app
+      # Explicitly override a legacy value baked into an older image.
+      MYSQL_TABLE_PREFIX: ""
       MYSQL_HOST: database.example.com
       MYSQL_PORT: "3306"
       MYSQL_USER: campus_app

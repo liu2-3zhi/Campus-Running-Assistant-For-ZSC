@@ -188,6 +188,24 @@ def test_container_entrypoint_uses_database_boolean_reader(monkeypatch, capsys):
     assert 'get_json_bool_value' not in script
 
 
+def test_container_database_failure_has_migration_hint_and_exits(monkeypatch, capsys):
+    script = (Path(__file__).resolve().parents[1] / 'docker/docker-entrypoint.sh').read_text(encoding='utf-8')
+    snippet = re.search(r"python3 - <<'PY'\n(.*?)\nPY", script, re.DOTALL).group(1)
+
+    def unavailable():
+        raise DatabaseError('Database is not initialized')
+
+    monkeypatch.setenv('APP_STORAGE_BACKEND', 'mysql')
+    monkeypatch.setattr(business_storage, 'get_entrypoint_ssl_settings', unavailable)
+    with pytest.raises(SystemExit) as result:
+        exec(compile(snippet, '<entrypoint-ssl>', 'exec'), {})
+    output = capsys.readouterr()
+    assert result.value.code == 1
+    assert not output.out
+    assert 'Database is not initialized' in output.err
+    assert 'import/verify' in output.err
+
+
 def test_default_runtime_writes_config_to_real_sqlite_without_json(app_root):
     runtime = business_storage.get_runtime()
     config = config_adapter.JsonConfigAdapter(str(app_root / 'configs/config.json'))
