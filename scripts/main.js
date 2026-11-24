@@ -3065,7 +3065,6 @@ async function callPythonAPI(method, ...args) {
   };
 
   const requestSessionHeaderValue = getApiRequestSessionHeaderValue(method);
-  const requestAdminOriginSession = getAdminViewOriginSessionUUID(requestSessionHeaderValue);
   if (isUsableClientSessionUUID(requestSessionHeaderValue)) {
     headers["X-Session-ID"] = requestSessionHeaderValue;
     addAdminViewOriginSessionHeader(headers, requestSessionHeaderValue);
@@ -3632,25 +3631,10 @@ async function callPythonAPI(method, ...args) {
 
   logMessage_Info(`[API调用] ✓ 请求成功 (${method})`);
   const result = await response.json();
-  if (method === "get_initial_data") {
-    if (
-      normalizeClientSessionUUID(requestSessionHeaderValue) !==
-        normalizeClientSessionUUID(getApiRequestSessionHeaderValue(method)) ||
-      requestAdminOriginSession !== getAdminViewOriginSessionUUID(requestSessionHeaderValue)
-    ) {
-      throw new Error("会话已切换，已忽略旧会话响应");
-    }
-    applyLegacyAdminViewContext(
-      result, requestSessionHeaderValue, requestAdminOriginSession,
-    );
-  }
   logMessage_Info(
     `[API调用] ✓ 返回结果 (${method}):`,
     result.success ? "成功" : "失败",
   );
-  if (method === "get_initial_data" && typeof displayRoutePlanningFailures === "function") {
-    displayRoutePlanningFailures(result.route_planning_failures);
-  }
   return result;
 }
 
@@ -5120,6 +5104,10 @@ function saveUnifiedThemeColor(value) {
 }
 
 async function checkAuthStatus() {
+  return Boolean(await getAuthenticatedInitialData());
+}
+
+async function getAuthenticatedInitialData() {
   try {
     // 调用统一的初始数据加载函数进行认证状态检查
     const result = await loadInitialData();
@@ -5128,7 +5116,7 @@ async function checkAuthStatus() {
       createSafeClientLogValue(result),
     );
     if (result && result.is_authenticated) {
-      return true;
+      return result;
     }
   } catch (e) {
     if (e?.code === "LEGACY_INITIALIZATION_TIMEOUT") {
@@ -5137,7 +5125,7 @@ async function checkAuthStatus() {
     logMessage_Info("未认证或会话过期");
   }
 
-  return false;
+  return null;
 }
 
 function showAuthLogin() {
@@ -17420,6 +17408,7 @@ if (guestWarningOverlay) {
   });
 }
 async function switchToMultiMode() {
+  const modeContext = captureLegacyBusinessContext(true);
   $("multi-account-count").textContent = 0;
 
   // 新增：进入多账号模式时恢复显示退出应用按钮
@@ -17430,11 +17419,13 @@ async function switchToMultiMode() {
   try {
     await callPythonAPI_raw("/api/background_task/stop", "POST", null);
   } catch (_) {}
+  if (!isCurrentLegacyBusinessContext(modeContext)) return;
   onRunStopped();
   applyPendingMapProviderConfigIfAny();
 
   const result = await callPythonAPI("enter_multi_account_mode");
-  if (!result.success) return;
+  if (!isCurrentLegacyBusinessContext(modeContext) || !result.success) return;
+  applyLegacyBusinessMode(result, modeContext);
   if (isMobileMode) {
     if (typeof destroyMobileSingleMap === "function") {
       destroyMobileSingleMap();
@@ -17533,6 +17524,7 @@ async function switchToMultiMode() {
   }
 
   const configUsers = await callPythonAPI("multi_get_all_config_users");
+  if (!isCurrentLegacyBusinessContext(modeContext)) return;
   const select = $("multi-config-user-select");
   const mobileSelect = $("mobile-multi-config-user-select");
 
@@ -17554,10 +17546,11 @@ async function switchToMultiMode() {
   pythonParams = result.params;
   updateParamInputs(container, "multi-param", pythonParams);
 
-  await callPythonAPI(
+  let accountSnapshot = await callPythonAPI(
     "set_multi_run_only_incomplete",
     document.getElementById("multi-run-only-incomplete-check").checked,
   );
+  if (!isCurrentLegacyBusinessContext(modeContext)) return;
   bindImmediateRefreshForUserSelects();
 
   updateMultiGlobalButtons(true, true);
@@ -17686,18 +17679,21 @@ async function switchToMultiMode() {
 
   try {
     console.log("[多账号模式] 初始加载账号列表...");
-    // 使用loadInitialData替代直接调用API
-    const initialData = await loadInitialData({ force: true });
-    if (initialData && initialData.accounts) {
-      renderMultiAccountList(initialData.accounts);
+    if (!Array.isArray(accountSnapshot?.accounts)) {
+      accountSnapshot = await callPythonAPI("multi_get_all_accounts_status");
+    }
+    if (!isCurrentLegacyBusinessContext(modeContext)) return;
+    if (Array.isArray(accountSnapshot?.accounts)) {
+      renderMultiAccountList(accountSnapshot.accounts);
       console.log(
-        `[多账号模式] 初始加载完成，当前有 ${initialData.accounts.length} 个账号`,
+        `[多账号模式] 初始加载完成，当前有 ${accountSnapshot.accounts.length} 个账号`,
       );
     } else {
       console.log("[多账号模式] 初始加载完成，当前有 0 个账号");
       renderMultiAccountList([]);
     }
   } catch (error) {
+    if (!isCurrentLegacyBusinessContext(modeContext)) return;
     console.error("[多账号模式] 初始加载账号列表失败:", error);
     renderMultiAccountList([]);
   }
@@ -27790,270 +27786,126 @@ async function hydrateInitialDataMapProviderSecrets(response, sessionId) {
   }
 }
 
-/**
- * 加载应用初始数据的统一函数（带限流机制）
- *
- * 功能：
- * 1. 调用后端 get_initial_data API
- * 2. 处理返回的用户列表、最后登录用户等信息
- * 3. 如果是超级管理员，自动更新密码恢复任务列表
- * 4. 如果在多账号模式，自动获取并更新所有账号状态
- * 5. 支持发送前端日志到后端
- * 6. 实现限流：0.5秒内只允许一次请求，重复请求返回缓存数据
- *
- * 参数：
- *   options (Object, 可选) - 配置选项：
- *     - frontend_logs (Array|Object): 要发送到后端的前端日志
- *     - force (Boolean): 是否强制请求（忽略限流，默认false）
- *
- * 返回值：
- *   Promise<Object> - 包含初始数据的对象
- */
-let lastInitialDataContextKey = "";
+// 同一业务和认证上下文共享请求，成功响应从完成时起短暂复用。
+const INITIAL_DATA_RATE_LIMIT = 500;
 let legacyInitialDataRequestSequence = 0;
+let legacyInitialDataRequest = null;
+
+function isCurrentLegacyInitialDataContext(request) {
+  return request.sessionUUID === getApiRequestSessionHeaderValue("get_initial_data") &&
+    request.originUUID === getAdminViewOriginSessionUUID(request.sessionUUID) &&
+    request.authGeneration === authRequestGeneration &&
+    isCurrentLegacyBusinessContext(request.businessContext);
+}
+
 async function loadInitialData(options = {}) {
-  // 使用try-catch块进行错误处理，这是异步函数的最佳实践
+  const initialDataSessionUUID = getApiRequestSessionHeaderValue("get_initial_data");
+  const previous = legacyInitialDataRequest;
+  if (!options.force && !options.frontend_logs && previous && isCurrentLegacyInitialDataContext(previous)) {
+    if (previous.pending) return previous.promise;
+    if (previous.response && Date.now() - previous.completedAt < INITIAL_DATA_RATE_LIMIT) {
+      return previous.response;
+    }
+  }
+
+  const request = {
+    id: ++legacyInitialDataRequestSequence,
+    sessionUUID: initialDataSessionUUID,
+    originUUID: getAdminViewOriginSessionUUID(initialDataSessionUUID),
+    authGeneration: authRequestGeneration,
+    businessContext: captureLegacyBusinessContext(),
+    pending: true,
+  };
+  legacyInitialDataRequest = request;
+  request.promise = requestLegacyInitialData(request, options).finally(() => {
+    request.pending = false;
+  });
+  return request.promise;
+}
+
+async function requestLegacyInitialData(request, options) {
+  const { id: requestId, sessionUUID: initialDataSessionUUID, originUUID } = request;
+  const params = options.frontend_logs ? { frontend_logs: options.frontend_logs } : {};
+  const startedAt = Date.now();
+
+  console.info("[初始化] get_initial_data 请求开始", {
+    requestId,
+    sessionUUID: initialDataSessionUUID,
+    originSessionUUID: originUUID,
+    force: !!options.force,
+  });
+
   try {
-    // ====================================================================
-    // 步骤1：限流检查
-    // ====================================================================
-
-    // 获取当前时间戳（毫秒）
-    const now = Date.now();
-    const initialDataSessionUUID = getApiRequestSessionHeaderValue("get_initial_data");
-    const businessContext = captureLegacyBusinessContext();
-    const initialDataOriginUUID = getAdminViewOriginSessionUUID(initialDataSessionUUID);
-    const initialDataContextKey = `${initialDataSessionUUID}|${initialDataOriginUUID}`;
-    const initialDataRequestId = ++legacyInitialDataRequestSequence;
-
-    // 计算距离上次请求的时间间隔
-    const timeSinceLastRequest = now - lastInitialDataRequest;
-
-    // 检查是否需要应用限流
-    // 如果不是强制请求，且距离上次请求时间小于限流时间，且有缓存数据
-    if (
-      !options.force &&
-      timeSinceLastRequest < INITIAL_DATA_RATE_LIMIT &&
-      lastInitialDataContextKey === initialDataContextKey &&
-      lastInitialDataResponse
-    ) {
-      // 记录日志：请求被限流
-      console.log(
-        `[初始化] 请求被限流，返回缓存数据（距上次请求 ${timeSinceLastRequest}ms）`,
-      );
-
-      // 直接返回缓存的响应数据
-      // 这样可以减少对后端的压力，提高响应速度
-      syncMapProviderConfigFromInitialData(lastInitialDataResponse);
-      return lastInitialDataResponse;
-    }
-
-    // ====================================================================
-    // 步骤2：准备API调用参数
-    // ====================================================================
-
-    // 构建传递给后端的参数对象
-    const params = {};
-
-    // 如果提供了前端日志，添加到参数中
-    if (options.frontend_logs) {
-      params.frontend_logs = options.frontend_logs;
-      console.log(
-        "[初始化] 携带前端日志数据，数量:",
-        Array.isArray(options.frontend_logs) ? options.frontend_logs.length : 1,
-      );
-    }
-
-    // ====================================================================
-    // 步骤3：调用后端API获取初始数据
-    // ====================================================================
-
-    // 更新最后请求时间戳
-    lastInitialDataRequest = now;
-
-    // 使用await关键字等待callPythonAPI的Promise完成
-    // callPythonAPI是应用中已存在的函数，负责与Python后端通信
-    // "get_initial_data"是API端点的标识符，后端会据此返回相应数据
-    const initialDataStartedAt = Date.now();
-    console.info("[初始化] get_initial_data 请求开始", {
-      requestId: initialDataRequestId,
-      sessionUUID: initialDataSessionUUID,
-      originSessionUUID: initialDataOriginUUID,
-      force: !!options.force,
-    });
-    let response;
-    try {
-      response = await withLegacyInitializationTimeout(
-        callPythonAPI("get_initial_data", params),
-        "get_initial_data",
-        LEGACY_INITIAL_DATA_TIMEOUT_MS,
-      );
-    } catch (error) {
-      console.error("[初始化] get_initial_data 请求结束（失败）", {
-        requestId: initialDataRequestId,
-        sessionUUID: initialDataSessionUUID,
-        elapsedMs: Date.now() - initialDataStartedAt,
-        timeout: error?.code === "LEGACY_INITIALIZATION_TIMEOUT",
-        message: error?.message || String(error),
-      });
-      throw error;
-    }
+    let response = await withLegacyInitializationTimeout(
+      callPythonAPI("get_initial_data", params),
+      "get_initial_data",
+      LEGACY_INITIAL_DATA_TIMEOUT_MS,
+    );
     console.info("[初始化] get_initial_data 请求结束", {
-      requestId: initialDataRequestId,
+      requestId,
       sessionUUID: initialDataSessionUUID,
-      elapsedMs: Date.now() - initialDataStartedAt,
+      elapsedMs: Date.now() - startedAt,
       success: response?.success !== false,
     });
+
+    if (!isCurrentLegacyInitialDataContext(request)) {
+      throw new Error("会话已切换，已忽略旧会话响应");
+    }
+    if (request !== legacyInitialDataRequest) return legacyInitialDataRequest.promise;
+
     const mapHydrationStartedAt = Date.now();
     response = await hydrateInitialDataMapProviderSecrets(
       response,
       initialDataSessionUUID,
     );
     console.info("[初始化] 地图密钥数据处理完成", {
-      requestId: initialDataRequestId,
+      requestId,
       sessionUUID: initialDataSessionUUID,
       elapsedMs: Date.now() - mapHydrationStartedAt,
     });
-    if (
-      initialDataSessionUUID !== getApiRequestSessionHeaderValue("get_initial_data") ||
-      !isCurrentLegacyBusinessContext(businessContext) ||
-      initialDataOriginUUID !== getAdminViewOriginSessionUUID(initialDataSessionUUID)
-    ) {
+
+    if (!isCurrentLegacyInitialDataContext(request)) {
       throw new Error("会话已切换，已忽略旧会话响应");
     }
+    if (request !== legacyInitialDataRequest) return legacyInitialDataRequest.promise;
 
-    // 此时response已包含后端返回的完整数据对象
-    // 如果API调用失败，callPythonAPI可能会抛出异常，会被catch块捕获
-
-    // ====================================================================
-    // 步骤4：缓存响应数据
-    // ====================================================================
-
-    // 将响应数据缓存起来，供下次限流时使用
-    lastInitialDataResponse = response;
-    lastInitialDataContextKey = initialDataContextKey;
+    applyLegacyAdminViewContext(response, initialDataSessionUUID, originUUID);
+    if (!isCurrentLegacyInitialDataContext(request)) {
+      throw new Error("会话已切换，已忽略旧会话响应");
+    }
+    displayRoutePlanningFailures(response?.route_planning_failures);
     syncMapProviderConfigFromInitialData(response);
-
-    // ====================================================================
-    // 步骤5：检查响应的有效性和成功状态
-    // ====================================================================
 
     const notice = getInitialDataFailureNotice(response);
     if (notice) {
-      Swal.fire({
-        title: notice.title,
-        text: notice.text,
-        icon: notice.icon,
-        confirmButtonText: "确定",
-      });
+      Swal.fire({ ...notice, confirmButtonText: "确定" });
     }
-
-    if (response && response.success) {
-      // response对象存在且表示操作成功
-
-      // ================================================================
-      // 步骤6：处理密码恢复任务列表（仅超级管理员）
-      // ================================================================
-
-      // 条件判断：检查response中是否存在bruteforce_task_list字段
-      // 这个字段只有在以下情况下才会存在：
-      //   1. 当前登录用户是超级管理员
-      //   2. 后端配置了密码恢复功能
-      //   3. 存在正在进行或已完成的密码恢复任务
+    if (response?.success) {
       if (response.bruteforce_task_list) {
-        // 如果存在任务列表数据，说明当前用户有权限查看
-
-        // 调用 updateBruteforceTaskList 函数更新UI
-        // 将后端返回的任务数组传递给该函数进行渲染
-        // 这个调用是自动的、透明的，调用loadInitialData的代码
-        // 无需关心任务列表的更新，实现了关注点分离
         updateBruteforceTaskList(response.bruteforce_task_list);
-
-        // 日志记录：帮助开发者调试，了解任务列表更新的触发情况
-        console.log(
-          "[初始化] 已自动更新密码恢复任务列表，任务数量:",
-          response.bruteforce_task_list.length,
-        );
       }
-      // 如果bruteforce_task_list不存在，说明：
-      //   - 当前用户不是超级管理员，或
-      //   - 没有任何密码恢复任务
-      // 这种情况下不执行任何操作，保持界面原样
-
-      // ================================================================
-      // 步骤7：处理多账号模式的账号状态（如果在多账号模式）
-      // ================================================================
-
-      // 检查是否返回了accounts字段（多账号状态信息）
-      if (response.accounts && Array.isArray(response.accounts)) {
-        // 如果存在accounts数据，说明当前用户在多账号模式
-
-        // 日志记录：记录获取到的账号数量
-        console.log(
-          "[初始化] 已自动获取多账号状态，账号数量:",
-          response.accounts.length,
-        );
-
-        // 注意：accounts数据已经在response中
-        // 调用方可以直接从response.accounts中提取并使用
-        // 这里不需要额外处理，因为调用方会处理这些数据
-      }
-
       if (response.auth_group) {
-        logMessage_Info("[初始化] 获取到用户权限组:", response.auth_group);
-        if (
-          currentUserData.auth_group !== response.auth_group ||
-          currentUserData.group !== response.auth_group
-        ) {
-          currentUserData.auth_group = response.auth_group;
-          currentUserData.group = response.auth_group;
-          console.log("[初始化] 用户权限组已更新为:", response.auth_group);
-        }
+        currentUserData.auth_group = response.auth_group;
+        currentUserData.group = response.auth_group;
       }
+      request.response = response;
+      request.completedAt = Date.now();
     }
-
-    // ====================================================================
-    // 步骤8：返回完整的响应对象
-    // ====================================================================
-
-  logMessage_Info("[初始化] 初始数据加载完成");
-
-    // 将response返回给调用者
-    // 调用者可以从中提取需要的数据（如用户列表、权限信息等）
-    // 注意：即使response.success为false，我们仍然返回它
-    // 让调用者自行决定如何处理失败情况（更灵活的设计）
+    logMessage_Info("[初始化] 初始数据加载完成");
     return response;
   } catch (error) {
-    // ====================================================================
-    // 错误处理块：捕获任何在try块中发生的异常
-    // ====================================================================
-
-    // 可能的错误来源：
-    //   1. callPythonAPI内部的网络错误（如超时、连接失败）
-    //   2. 后端返回的非预期响应格式导致的解析错误
-    //   3. updateBruteforceTaskList中的DOM操作错误（较少见）
-
-    // 使用console.error输出错误到浏览器控制台
-    // '[初始化]' 前缀便于在控制台中过滤和定位相关日志
-    // error对象包含完整的错误堆栈信息，有助于调试
-    console.error("[初始化] 加载初始数据失败:", error);
-
-    // 重新抛出错误（re-throw）
-    // 这样做的目的是让调用者也能感知到错误的发生
-    // 调用者可以决定如何响应错误：
-    //   - 显示错误提示给用户
-    //   - 重试加载
-    //   - 回退到默认状态
-    //   - 记录错误日志到服务器
+    if (isCurrentLegacyInitialDataContext(request) && request !== legacyInitialDataRequest) {
+      return legacyInitialDataRequest.promise;
+    }
+    console.error("[初始化] 加载初始数据失败", {
+      requestId,
+      sessionUUID: initialDataSessionUUID,
+      elapsedMs: Date.now() - startedAt,
+      timeout: error?.code === "LEGACY_INITIALIZATION_TIMEOUT",
+      message: error?.message || String(error),
+    });
     throw error;
-
-    // 注意：如果不re-throw，调用者会认为函数成功执行（返回undefined）
-    // 这会导致错误被静默吞噬，难以发现和调试问题
   }
-
-  // 函数结束
-  // 正常情况下，执行流程会在return response处结束
-  // 错误情况下，会在throw error处结束
 }
 
 // ============================================================================

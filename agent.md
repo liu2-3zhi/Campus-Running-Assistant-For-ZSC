@@ -315,6 +315,7 @@
 - 加载遮罩、登录按钮和任务刷新锁必须归属于具体操作。成功、失败、异常和取消都要有收尾，旧操作的 `finally` 或延迟按钮恢复不得清除新操作的加载状态；旧会话的刷新锁不得阻挡新会话请求。
 - Vue 页面须独立完成全局加载状态收尾，不能依赖先经过登录页。组件卸载或业务上下文变化后，未完成的初始化不得继续写 store、发后续请求或重新注册 WebSocket 监听。
 - 相关回归使用实际初始化函数和 Vue/Pinia 状态，覆盖桌面/移动、多账号运行中恢复、延迟响应、失败/异常、会话 A-B-A 及旧操作完成晚于新操作。前端修复同步更新 `version.json` 的版本和实际构建时间，所有经典脚本使用同一版本缓存键。
+- 经典 WebUI 认证与初始化复用同一响应，同会话及同认证来源合并进行中的初始请求。成功后的短期复用从响应完成计时，强制刷新和携带前端日志的请求直接发送；仅更新多账号状态时使用已有变更返回值或专用状态接口。
 - 相关测试：`tests/legacy_app_initialization.test.mjs`、`tests/legacy_business_lifecycle.test.mjs`、`tests/vue_multi_lifecycle.test.mjs`、`tests/check_for_updates_script.test.mjs`。
 
 ## WebSocket 心跳与轮询兜底

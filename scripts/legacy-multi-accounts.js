@@ -1235,8 +1235,7 @@ function startMultiAccountAutoRefresh(interval = 500) {
         return;
       }
 
-      // 使用loadInitialData替代直接调用API，利用其限流和缓存机制
-      const response = await loadInitialData();
+      const response = await callPythonAPI("multi_get_all_accounts_status");
 
       if (
         refreshGeneration !== multiAccountAutoRefreshGeneration ||

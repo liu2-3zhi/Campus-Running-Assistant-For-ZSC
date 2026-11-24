@@ -300,8 +300,7 @@ test('legacy initialization ignores a response whose target changed while secret
   let entered
   const hydrating = new Promise(resolve => { entered = resolve })
   Object.assign(harness.globals, {
-    lastInitialDataRequest: 0, lastInitialDataResponse: null, lastInitialDataContextKey: '', INITIAL_DATA_RATE_LIMIT: 1000,
-    legacyInitialDataRequestSequence: 0, LEGACY_INITIAL_DATA_TIMEOUT_MS: 30000,
+    LEGACY_INITIAL_DATA_TIMEOUT_MS: 30000,
     withLegacyInitializationTimeout: promise => Promise.resolve(promise),
     getApiRequestSessionHeaderValue: () => harness.globals.sessionUUID,
     callPythonAPI: async () => ({ success: false }),
@@ -312,15 +311,92 @@ test('legacy initialization ignores a response whose target changed while secret
     },
     syncMapProviderConfigFromInitialData() {}, getInitialDataFailureNotice: () => null,
   })
-  const load = vm.runInContext(`${extractSection('let IS_OFFLINE = null;', 'let authSessionUUID = null;')}
-    ${extractSection('async function loadInitialData(options = {}) {', '// 彩虹易支付系统 - 前端JavaScript实现')}
-    loadInitialData;`, harness.context)
+  const load = getInitialDataLoader(harness)
   const pending = load({ force: true })
   await hydrating
   harness.globals.sessionUUID = NEW_SESSION
   resume()
   await assert.rejects(pending, /旧会话响应/)
-  assert.equal(harness.globals.lastInitialDataResponse, null)
+  assert.equal(vm.runInContext('legacyInitialDataRequest.response', harness.context), undefined)
+})
+
+function getInitialDataLoader(harness) {
+  return vm.runInContext(`${extractSection('let IS_OFFLINE = null;', 'let authSessionUUID = null;')}
+    let authRequestGeneration = 0;
+    ${extractSection('const INITIAL_DATA_RATE_LIMIT =', '// 彩虹易支付系统 - 前端JavaScript实现')}
+    loadInitialData;`, harness.context)
+}
+
+test('legacy initial data joins pending work and reuses a slow successful response after completion', async () => {
+  const harness = buildReturnStateHarness({ storedOrigin: null })
+  const requests = []
+  let now = 1000
+  Object.assign(harness.globals, {
+    Date: { now: () => now },
+    LEGACY_INITIAL_DATA_TIMEOUT_MS: 30000,
+    withLegacyInitializationTimeout: promise => promise,
+    getApiRequestSessionHeaderValue: () => harness.globals.sessionUUID,
+    callPythonAPI: () => new Promise(resolve => requests.push(resolve)),
+    hydrateInitialDataMapProviderSecrets: async value => value,
+    currentUserData: {},
+    syncMapProviderConfigFromInitialData() {}, getInitialDataFailureNotice: () => null,
+    displayRoutePlanningFailures() {}, logMessage_Info() {},
+  })
+  const load = getInitialDataLoader(harness)
+  const first = load()
+  const joined = load()
+  assert.equal(requests.length, 1)
+  const data = { success: true, users: ['school-account'] }
+  now += 5000
+  requests.shift()(data)
+  assert.deepEqual(await Promise.all([first, joined]), [data, data])
+  now += 100
+  assert.strictEqual(await load(), data)
+  assert.equal(requests.length, 0)
+
+  const forced = load({ force: true })
+  assert.equal(requests.length, 1)
+  const refreshed = { success: true, users: ['another-account'] }
+  requests.shift()(refreshed)
+  assert.strictEqual(await forced, refreshed)
+  assert.strictEqual(await load(), refreshed)
+})
+
+test('legacy initial data shares the latest forced refresh and discards the older response', async () => {
+  const harness = buildReturnStateHarness({ storedOrigin: null })
+  const requests = []
+  const applied = []
+  Object.assign(harness.globals, {
+    LEGACY_INITIAL_DATA_TIMEOUT_MS: 30000,
+    withLegacyInitializationTimeout: promise => promise,
+    getApiRequestSessionHeaderValue: () => harness.globals.sessionUUID,
+    callPythonAPI: (method, params) => new Promise(resolve => requests.push({ method, params, resolve })),
+    hydrateInitialDataMapProviderSecrets: async value => value,
+    currentUserData: {},
+    syncMapProviderConfigFromInitialData: value => applied.push(value),
+    getInitialDataFailureNotice: () => null, displayRoutePlanningFailures() {},
+  })
+  const load = getInitialDataLoader(harness)
+  const older = load()
+  const frontendLogs = [{ message: 'sample diagnostic' }]
+  const latest = load({ force: true, frontend_logs: frontendLogs })
+  const joined = load()
+  assert.equal(requests.length, 2)
+  assert.strictEqual(requests[1].params.frontend_logs, frontendLogs)
+  const refreshed = { success: true, users: ['refreshed'] }
+  requests[1].resolve(refreshed)
+  assert.strictEqual(await latest, refreshed)
+  assert.strictEqual(await joined, refreshed)
+  requests[0].resolve({ success: true, users: ['outdated'] })
+  assert.strictEqual(await older, refreshed)
+  assert.deepEqual(applied, [refreshed])
+
+  vm.runInContext('captureLegacyBusinessContext(true)', harness.context)
+  const scoped = load()
+  assert.equal(requests.length, 3)
+  const newMode = { success: true, users: ['new-mode'] }
+  requests[2].resolve(newMode)
+  assert.strictEqual(await scoped, newMode)
 })
 
 test('origin check is skipped when the current session is the origin', async () => {

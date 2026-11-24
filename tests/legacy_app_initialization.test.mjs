@@ -64,9 +64,9 @@ function createHarness({ mobile = false, guest = false, pathname = `/uuid=${SESS
     resolveThemeRequestSessionUUID: () => pathname.match(/uuid=([^/]+)/)?.[1] || '',
     withLegacyInitializationTimeout: promise => Promise.resolve(promise),
     fetch: async () => ({ status: 200, json: async () => ({ success: true, uuid_type: guest ? 'guest' : 'system_account' }) }),
-    checkAuthStatus: async () => {
-      context.captureLegacyBusinessContext()
-      return true
+    getAuthenticatedInitialData: async () => {
+      const data = await context.loadInitialData()
+      return data?.is_authenticated ? data : null
     },
     loadInitialData: async () => {
       context.captureLegacyBusinessContext()
@@ -133,6 +133,7 @@ function createMultiAccountHarness(options = {}) {
     }
     if (method === 'multi_get_all_config_users') return { success: true, users: ['running-school-account'] }
     if (method === 'set_multi_run_only_incomplete') return { success: true }
+    if (method === 'multi_get_all_accounts_status') return { success: true, accounts }
     assert.fail(`unexpected API method: ${method}`)
   }
   Object.assign(harness.context, {
@@ -227,12 +228,13 @@ for (const phase of ['map runtime', 'config users', 'run settings', 'account lis
       }
       if (phase === 'map runtime') {
         harness.context.ensureActiveMapProviderRuntimeIfNeeded = deferred
-      } else if (phase === 'account list') {
-        const loadInitialData = harness.context.loadInitialData
-        harness.context.loadInitialData = options => options?.force ? deferred() : loadInitialData(options)
       } else {
         const callPythonAPI = harness.context.callPythonAPI
-        const delayedMethod = phase === 'config users' ? 'multi_get_all_config_users' : 'set_multi_run_only_incomplete'
+        const delayedMethod = {
+          'config users': 'multi_get_all_config_users',
+          'run settings': 'set_multi_run_only_incomplete',
+          'account list': 'multi_get_all_accounts_status',
+        }[phase]
         harness.context.callPythonAPI = (method, ...args) => method === delayedMethod ? deferred() : callPythonAPI(method, ...args)
       }
       const pending = harness.context.initializeApp()
@@ -260,15 +262,15 @@ for (const phase of ['map runtime', 'config users', 'run settings', 'account lis
 for (const failure of ['throw', 'response']) {
   test(`multi-account restoration keeps the initial account snapshot and releases overlays when its follow-up refresh has a ${failure} failure`, async () => {
     const { harness, renderedAccounts, accounts } = createMultiAccountHarness({ enterResult: { success: true } })
-    const loadInitialData = harness.context.loadInitialData
+    const callPythonAPI = harness.context.callPythonAPI
     const synchronizedMapData = []
     harness.context.syncMapProviderConfigFromInitialData = data => synchronizedMapData.push(data)
-    harness.context.loadInitialData = options => {
-      if (options?.force) {
+    harness.context.callPythonAPI = (method, ...args) => {
+      if (method === 'multi_get_all_accounts_status') {
         if (failure === 'throw') throw new Error('follow-up refresh failed')
         return { success: false, offline: true, message: 'follow-up refresh failed' }
       }
-      return loadInitialData(options)
+      return callPythonAPI(method, ...args)
     }
     await harness.context.initializeApp()
 
@@ -382,6 +384,38 @@ test('a newly selected UUID replaces the previous session before initialization 
   assert.equal(harness.context.sessionUUID, SESSION_A)
   assert.equal(harness.resetCount, 1)
   assert.equal(harness.element('loading-overlay').classList.contains('hidden'), true)
+})
+
+test('legacy initialization consumes the same snapshot used to verify authentication', async () => {
+  const harness = createHarness()
+  let requests = 0
+  const load = harness.context.loadInitialData
+  harness.context.loadInitialData = () => {
+    requests++
+    return load()
+  }
+  await harness.context.initializeApp()
+  assert.equal(requests, 1)
+})
+
+test('multi-account initialization renders the recalculated statuses returned by the settings update', async () => {
+  const { harness, renderedAccounts, apiCalls } = createMultiAccountHarness()
+  const original = harness.context.callPythonAPI
+  const updated = [{ username: 'running-school-account', status_text: '更新后的状态' }]
+  harness.context.callPythonAPI = async (method, ...args) => {
+    const response = await original(method, ...args)
+    return method === 'set_multi_run_only_incomplete' ? { ...response, accounts: updated } : response
+  }
+  const load = harness.context.loadInitialData
+  const forced = []
+  harness.context.loadInitialData = (...args) => {
+    if (args[0]?.force) forced.push(args)
+    return load(...args)
+  }
+  await harness.context.initializeApp()
+  assert.ok(apiCalls.some(({ method }) => method === 'set_multi_run_only_incomplete'))
+  assert.equal(forced.length, 0)
+  assert.deepEqual(renderedAccounts, [updated])
 })
 
 for (const returnToOriginal of [false, true]) {

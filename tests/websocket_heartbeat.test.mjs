@@ -244,7 +244,8 @@ test('legacy: heartbeat timeout immediately starts both account fallbacks and re
   ctx.context.refreshUserList = () => { userQueries++ }
   ctx.context.document = { getElementById: () => ({ classList: { contains: () => false } }) }
   ctx.context.console = { log() {}, info() {}, warn() {} }
-  ctx.context.loadInitialData = () => {
+  ctx.context.callPythonAPI = method => {
+    assert.equal(method, 'multi_get_all_accounts_status')
     multiQueries++
     return new Promise(resolve => { resolveMulti = resolve })
   }

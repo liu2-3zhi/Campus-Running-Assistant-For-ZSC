@@ -502,13 +502,15 @@ async function initializeApp() {
 
     $("loading-overlay").classList.remove("hidden");
     ShowMobileLoadingOverlay();
-    const isAuthenticated = await waitForLegacyInitialization(
-      checkAuthStatus(),
-      "认证状态检查",
+    const initialData = await waitForLegacyInitialization(
+      getAuthenticatedInitialData(),
+      "认证与初始数据加载",
       35000,
     );
+    if (!isCurrentLegacyBusinessContext(initializationContext)) return;
+    const isAuthenticated = !!initialData;
     themeBackgroundAuthStateResolved = true;
-    themeBackgroundAuthenticatedSession = !!isAuthenticated;
+    themeBackgroundAuthenticatedSession = isAuthenticated;
     if (!isAuthenticated) {
       hideLoadingOverlays();
       HiddenMobileLoadingOverlay();
@@ -545,8 +547,6 @@ async function initializeApp() {
 
     logMessage_Info("应用初始化成功，CDN资源状态正常或可用替代方案");
 
-    // 使用统一的加载函数获取初始数据，并自动更新管理员任务列表
-    const initialData = await loadInitialData();
     syncMapProviderConfigFromInitialData(initialData);
     const initialDataFailureNotice = getInitialDataFailureNotice(initialData);
     if (initialDataFailureNotice) {
@@ -812,10 +812,11 @@ async function initializeApp() {
       } catch (e) {
         logMessage_Error("初始化全局参数UI失败:", e);
       }
+      let accountSnapshot;
       try {
         bindImmediateRefreshForUserSelects();
         updateMultiGlobalButtons(true, true);
-        await waitForLegacyInitialization(
+        accountSnapshot = await waitForLegacyInitialization(
           callPythonAPI(
             "set_multi_run_only_incomplete",
             document.getElementById("multi-run-only-incomplete-check").checked,
@@ -829,21 +830,21 @@ async function initializeApp() {
       }
       if (!isCurrentLegacyBusinessContext(modeContext)) return;
       try {
-        // 使用loadInitialData替代直接调用API
-        const initialData = await loadInitialData({ force: true });
-        if (!isCurrentLegacyBusinessContext(modeContext)) return;
-        if (!initialData || initialData.success === false) {
-          throw new Error(initialData?.message || "账号列表加载失败");
-        }
-        syncMapProviderConfigFromInitialData(initialData);
-        if (initialData && initialData.accounts) {
-          renderMultiAccountList(initialData.accounts);
-          logMessage_Info(
-            `已恢复多账号模式，当前有 ${initialData.accounts.length} 个账号`,
+        if (!Array.isArray(accountSnapshot?.accounts)) {
+          accountSnapshot = await waitForLegacyInitialization(
+            callPythonAPI("multi_get_all_accounts_status"),
+            "多账号状态加载",
+            30000,
           );
-        } else {
-          logMessage_Info(`已恢复多账号模式，当前有 0 个账号`);
         }
+        if (!isCurrentLegacyBusinessContext(modeContext)) return;
+        if (accountSnapshot?.success === false || !Array.isArray(accountSnapshot?.accounts)) {
+          throw new Error(accountSnapshot?.message || "账号列表加载失败");
+        }
+        renderMultiAccountList(accountSnapshot.accounts);
+        logMessage_Info(
+          `已恢复多账号模式，当前有 ${accountSnapshot.accounts.length} 个账号`,
+        );
       } catch (e) {
         if (!isCurrentLegacyBusinessContext(modeContext)) return;
         logMessage_Error("恢复账号列表失败:", e);
