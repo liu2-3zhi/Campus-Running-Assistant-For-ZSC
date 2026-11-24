@@ -24667,18 +24667,6 @@ def start_web_server(args_param):
         检查学校账号是否有欠费
         """
         try:
-            initial_payload = _main().request.get_json(silent=True) or {}
-            logging.info(
-                "[欠费检查] 收到请求 - 用户: %s，请求字段: %s",
-                _main().g.user,
-                sorted(initial_payload.keys())
-                if isinstance(initial_payload, dict)
-                else [],
-            )
-        except Exception as e:
-            logging.error("[欠费检查] 解析请求数据失败: %s", type(e).__name__)
-
-        try:
             business_api, business_username = _resolve_business_billing_context()
             if business_api is None:
                 return _main().jsonify({
@@ -24742,12 +24730,6 @@ def start_web_server(args_param):
             data = {} if data is None else data
             if not isinstance(data, dict):
                 return _main().jsonify({"success": False, "message": "请求参数必须为对象"}), 400
-            logging.info(
-                "[欠费检查] 请求参数已解析，包含单账号筛选=%s，包含多账号筛选=%s",
-                bool(data.get("school_username")),
-                bool(data.get("school_usernames")),
-            )
-
             scope_supplied = "school_username" in data or "school_usernames" in data
 
             def normalize_input(input_val):
@@ -24760,59 +24742,13 @@ def start_web_server(args_param):
 
             target_usernames = set(normalize_input(data.get("school_username")))
             target_usernames.update(normalize_input(data.get("school_usernames")))
-            logging.info(
-                "[欠费检查] 规范化后的目标学校账号数量: %d",
-                len(target_usernames),
-            )
-
-            # An explicit empty/invalid scope must never become an unrestricted query.
-            if scope_supplied and not target_usernames:
-                return _main().jsonify({
-                    "success": True, "has_overdue": False, "overdue_accounts": [],
-                    "can_bypass_overdue": can_bypass_overdue, "is_admin": is_admin,
-                    "available_runs": available_runs,
-                })
-
-            # 获取该认证用户的所有学校账号配置
-            # 返回格式：{school_username: {"password": "xxx", "ua": "xxx", "overdue_count": 0}, ...}
-            school_accounts = business_api._load_user_school_accounts(
-                business_username) or {}
-            allowed_usernames = set(school_accounts or {})
-            target_usernames = (target_usernames & allowed_usernames
-                                if scope_supplied else allowed_usernames)
-            logging.info("[欠费检查] 最终有效的目标学校账号数量: %d", len(target_usernames))
-            
-            logging.info(
-                "[欠费检查] 已加载学校账号数量: %d",
-                len(school_accounts),
-            )
-
-            # 如果没有学校账号，直接返回无欠费
-            if not school_accounts:
-                return _main().jsonify({
-                    "success": True,
-                    "has_overdue": False,
-                    "overdue_accounts": [],
-                    "can_bypass_overdue": can_bypass_overdue,
-                    "is_admin": is_admin,
-                    "available_runs": available_runs,
-                })
-
-            # 存储欠费账号的列表
+            started_at = time.perf_counter()
+            # None 表示未指定账号，空集合表示显式指定了空范围。
+            allowed_usernames = business_api._list_billing_school_account_names(
+                business_username, school_usernames=target_usernames if scope_supplied else None)
             overdue_accounts = []
 
-            # 遍历所有学校账号，检查欠费情况
-            for acc_username, account_info in school_accounts.items():
-                # 如果指定了目标账号（集合非空），且当前账号不在集合中，则跳过
-                if acc_username not in target_usernames:
-                    continue
-
-                # 兼容旧格式：如果 account_info 是字符串（密码），跳过
-
-                if isinstance(account_info, str):
-                    continue
-
-                # 从账单文件读取待支付数量作为欠费次数
+            for acc_username in allowed_usernames:
                 overdue_count = _main()._count_pending_bills_for_school(acc_username)
 
                 # 如果欠费次数大于 0，记录该账号
@@ -24847,7 +24783,11 @@ def start_web_server(args_param):
                         "name": name or acc_username  # 如果没有姓名，使用用户名
                     })
 
-            # 返回检查结果
+            logging.debug(
+                "[欠费检查] 已完成 scoped=%s checked=%d overdue=%d elapsed_ms=%.2f",
+                scope_supplied, len(allowed_usernames), len(overdue_accounts),
+                (time.perf_counter() - started_at) * 1000,
+            )
             return _main().jsonify({
                 "success": True,
                 "has_overdue": len(overdue_accounts) > 0,  # 是否存在欠费

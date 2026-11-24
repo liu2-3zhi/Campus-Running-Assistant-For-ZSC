@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -18,10 +19,20 @@ import main as main_module
 from api_runtime import Api
 
 
+class BillingApiFixture(SimpleNamespace):
+    _list_billing_school_account_names = Api._list_billing_school_account_names
+
+    def _get_user_accounts_file(self, username):
+        return f'{username}-links.json'
+
+    def _school_account_store(self, path):
+        return None
+
+
 @pytest.fixture
 def billing_http(tmp_path):
     app = Flask(__name__)
-    api = SimpleNamespace(
+    api = BillingApiFixture(
         is_authenticated=True,
         auth_username="test-administrator",
         is_offline_mode=False,
@@ -73,7 +84,7 @@ def billing_http(tmp_path):
     nodes = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in names]
     namespace = {
         "app": app, "login_required": authenticated, "admin_required": authenticated,
-        "_main": lambda: runtime, "os": os, "json": json, "logging": logging,
+        "_main": lambda: runtime, "os": os, "json": json, "logging": logging, "time": time,
         "web_sessions": web_sessions, "web_sessions_lock": runtime.web_sessions_lock,
         "__file__": str(tmp_path / "web_server.py"),
     }
@@ -138,7 +149,7 @@ def test_admin_source_online_target_offline_short_circuits_billing(billing_http)
 
 def test_admin_source_uses_target_online_account_scope_for_overdue_and_bills(billing_http):
     client, source_api, runtime, _ = billing_http
-    target_api = SimpleNamespace(
+    target_api = BillingApiFixture(
         is_authenticated=True, auth_username="target-user", is_offline_mode=False,
         _load_user_school_accounts=Mock(return_value={"10003": {}}),
     )
@@ -197,6 +208,32 @@ def test_ordinary_account_query_cannot_escape_authorized_scope(billing_http):
     assert response.status_code == 200
     assert response.json["overdue_accounts"] == []
     runtime._count_pending_bills_for_school.assert_not_called()
+
+
+def test_overdue_projects_only_requested_accounts_using_target_owner(billing_http, monkeypatch):
+    client, source_api, runtime, _ = billing_http
+    target_api = Api.__new__(Api)
+    target_api.is_authenticated = True
+    target_api.is_offline_mode = False
+    target_api.auth_username = 'target-user'
+    target_api._get_user_accounts_file = Mock(return_value='target-links')
+    target_api._load_user_school_accounts = Mock(side_effect=AssertionError('full school account load'))
+    projected_names = Mock(return_value=['10002'])
+    target_api._school_account_store = Mock(return_value=SimpleNamespace(list_school_account_names=projected_names))
+    runtime.auth_system.check_permission.side_effect = lambda user, permission: user == 'test-administrator'
+    runtime.web_sessions['business-target'] = target_api
+    monkeypatch.setattr(api_runtime, '_main', lambda: runtime)
+
+    overdue = client.post('/api/check_overdue', json={'school_usernames': ['10002', '10003']}, headers={
+        'X-Session-ID': 'business-target', 'X-Admin-Origin-Session-ID': 'admin-origin',
+    })
+
+    assert overdue.status_code == 200
+    assert [row['username'] for row in overdue.json['overdue_accounts']] == ['10002']
+    projected_names.assert_called_once_with('target-user', include_all=False, school_usernames={'10002', '10003'})
+    runtime._count_pending_bills_for_school.assert_called_once_with('10002')
+    source_api._load_user_school_accounts.assert_not_called()
+    target_api._load_user_school_accounts.assert_not_called()
 
 
 @pytest.mark.parametrize("query,expected", [

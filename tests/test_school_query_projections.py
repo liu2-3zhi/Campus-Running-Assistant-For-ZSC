@@ -96,6 +96,34 @@ def test_picker_never_rebuilds_documents_or_selects_credentials(school_store, mo
         assert all(secret not in projection for secret in ('password', 'device_ua', '.configuration', '.fields', '.layout', '.extra'))
 
 
+def test_scoped_account_names_filter_own_shared_and_legacy_rows_in_sql(school_store):
+    store = school_store
+    bindings(store, 'owner', {'00101': None, '00102': 'excluded'})
+    bindings(store, 'other', {'00201': 'shared', '00202': 'excluded', '00203': None})
+    store.put('school_accounts', '00301.ini', b'[Config]\npassword=fixture\n')
+    store.put('school_accounts', '00302.ini', b'[Config]\npassword=excluded\n')
+    scope = ['00101', '00201', '00203', '00301', '00401', 'invalid', '00101']
+
+    with selects(store) as queries:
+        assert store.list_school_account_names('owner', school_usernames=scope) == ['00101']
+        assert store.list_school_account_names('owner', include_all=True, school_usernames=scope) == [
+            '00101', '00201', '00301']
+        assert store.list_school_account_names('owner', include_all=True, school_usernames=['invalid']) == []
+        assert store.list_school_account_names('owner', include_all=True, school_usernames=[]) == []
+    assert len(queries) == 2
+    assert queries[0].upper().count('SCHOOL_USERNAME IN ') == 1
+    assert queries[1].upper().count('SCHOOL_USERNAME IN ') == 3
+
+
+def test_scoped_account_name_batches_fit_database_parameter_limit(school_store):
+    store = school_store
+    bindings(store, 'owner', {'11000': 'first', '12000': 'last'})
+    with selects(store) as queries:
+        assert store.list_school_account_names('owner', include_all=True,
+            school_usernames=[str(name) for name in range(11000, 12001)]) == ['11000', '12000']
+    assert 1 < len(queries) <= 6
+
+
 def test_statistics_use_the_global_stats_authority_and_preserve_defaults(school_store):
     store = school_store
     bindings(store, 'owner', {'00101': {'password': 'private', 'overdue_count': 80, 'completed_count': 90}})

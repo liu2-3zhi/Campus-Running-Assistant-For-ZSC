@@ -16,7 +16,7 @@ import threading
 import time
 from functools import wraps
 
-from sqlalchemy import delete, insert, select, update, inspect, event, func, literal, case
+from sqlalchemy import bindparam, delete, insert, select, update, inspect, event, func, literal, case
 from sqlalchemy.exc import IntegrityError, DBAPIError
 
 from .codec import Builder, decode_tree
@@ -318,8 +318,9 @@ class RelationalStore:
             return {'password': row[0], 'ua': row[1]} if row is not None else None
 
     @_safe_database
-    def list_school_account_names(self, owner_username, *, include_all=False, include_manual=False):
-        """Project account picker names without rebuilding or returning secrets.
+    def list_school_account_names(self, owner_username, *, include_all=False, include_manual=False,
+                                  school_usernames=None):
+        """Project authorized school account names without rebuilding credentials.
 
         Owned links are included regardless of password so an account with a
         missing credential remains selectable for manual repair. When
@@ -328,11 +329,25 @@ class RelationalStore:
         also included. Results are unique and sorted.
         With include_manual, root school configurations without a password
         also appear on the manual login page.
+        With an explicit scope, filter each source in SQL. An empty scope
+        produces no rows.
         """
         if self.schema_version != SCHEMA_VERSION:
             raise DatabaseError('School account projections require relational schema v3')
         if not isinstance(owner_username, str) or not owner_username or owner_username == 'guest':
             return []
+
+        scope = None
+        parameters = [{}]
+        if school_usernames is not None:
+            names = list(dict.fromkeys(name for name in school_usernames
+                                       if self._valid_school_account_name(name)))
+            if not names:
+                return []
+            scope = bindparam('school_usernames', expanding=True)
+            # The admin UNION binds the same list in up to three branches.
+            parameters = [{'school_usernames': names[offset:offset + 200]}
+                          for offset in range(0, len(names), 200)]
 
         links = self.entities['account_school_links']
         root_binding = self._root_school_binding()
@@ -342,6 +357,8 @@ class RelationalStore:
             self.registry, links.c.document_id == self.registry.c.document_id).where(
                 links.c.document_id == self._identity('school_accounts', owner_key),
             links.c.owner_username == owner_username, root_binding)
+        if scope is not None:
+            own = own.where(links.c.school_username.in_(scope))
         if include_all:
             has_password = self._has_non_whitespace_text(links.c.password)
             shared = select(links.c.school_username.label('school_username')).join(
@@ -357,6 +374,9 @@ class RelationalStore:
             )
             global_config = select(schools.c.school_username.label('school_username')).where(
                 schools.c.source_key.not_like('%/%'))
+            if scope is not None:
+                shared = shared.where(links.c.school_username.in_(scope))
+                global_config = global_config.where(schools.c.school_username.in_(scope))
             if not include_manual:
                 global_config = global_config.where(
                     func.lower(func.json_type(schools.c.configuration)) == 'object',
@@ -367,8 +387,9 @@ class RelationalStore:
             names_query = own.distinct().order_by('school_username')
 
         with self.database.connection() as connection:
-            rows = connection.execute(names_query).scalars()
-            return sorted({name for name in rows if self._valid_school_account_name(name)})
+            return sorted({name for params in parameters
+                           for name in connection.execute(names_query, params).scalars()
+                           if self._valid_school_account_name(name)})
 
     @staticmethod
     def _statistic_integer(value):

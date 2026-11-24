@@ -1047,6 +1047,20 @@ class Api:
         key = f"school-account-names:{generation}:{int(include_all)}:{int(include_manual)}:{owner}"
         return cached_json(key, load)
 
+    def _list_billing_school_account_names(self, auth_username, *, school_usernames=None):
+        """Resolve the business owner's account scope without loading credentials or stats."""
+        if not auth_username or auth_username == "guest" or (school_usernames is not None and not school_usernames):
+            return []
+        store = self._school_account_store(self._get_user_accounts_file(auth_username))
+        if store is not None:
+            include_all = _main().auth_system.check_permission(auth_username, "manage_users")
+            return store.list_school_account_names(
+                auth_username, include_all=include_all, school_usernames=school_usernames)
+
+        accounts = self._load_user_school_accounts(auth_username) or {}
+        return [name for name, value in accounts.items()
+                if not isinstance(value, str) and (school_usernames is None or name in school_usernames)]
+
     def _load_school_account_credentials(self, auth_username, school_username, *, own_only=False):
         """Load one account's password/UA without billing stats or full aggregation."""
         if (not auth_username or auth_username == "guest"
