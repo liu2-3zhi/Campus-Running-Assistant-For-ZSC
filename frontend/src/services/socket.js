@@ -80,7 +80,7 @@ function stopHeartbeat() {
 }
 
 function queueTaskNotice(data, isCurrent) {
-  const { notice_id: id, task_name: name, message } = data ?? {}
+  const { notice_id: id, task_name: name, message, kind } = data ?? {}
   const swal = window.Swal
   if (typeof id !== 'string' || !id.trim() || taskNoticeIds.has(id)) return
   if (typeof name !== 'string' || !name.trim() || typeof message !== 'string' || !message.trim()) return
@@ -89,10 +89,11 @@ function queueTaskNotice(data, isCurrent) {
   taskNoticeIds.add(id)
   taskNoticeQueue = taskNoticeQueue.then(async () => {
     if (!isCurrent()) return
+    const compatibilityError = kind === 'compatibility_error'
     const dismissed = swal.fire({
       icon: 'warning',
-      titleText: `任务暂不可执行：${name}`,
-      text: message,
+      titleText: compatibilityError ? '检测到兼容性错误' : `任务暂不可执行：${name}`,
+      text: compatibilityError ? `${name}\n${message}` : message,
       confirmButtonText: '确定',
     })
     taskNoticePopup = swal.getPopup?.() ?? null

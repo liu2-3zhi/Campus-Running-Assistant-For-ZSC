@@ -289,11 +289,19 @@ test('legacy: task notices use plain text, deduplicate and wait for the precedin
   const first = { notice_id: 'first', task_name: '<b>任务一</b>', message: '<img src=x>' }
   client.receive('task_unavailable', first)
   client.receive('task_unavailable', first)
-  client.receive('task_unavailable', { notice_id: 'second', task_name: '任务二', message: '请联系学校。' })
+  const compatibilityNotice = {
+    notice_id: 'second',
+    task_name: '<b>任务二</b>',
+    message: '检测到兼容性错误，请联系管理员处理。',
+    kind: 'compatibility_error',
+  }
+  client.receive('task_unavailable', compatibilityNotice)
+  client.receive('task_unavailable', compatibilityNotice)
   await settle()
 
   assert.equal(popups.length, 1)
   assert.equal(popups[0].options.icon, 'warning')
+  assert.equal(popups[0].options.titleText, '任务暂不可用')
   assert.match(popups[0].options.text, /<b>任务一<\/b>/)
   assert.match(popups[0].options.text, /<img src=x>/)
   assert.equal(popups[0].options.html, undefined)
@@ -301,8 +309,9 @@ test('legacy: task notices use plain text, deduplicate and wait for the precedin
   popups[0].resolve()
   await settle()
   assert.equal(popups.length, 2)
-  assert.match(popups[1].options.text, /任务二/)
-  assert.match(popups[1].options.text, /请联系学校。/)
+  assert.equal(popups[1].options.titleText, '检测到兼容性错误')
+  assert.equal(popups[1].options.text, '<b>任务二</b>\n检测到兼容性错误，请联系管理员处理。')
+  assert.equal(popups[1].options.html, undefined)
   popups[1].resolve()
   await settle()
 })

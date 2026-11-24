@@ -43,6 +43,19 @@ def _version_key(value) -> tuple:
     return tuple(int(part) for part in _VERSION_NUM_RE.findall(str(value or "")))
 
 
+def is_task_version_incompatible(details) -> bool:
+    """Recognize the school detail response that requires an app update."""
+    if not isinstance(details, dict) or details.get("geoCoorList") != []:
+        return False
+    for field in ("startTime", "endTime"):
+        value = details.get(field)
+        if isinstance(value, str):
+            message = "".join(value.casefold().split())
+            if re.search(r"(?:更新|升级)app|app版本(?:过低|太低|不兼容)", message):
+                return True
+    return False
+
+
 class _AppVersionEntry(NamedTuple):
     version: str
     refresh_after: float
@@ -85,6 +98,7 @@ class ApiClient:
     APP_CLIENT_ID = "com.zx.slm"
     APP_VERSION_TTL_SECONDS = 6 * 60 * 60
     APP_VERSION_RETRY_SECONDS = 60
+    FORCED_APP_VERSION_ATTEMPTS = 3
     UA_SUFFIX = " uni-app Html5Plus/1.0 (Immersed/29.09091)"
     JSON_CONTENT_TYPE = "application/json;charset=UTF-8"
     FORM_CONTENT_TYPE = "application/x-www-form-urlencoded"
@@ -241,8 +255,10 @@ class ApiClient:
                 return self.app_version
 
         if not refresh_owner:
-            # 首次冷启动时，并发请求限时等待同一个版本探测。
-            refresh.wait(timeout=self.CONNECT_TIMEOUT + self.READ_TIMEOUT)
+            # 冷启动或强制刷新时，并发请求限时等待正在执行的版本探测。
+            wait_timeout = self.FORCED_APP_VERSION_ATTEMPTS * (self.CONNECT_TIMEOUT + self.READ_TIMEOUT)
+            wait_timeout += (self.FORCED_APP_VERSION_ATTEMPTS - 1) * self.RETRY_BACKOFF_SECONDS
+            refresh.wait(timeout=wait_timeout)
             with self._APP_VERSION_CACHE_LOCK:
                 cached = self._APP_VERSION_CACHE.get(base_url)
                 if cached:
@@ -252,16 +268,24 @@ class ApiClient:
         current_version = self.app_version
         latest = None
         try:
-            response = self._request("GET", "/checkVersion", retries=1)
-            if response is not None and 200 <= response.status_code < 300:
-                payload = self._json(response)
-                if isinstance(payload, dict) and payload.get("code") == 200:
-                    data = payload.get("data")
-                    version = data.get("version") if isinstance(data, dict) else None
-                    if isinstance(version, str) and re.fullmatch(r"[0-9]+(?:\.[0-9]+)*", version):
-                        latest = max(current_version, version, key=_version_key)
-        except Exception as error:
-            logging.debug("appVersion 探测失败 (%s)", type(error).__name__)
+            attempts = self.FORCED_APP_VERSION_ATTEMPTS if force else 1
+            for attempt in range(attempts):
+                if self._is_offline() or self._request_cancelled_by_stop():
+                    break
+                try:
+                    response = self._request("GET", "/checkVersion", retries=1)
+                    if response is not None:
+                        if 200 <= response.status_code < 300:
+                            version = self._version_from_response(response)
+                            if version is not None:
+                                latest = max(current_version, version, key=_version_key)
+                                break
+                        elif response.status_code not in self.RETRYABLE_STATUS:
+                            break
+                except Exception as error:
+                    logging.debug("appVersion 探测失败 (%s)", type(error).__name__)
+                if attempt + 1 < attempts and self._wait_for_retry_or_cancel(self.RETRY_BACKOFF_SECONDS):
+                    break
         finally:
             with self._APP_VERSION_CACHE_LOCK:
                 try:
@@ -283,6 +307,16 @@ class ApiClient:
         elif latest != current_version:
             logging.info("appVersion 已从服务端同步：%s -> %s", current_version, latest)
         return self.app_version
+
+    def _version_from_response(self, response) -> str | None:
+        payload = self._json(response)
+        if not isinstance(payload, dict) or payload.get("code") != 200:
+            return None
+        data = payload.get("data")
+        version = data.get("version") if isinstance(data, dict) else None
+        if isinstance(version, str) and re.fullmatch(r"[0-9]+(?:\.[0-9]+)*", version):
+            return version
+        return None
 
     def _apply_app_version(self, version: str):
         if _version_key(version) > _version_key(self.app_version):
@@ -620,20 +654,20 @@ class ApiClient:
         注意：该接口受 appVersion 请求头的最低版本校验，版本过低会得到
         `{"errandDetail":{"startTime":"请更新APP后再进行跑步"}}` 这种"伪成功"响应。
         """
-        return self._json(
-            self._request(
-                "POST",
-                "/run/errand/getErrandDetail",
-                data="",
-                params={
-                    "errandId": errand_id,
-                    "userId": user_id,
-                    "errandScheduleId": errand_schedule_id,
-                },
-                is_post_str=True,
-                force_content_type=self.JSON_CONTENT_TYPE,
-            )
-        )
+        def fetch():
+            return self._json(self._request(
+                "POST", "/run/errand/getErrandDetail", data="",
+                params={"errandId": errand_id, "userId": user_id, "errandScheduleId": errand_schedule_id},
+                is_post_str=True, force_content_type=self.JSON_CONTENT_TYPE,
+            ))
+
+        payload = fetch()
+        data = payload.get("data") if isinstance(payload, dict) and payload.get("success") else None
+        if isinstance(data, dict) and is_task_version_incompatible(data.get("errandDetail")):
+            logging.info("[任务详情] 校方要求更新 APP，刷新版本后重新查询")
+            self.sync_app_version(force=True)
+            return fetch()
+        return payload
 
     def get_run_history_list(self, user_id, errand_schedule_id, offset=0, limit=10):
         """跑腿轨迹记录列表（App 侧 limit 传字符串 "10"）。"""

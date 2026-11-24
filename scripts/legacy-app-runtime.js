@@ -1161,13 +1161,13 @@ function queueTaskUnavailableNotice(state, data) {
       state.seen.has(data.notice_id)) return;
 
   state.seen.add(data.notice_id);
-  const { task_name: taskName, message } = data;
+  const { task_name: taskName, message, kind } = data;
   state.queue = state.queue.then(async () => {
     if (state !== wsTaskNoticeState || state.session !== sessionUUID) return;
     try {
       await Swal.fire({
         icon: "warning",
-        titleText: "任务暂不可用",
+        titleText: kind === "compatibility_error" ? "检测到兼容性错误" : "任务暂不可用",
         text: `${taskName}\n${message}`,
         confirmButtonText: "确定",
         didOpen: (popup) => { state.popup = popup; },

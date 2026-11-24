@@ -71,7 +71,14 @@ test('Vue shows task notices as plain text and queues distinct notices once per 
   const notify = clients[0].events.task_unavailable
   notify(notice('first'))
   notify(notice('first'))
-  notify(notice('second', '另一个任务'))
+  const compatibilityNotice = {
+    notice_id: 'second',
+    task_name: '<b>另一个任务</b>',
+    message: '检测到兼容性错误，请联系管理员处理。',
+    kind: 'compatibility_error',
+  }
+  notify(compatibilityNotice)
+  notify(compatibilityNotice)
   await settle()
 
   assert.equal(Swal.shown.length, 1)
@@ -83,7 +90,9 @@ test('Vue shows task notices as plain text and queues distinct notices once per 
   Swal.close()
   await settle()
   assert.equal(Swal.shown.length, 2)
-  assert.match(Swal.shown[1].titleText, /另一个任务/)
+  assert.equal(Swal.shown[1].titleText, '检测到兼容性错误')
+  assert.equal(Swal.shown[1].text, '<b>另一个任务</b>\n检测到兼容性错误，请联系管理员处理。')
+  assert.equal(Swal.shown[1].html, undefined)
   Swal.close()
   notify(notice('first'))
   await settle()

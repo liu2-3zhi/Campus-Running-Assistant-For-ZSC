@@ -29,7 +29,7 @@ from types import SimpleNamespace
 
 
 from main_runtime import _main
-from api_client import ApiClient
+from api_client import ApiClient, is_task_version_incompatible
 from route_diagnostics import build_route_failure_summary, detailed_route_failure_message, generic_route_failure_message, sanitize_diagnostic
 from theme_background_state import background_files_locked
 
@@ -3765,37 +3765,44 @@ class Api:
         return {"success": True, "task_index": index, "route_ready": bool(coords), "details": details}
 
     def _notify_task_unavailable(self, run_data, details):
-        """Send the school's availability message when it returned no checkpoints."""
+        """Send a task notice without caching temporarily unavailable details."""
         if details.get("geoCoorList") != []:
             return False
-        instructions = []
-        for field in ("startTime", "endTime"):
-            value = details.get(field)
-            if not isinstance(value, str):
-                continue
-            value = value.strip()
-            if (not value or self._try_parse_dt(value)
-                    or re.fullmatch(r"\d{1,2}[:：]\d{2}(?:[:：]\d{2})?", value)
-                    or not any(char.isalpha() for char in value)):
-                continue
-            safe = sanitize_diagnostic(value, 400)
-            if safe and safe not in instructions:
-                instructions.append(safe)
-        if not instructions:
-            return False
+
+        if is_task_version_incompatible(details):
+            notice = {
+                "kind": "compatibility_error",
+                "message": "检测到兼容性错误，请联系管理员处理。",
+            }
+        else:
+            instructions = []
+            for field in ("startTime", "endTime"):
+                value = details.get(field)
+                if not isinstance(value, str):
+                    continue
+                value = value.strip()
+                if (not value or self._try_parse_dt(value)
+                        or re.fullmatch(r"\d{1,2}[:：]\d{2}(?:[:：]\d{2})?", value)
+                        or not any(char.isalpha() for char in value)):
+                    continue
+                safe = sanitize_diagnostic(value, 400)
+                if safe and safe not in instructions:
+                    instructions.append(safe)
+            if not instructions:
+                return False
+            notice = {"message": "\n".join(instructions)}
 
         session_id = getattr(self, "_web_session_id", None)
         socketio = getattr(_main(), "socketio", None)
         if session_id and socketio:
             task_name = sanitize_diagnostic(details.get("name") or run_data.run_name or "任务", 180)
-            message = "\n".join(instructions)
-            notice_id = hashlib.sha256(f"{task_name}\n{message}".encode("utf-8")).hexdigest()[:24]
+            notice_id = hashlib.sha256(f"{task_name}\n{notice['message']}".encode("utf-8")).hexdigest()[:24]
             try:
                 socketio.emit("task_unavailable", {
-                    "task_name": task_name, "message": message, "notice_id": notice_id,
+                    **notice, "task_name": task_name, "notice_id": notice_id,
                 }, room=session_id)
             except Exception as exc:
-                logging.warning("[任务详情] 发送开放时间提示失败 (%s)", type(exc).__name__)
+                logging.warning("[任务详情] 发送任务不可用提示失败 (%s)", type(exc).__name__)
         return True
 
     def get_task_details(self, index):

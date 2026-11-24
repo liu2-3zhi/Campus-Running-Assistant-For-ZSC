@@ -183,6 +183,43 @@ class TestFailingSubmissionPath(unittest.TestCase):
 
         main_module.socketio.emit.assert_not_called()
 
+    def test_incompatible_task_version_uses_compatibility_notice(self):
+        self.acc.api_client.get_run_details.return_value["data"]["errandDetail"] = {
+            "name": "测试任务",
+            "geoCoorList": [],
+            "walkPaths": [],
+            "startTime": "请更新APP后再进行跑步",
+            "endTime": "原因：APP版本过低/超时,请在我的-设置点击版本号更新后再跑步。 ",
+        }
+
+        self.assertEqual(self._run_with_submission_result(True), "failed")
+
+        main_module.socketio.emit.assert_called_once_with("task_unavailable", {
+            "task_name": "测试任务",
+            "message": "检测到兼容性错误，请联系管理员处理。",
+            "notice_id": mock.ANY,
+            "kind": "compatibility_error",
+        }, room=self.api._web_session_id)
+        self.api._build_route_path_with_random_detours.assert_not_called()
+        self.api._submit_chunk_with_retries.assert_not_called()
+
+    def test_single_task_view_does_not_cache_incompatible_version_details(self):
+        self.api.api_client = self.acc.api_client
+        self.api.user_data = self.acc.user_data
+        self.api.all_run_data = [self.run]
+        self.acc.api_client.get_run_details.return_value["data"]["errandDetail"] = {
+            "geoCoorList": [],
+            "startTime": "请更新APP后再进行跑步",
+            "endTime": "原因：APP版本过低/超时,请在我的-设置点击版本号更新后再跑步。 ",
+        }
+
+        self.assertTrue(self.api.get_task_details(0)["success"])
+        self.assertFalse(self.run.details_fetched)
+        notices = [call for call in main_module.socketio.emit.call_args_list if call.args[0] == "task_unavailable"]
+        self.assertEqual(len(notices), 1)
+        self.assertEqual(notices[0].args[1]["kind"], "compatibility_error")
+        self.assertEqual(notices[0].args[1]["message"], "检测到兼容性错误，请联系管理员处理。")
+
     def test_single_task_view_can_retry_when_school_returns_temporary_notice(self):
         self.api.api_client = self.acc.api_client
         self.api.user_data = self.acc.user_data

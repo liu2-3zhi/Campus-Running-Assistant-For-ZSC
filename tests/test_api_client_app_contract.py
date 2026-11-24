@@ -92,6 +92,65 @@ def app_client(monkeypatch, version_clock):
         client.session.close()
 
 
+_COMPATIBILITY_DETAILS = {
+    "startTime": "请更新APP后再进行跑步",
+    "endTime": "原因：APP版本过低/超时,请在我的-设置点击版本号更新后再跑步。",
+    "geoCoorList": [],
+    "walkPaths": [],
+}
+
+
+def _detail_response(details):
+    return {"code": 200, "success": True, "data": {"errandDetail": details}}
+
+
+def test_run_details_refreshes_version_with_retries_then_uses_new_header(app_client, monkeypatch):
+    factory, transport = app_client
+    client = factory()
+    assert client.sync_app_version() == "1.0.85"
+    retries = []
+    monkeypatch.setattr(client, "_wait_for_retry_or_cancel", lambda delay: retries.append(delay) or False)
+    transport.version_responses.extend([
+        (503, {"code": 503}),
+        (200, {"code": 200, "data": {"version": "invalid"}}),
+        (200, {"code": 200, "data": {"version": "1.0.86"}}),
+    ])
+    recovered = _detail_response({"geoCoorList": [{"lon": 1, "lat": 2}]})
+    transport.responses.extend([(200, _detail_response(_COMPATIBILITY_DETAILS)), (200, recovered)])
+
+    assert client.get_run_details("e", "u", "s") == recovered
+    assert len(retries) == 2
+    assert len(transport.version_calls) == 4
+    first, refreshed = [request for request, _ in transport.business_calls]
+    assert first.url == refreshed.url
+    assert [first.headers["appVersion"], refreshed.headers["appVersion"]] == ["1.0.85", "1.0.86"]
+
+
+def test_run_details_returns_persistent_compatibility_response_after_one_recheck(app_client, monkeypatch):
+    factory, transport = app_client
+    client = factory()
+    client.sync_app_version()
+    monkeypatch.setattr(client, "_wait_for_retry_or_cancel", lambda _delay: False)
+    transport.version_responses.extend([(503, {"code": 503})] * 3)
+    incompatible = _detail_response(_COMPATIBILITY_DETAILS)
+    transport.responses.extend([(200, incompatible)] * 3)
+
+    assert client.get_run_details("e", "u", "s") == incompatible
+    assert len(transport.version_calls) == 4
+    assert len(transport.business_calls) == 2
+
+
+def test_run_details_does_not_refresh_for_school_opening_hours_notice(app_client):
+    factory, transport = app_client
+    client = factory()
+    client.sync_app_version()
+    unavailable = _detail_response({"geoCoorList": [], "endTime": "原因：21:30后不开放任务/超时"})
+    transport.responses.append((200, unavailable))
+
+    assert client.get_run_details("e", "u", "s") == unavailable
+    assert len(transport.version_calls) == len(transport.business_calls) == 1
+
+
 def test_check_version_uses_get_and_equal_version_cache_is_reused(app_client):
     factory, transport = app_client
     first = factory()
