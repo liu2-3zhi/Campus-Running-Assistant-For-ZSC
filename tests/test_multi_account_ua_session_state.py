@@ -65,6 +65,12 @@ def session_runtime(monkeypatch, tmp_path):
     )
 
     def make_api(stored_accounts=None):
+        def load_credentials(_owner, username):
+            entry = (stored_accounts or {}).get(username)
+            if isinstance(entry, str):
+                return {"password": entry, "ua": None}
+            return entry
+
         return SimpleNamespace(
             auth_username="test-owner",
             accounts={},
@@ -75,7 +81,7 @@ def session_runtime(monkeypatch, tmp_path):
             user_data=None,
             all_run_data=[],
             current_run_idx=-1,
-            _load_user_school_accounts=lambda _owner: stored_accounts or {},
+            _load_school_account_credentials=load_credentials,
             _load_account_tag=lambda _username: "",
             _multi_refresh_worker=lambda *_args: None,
         )

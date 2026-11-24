@@ -565,3 +565,46 @@ def test_restored_generated_ua_is_saved_without_changing_account_password(owner_
     assert get_owner_bindings(harness) == {
         "10001": {"password": "verified-password", "ua": "recovered-account-UA"},
     }
+
+
+def test_session_restore_projects_only_the_requested_school_credentials(owner_binding_store, runtime, monkeypatch):
+    harness = owner_binding_store
+    api = harness.api
+    api.all_run_data = []
+    api.current_run_idx = -1
+    api._multi_refresh_worker = Mock()
+    bindings = {
+        str(username): {"password": f"password-{username}", "ua": f"device-UA-{username}"}
+        for username in range(10000, 10446)
+    }
+    put_owner_bindings(harness, bindings)
+    live_account = runtime.AccountSession("10445", "live-password", api)
+    api.accounts[live_account.username] = live_account
+    aggregate = Mock(side_effect=AssertionError("session restore must not aggregate account bindings"))
+    scan = Mock(side_effect=AssertionError("session restore must not scan unrelated storage records"))
+    statistics = Mock(side_effect=AssertionError("session restore must not read school stats"))
+    project = Mock(wraps=harness.store.get_school_account_credentials)
+    persist = Mock(wraps=api._persist_missing_school_account_ua)
+    monkeypatch.setattr(api, "_load_user_school_accounts", aggregate)
+    monkeypatch.setattr(harness.store, "list", scan)
+    monkeypatch.setattr(harness.store, "get_school_account_stats", statistics)
+    monkeypatch.setattr(harness.store, "get_school_account_credentials", project)
+    monkeypatch.setattr(api, "_persist_missing_school_account_ua", persist)
+    monkeypatch.setattr(session_state, "_main", lambda: runtime)
+    monkeypatch.setattr(session_state, "threading", SimpleNamespace(Thread=lambda **kwargs: SimpleNamespace(start=lambda: None)))
+
+    session_state.restore_session_to_api_instance(api, {
+        "is_multi_account_mode": True,
+        "multi_account_states": {"10001": {}, "10445": {}},
+    })
+
+    aggregate.assert_not_called()
+    scan.assert_not_called()
+    statistics.assert_not_called()
+    persist.assert_not_called()
+    assert [call.args for call in project.call_args_list] == [("test-owner", "10001"), ("test-owner", "10445")]
+    assert api.accounts["10001"].password == "password-10001"
+    assert api.accounts["10001"].device_ua == "device-UA-10001"
+    assert api.accounts["10445"] is live_account
+    assert live_account.password == "live-password"
+    assert live_account.device_ua == "device-UA-10445"

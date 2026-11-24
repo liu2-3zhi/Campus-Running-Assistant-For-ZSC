@@ -524,31 +524,21 @@ def restore_session_to_api_instance(api_instance, state):
                         f"会话恢复：找到 {len(multi_account_states)} 个账号状态，正在重建..."
                     )
 
+                    auth_username = getattr(api_instance, "auth_username", None)
                     for username, account_state in multi_account_states.items():
+                        stored_ua = ""
                         if username not in api_instance.accounts:
                             try:
                                 # 只读取当前账号的凭据和设备身份，不使用父 Api 的 UA。
-                                auth_username = getattr(
-                                    api_instance, "auth_username", None)
-                                loaded_password = None
-                                stored_ua = ""
-                                if auth_username:
-                                    accounts = api_instance._load_user_school_accounts(
-                                        auth_username)
-                                    account_info = accounts.get(username)
-                                    if isinstance(account_info, dict):
-                                        loaded_password = account_info.get(
-                                            "password")
-                                        stored_ua = ApiClient.normalize_device_ua(
-                                            account_info.get("ua")
-                                        )
-                                    elif isinstance(account_info, str):
-                                        loaded_password = account_info
+                                credentials = api_instance._load_school_account_credentials(
+                                    auth_username, username
+                                ) or {}
+                                stored_ua = ApiClient.normalize_device_ua(credentials.get("ua"))
                                 loaded_tag = api_instance._load_account_tag(
                                     username)
                                 acc = _main().AccountSession(
                                     username=username,
-                                    password=loaded_password or "",
+                                    password=credentials.get("password") or "",
                                     api_bridge=api_instance,
                                     tag=loaded_tag or "",
                                 )
@@ -618,12 +608,11 @@ def restore_session_to_api_instance(api_instance, state):
                                     account_state.get("device_ua")
                                 )
                                 if not restored_ua:
-                                    auth_username = getattr(api_instance, "auth_username", None)
-                                    if auth_username:
-                                        accounts = api_instance._load_user_school_accounts(auth_username)
-                                        account_info = accounts.get(username)
-                                        if isinstance(account_info, dict):
-                                            restored_ua = ApiClient.normalize_device_ua(account_info.get("ua"))
+                                    credentials = api_instance._load_school_account_credentials(
+                                        auth_username, username
+                                    ) or {}
+                                    stored_ua = ApiClient.normalize_device_ua(credentials.get("ua"))
+                                    restored_ua = stored_ua
                                 ensure_ua = getattr(getattr(acc, "api_client", None), "ensure_device_ua", None)
                                 acc.device_ua = (
                                     ensure_ua(restored_ua) if callable(ensure_ua)
@@ -631,8 +620,8 @@ def restore_session_to_api_instance(api_instance, state):
                                 )
                         try:
                             persist_ua = getattr(api_instance, "_persist_missing_school_account_ua", None)
-                            if callable(persist_ua):
-                                persist_ua(getattr(api_instance, "auth_username", None), username, acc.device_ua)
+                            if not stored_ua and callable(persist_ua):
+                                persist_ua(auth_username, username, acc.device_ua)
                         except Exception as ua_save_error:
                             logging.warning(f"会话恢复：保存账号 {username} 的 UA 失败: {ua_save_error}")
 
