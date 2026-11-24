@@ -13,7 +13,7 @@ test('Vue map configuration saves optional security code in the provider object'
   const source = fs.readFileSync(new URL('../frontend/src/components/admin/AdminConfig.vue', import.meta.url), 'utf8')
   const script = source.match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
   let saved
-  const context = vm.createContext({ ref, computed, reactive, watch, normalizeBackendPageOrigin, normalizeMapConfigProfiles, serializeMapConfigProfiles, onMounted() {},
+  const context = vm.createContext({ ref, computed, reactive, watch, normalizeBackendPageOrigin, normalizeMapConfigProfiles, serializeMapConfigProfiles, onMounted() {}, onUnmounted() {},
     callRawAPI: async (_url, _method, body) => { saved = body; return { success: true } },
   })
   vm.runInContext(script, context)

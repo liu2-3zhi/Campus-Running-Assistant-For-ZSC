@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import ipaddress
+import io
 import logging
 from storage_io import open, os
-from business_storage import StorageError
+from business_storage import StorageError, get_runtime
 from sqlalchemy.exc import SQLAlchemyError
 import re
 
 
 _trusted_ip_networks_cache = None
 _trusted_ip_networks_cache_mtime = None
+
+
+class TrustedIpValidationError(ValueError):
+    """The submitted text or revision is invalid before any database write."""
 
 
 from main_runtime import _main
@@ -97,6 +102,43 @@ def _parse_trusted_ip_entry(value):
         return "wildcard", tuple(pattern)
 
     return "network", ipaddress.ip_network(normalized, strict=False)
+
+
+def read_trusted_ip_rules():
+    """Return the versioned plain text without consulting a physical file."""
+    document = get_runtime().store.get('settings', 'trusted_ips.txt')
+    if document is None:
+        return {'content': '', 'revision': 0}
+    return {'content': document.content.decode('utf-8'), 'revision': document.revision}
+
+
+def save_trusted_ip_rules(content, revision):
+    """Validate the existing line syntax and atomically replace one DB record."""
+    if not isinstance(content, str):
+        raise TrustedIpValidationError('content 必须是纯文本字符串')
+    if type(revision) is not int or revision < 0:
+        raise TrustedIpValidationError('revision 必须是非负整数，请重新加载后保存')
+    try:
+        encoded = content.encode('utf-8')
+    except UnicodeError:
+        raise TrustedIpValidationError('文本包含无效的 Unicode 字符') from None
+    # Universal newline handling matches the reader; the saved text itself is
+    # never stripped, normalized, sorted or rewritten.
+    for number, raw_line in enumerate(io.StringIO(content, newline=None), 1):
+        line = raw_line.split('#', 1)[0].strip()
+        if not line:
+            continue
+        try:
+            _parse_trusted_ip_entry(line)
+        except ValueError:
+            raise TrustedIpValidationError(f'第 {number} 行不是有效的 IP、CIDR、IP 范围或通配符') from None
+    document = get_runtime().store.put('settings', 'trusted_ips.txt', encoded,
+                                       expected_revision=revision)
+    global _trusted_ip_networks_cache, _trusted_ip_networks_cache_mtime
+    with _main()._trusted_ip_networks_lock:
+        _trusted_ip_networks_cache = None
+        _trusted_ip_networks_cache_mtime = None
+    return {'content': document.content.decode('utf-8'), 'revision': document.revision}
 
 
 def _print_red_console_warning(message):

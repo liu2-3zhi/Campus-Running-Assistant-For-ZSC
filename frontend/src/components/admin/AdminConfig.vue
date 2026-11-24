@@ -1,6 +1,7 @@
 <script setup>
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, watch, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { callRawAPI } from '@/services/api'
+import AppModal from '@/components/common/AppModal.vue'
 import { normalizeBackendPageOrigin } from '@/services/mapBackendOrigin'
 import { normalizeMapConfigProfiles, serializeMapConfigProfiles } from '@/utils/mapConfigProfiles'
 import MapConfigCards from './MapConfigCards.vue'
@@ -11,6 +12,97 @@ const saving = ref(false)
 const error = ref('')
 const success = ref('')
 const isDirty = ref(false)
+
+const trustedIpsVisible = ref(false)
+const trustedIpsLoading = ref(false)
+const trustedIpsSaving = ref(false)
+const trustedIpsLoaded = ref(false)
+const trustedIpsContent = ref('')
+const trustedIpsOriginal = ref('')
+const trustedIpsRevision = ref(null)
+const trustedIpsError = ref('')
+const trustedIpsSuccess = ref('')
+const trustedIpsTextarea = ref(null)
+const trustedIpsTrigger = ref(null)
+let trustedIpsRequestId = 0
+const trustedIpsDirty = computed(() => trustedIpsContent.value !== trustedIpsOriginal.value)
+const trustedIpsTrustAll = computed(() => {
+  const text = trustedIpsContent.value
+  if (!text.trim()) return true
+  return text.split(/\r?\n/).some(line => {
+    const rule = line.split('#', 1)[0].trim()
+    return /^(?:\*\.){0,3}\*$/.test(rule)
+  })
+})
+
+async function openTrustedIpsEditor() {
+  if (trustedIpsSaving.value) return
+  trustedIpsVisible.value = true
+  await loadTrustedIps()
+}
+
+function closeTrustedIpsEditor() {
+  if (trustedIpsSaving.value) return
+  trustedIpsVisible.value = false
+  trustedIpsRequestId++
+  trustedIpsLoading.value = false
+  nextTick(() => trustedIpsTrigger.value?.focus())
+}
+
+async function loadTrustedIps() {
+  if (!trustedIpsVisible.value || trustedIpsLoading.value || trustedIpsSaving.value) return
+  const requestId = ++trustedIpsRequestId
+  trustedIpsLoading.value = true
+  trustedIpsLoaded.value = false
+  trustedIpsError.value = ''
+  trustedIpsSuccess.value = ''
+  try {
+    const result = await callRawAPI('/api/admin/trusted-ips', 'GET')
+    if (requestId !== trustedIpsRequestId || !trustedIpsVisible.value) return
+    if (result?.success === false) throw new Error(result.message || '加载可信代理配置失败')
+    if (typeof result?.content !== 'string' || !Number.isSafeInteger(result.revision) || result.revision < 0) {
+      throw new Error('可信代理配置响应无效，请重新加载')
+    }
+    trustedIpsContent.value = result.content
+    trustedIpsOriginal.value = result.content
+    trustedIpsRevision.value = result.revision
+    trustedIpsLoaded.value = true
+    nextTick(() => trustedIpsTextarea.value?.focus())
+  } catch (e) {
+    if (requestId === trustedIpsRequestId && trustedIpsVisible.value) {
+      trustedIpsError.value = e.message || '加载可信代理配置失败'
+    }
+  } finally {
+    if (requestId === trustedIpsRequestId) trustedIpsLoading.value = false
+  }
+}
+
+async function saveTrustedIps() {
+  if (!trustedIpsVisible.value || !trustedIpsLoaded.value || trustedIpsLoading.value || trustedIpsSaving.value || !trustedIpsDirty.value) return
+  trustedIpsSaving.value = true
+  trustedIpsError.value = ''
+  trustedIpsSuccess.value = ''
+  const content = trustedIpsContent.value
+  try {
+    const result = await callRawAPI('/api/admin/trusted-ips', 'POST', {
+      content, revision: trustedIpsRevision.value,
+    })
+    if (result?.success === false) throw new Error(result.message || '保存可信代理配置失败')
+    if (!Number.isSafeInteger(result?.revision) || result.revision < 0) {
+      trustedIpsLoaded.value = false
+      throw new Error('未收到有效保存版本，请重新加载后核对')
+    }
+    trustedIpsRevision.value = result.revision
+    trustedIpsOriginal.value = content
+    trustedIpsSuccess.value = result.message || '可信代理配置已保存，立即生效'
+  } catch (e) {
+    trustedIpsError.value = e.message || '保存可信代理配置失败'
+  } finally {
+    trustedIpsSaving.value = false
+  }
+}
+
+onUnmounted(() => { trustedIpsRequestId++ })
 
 /*
  * section 定义。
@@ -266,10 +358,51 @@ onMounted(loadConfig)
 
 <template>
   <div class="space-y-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-2">
       <h4 class="font-semibold">系统配置</h4>
-      <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="loadConfig">刷新</button>
+      <div class="flex flex-wrap gap-2">
+        <button ref="trustedIpsTrigger" type="button" class="btn btn-secondary !px-3 !py-1" @click="openTrustedIpsEditor">可信代理 IP</button>
+        <button class="btn btn-ghost !px-2 !py-1" :disabled="loading" @click="loadConfig">刷新</button>
+      </div>
     </div>
+
+    <AppModal :visible="trustedIpsVisible" title="可信代理 IP · trusted_ips.txt" width="max-w-3xl" :closable="!trustedIpsSaving" @close="closeTrustedIpsEditor">
+      <div class="space-y-4" @keydown.esc.stop.prevent="closeTrustedIpsEditor">
+        <p id="trusted-ips-help" class="text-sm text-[var(--ink-secondary)]">
+          按纯文本编辑，每行一个 IP、CIDR、起止范围或 IPv4 通配符，支持 # 注释。内网、回环和链路本地地址自动信任。保存后立即生效。
+        </p>
+        <p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800" :class="{ 'font-semibold': trustedIpsLoaded && trustedIpsTrustAll }">
+          空白内容或单独的 * 规则会信任全部代理来源；仅保留注释时，只信任内置代理。
+        </p>
+        <div v-if="trustedIpsError" role="alert" class="rounded-lg bg-red-100 px-3 py-2 text-sm text-red-700">{{ trustedIpsError }}</div>
+        <div v-if="trustedIpsSuccess" role="status" class="rounded-lg bg-green-100 px-3 py-2 text-sm text-green-700">{{ trustedIpsSuccess }}</div>
+        <div>
+          <label for="trusted-ips-editor" class="mb-2 block text-sm font-medium">trusted_ips.txt 内容</label>
+          <textarea
+            id="trusted-ips-editor"
+            ref="trustedIpsTextarea"
+            v-model="trustedIpsContent"
+            :disabled="trustedIpsLoading || trustedIpsSaving || !trustedIpsLoaded"
+            :aria-busy="trustedIpsLoading"
+            aria-describedby="trusted-ips-help"
+            class="input-field w-full resize-y font-mono text-sm leading-6"
+            rows="14"
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            wrap="off"
+            placeholder="# 仅添加受信任的外部代理，每行一条规则"
+          ></textarea>
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <span class="text-xs text-[var(--ink-muted)]" role="status">{{ trustedIpsLoading ? '加载中...' : trustedIpsDirty ? '有未保存的更改' : '' }}</span>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="btn btn-secondary" :disabled="trustedIpsLoading || trustedIpsSaving" title="读取当前配置，替换未保存的编辑" @click="loadTrustedIps">重新加载</button>
+            <button type="button" class="btn btn-primary" :disabled="!trustedIpsLoaded || trustedIpsLoading || trustedIpsSaving || !trustedIpsDirty" @click="saveTrustedIps">{{ trustedIpsSaving ? '保存中...' : '保存并生效' }}</button>
+          </div>
+        </div>
+      </div>
+    </AppModal>
 
     <!-- success / error alerts -->
     <div v-if="success" class="px-4 py-2 rounded-lg text-sm bg-green-100 text-green-700 flex items-center justify-between">

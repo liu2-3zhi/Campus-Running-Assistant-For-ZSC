@@ -1,4 +1,107 @@
 // Legacy admin configuration, SSL, SMS, and CDN UI extracted from main.js.
+const trustedIpsEditorState = { revision: null, loading: false, saving: false, generation: 0, trigger: null };
+
+function syncTrustedIpsEditor() {
+  const state = trustedIpsEditorState;
+  const busy = state.loading || state.saving;
+  document.getElementById("trusted-ips-editor-text").disabled = busy || state.revision === null;
+  document.getElementById("trusted-ips-editor-save").disabled = busy || state.revision === null;
+  document.getElementById("trusted-ips-editor-reload").disabled = busy;
+  document.getElementById("trusted-ips-editor-close").disabled = state.saving;
+  document.getElementById("trusted-ips-editor-save").textContent = state.saving ? "保存中…" : "保存并生效";
+}
+
+function setTrustedIpsEditorStatus(message, failed = false) {
+  const status = document.getElementById("trusted-ips-editor-status");
+  status.textContent = message;
+  status.className = failed ? "text-sm text-red-600" : "text-sm text-slate-600";
+}
+
+async function requestTrustedIpsEditor(method, body) {
+  const requestSession = sessionUUID;
+  if (!requestSession) throw new Error("会话尚未就绪，请重新登录后重试");
+  const headers = { "Content-Type": "application/json", "X-Session-ID": requestSession };
+  if (typeof addAdminViewOriginSessionHeader === "function") addAdminViewOriginSessionHeader(headers, requestSession);
+  const response = await fetch("/api/admin/trusted-ips", {
+    method, headers, credentials: "include", cache: "no-store",
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const result = await response.json();
+  if (sessionUUID !== requestSession) throw new Error("登录会话已变化，请重新打开编辑器");
+  if (!response.ok || result.success !== true) throw new Error(result.message || `请求失败 (${response.status})`);
+  if (typeof result.content !== "string" || !Number.isSafeInteger(result.revision) || result.revision < 0) {
+    throw new Error("服务器返回的规则不完整，请重新加载");
+  }
+  return result;
+}
+
+async function openTrustedIpsEditor(button) {
+  const modal = document.getElementById("trusted-ips-editor-modal");
+  if (modal.open) return;
+  trustedIpsEditorState.trigger = button || document.activeElement;
+  trustedIpsEditorState.revision = null;
+  document.getElementById("trusted-ips-editor-text").value = "";
+  modal.showModal();
+  await loadTrustedIpsEditor();
+}
+
+function closeTrustedIpsEditor(event) {
+  if (event) event.preventDefault();
+  const state = trustedIpsEditorState;
+  if (state.saving) return;
+  state.generation++;
+  state.loading = false;
+  state.revision = null;
+  document.getElementById("trusted-ips-editor-modal").close();
+  state.trigger?.focus();
+}
+
+async function loadTrustedIpsEditor() {
+  const state = trustedIpsEditorState;
+  if (state.saving) return;
+  const generation = ++state.generation;
+  state.loading = true;
+  state.revision = null;
+  syncTrustedIpsEditor();
+  setTrustedIpsEditorStatus("正在加载…");
+  try {
+    const result = await requestTrustedIpsEditor("GET");
+    if (generation !== state.generation) return;
+    document.getElementById("trusted-ips-editor-text").value = result.content;
+    state.revision = result.revision;
+    setTrustedIpsEditorStatus("");
+  } catch (error) {
+    if (generation === state.generation) setTrustedIpsEditorStatus(error.message || "加载失败，请重试", true);
+  } finally {
+    if (generation === state.generation) {
+      state.loading = false;
+      syncTrustedIpsEditor();
+      if (state.revision !== null) document.getElementById("trusted-ips-editor-text").focus();
+    }
+  }
+}
+
+async function saveTrustedIpsEditor() {
+  const state = trustedIpsEditorState;
+  if (state.loading || state.saving || state.revision === null) return;
+  const content = document.getElementById("trusted-ips-editor-text").value;
+  const generation = state.generation;
+  state.saving = true;
+  syncTrustedIpsEditor();
+  setTrustedIpsEditorStatus("正在保存…");
+  try {
+    const result = await requestTrustedIpsEditor("POST", { content, revision: state.revision });
+    if (generation !== state.generation) return;
+    state.revision = result.revision;
+    setTrustedIpsEditorStatus("已保存，新的可信代理规则立即生效。");
+  } catch (error) {
+    if (generation === state.generation) setTrustedIpsEditorStatus(error.message || "保存失败，已保留编辑内容", true);
+  } finally {
+    state.saving = false;
+    syncTrustedIpsEditor();
+  }
+}
+
 async function loadSSLInfo() {
   configLoadState.ssl = false;
   try {

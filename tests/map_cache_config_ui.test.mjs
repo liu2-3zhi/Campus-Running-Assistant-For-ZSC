@@ -13,7 +13,7 @@ function adminConfig() {
   const source = read('frontend/src/components/admin/AdminConfig.vue').match(/<script setup>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
   const calls = []
   const state = vm.runInNewContext(source + '\n;({sections,configForm,applyConfig,saveConfig,error})', {
-    ...vue, ...mapConfigProfiles, watch() {}, onMounted() {},
+    ...vue, ...mapConfigProfiles, watch() {}, onMounted() {}, onUnmounted() {},
     callRawAPI: async (...args) => { calls.push(args); return { success: true } },
     normalizeBackendPageOrigin: value => value || '',
   })

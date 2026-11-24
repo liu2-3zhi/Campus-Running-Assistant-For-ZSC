@@ -8176,6 +8176,69 @@ def start_web_server(args_param):
                 return fallback
         return fallback
 
+    @app.route("/api/admin/trusted-ips", methods=["GET"])
+    @login_required
+    def admin_trusted_ips_load():
+        """Load the database-backed text editor with system config permissions."""
+        from trusted_ip import read_trusted_ip_rules
+        try:
+            if not _main().auth_system.check_permission(_main().g.user, 'modify_config'):
+                return _main().jsonify({
+                    'success': False, 'message': '权限不足，需要配置修改权限（modify_config）',
+                }), 403
+            response = _main().jsonify({'success': True, **read_trusted_ip_rules()})
+            response.headers['Cache-Control'] = 'no-store'
+            return response
+        except Exception as error:
+            app.logger.error('[可信IP] 加载规则失败 error_type=%s', type(error).__name__)
+            return _main().jsonify({'success': False, 'message': '加载可信代理规则失败'}), 500
+
+    @app.route("/api/admin/trusted-ips", methods=["POST"])
+    @login_required
+    def admin_trusted_ips_save():
+        """Save only the fixed trusted proxy record, retaining plain text syntax."""
+        from business_storage import ConflictError
+        from trusted_ip import TrustedIpValidationError, save_trusted_ip_rules
+        try:
+            if not _main().auth_system.check_permission(_main().g.user, 'modify_config'):
+                return _main().jsonify({
+                    'success': False, 'message': '权限不足，需要配置修改权限（modify_config）',
+                }), 403
+            data = _main().request.get_json(silent=True)
+            if not isinstance(data, dict):
+                return _main().jsonify({'success': False, 'message': '请求必须是 JSON 对象'}), 400
+            saved = save_trusted_ip_rules(data.get('content'), data.get('revision'))
+        except ConflictError:
+            return _main().jsonify({
+                'success': False, 'message': '规则已被其他操作更新，请重新加载后再保存',
+            }), 409
+        except TrustedIpValidationError as error:
+            return _main().jsonify({'success': False, 'message': str(error)}), 400
+        except Exception as error:
+            app.logger.error('[可信IP] 保存规则失败 error_type=%s', type(error).__name__)
+            return _main().jsonify({'success': False, 'message': '保存可信代理规则失败'}), 500
+
+        # Audit failures must not report an already committed write as failed.
+        # Record size/version metadata only; proxy rules and comments stay private.
+        try:
+            content = saved['content']
+            description = (
+                f"更新可信代理规则 bytes={len(content.encode('utf-8'))} "
+                f"lines={len(content.splitlines())} revision={saved['revision']}"
+            )
+            _main().auth_system.log_audit(
+                _main().g.user, 'update_trusted_ips', description,
+                _main().request.environ.get('REMOTE_ADDR') or _main().request.remote_addr,
+                getattr(_main().g, 'session_id', ''),
+            )
+        except Exception as error:
+            app.logger.error('[可信IP] 规则已保存，审计记录失败 error_type=%s', type(error).__name__)
+        response = _main().jsonify({
+            'success': True, **saved, 'message': '可信代理规则已保存，下次请求立即生效',
+        })
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
     @app.route("/api/admin/config/load", methods=["GET"])
     @login_required  # 只需要登录即可，细粒度权限在函数内部检查
     def admin_config_load():

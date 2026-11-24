@@ -45,7 +45,10 @@ const compiledConfig = compileScript(descriptor, { id: 'cache-config-browser', i
   .replaceAll("'@/services/api'", "'/fixture/api.js'")
   .replaceAll("'@/services/mapBackendOrigin'", "'/fixture/origin.js'")
   .replaceAll("'@/utils/mapConfigProfiles'", "'/fixture/profiles.js'")
+  .replaceAll("'@/components/common/AppModal.vue'", "'/fixture/AppModal.js'")
   .replaceAll("'./MapConfigCards.vue'", "'/fixture/MapConfigCards.js'")
+const modalDescriptor = parse(await read('frontend/src/components/common/AppModal.vue')).descriptor
+const compiledModal = compileScript(modalDescriptor, { id: 'admin-modal-browser', inlineTemplate: true }).content
 const cardsDescriptor = parse(await read('frontend/src/components/admin/MapConfigCards.vue')).descriptor
 const compiledCards = compileScript(cardsDescriptor, { id: 'map-config-cards-browser', inlineTemplate: true }).content
   .replaceAll("'@/services/mapBackendOrigin'", "'/fixture/origin.js'")
@@ -62,6 +65,7 @@ const importMap = '<script type="importmap">{"imports":{"vue":"/fixture/vue.js",
 const head = `<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="${stylesheet}">${importMap}`
 const modules = new Map([
   ['/fixture/AdminConfig.js', compiledConfig],
+  ['/fixture/AppModal.js', compiledModal],
   ['/fixture/MapConfigCards.js', compiledCards],
   ['/fixture/profiles.js', await read('frontend/src/utils/mapConfigProfiles.js')],
   ['/fixture/sortable.js', await read('cache/cdn/sortable.min.js')],
