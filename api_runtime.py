@@ -1973,7 +1973,10 @@ class Api:
                 exc_info=True
             )
 
-    def _save_config(self, username, password=None, ua=None, *, update_owner_binding=True):
+    def _save_config(
+        self, username, password=None, ua=None, *, update_owner_binding=True,
+        login_verified=False,
+    ):
         """保存账号配置；None 凭据保留原值，可由登录调用方单独更新已验证绑定。"""
         if not _main().is_valid_school_username(username):
             logging.warning(
@@ -2111,7 +2114,7 @@ class Api:
             and self.auth_username
         ):
             self._update_school_account_password(
-                self.auth_username, username, password, ua, login_verified=False
+                self.auth_username, username, password, ua, login_verified=login_verified
             )
 
         main_cfg = _main()._read_config_ini(self.config_path) or configparser.RawConfigParser()
@@ -7854,8 +7857,9 @@ class Api:
         auth_username, is_admin = self._get_auth_user_and_check_admin()
         if auth_username:
             try:
-                accounts = self._load_accounts_by_permission(auth_username)
-                account_info = accounts.get(username)
+                account_info = self._load_school_account_credentials(
+                    auth_username, username, own_only=not is_admin
+                )
                 if isinstance(account_info, dict):
                     if not password:
                         password = account_info.get("password")
@@ -7948,44 +7952,12 @@ class Api:
         if hasattr(self, "_web_session_id") and self._web_session_id:
             _main().save_session_state(self._web_session_id, self, force_save=True)
 
-        # 保存到新路径（支持权限检查）
-        auth_username = getattr(self, "auth_username", None)
+        # Only repair a missing UA on an existing owned binding here. Credentials
+        # and new membership are saved by the worker after successful login.
         if auth_username:
-            # 获取用户权限组，确定是否可以保存到聚合账号
-            if hasattr(_main(), "auth_system") and _main().auth_system:
-                user_group = _main().auth_system.get_user_group(auth_username)
-                is_admin = user_group in ["admin", "super_admin"]
-            else:
-                is_admin = True
-
-            try:
-                if is_admin:
-                    # 管理员：使用完整的聚合账号列表
-                    accounts = self._load_user_school_accounts(auth_username)
-                else:
-                    # 普通用户：仅保存到自己的账号列表
-                    file_path = self._get_user_accounts_file(auth_username)
-                    accounts = {}
-                    if os.path.exists(file_path):
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                        # 标准化格式
-                        for sch_user, account_info in data.items():
-                            if isinstance(account_info, dict):
-                                accounts[sch_user] = account_info
-                            elif isinstance(account_info, str):
-                                accounts[sch_user] = {
-                                    "password": account_info,
-                                    "ua": None
-                                }
-
-                accounts[username] = {
-                    "password": self.accounts[username].password,
-                    "ua": self.accounts[username].device_ua
-                }
-                self._save_user_school_accounts(auth_username, accounts)
-            except Exception as e:
-                logging.warning(f"保存账号到 school_accounts 失败: {e}")
+            self._persist_missing_school_account_ua(
+                auth_username, username, self.accounts[username].device_ua
+            )
 
         return self.multi_get_all_accounts_status([{"success": True}])
 
@@ -8012,7 +7984,9 @@ class Api:
         if pending is None:
             return
         # 没有待验证密码的账号走原路径（保留 "password=None 保留现有密码" 语义）
-        self._save_config(acc.username, acc.password, acc.device_ua)
+        self._save_config(
+            acc.username, acc.password, acc.device_ua, login_verified=True
+        )
         setattr(acc, "_pending_password", None)
         setattr(acc, "_password_before_change", None)
         acc.log_and_notify_frontend("新密码登录验证成功，已写入配置。")
@@ -8241,10 +8215,12 @@ class Api:
                     acc.is_verifying = False
                     try:
                         self._save_config(
-                            acc.username, acc.password, acc.device_ua)
-                        acc.log_and_notify_frontend(f"首次登录验证成功，密码已保存到配置文件。")
+                            acc.username, acc.password, acc.device_ua, login_verified=True)
+                        acc.log_and_notify_frontend("首次登录验证成功。")
                     except Exception as e:
-                        logging.error(f"保存密码到配置文件失败: {e}", exc_info=True)
+                        logging.error(
+                            "[多账号验证] 保存账号配置失败 error_type=%s", type(e).__name__
+                        )
                 else:
                     # 之前已验证过的账号重新登录成功：
                     # - 有待验证的新密码 → 此刻才正式落盘；
@@ -8256,7 +8232,7 @@ class Api:
                         self._commit_pending_account_password(acc)
                     elif os.path.exists(ini_path):
                         self._save_config(
-                            acc.username, acc.password, acc.device_ua
+                            acc.username, acc.password, acc.device_ua, login_verified=True
                         )
                     if verification_attempt:
                         acc.is_verifying = False

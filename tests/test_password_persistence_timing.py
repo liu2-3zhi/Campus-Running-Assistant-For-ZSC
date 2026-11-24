@@ -91,7 +91,9 @@ class TestStagingAndCommit(_PendingPasswordBase):
 
         main_module.Api._commit_pending_account_password(api, acc)
 
-        api._save_config.assert_called_once_with(acc.username, "new-pw", "ua")
+        api._save_config.assert_called_once_with(
+            acc.username, "new-pw", "ua", login_verified=True
+        )
         self.assertIsNone(main_module.Api._pending_account_password(api, acc))
 
     def test_rollback_restores_previous_password(self):

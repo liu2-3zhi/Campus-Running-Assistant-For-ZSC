@@ -1,7 +1,6 @@
 """Account UA survives loading, relogin and concurrent request construction."""
 
 import itertools
-import hashlib
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -19,6 +18,7 @@ import business_storage
 import storage_io
 from persistence.engine import DatabaseSettings
 from persistence.store import RelationalStore
+from persistence.validation import _storage_alias
 
 
 @pytest.fixture
@@ -33,6 +33,7 @@ def runtime(monkeypatch):
         is_valid_school_username=lambda value: value.isdigit() and len(value) >= 4,
         is_valid_school_password=lambda value: True,
         socketio=Mock(),
+        chardet=None,
         _redact_sensitive_log_value=lambda value: value,
     )
     for module in (api_client, api_runtime, runtime_models):
@@ -69,8 +70,10 @@ def owner_binding_store(runtime, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(storage_io, "get_runtime", lambda *paths: backend)
     runtime.SCHOOL_ACCOUNTS_DIR = str(root / "school_accounts")
-    runtime._auth_username_storage_key = lambda owner: hashlib.sha256(owner.encode()).hexdigest()
-    runtime.auth_system = SimpleNamespace(check_permission=Mock(return_value=False))
+    runtime._auth_username_storage_key = _storage_alias
+    runtime.auth_system = SimpleNamespace(
+        check_permission=Mock(return_value=False), get_user_group=Mock(return_value="user")
+    )
     api = account_bridge(root)
     api.auth_username = "test-owner"
     owner_key = runtime._auth_username_storage_key(api.auth_username)
@@ -90,12 +93,16 @@ def get_owner_bindings(harness):
     return json.loads(document.content.decode())
 
 
-def test_explicit_password_keeps_each_accounts_saved_ua(runtime, tmp_path):
-    api = account_bridge(tmp_path)
-    api._load_accounts_by_permission.return_value = {
+def test_explicit_password_keeps_each_accounts_saved_ua(owner_binding_store):
+    harness = owner_binding_store
+    api = harness.api
+    put_owner_bindings(harness, {
         "10001": {"password": "old-password", "ua": "Android account-A"},
         "10002": {"password": "old-password", "ua": "iPhone account-B"},
-    }
+    })
+    api._load_accounts_by_permission = Mock(side_effect=AssertionError("must not aggregate school accounts"))
+    api._load_user_school_accounts = Mock(side_effect=AssertionError("must not aggregate owner bindings"))
+    api._save_user_school_accounts = Mock(side_effect=AssertionError("must not bulk-save owner bindings"))
     for username in ("10001", "10002"):
         assert api.multi_add_account(username, "explicit-password")["success"]
 
@@ -111,6 +118,137 @@ def test_explicit_password_keeps_each_accounts_saved_ua(runtime, tmp_path):
     assert second.api_client._get_headers()["User-Agent"] == "iPhone account-B" + api_client.ApiClient.UA_SUFFIX
     assert first.api_client._get_headers()["platform"] == "android"
     assert second.api_client._get_headers()["platform"] == "ios"
+    assert get_owner_bindings(harness) == {
+        "10001": {"password": "old-password", "ua": "Android account-A"},
+        "10002": {"password": "old-password", "ua": "iPhone account-B"},
+    }
+    api._load_accounts_by_permission.assert_not_called()
+    api._load_user_school_accounts.assert_not_called()
+    api._save_user_school_accounts.assert_not_called()
+
+
+def configure_multi_storage_runtime(harness, runtime):
+    api = harness.api
+    api.user_dir = runtime.SCHOOL_ACCOUNTS_DIR
+    api.is_multi_account_mode = True
+    api.params = {}
+    api.config_path = str(harness.store.database.settings.root / "config.ini")
+    api._save_config = api_runtime.Api._save_config.__get__(api)
+    api._persist_school_account_backup = Mock()
+    api._update_account_status_js = Mock()
+    api._multi_fetch_and_summarize_tasks = Mock(return_value=False)
+    runtime._read_config_ini = lambda *args: api_runtime.configparser.RawConfigParser()
+    runtime._write_config_with_comments = Mock()
+    runtime._normalize_gender_value = lambda value: ""
+    runtime.auth_system.update_user_last_school_account = Mock()
+    runtime.auth_system.get_user_group = Mock(return_value="super_admin")
+
+
+@pytest.mark.parametrize("is_admin", [True, False])
+def test_new_multi_account_uses_target_credentials_and_binds_only_after_verification(
+    owner_binding_store, runtime, monkeypatch, is_admin
+):
+    harness = owner_binding_store
+    api = harness.api
+    configure_multi_storage_runtime(harness, runtime)
+    api._get_auth_user_and_check_admin.return_value = ("test-owner", is_admin)
+    runtime.auth_system.check_permission.return_value = is_admin
+    owned = {"10002": {"password": "owned-password", "ua": "iPhone owned-UA"}}
+    shared = {
+        "10001": {"password": "other-owner-password", "ua": "Android target-UA"},
+        "10009": {"password": "unrelated-password", "ua": "unrelated-UA"},
+    }
+    put_owner_bindings(harness, owned)
+    other_key = runtime._auth_username_storage_key("other-owner")
+    harness.store.put("system_accounts", other_key + ".json", json.dumps({"auth_username": "other-owner"}).encode())
+    shared_key = "user_accounts/" + other_key + ".json"
+    harness.store.put("school_accounts", shared_key, json.dumps(shared).encode())
+    harness.store.put("school_accounts", "10009.ini", b"[stats]\ncompleted_count=7\n")
+    unrelated_document = harness.store.get("school_accounts", "10009.ini")
+    api._load_accounts_by_permission = Mock(side_effect=AssertionError("must not aggregate school accounts"))
+    api._load_user_school_accounts = Mock(side_effect=AssertionError("must not aggregate owner bindings"))
+    api._save_user_school_accounts = Mock(side_effect=AssertionError("must not bulk-save owner bindings"))
+    monkeypatch.setattr(api_client.ApiClient, "generate_random_ua", staticmethod(lambda: "generated-target-UA"))
+    read_document = Mock(wraps=harness.store.get)
+    monkeypatch.setattr(harness.store, "get", read_document)
+
+    result = api.multi_add_account("10001", "unverified-password")
+
+    assert result["success"] is True
+    account = api.accounts["10001"]
+    expected_ua = "Android target-UA" if is_admin else "generated-target-UA"
+    assert account.device_ua == expected_ua
+    assert account.password == "unverified-password"
+    assert get_owner_bindings(harness) == owned
+    account_document = harness.store.get("school_accounts", "10001.ini")
+    config = api_runtime.configparser.RawConfigParser()
+    config.read_string(account_document.content.decode())
+    assert not config.has_option("Config", "password")
+    assert config.get("System", "ua") == expected_ua
+    assert all(call.args != ("school_accounts", shared_key) for call in read_document.call_args_list)
+    assert all(call.args != ("school_accounts", "10009.ini") for call in read_document.call_args_list)
+
+    api._queued_login = Mock(return_value={"success": False, "message": "denied"})
+    api._multi_refresh_worker_unlocked(account)
+    assert get_owner_bindings(harness) == owned
+
+    api._queued_login.return_value = {
+        "success": True,
+        "data": {"userInfo": {"id": "school-id", "account": "10001"}},
+    }
+    api._multi_refresh_worker_unlocked(account)
+
+    assert get_owner_bindings(harness) == {
+        **owned, "10001": {"password": "unverified-password", "ua": expected_ua},
+    }
+    assert json.loads(harness.store.get("school_accounts", shared_key).content) == shared
+    assert harness.store.get("school_accounts", "10009.ini") == unrelated_document
+    assert api.device_ua == "parent-UA"
+    api._load_accounts_by_permission.assert_not_called()
+    api._load_user_school_accounts.assert_not_called()
+    api._save_user_school_accounts.assert_not_called()
+
+
+@pytest.mark.parametrize("pending_password", [False, True])
+@pytest.mark.parametrize("login_success", [False, True])
+def test_multi_relogin_updates_existing_binding_only_after_verification(
+    owner_binding_store, runtime, monkeypatch, pending_password, login_success
+):
+    harness = owner_binding_store
+    api = harness.api
+    configure_multi_storage_runtime(harness, runtime)
+    owned = {"10001": {"password": "old-password", "ua": "Android target-UA"}}
+    put_owner_bindings(harness, owned)
+    api_runtime.Api._save_config(api, "10001", "old-password", "Android target-UA")
+    account = runtime.AccountSession("10001", "old-password", api)
+    account.device_ua = "Android target-UA"
+    account.is_first_login_verified = True
+    api.accounts[account.username] = account
+    if pending_password:
+        api._stage_pending_account_password(account, "verified-new-password")
+    else:
+        account.password = "verified-new-password"
+    api._queued_login = Mock(return_value={
+        "success": login_success, "message": "denied",
+        "data": {"userInfo": {"id": "school-id", "account": "10001"}},
+    })
+    persist_document = Mock(wraps=harness.store.put)
+    monkeypatch.setattr(harness.store, "put", persist_document)
+
+    api._multi_refresh_worker_unlocked(account)
+
+    assert get_owner_bindings(harness) == {
+        "10001": {
+            "password": "verified-new-password" if login_success else "old-password",
+            "ua": "Android target-UA",
+        },
+    }
+    written_keys = [call.args[:2] for call in persist_document.call_args_list]
+    expected_keys = [
+        ("school_accounts", "10001.ini"),
+        ("school_accounts", harness.binding_key),
+    ] if login_success else []
+    assert written_keys == expected_keys
 
 
 @pytest.mark.parametrize("lost_ua", [None, "", "  ", "null", "None", "undefined"])
