@@ -279,7 +279,7 @@ def make_login_runtime():
     api.user_data.student_id = "NULL"
     api.all_run_data = [object()]
     api.current_run_idx = 0
-    api.device_ua = "test-ua"
+    api.device_ua = "Mozilla/5.0 (Linux; Android 16; test-device)"
     api._web_session_id = "test-session"
     api.stop_run_flag = threading.Event()
     api.stop_run_flag.set()

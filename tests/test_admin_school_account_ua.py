@@ -10,18 +10,24 @@ from api_client import ApiClient
 from tests.backend_source_utils import PROJECT_ROOT
 
 
+GENERATED_UA = "Mozilla/5.0 (Linux; Android 15; Generated Test Device)"
+CUSTOM_ANDROID_UA = "Mozilla/5.0 (Linux; Android 14; Custom Test Device) AppleWebKit/537.36"
+
+
 @pytest.mark.parametrize("action", ["save", "update"])
 @pytest.mark.parametrize(
     ("submitted_ua", "expected_ua"),
     [
-        ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X)", "Android fixture UA"),
-        ("Campus App (iPadOS 18.5)", "Android fixture UA"),
-        ("  Custom Browser AppleWebKit/537.36  ", "Custom Browser AppleWebKit/537.36"),
-        ("", "Android fixture UA"),
+        ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X)", GENERATED_UA),
+        ("Campus App (iPadOS 18.5)", GENERATED_UA),
+        ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", GENERATED_UA),
+        ("Custom Browser AppleWebKit/537.36", GENERATED_UA),
+        (f"  {CUSTOM_ANDROID_UA}  ", CUSTOM_ANDROID_UA),
+        ("", GENERATED_UA),
     ],
 )
 def test_admin_account_write_normalizes_device_ua(monkeypatch, action, submitted_ua, expected_ua):
-    generate_ua = Mock(return_value="Android fixture UA")
+    generate_ua = Mock(return_value=GENERATED_UA)
     monkeypatch.setattr(ApiClient, "generate_random_ua", generate_ua)
     api = SimpleNamespace(
         _load_user_school_accounts=lambda owner: {"10001": {"password": "previous"}},
@@ -64,4 +70,4 @@ def test_admin_account_write_normalizes_device_ua(monkeypatch, action, submitted
     api._save_user_school_accounts.assert_called_once_with(
         "owner", {"10001": {"password": "fixture-password", "ua": expected_ua}},
     )
-    assert generate_ua.call_count == int(expected_ua == "Android fixture UA")
+    assert generate_ua.call_count == int(expected_ua == GENERATED_UA)

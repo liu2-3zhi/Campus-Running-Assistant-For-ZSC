@@ -15,9 +15,14 @@ from flask import Flask, jsonify, request
 
 import api_runtime
 import storage_io
+from api_client import ApiClient
 from business_storage import StoragePolicy, StorageRuntime
 from persistence.engine import DatabaseError, DatabaseSettings
 from persistence.store import RelationalStore
+
+
+def android_ua(label):
+    return f'Mozilla/5.0 (Linux; Android 14; {label})'
 
 
 @pytest.fixture
@@ -30,6 +35,7 @@ def credential_runtime(tmp_path, monkeypatch):
     check_permission = Mock(return_value=False)
     facade = SimpleNamespace(
         SCHOOL_ACCOUNTS_DIR=str(tmp_path / 'school_accounts'),
+        ApiClient=ApiClient,
         _auth_username_storage_key=lambda owner: owner,
         is_valid_school_username=lambda value: isinstance(value, str) and value.isdigit() and len(value) >= 4,
         auth_system=SimpleNamespace(check_permission=check_permission),
@@ -42,7 +48,7 @@ def credential_runtime(tmp_path, monkeypatch):
     api.is_guest = False
     api.is_authenticated = True
     api.params = {'test-only': True}
-    api.device_ua = 'session-UA'
+    api.device_ua = android_ua('Session Device')
     api.user_data = SimpleNamespace(name='', student_id='')
     api._load_school_account_stats_from_ini = Mock(side_effect=AssertionError('selection must not read stats'))
     yield store, api, facade
@@ -70,7 +76,7 @@ def selects(store):
 
 def test_selecting_one_of_446_owned_accounts_skips_stats_and_global_scans(credential_runtime, monkeypatch):
     store, api, facade = credential_runtime
-    accounts = {str(10000 + index): {'password': 'fixture-' + str(index), 'ua': 'UA-' + str(index)}
+    accounts = {str(10000 + index): {'password': 'fixture-' + str(index), 'ua': android_ua(f'Device {index}')}
                 for index in range(446)}
     put_owner(store, facade, 'owner', accounts)
     monkeypatch.setattr(store, 'list', Mock(side_effect=AssertionError('owned selection must not scan bindings')))
@@ -80,20 +86,47 @@ def test_selecting_one_of_446_owned_accounts_skips_stats_and_global_scans(creden
     store.list.assert_not_called()
     assert len(statements) <= 6
     assert result['password'] == 'fixture-223'
-    assert result['ua'] == 'UA-223'
+    assert result['ua'] == android_ua('Device 223')
     assert result['params'] == api.params
 
 
 def test_owned_credentials_win_and_keep_each_owners_ua(credential_runtime):
     store, api, facade = credential_runtime
     for owner in ('owner', 'other'):
-        put_owner(store, facade, owner, {'10001': {'password': owner + '-password', 'ua': owner + '-UA'}})
+        put_owner(store, facade, owner, {'10001': {'password': owner + '-password', 'ua': android_ua(owner)}})
     facade.auth_system.check_permission.return_value = True
     for owner in ('owner', 'other'):
         api.auth_username = owner
         result = api.on_user_selected('10001')
         assert result['password'] == owner + '-password'
-        assert result['ua'] == owner + '-UA'
+        assert result['ua'] == android_ua(owner)
+    api._load_school_account_stats_from_ini.assert_not_called()
+
+
+@pytest.mark.parametrize('old_ua', [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/133.0',
+])
+def test_selecting_owned_non_android_ua_repairs_only_that_account(credential_runtime, monkeypatch, old_ua):
+    store, api, facade = credential_runtime
+    repaired = android_ua('Repaired Device')
+    sibling = {'password': 'sibling-password', 'ua': old_ua}
+    put_owner(store, facade, 'owner', {
+        '10001': {'password': 'fixture-only', 'ua': old_ua},
+        '10002': sibling,
+    })
+    generate = Mock(return_value=repaired)
+    monkeypatch.setattr(ApiClient, 'generate_random_ua', generate)
+
+    for _ in range(2):
+        result = api.on_user_selected('10001')
+        assert result['password'] == 'fixture-only'
+        assert result['ua'] == repaired
+
+    generate.assert_called_once_with()
+    assert store.get_school_account_credentials('owner', '10001') == {'password': 'fixture-only', 'ua': repaired}
+    assert store.get_school_account_credentials('owner', '10002') == sibling
+    assert api.device_ua == android_ua('Session Device')
     api._load_school_account_stats_from_ini.assert_not_called()
 
 
@@ -102,13 +135,13 @@ def test_legacy_string_password_uses_session_ua_without_stats(credential_runtime
     put_owner(store, facade, 'owner', {'10001': 'fixture-legacy'})
     result = api.on_user_selected('10001')
     assert result['password'] == 'fixture-legacy'
-    assert result['ua'] == 'session-UA'
+    assert result['ua'] == android_ua('Session Device')
     api._load_school_account_stats_from_ini.assert_not_called()
 
 
 def test_ordinary_owner_cannot_load_another_owners_credentials(credential_runtime, monkeypatch):
     store, api, facade = credential_runtime
-    put_owner(store, facade, 'other', {'10001': {'password': 'other-password', 'ua': 'other-UA'}})
+    put_owner(store, facade, 'other', {'10001': {'password': 'other-password', 'ua': android_ua('Other Device')}})
     api.auth_group = 'user'
     api.auth_system = facade.auth_system
     monkeypatch.setattr(store, 'list', Mock(side_effect=AssertionError('ordinary owner must not scan bindings')))
@@ -121,39 +154,40 @@ def test_ordinary_owner_cannot_load_another_owners_credentials(credential_runtim
 
 def test_admin_group_alone_does_not_grant_global_aggregation(credential_runtime, monkeypatch):
     store, api, facade = credential_runtime
-    put_owner(store, facade, 'other', {'10001': {'password': 'other-password', 'ua': 'other-UA'}})
+    put_owner(store, facade, 'other', {'10001': {'password': 'other-password', 'ua': android_ua('Other Device')}})
     monkeypatch.setattr(store, 'list', Mock(side_effect=AssertionError('manage_users permission is required')))
     result = api.on_user_selected('10001')
     assert result['password'] == ''
-    assert result['ua'] == 'session-UA'
+    assert result['ua'] == android_ua('Session Device')
     store.list.assert_not_called()
 
 
 def test_admin_target_lookup_bulk_reads_bindings_but_never_stats(credential_runtime):
     store, api, facade = credential_runtime
-    put_owner(store, facade, 'other', {'10001': {'password': 'other-password', 'ua': 'other-UA'}})
+    put_owner(store, facade, 'other', {'10001': {'password': 'other-password', 'ua': android_ua('Other Device')}})
     facade.auth_system.check_permission.return_value = True
     with selects(store) as statements:
         result = api.on_user_selected('10001')
     assert result['password'] == 'other-password'
-    assert result['ua'] == 'other-UA'
+    assert result['ua'] == android_ua('Other Device')
     assert len(statements) <= 8
     api._load_school_account_stats_from_ini.assert_not_called()
 
 
 def test_admin_target_legacy_ini_lookup_only_reads_requested_account(credential_runtime):
     store, api, facade = credential_runtime
-    store.put('school_accounts', '10001.ini', b'[Config]\npassword=ini-password\n[System]\nUA=ini-UA\n')
+    ua = android_ua('INI Device')
+    store.put('school_accounts', '10001.ini', f'[Config]\npassword=ini-password\n[System]\nUA={ua}\n'.encode())
     facade.auth_system.check_permission.return_value = True
     result = api.on_user_selected('10001')
     assert result['password'] == 'ini-password'
-    assert result['ua'] == 'ini-UA'
+    assert result['ua'] == ua
     api._load_school_account_stats_from_ini.assert_not_called()
 
 
 def test_single_account_credentials_own_only_ignores_management_privileges(credential_runtime, monkeypatch):
     store, api, facade = credential_runtime
-    put_owner(store, facade, 'other', {'10001': {'password': 'other-password', 'ua': 'other-UA'}})
+    put_owner(store, facade, 'other', {'10001': {'password': 'other-password', 'ua': android_ua('Other Device')}})
     facade.auth_system.check_permission.return_value = True
     monkeypatch.setattr(store, 'list', Mock(side_effect=AssertionError('own-only lookup must not scan bindings')))
     assert api._load_school_account_credentials('owner', '10001', own_only=True) is None
@@ -176,7 +210,7 @@ def test_http_visibility_uses_single_owned_lookup_for_object_and_array(credentia
     import route_failure_visibility
     store, api, facade = credential_runtime
     put_owner(store, facade, 'owner', {'10001' if owned else '10002':
-                                     {'password': 'owner-password', 'ua': 'owner-UA'}})
+                                     {'password': 'owner-password', 'ua': android_ua('Owner Device')}})
     api.auth_group = 'user'
     api.auth_system = facade.auth_system
     facade.auth_system.check_permission.side_effect = lambda owner, permission: permission == 'view_user_details'
@@ -203,7 +237,7 @@ def test_http_visibility_uses_single_owned_lookup_for_object_and_array(credentia
         result = client.post('/api/on_user_selected', json=payload, headers={'X-Session-ID': 'business-session'})
     assert result.status_code == 200
     assert result.json['password'] == password
-    assert result.json['ua'] == ('owner-UA' if owned else '')
+    assert result.json['ua'] == (android_ua('Owner Device') if owned else '')
     api._load_user_school_accounts.assert_not_called()
     api._load_school_account_stats_from_ini.assert_not_called()
 

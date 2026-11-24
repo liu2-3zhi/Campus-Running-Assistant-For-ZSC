@@ -11,9 +11,12 @@ import session_state
 
 
 SESSION_ID = "55555555-5555-4555-8555-555555555555"
-UA_A = "Mozilla/5.0 (Linux; Android 13) account-a"
-UA_B = "Mozilla/5.0 (Linux; Android 14) account-b"
+UA_A = "Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 Chrome/121.0.0.0 Mobile Safari/537.36"
+UA_B = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/122.0.0.0 Mobile Safari/537.36"
+PARENT_UA = UA_A.replace("Pixel 6", "Parent device")
 LEGACY_IOS_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) legacy"
+LEGACY_DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"
+LEGACY_CUSTOM_UA = "legacy-client/1.0"
 
 
 class SnapshotAccount:
@@ -36,7 +39,7 @@ def session_runtime(monkeypatch, tmp_path):
     lookups = []
 
     def generate_ua():
-        ua = f"Mozilla/5.0 (Linux; Android 14) generated-{len(generated) + 1}"
+        ua = UA_B.replace("Pixel 8", f"Generated device {len(generated) + 1}")
         generated.append(ua)
         return ua
 
@@ -80,7 +83,7 @@ def session_runtime(monkeypatch, tmp_path):
             accounts={},
             global_params={},
             params={},
-            device_ua="parent-ua-must-not-be-used",
+            device_ua=PARENT_UA,
             is_multi_account_mode=True,
             user_data=None,
             all_run_data=[],
@@ -113,8 +116,8 @@ def test_real_snapshot_round_trip_preserves_each_account_ua_and_verification(ses
     assert state["multi_account_states"]["20260001"]["is_first_login_verified"] is True
 
     restored = session_runtime.make_api({
-        "20260001": {"password": "test-a", "ua": "different-stored-a"},
-        "20260002": {"password": "test-b", "ua": "different-stored-b"},
+        "20260001": {"password": "test-a", "ua": UA_B},
+        "20260002": {"password": "test-b", "ua": UA_A},
     })
     session_state.restore_session_to_api_instance(restored, state)
 
@@ -124,7 +127,7 @@ def test_real_snapshot_round_trip_preserves_each_account_ua_and_verification(ses
     assert restored.accounts["20260002"].password == "test-b"
     assert session_runtime.refresh_started == [("20260001", UA_A), ("20260002", UA_B)]
     assert session_runtime.generated == []
-    assert restored.device_ua == "parent-ua-must-not-be-used"
+    assert restored.device_ua == PARENT_UA
 
 
 def test_old_snapshot_restores_stored_ua_and_generates_for_legacy_password_entry(session_runtime):
@@ -148,7 +151,10 @@ def test_old_snapshot_restores_stored_ua_and_generates_for_legacy_password_entry
     assert all(ua != api.device_ua for _, ua in session_runtime.refresh_started)
 
 
-@pytest.mark.parametrize("invalid_ua", [None, "", " null ", "None", "undefined", 123, LEGACY_IOS_UA])
+@pytest.mark.parametrize("invalid_ua", [
+    None, "", " null ", "None", "undefined", 123,
+    LEGACY_IOS_UA, LEGACY_DESKTOP_UA, LEGACY_CUSTOM_UA,
+])
 def test_invalid_snapshot_ua_uses_the_same_accounts_stored_ua(session_runtime, invalid_ua):
     api = session_runtime.make_api({"20260001": {"password": "test-a", "ua": UA_A}})
     session_state.restore_session_to_api_instance(api, {
@@ -182,16 +188,17 @@ def test_existing_account_preserves_own_ua_and_empty_account_gets_snapshot_ua(se
     assert session_runtime.refresh_started == [("20260001", UA_A), ("20260002", UA_B)]
 
 
-def test_rebuilt_accounts_replace_legacy_ios_with_their_own_android_ua(session_runtime):
+def test_rebuilt_accounts_repair_legacy_ua_for_restored_accounts_only(session_runtime):
     api = session_runtime.make_api({
         "20260001": {"password": "test-a", "ua": LEGACY_IOS_UA},
-        "20260002": {"password": "test-b", "ua": LEGACY_IOS_UA},
+        "20260002": {"password": "test-b", "ua": LEGACY_DESKTOP_UA},
+        "20260003": {"password": "test-c", "ua": LEGACY_CUSTOM_UA},
     })
     session_state.restore_session_to_api_instance(api, {
         "is_multi_account_mode": True,
         "multi_account_states": {
             "20260001": {"device_ua": UA_A},
-            "20260002": {"device_ua": LEGACY_IOS_UA},
+            "20260002": {"device_ua": LEGACY_CUSTOM_UA},
         },
     })
 
@@ -202,14 +209,18 @@ def test_rebuilt_accounts_replace_legacy_ios_with_their_own_android_ua(session_r
     assert session_runtime.persisted == [
         ("test-owner", "20260001", UA_A), ("test-owner", "20260002", ua_b),
     ]
+    assert session_runtime.lookups == [
+        ("test-owner", "20260001", False), ("test-owner", "20260002", False),
+    ]
     assert session_runtime.refresh_started == [("20260001", UA_A), ("20260002", ua_b)]
-    assert api.device_ua == "parent-ua-must-not-be-used"
+    assert api.device_ua == PARENT_UA
 
 
-def test_existing_ios_account_prefers_its_current_android_binding(session_runtime):
+@pytest.mark.parametrize("live_ua", [LEGACY_IOS_UA, LEGACY_DESKTOP_UA, LEGACY_CUSTOM_UA])
+def test_existing_non_android_account_prefers_its_current_android_binding(session_runtime, live_ua):
     api = session_runtime.make_api({"20260001": {"password": "test-a", "ua": UA_A}})
     existing = SnapshotAccount("20260001", "test-a", api)
-    existing.device_ua = LEGACY_IOS_UA
+    existing.device_ua = live_ua
     api.accounts = {existing.username: existing}
 
     session_state.restore_session_to_api_instance(api, {
@@ -222,8 +233,32 @@ def test_existing_ios_account_prefers_its_current_android_binding(session_runtim
     assert session_runtime.refresh_started == [("20260001", UA_A)]
 
 
-@pytest.mark.parametrize("stored_ua", [UA_A, LEGACY_IOS_UA])
-def test_single_account_replaces_legacy_ios_snapshot_from_own_binding(session_runtime, stored_ua):
+def test_repairing_live_legacy_ua_saves_only_once(session_runtime):
+    api = session_runtime.make_api({"20260001": {"password": "test-a", "ua": LEGACY_CUSTOM_UA}})
+    existing = SnapshotAccount("20260001", "test-a", api)
+    existing.device_ua = LEGACY_DESKTOP_UA
+    existing._repair_unsupported_device_ua = lambda _previous, replacement: api._persist_missing_school_account_ua(
+        api.auth_username, existing.username, replacement
+    )
+    client = object.__new__(session_state.ApiClient)
+    client.app = existing
+    client._device_ua = ""
+    client._device_ua_lock = threading.Lock()
+    existing.api_client = client
+    api.accounts = {existing.username: existing}
+
+    session_state.restore_session_to_api_instance(api, {
+        "is_multi_account_mode": True,
+        "multi_account_states": {"20260001": {"device_ua": UA_A}},
+    })
+
+    assert existing.device_ua == UA_A
+    assert session_runtime.persisted == [("test-owner", "20260001", UA_A)]
+
+
+@pytest.mark.parametrize("stored_ua", [UA_A, LEGACY_IOS_UA, LEGACY_DESKTOP_UA])
+@pytest.mark.parametrize("snapshot_ua", [LEGACY_IOS_UA.swapcase(), LEGACY_DESKTOP_UA, LEGACY_CUSTOM_UA])
+def test_single_account_replaces_legacy_snapshot_from_own_binding(session_runtime, stored_ua, snapshot_ua):
     api = session_runtime.make_api({
         "20260001": {"password": "test-a", "ua": stored_ua},
         "20260002": {"password": "test-b", "ua": UA_B},
@@ -232,7 +267,7 @@ def test_single_account_replaces_legacy_ios_snapshot_from_own_binding(session_ru
     session_state.restore_session_to_api_instance(api, {
         "is_multi_account_mode": False,
         "user_data": {"username": "20260001"},
-        "device_ua": LEGACY_IOS_UA.swapcase(),
+        "device_ua": snapshot_ua,
     })
 
     assert session_runtime.lookups == [("test-owner", "20260001", True)]

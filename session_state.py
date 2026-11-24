@@ -613,7 +613,8 @@ def restore_session_to_api_instance(api_instance, state):
                                     ) or {}
                                     stored_ua = ApiClient.normalize_device_ua(credentials.get("ua"))
                                     restored_ua = stored_ua or restored_ua
-                                if unsupported_live_ua and stored_ua:
+                                if unsupported_live_ua:
+                                    # 恢复路径已负责补写绑定，清除旧值后只恢复客户端身份。
                                     acc.device_ua = stored_ua
                                 ensure_ua = getattr(getattr(acc, "api_client", None), "ensure_device_ua", None)
                                 acc.device_ua = (
@@ -720,7 +721,7 @@ def restore_session_to_api_instance(api_instance, state):
 
 
 def _restore_single_account_device_ua(api_instance, school_username):
-    """从当前学校账号的自有绑定恢复 Android UA。"""
+    """在恢复旧非 Android 快照时读取当前学校账号的自有绑定。"""
     owner = getattr(api_instance, "auth_username", None)
     credentials = None
     try:

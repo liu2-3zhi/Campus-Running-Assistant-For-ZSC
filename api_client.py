@@ -14,11 +14,15 @@ from main_runtime import _main
 # 服务端 checkVersion 返回的 version 形如 "1.0.85"，比较时按数字段比，不能按字符串比
 # （"1.0.9" > "1.0.85" 在字符串比较里成立，在版本语义里不成立）。
 _VERSION_NUM_RE = re.compile(r"\d+")
-_APPLE_MOBILE_UA_RE = re.compile(
-    r"(?<![a-z])(?:iphone|ipad(?:os)?|ipod|ios)(?![a-z])",
+_APPLE_DEVICE_UA_RE = re.compile(
+    r"(?<![a-z])(?:iphone|ipad(?:os)?|ipod|ios|macintosh|macos|mac[ \t]+os(?:[ \t]+x)?)(?![a-z])",
     re.IGNORECASE | re.ASCII,
 )
-_ANDROID_UA_RE = re.compile(r"\bandroid\b", re.IGNORECASE | re.ASCII)
+_ANDROID_UA_RE = re.compile(
+    r"(?:^|[;(])[ \t]*Android[ \t]+[0-9]+(?:\.[0-9]+)*(?=[ \t]*[;)]|$)",
+    re.IGNORECASE | re.ASCII,
+)
+_EMPTY_DEVICE_UAS = frozenset({"", "null", "none", "undefined"})
 
 
 def scrub_login_query(message):
@@ -111,20 +115,20 @@ class ApiClient:
             return f"{self.RUN_BASE_URL}{path}"
         return f"{self.BASE_URL}{self.APP_PREFIX}{path}"
 
-    @staticmethod
-    def is_unsupported_device_ua(value) -> bool:
-        """识别不能用于校园接口的 Apple 移动设备 UA。"""
-        return isinstance(value, str) and _APPLE_MOBILE_UA_RE.search(value) is not None
-
     @classmethod
-    def normalize_device_ua(cls, value) -> str:
-        """忽略空配置、序列化空值和不受支持的设备 UA。"""
+    def is_unsupported_device_ua(cls, value) -> bool:
+        """判断已配置的 UA 是否需要替换。"""
+        if not isinstance(value, str):
+            return value is not None
+        return value.strip().lower() not in _EMPTY_DEVICE_UAS and not cls.normalize_device_ua(value)
+
+    @staticmethod
+    def normalize_device_ua(value) -> str:
+        """只接受声明 Android 系统和版本的设备 UA。"""
         if not isinstance(value, str):
             return ""
         value = value.strip()
-        if value.lower() in {"", "null", "none", "undefined"} or cls.is_unsupported_device_ua(value):
-            return ""
-        return value
+        return value if _ANDROID_UA_RE.search(value) and not _APPLE_DEVICE_UA_RE.search(value) else ""
 
     def ensure_device_ua(self, fallback: str | None = None) -> str:
         """仅使用本客户端所属账号的 UA；丢失时恢复，不借用父会话设备。"""
@@ -146,16 +150,6 @@ class ApiClient:
                 except Exception as exc:
                     logging.warning("[设备 UA] 保存替换后的设备 UA 失败 (%s)", type(exc).__name__)
         return ua
-
-    def _app_platform(self, device_ua: str | None = None) -> str:
-        """从设备 UA 确定请求平台，兼容保留其他旧自定义平台。"""
-        ua = device_ua if device_ua is not None else self.ensure_device_ua()
-        if _ANDROID_UA_RE.search(ua):
-            return "android"
-        os_name = getattr(self.app, "platform", None)
-        if os_name and not self.is_unsupported_device_ua(str(os_name)):
-            return str(os_name)
-        return "android"
 
     @staticmethod
     def _clean_params(params: dict | None) -> dict | None:
@@ -201,7 +195,7 @@ class ApiClient:
             "X-Requested-With": self.APP_CLIENT_ID,
             "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
             "User-Agent": user_agent,
-            "platform": self._app_platform(device_ua),
+            "platform": "android",
         }
 
         auth_token = self._access_token
@@ -723,7 +717,7 @@ class ApiClient:
             from fake_useragent import UserAgent
 
             ua = cls.normalize_device_ua(UserAgent(platforms=["mobile"], os=["Android"]).random)
-            if _ANDROID_UA_RE.search(ua):
+            if ua:
                 return ua
         except Exception:
             pass
