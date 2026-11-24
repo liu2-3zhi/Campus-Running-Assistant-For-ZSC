@@ -1036,14 +1036,15 @@ class Api:
         return None
 
     @staticmethod
-    def _cached_school_account_names(store, owner, *, include_all=False):
+    def _cached_school_account_names(store, owner, *, include_all=False, include_manual=False):
         def load():
-            return store.list_school_account_names(owner, include_all=include_all)
+            return store.list_school_account_names(
+                owner, include_all=include_all, include_manual=include_manual)
 
         generation = store.school_cache_generation()
         if generation is None:
             return load()
-        key = f"school-account-names:{generation}:{int(include_all)}:{owner}"
+        key = f"school-account-names:{generation}:{int(include_all)}:{int(include_manual)}:{owner}"
         return cached_json(key, load)
 
     def _load_school_account_credentials(self, auth_username, school_username, *, own_only=False):
@@ -2463,7 +2464,8 @@ class Api:
 
                 if has_view_all_permission:
                     store = self._school_account_store(self._get_user_accounts_file(auth_username))
-                    users = (self._cached_school_account_names(store, auth_username, include_all=True)
+                    users = (self._cached_school_account_names(
+                        store, auth_username, include_all=True, include_manual=True)
                              if store is not None else configured_users())
                     logging.debug(
                         f"用户 {auth_username} 有权限，返回所有 {len(users)} 个学校账户"
@@ -2510,7 +2512,9 @@ class Api:
 
             # 验证 last_user 是否有效
             if last_user and last_user not in users:
-                last_user = ""
+                if (not _main().is_valid_school_username(last_user) or
+                        not os.path.exists(os.path.join(self.user_dir, f"{last_user}.ini"))):
+                    last_user = ""
 
             self._load_global_config()
 

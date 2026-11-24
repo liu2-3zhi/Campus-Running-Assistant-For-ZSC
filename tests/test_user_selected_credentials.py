@@ -245,6 +245,23 @@ def test_initial_data_own_visibility_reads_only_owned_names_without_stats_or_sca
     assert result['users'] == [str(10000 + index) for index in range(446)]
 
 
+def test_school_login_keeps_manual_login_options_and_its_last_selection(credential_runtime):
+    store, api, facade = credential_runtime
+    put_owner(store, facade, 'owner', {'10001': {}})
+    store.put('school_accounts', '10002.ini', b'[stats]\noverdue_count=0\n')
+    prepare_initial_data(api, facade)
+    facade.auth_system.get_user_details = lambda owner: {'last_used_school_account': '10002'}
+    facade.auth_system.resolve_password_visibility = lambda owner: 'all'
+    result = api.get_initial_data()
+    assert result['users'] == ['10001', '10002']
+    assert result['lastUser'] == '10002'
+
+    facade.auth_system.resolve_password_visibility = lambda owner: 'none'
+    result = api.get_initial_data()
+    assert result['users'] == []
+    assert result['lastUser'] == '10002'
+
+
 def test_own_names_lookup_propagates_database_failure_and_initial_data_reports_failure(credential_runtime, monkeypatch):
     store, api, facade = credential_runtime
     prepare_initial_data(api, facade)

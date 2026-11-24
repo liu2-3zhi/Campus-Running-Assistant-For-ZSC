@@ -318,7 +318,7 @@ class RelationalStore:
             return {'password': row[0], 'ua': row[1]} if row is not None else None
 
     @_safe_database
-    def list_school_account_names(self, owner_username, *, include_all=False):
+    def list_school_account_names(self, owner_username, *, include_all=False, include_manual=False):
         """Project account picker names without rebuilding or returning secrets.
 
         Owned links are included regardless of password so an account with a
@@ -326,6 +326,8 @@ class RelationalStore:
         ``include_all`` is enabled, other owners' nonblank-password links and
         root-level global school configurations with a nonblank Password are
         also included. Results are unique and sorted.
+        With include_manual, root school configurations without a password
+        also appear on the manual login page.
         """
         if self.schema_version != SCHEMA_VERSION:
             raise DatabaseError('School account projections require relational schema v3')
@@ -354,10 +356,12 @@ class RelationalStore:
                 schools.c.defaults['Password'].as_string(),
             )
             global_config = select(schools.c.school_username.label('school_username')).where(
-                schools.c.source_key.not_like('%/%'),
-                func.lower(func.json_type(schools.c.configuration)) == 'object',
-                self._has_non_whitespace_text(password),
-            )
+                schools.c.source_key.not_like('%/%'))
+            if not include_manual:
+                global_config = global_config.where(
+                    func.lower(func.json_type(schools.c.configuration)) == 'object',
+                    self._has_non_whitespace_text(password),
+                )
             names_query = own.union(shared, global_config).order_by('school_username')
         else:
             names_query = own.distinct().order_by('school_username')
