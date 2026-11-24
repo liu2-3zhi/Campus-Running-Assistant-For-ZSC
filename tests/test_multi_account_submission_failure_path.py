@@ -116,6 +116,9 @@ class TestFailingSubmissionPath(unittest.TestCase):
         )
         self._socketio_patcher.start()
         self.addCleanup(self._socketio_patcher.stop)
+        session_save = mock.patch.object(main_module, "save_session_state")
+        session_save.start()
+        self.addCleanup(session_save.stop)
 
     def _run_with_submission_result(self, submit_ok):
         self.api._submit_chunk_with_retries = mock.Mock(return_value=submit_ok)
@@ -168,20 +171,36 @@ class TestFailingSubmissionPath(unittest.TestCase):
         self.assertEqual(outcome, "aborted")
         self.api._build_route_path_with_random_detours.assert_not_called()
         self.api._submit_chunk_with_retries.assert_not_called()
+        self.assertNotIn("执行失败", "\n".join(self.acc.logs))
 
     def test_failing_submission_logs_task_failure(self):
         self._run_with_submission_result(False)
 
         joined = "\n".join(self.acc.logs)
         self.assertIn("执行失败", joined)
+        self.api._update_account_status_js.assert_called_with(self.acc, status_text="任务失败")
 
-    def test_successful_submission_still_returns_success(self):
-        """成功路径不能被这次改动破坏。"""
+    def test_confirmed_task_keeps_completed_status(self):
         self.api._finalize_run = mock.Mock(return_value=True)
 
         outcome = self._run_with_submission_result(True)
 
         self.assertEqual(outcome, "success")
+        self.api._finalize_run.assert_called_once()
+        final_status = self.api._update_account_status_js.call_args.kwargs
+        self.assertEqual(final_status["status_text"], "任务已完成")
+        self.assertEqual(final_status["progress_pct"], 100)
+        self.assertIn("执行流程完成", "\n".join(self.acc.logs))
+        self.assertNotIn("执行失败", "\n".join(self.acc.logs))
+
+    def test_unconfirmed_task_keeps_its_specific_status(self):
+        outcome = self._run_with_submission_result(True)
+
+        self.assertEqual(outcome, "failed")
+        self.api._finalize_run.assert_called_once()
+        self.api._update_account_status_js.assert_called_with(self.acc, status_text="任务未确认完成")
+        self.assertIn("未被服务器确认完成", "\n".join(self.acc.logs))
+        self.assertNotIn("执行失败", "\n".join(self.acc.logs))
 
     def test_task_succeeded_is_initialized_before_first_use(self):
         """结构性兜底：声明必须出现在函数早期，而不是只在 if 分支里。"""

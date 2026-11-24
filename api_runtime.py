@@ -10704,7 +10704,7 @@ class Api:
                     logging.error(
                         f"[{acc.username}] 任务结束后保存会话失败: {e}"
                     )
-        if not (self.multi_run_stop_flag.is_set() or acc.stop_event.is_set()):
+        elif not (self.multi_run_stop_flag.is_set() or acc.stop_event.is_set()):
             acc.log_and_notify_frontend(f"任务 {run_data.run_name} 执行失败。")
             self._update_account_status_js(acc, status_text="任务失败")
 
