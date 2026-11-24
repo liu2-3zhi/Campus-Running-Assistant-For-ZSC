@@ -65,13 +65,14 @@ def test_network_request_logs_actual_parameters_headers_and_response(method, cap
 
     assert result is response
     for detail in (
-        "request-user", "request-password", "query-value", "authorization-value",
+        "request-user", "request-password", "query-value",
         "header-value", "detail-response", "upstream-specific-reason",
     ):
         assert detail in caplog.text
+    assert "authorization-value" not in caplog.text
 
 
-def test_network_headers_log_actual_cookie_values(caplog):
+def test_network_headers_never_log_cookie_tokens(caplog):
     runtime = runtime_for_network_logs()
     session = requests.Session()
     session.cookies.set("shiroCookie", "cookie-auth-value")
@@ -81,7 +82,28 @@ def test_network_headers_log_actual_cookie_values(caplog):
         headers = client._get_headers()
 
     assert headers["Authorization"] == "cookie-auth-value"
-    assert "cookie-auth-value" in caplog.text
+    assert "cookie-auth-value" not in caplog.text
+
+
+def test_school_login_keeps_password_and_tokens_out_of_debug_logs(caplog):
+    runtime = runtime_for_network_logs()
+    session = mock.Mock()
+    session.post.return_value = response_with_text(json.dumps({
+        "success": True, "data": {
+            "accessToken": "fixture-school-token", "refreshToken": "fixture-refresh-token",
+        },
+    }))
+    session.post.return_value.headers["Set-Cookie"] = "shiroCookie=fixture-login-cookie"
+    client = client_with_session(session)
+    with mock.patch.object(api_client, "_main", return_value=runtime), \
+         mock.patch.object(client, "sync_app_version"), caplog.at_level(logging.DEBUG):
+        assert client.login("10001", "fixture-school-password")["success"]
+
+    assert session.post.call_args.kwargs["params"]["password"] == "fixture-school-password"
+    assert client.access_token == "fixture-school-token"
+    assert "/app/login" in caplog.text
+    for secret in ("fixture-school-password", "fixture-school-token", "fixture-refresh-token", "fixture-login-cookie"):
+        assert secret not in caplog.text
 
 
 @pytest.mark.parametrize("error_class", [requests.Timeout, requests.RequestException])

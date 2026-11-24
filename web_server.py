@@ -13967,10 +13967,8 @@ def start_web_server(args_param):
 
             if hasattr(api_instance, method):
                 func = getattr(api_instance, method)
-                safe_params = _main()._redact_sensitive_log_value(params)
                 logging.debug(
-                    f"API调用: 方法={method}, 参数类型={type(params)}, "
-                    f"参数内容={safe_params}"
+                    "API调用: 方法=%s 参数类型=%s", method, type(params).__name__,
                 )
 
                 if params:
@@ -27444,9 +27442,12 @@ def start_web_server(args_param):
                 or _main().request.path.endswith(".jpg")
                 or _main().request.path.endswith(".ico")
             )
+            query = request.query_string.decode('utf-8', errors='replace')
+            if request.path.rstrip("/") in {"/api/login", "/auth/login"}:
+                query = "<redacted>" if query else ""
             log_msg = (
                 f"[请求开始] {request.method} {request.path} "
-                f"query={_main()._redact_sensitive_log_text(request.query_string.decode('utf-8', errors='replace'))}"
+                f"query={_main()._redact_sensitive_log_text(query)}"
             )
             if is_noisy_path:
                 logging.debug(log_msg)

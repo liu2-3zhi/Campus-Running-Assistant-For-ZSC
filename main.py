@@ -163,7 +163,7 @@ from runtime_models import (
     _resolve_billing_payment_entry,
     _save_qr_cache_index,
 )
-from api_client import ApiClient
+from api_client import ApiClient, scrub_login_query
 from auth_system import AuthSystem, GUEST_SESSION_CREATION_LOCK
 from api_runtime import Api
 from web_server import start_web_server
@@ -4653,7 +4653,7 @@ class NoColorFileFormatter(logging.Formatter):
         """
         格式化日志记录并移除颜色代码。
         """
-        original_message = _redact_sensitive_log_text(super().format(record))
+        original_message = _redact_sensitive_log_text(scrub_login_query(super().format(record)))
         cleaned_message = self.ansi_escape_regex.sub("", original_message)
         return cleaned_message
 

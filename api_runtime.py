@@ -1435,64 +1435,69 @@ class Api:
     def _update_school_account_password(
         self, auth_username, school_username, password, ua=None, login_verified=False
     ):
-        """
-        更新指定认证用户的某个 school_account 的密码和UA。
+        """Update one owner binding without loading or writing other accounts."""
+        if (
+            not auth_username or auth_username == "guest"
+            or not _main().is_valid_school_username(school_username)
+        ):
+            return False
 
-        参数:
-            auth_username: 认证用户名
-            school_username: 学校账户用户名
-            password: 密码
-            ua: User-Agent（可选）
-            login_verified: 是否已验证登录成功（True 时才会覆盖现有密码）
-        """
-        if not auth_username or auth_username == "guest":
-            return
+        path = self._get_user_accounts_file(auth_username)
+        try:
+            try:
+                handle = open(path, "r+", encoding="utf-8")
+                exists = True
+            except FileNotFoundError:
+                if password is None:
+                    return False
+                handle = open(path, "x+", encoding="utf-8")
+                exists = False
 
-        accounts = self._load_user_school_accounts(auth_username)
-
-        existing_data = accounts.get(school_username)
-        if existing_data:
-            if isinstance(existing_data, str):
-                existing_data = {"password": existing_data, "ua": ""}
-                accounts[school_username] = existing_data
-
-            if not login_verified:
-                self._persist_missing_school_account_ua(auth_username, school_username, ua)
-                logging.debug(
-                    f"school_account {school_username} 已存在，且未验证登录成功，跳过更新"
-                )
-                return
-
-        # ========== 更新密码时保留统计数据 ==========
-        # 问题：直接赋值 accounts[school_username] = {...} 会丢失 overdue_count 和 completed_count
-        # 解决：先获取现有数据，更新密码和UA，保留统计数据
-        if school_username in accounts:
-            # 账号已存在，更新密码和UA，保留其他字段
-            accounts[school_username]["password"] = password
-            normalized_ua = ApiClient.normalize_device_ua(ua)
-            if normalized_ua:
-                accounts[school_username]["ua"] = normalized_ua
-            logging.debug(
-                f"更新 {school_username} 密码和UA，保留统计数据: "
-                f"overdue_count={accounts[school_username].get('overdue_count', 'N/A')}, "
-                f"completed_count={accounts[school_username].get('completed_count', 'N/A')}"
+            # Managed r+/x+ handles commit against the revision read here.
+            # Never recover a stale mutation with an unconditional write.
+            with handle:
+                accounts = json.load(handle) if exists else {}
+                if not isinstance(accounts, dict):
+                    raise ValueError("学校账号绑定记录必须是对象")
+                existing = accounts.get(school_username)
+                if existing is None and password is None:
+                    return False
+                if isinstance(existing, str):
+                    entry = {"password": existing, "ua": ""}
+                elif isinstance(existing, dict):
+                    entry = dict(existing)
+                elif existing is None:
+                    entry = {"password": password, "ua": ""}
+                else:
+                    raise ValueError("学校账号绑定的凭据格式无效")
+                normalized_ua = ApiClient.normalize_device_ua(ua)
+                if login_verified:
+                    entry["password"] = password
+                    if normalized_ua:
+                        entry["ua"] = normalized_ua
+                elif normalized_ua and not ApiClient.normalize_device_ua(entry.get("ua")):
+                    entry["ua"] = normalized_ua
+                if existing == entry:
+                    return True
+                accounts[school_username] = entry
+                handle.seek(0)
+                json.dump(accounts, handle, ensure_ascii=False, indent=2)
+                handle.truncate()
+        except Exception as exc:
+            logging.error(
+                "[学校账号] 凭据更新失败 storage=%s owner=%s school_account=%s error_type=%s",
+                _storage_log_source(path), auth_username, school_username, type(exc).__name__,
             )
-        else:
-            # 账号不存在，创建新条目（统计数据默认为0）
-            accounts[school_username] = {
-                "password": password,
-                "ua": ApiClient.normalize_device_ua(ua),
-                "overdue_count": 0,
-                "completed_count": 0
-            }
-            logging.debug(
-                f"创建新账号 {school_username}，统计数据初始化为0"
-            )
+            return False
 
-        self._save_user_school_accounts(auth_username, accounts)
-        logging.info(
-            f"已更新用户 {auth_username} 的 school_account {school_username} 的密码和UA"
+        invalidate_cache = getattr(getattr(_main(), "auth_system", None), "invalidate_user_list_cache", None)
+        if callable(invalidate_cache):
+            invalidate_cache()
+        logging.debug(
+            "[学校账号] 凭据更新完成 storage=%s owner=%s school_account=%s verified=%s",
+            _storage_log_source(path), auth_username, school_username, bool(login_verified),
         )
+        return True
 
     def _get_school_account_password(self, auth_username, school_username):
         """
@@ -1543,17 +1548,9 @@ class Api:
         ua = ApiClient.normalize_device_ua(ua)
         if not auth_username or auth_username == "guest" or not ua:
             return
-        accounts = self._load_user_school_accounts(auth_username)
-        account_data = accounts.get(school_username)
-        if isinstance(account_data, str):
-            account_data = {"password": account_data, "ua": ""}
-        if not isinstance(account_data, dict):
-            return
-        if ApiClient.normalize_device_ua(account_data.get("ua")):
-            return
-        account_data["ua"] = ua
-        accounts[school_username] = account_data
-        self._save_user_school_accounts(auth_username, accounts)
+        self._update_school_account_password(
+            auth_username, school_username, None, ua=ua, login_verified=False
+        )
 
     def _get_auth_user_and_check_admin(self):
         """
@@ -1981,8 +1978,8 @@ class Api:
                 exc_info=True
             )
 
-    def _save_config(self, username, password=None, ua=None):
-        """保存指定用户的配置到 user/<username>.ini；当 password 为 None 时保留现有密码；当 ua 为 None 时保留现有 UA。同时更新主 config.ini 的 LastUser 和 amap_js_key。"""
+    def _save_config(self, username, password=None, ua=None, *, update_owner_binding=True):
+        """保存账号配置；None 凭据保留原值，可由登录调用方单独更新已验证绑定。"""
         if not _main().is_valid_school_username(username):
             logging.warning(
                 "[配置] 拒绝保存非法学号的账号配置: %r"
@@ -2113,7 +2110,8 @@ class Api:
             )
 
         if (
-            password is not None
+            update_owner_binding
+            and password is not None
             and hasattr(self, "auth_username")
             and self.auth_username
         ):
@@ -3289,18 +3287,9 @@ class Api:
             data.get("deptInfo", {}),
             source="单账号登录",
         )
-        self._save_config(ud.username, password, self.device_ua)
-
-        # 更新兼容凭据记录；受管路径由数据库存储。
-        try:
-            if ud.username:
-                self._save_school_account_password_to_ini(
-                    ud.username,
-                    password,
-                    self.device_ua
-                )
-        except Exception as e:
-            logging.error("同步学校账号兼容凭据失败: %s", e, exc_info=True)
+        self._save_config(
+            ud.username, password, self.device_ua, update_owner_binding=False
+        )
 
         if hasattr(self, "auth_username") and self.auth_username:
             self._update_school_account_password(
@@ -3310,10 +3299,6 @@ class Api:
                 self.device_ua,
                 login_verified=True,
             )
-            logging.info(
-                f"已更新认证用户 {self.auth_username} 的 school_account {ud.username} 密码和UA（登录验证成功）"
-            )
-
         try:
             self._fetch_server_attendance_radius_if_needed(
                 self.api_client, None)

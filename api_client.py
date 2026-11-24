@@ -6,7 +6,7 @@ import random
 import re
 import threading
 import time
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from main_runtime import _main
 
@@ -14,6 +14,18 @@ from main_runtime import _main
 # 服务端 checkVersion 返回的 version 形如 "1.0.85"，比较时按数字段比，不能按字符串比
 # （"1.0.9" > "1.0.85" 在字符串比较里成立，在版本语义里不成立）。
 _VERSION_NUM_RE = re.compile(r"\d+")
+
+
+def scrub_login_query(message):
+    """Hide login query strings in access and HTTP transport logs."""
+    return re.sub(r"((?:/app|/api|/auth)/login/?)\?[^\s\"'<>]*", r"\1?<redacted>", message)
+
+
+def _log_headers(headers):
+    return _main()._redact_sensitive_log_value({
+        name: "<redacted>" if name.lower() in {"authorization", "cookie", "set-cookie"} else value
+        for name, value in headers.items()
+    })
 
 
 def _version_key(value) -> tuple:
@@ -171,10 +183,6 @@ class ApiClient:
             auth_token = self._cookie_token()
 
         if auth_token:
-            logging.debug(
-                "已设置 Authorization 请求头，认证信息: "
-                f"{_main()._redact_sensitive_log_value({'Authorization': auth_token})}"
-            )
             headers["Authorization"] = auth_token
         else:
             logging.debug("既无 accessToken 也无 shiroCookie，将不设置 Authorization 请求头")
@@ -290,14 +298,17 @@ class ApiClient:
         read_timeout = self.READ_TIMEOUT if read_timeout is None else read_timeout
         full_url = self._api_url(url)
         params = self._clean_params(params)
-        safe_request_url = _main()._redact_sensitive_log_text(full_url)
+        private = urlsplit(full_url).path.rstrip("/") == "/app/login"
+        safe_request_url = _main()._redact_sensitive_log_text(scrub_login_query(full_url))
+        log_value = (lambda _: "<redacted>") if private else _main()._redact_sensitive_log_value
+        log_text = (lambda _: "<redacted>") if private else _main()._redact_sensitive_log_text
 
         logging.debug(
             f"[网络请求] 准备发起HTTP请求 --> 请求方法: {method.upper()}, "
             f"目标URL: {safe_request_url}, 重试上限: {retries}次, "
             f"连接超时: {self.CONNECT_TIMEOUT}秒, 读取超时: {read_timeout}秒, "
-            f"请求数据: {_main()._redact_sensitive_log_value(data)}, "
-            f"URL参数: {_main()._redact_sensitive_log_value(params)}"
+            f"请求数据: {log_value(data)}, "
+            f"URL参数: {log_value(params)}"
         )
 
         for attempt in range(retries):
@@ -328,10 +339,10 @@ class ApiClient:
 
                     logging.debug(
                         f"[网络请求] 发起POST请求 --> URL: {safe_request_url}, "
-                        f"请求头: {_main()._redact_sensitive_log_value(headers)}, "
-                        f"URL参数: {_main()._redact_sensitive_log_value(params)}, "
+                        f"请求头: {_log_headers(headers)}, "
+                        f"URL参数: {log_value(params)}, "
                         f"请求体字节长度: {len(post_data_bytes)} 字节, "
-                        f"请求体: {_main()._redact_sensitive_log_text(post_data_bytes.decode('utf-8', errors='replace'))}"
+                        f"请求体: {log_text(post_data_bytes.decode('utf-8', errors='replace'))}"
                     )
                     resp = self.session.post(
                         full_url,
@@ -343,8 +354,8 @@ class ApiClient:
                 else:
                     logging.debug(
                         f"[网络请求] 发起GET请求 --> URL: {safe_request_url}, "
-                        f"请求头: {_main()._redact_sensitive_log_value(headers)}, "
-                        f"查询参数: {_main()._redact_sensitive_log_value(params or data)}"
+                        f"请求头: {_log_headers(headers)}, "
+                        f"查询参数: {log_value(params or data)}"
                     )
                     resp = self.session.get(
                         full_url,
@@ -356,9 +367,9 @@ class ApiClient:
                 logging.debug(
                     f"[网络请求] 收到服务器响应 <-- 状态码: {resp.status_code} "
                     f"({resp.reason}), 来源URL: {safe_request_url}, "
-                    f"响应头: {_main()._redact_sensitive_log_value(dict(resp.headers))}, "
+                    f"响应头: {_log_headers(resp.headers)}, "
                     f"响应内容长度: {len(resp.content)} 字节, "
-                    f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}"
+                    f"响应内容: {log_text(resp.text)}"
                 )
 
                 status = resp.status_code
@@ -380,7 +391,7 @@ class ApiClient:
                     f"[网络请求] 可重试的HTTP状态码 --> 第{attempt+1}次/共{retries}次, "
                     f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
                     f"HTTP状态码: {status}, 状态描述: {resp.reason}, "
-                    f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}",
+                    f"响应内容: {log_text(resp.text)}",
                     exc_info=False,
                 )
                 if attempt + 1 == retries:
@@ -406,7 +417,7 @@ class ApiClient:
                     f"[网络请求] 网络连接失败 --> 重试次数: 第{attempt+1}次/共{retries}次, "
                     f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
                     f"错误类型: {type(net_err).__name__}, "
-                    f"错误详情: {_main()._redact_sensitive_log_text(str(net_err))}",
+                    f"错误详情: {log_text(str(net_err))}",
                     exc_info=False,
                 )
                 if attempt + 1 == retries:
@@ -436,8 +447,8 @@ class ApiClient:
                     f"[网络请求] 意外的请求异常 --> 重试次数: 第{attempt+1}次/共{retries}次, "
                     f"请求方法: {method.upper()}, 目标URL: {safe_request_url}, "
                     f"异常类型: {type(req_err).__name__}, "
-                    f"异常详情: {_main()._redact_sensitive_log_text(str(req_err))}, 完整堆栈信息如下:",
-                    exc_info=True,
+                    f"异常详情: {log_text(str(req_err))}",
+                    exc_info=not private,
                 )
                 if attempt + 1 == retries:
                     log_func(f"请求最终失败，异常类型: {type(req_err).__name__}")
@@ -456,19 +467,21 @@ class ApiClient:
 
         return None
 
-    def _json(self, resp: _main().requests.Response | None) -> dict | None:
+    def _json(self, resp: _main().requests.Response | None, *, private=False) -> dict | None:
         """安全地将Response对象解析为JSON字典"""
         log_func = self.app.log_and_notify_frontend if hasattr(
             self.app, "log_and_notify_frontend") else self.app.api_bridge.log_and_notify_frontend
         if resp is None:
             logging.debug("[JSON解析] 响应对象为空，无法解析JSON")
             return None
+        log_value = (lambda _: "<redacted>") if private else _main()._redact_sensitive_log_value
+        log_text = (lambda _: "<redacted>") if private else _main()._redact_sensitive_log_text
         try:
             json_data = resp.json()
             logging.debug(
                 f"[JSON解析] 成功解析JSON响应 --> 响应状态码: {resp.status_code}, "
-                f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}, "
-                f"JSON数据: {_main()._redact_sensitive_log_value(json_data)}"
+                f"响应内容: {log_text(resp.text)}, "
+                f"JSON数据: {log_value(json_data)}"
             )
             return json_data
         except ValueError as e:
@@ -478,9 +491,9 @@ class ApiClient:
             logging.error(
                 f"[JSON解析] JSON解码失败 --> 响应状态码: {resp.status_code}, "
                 f"响应内容类型: {resp.headers.get('Content-Type', '未知')}, "
-                f"错误详情: {_main()._redact_sensitive_log_text(str(e))}, "
+                f"错误详情: {log_text(str(e))}, "
                 f"响应内容长度: {len(resp.content)} 字节, "
-                f"响应内容: {_main()._redact_sensitive_log_text(resp.text)}"
+                f"响应内容: {log_text(resp.text)}"
             )
             return None
 
@@ -505,7 +518,8 @@ class ApiClient:
                 is_post_str=True,
                 force_content_type=self.JSON_CONTENT_TYPE,
                 retries=3,
-            )
+            ),
+            private=True,
         )
         self._apply_login_tokens(payload)
         return payload
@@ -521,10 +535,7 @@ class ApiClient:
         if not access_token:
             return
         self._access_token = access_token
-        logging.debug(
-            "登录成功，已记录 accessToken: "
-            f"{_main()._redact_sensitive_log_value({'accessToken': access_token})}"
-        )
+        logging.debug("学校登录响应已更新访问令牌")
         refresh_token = data.get("refreshToken")
         if refresh_token:
             self._refresh_token = refresh_token
