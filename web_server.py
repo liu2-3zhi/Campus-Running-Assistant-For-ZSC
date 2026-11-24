@@ -32,6 +32,7 @@ import uuid
 import requests
 from flask import g, request
 
+from captcha_static_cache import behavior_static_cache
 from main_runtime import _main
 from map_request_proxy import register_map_proxy_routes
 
@@ -15984,8 +15985,6 @@ def start_web_server(args_param):
     @app.route("/api/captcha/behavior/loader.js", methods=["GET"])
     def behavior_proxy_loader():
         """代理 behavior 的 SDK 加载器 loader.js"""
-        import requests as _requests
-        from flask import Response
         base, _ = _behavior_base_or_error()
         if not base:
             return _main()._make_frontend_javascript_response(
@@ -15993,10 +15992,10 @@ def start_web_server(args_param):
                 status=503,
             )
         try:
-            r = _requests.get(f"{base}/loader.js", timeout=5)
+            asset = behavior_static_cache.get(base, "loader.js", timeout=5)
             return _main()._make_frontend_javascript_response(
-                r.content,
-                status=r.status_code,
+                asset.content,
+                status=asset.status,
             )
         except Exception as e:
             logging.error(f"[验证码-behavior] 代理 loader.js 失败: {e}")
@@ -16008,21 +16007,20 @@ def start_web_server(args_param):
     @app.route("/api/captcha/behavior/tac/<path:subpath>", methods=["GET"])
     def behavior_proxy_tac(subpath):
         """代理 behavior 的 SDK 静态资源（tac/css、tac/js、tac/images）"""
-        import requests as _requests
         from flask import Response
         base, _ = _behavior_base_or_error()
         if not base:
             return Response("", status=503)
         try:
-            r = _requests.get(f"{base}/tac/{subpath}", timeout=8)
-            ctype = r.headers.get("Content-Type", "application/octet-stream")
+            asset = behavior_static_cache.get(base, f"tac/{subpath}", timeout=8)
+            ctype = asset.content_type
             if _main()._is_javascript_content_type(ctype) or _main()._is_javascript_asset_name(subpath):
                 return _main()._make_frontend_javascript_response(
-                    r.content,
-                    status=r.status_code,
+                    asset.content,
+                    status=asset.status,
                     headers={"Content-Type": ctype},
                 )
-            return Response(r.content, mimetype=ctype.split(";")[0], status=r.status_code)
+            return Response(asset.content, mimetype=ctype.split(";")[0], status=asset.status)
         except Exception as e:
             logging.error(f"[验证码-behavior] 代理 tac 资源失败({subpath}): {e}")
             return Response("", status=502)
