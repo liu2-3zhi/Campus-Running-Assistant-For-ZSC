@@ -21574,11 +21574,16 @@ function extractCleanSource(sourceString) {
 // ==================== 日志批处理逻辑 ====================
 let logQueue = [];
 let logFlushTimer = null;
+let logUploadInFlight = false;
 const LOG_FLUSH_INTERVAL = 2000; // 2秒间隔
 
-function flushLogQueue() {
-  if (logQueue.length === 0) {
+async function flushLogQueue() {
+  if (logUploadInFlight) return;
+  if (logFlushTimer !== null) {
+    clearTimeout(logFlushTimer);
     logFlushTimer = null;
+  }
+  if (logQueue.length === 0) {
     return;
   }
 
@@ -21586,29 +21591,42 @@ function flushLogQueue() {
   const batchToSend = [...logQueue];
   logQueue = [];
 
-  if (!isInNetworkErrorState && sessionUUID) {
-    // 使用loadInitialData发送日志，而不是直接fetch
-    loadInitialData({
-      frontend_logs: batchToSend,
-      force: true, // 强制发送，因为日志需要及时传输
-    }).catch((err) => {
-      if (console._original && console._original.error) {
-        console._original.error("[日志批量发送失败]", err);
-      }
+  if (isInNetworkErrorState || !sessionUUID) return;
+
+  logUploadInFlight = true;
+  try {
+    const requestSession = getApiRequestSessionHeaderValue("get_initial_data");
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Session-ID": requestSession,
+    };
+    addAdminViewOriginSessionHeader(headers, requestSession);
+    // 日志上传独立于业务初始化，避免初始化日志再次入队形成请求循环。
+    const response = await fetch("/api/log_frontend", {
+      method: "POST",
+      headers,
+      credentials: "include",
+      body: JSON.stringify({
+        batch: batchToSend.map((entry) => createSafeClientLogValue(entry)),
+      }),
     });
-  }
-
-  // 重置定时器引用，允许下次触发
-  logFlushTimer = null;
-
-  // 如果在发送过程中又有新日志进入（极端情况），重新启动定时器
-  if (logQueue.length > 0) {
-    scheduleLogFlush();
+    if (!response.ok) {
+      throw new Error(`日志上传失败: HTTP ${response.status}`);
+    }
+  } catch (err) {
+    if (console._original && console._original.error) {
+      console._original.error("[日志批量发送失败]", err);
+    }
+  } finally {
+    logUploadInFlight = false;
+    if (logQueue.length > 0) {
+      scheduleLogFlush();
+    }
   }
 }
 
 function scheduleLogFlush() {
-  if (!logFlushTimer) {
+  if (!logFlushTimer && !logUploadInFlight) {
     logFlushTimer = setTimeout(flushLogQueue, LOG_FLUSH_INTERVAL);
   }
 }

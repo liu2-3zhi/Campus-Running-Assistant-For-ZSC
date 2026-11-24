@@ -90,14 +90,98 @@ def test_cdn_worker_updates_before_waiting():
         "threading": SimpleNamespace(current_thread=lambda: FakeThread()),
         "logging": logging,
         "time": StopAfterFirstSleep,
-        "update_all_cdn_files": lambda: events.append(("update",)),
+        "update_all_cdn_files": lambda **kwargs: events.append(("update", kwargs)),
     }
     worker = _compile_function("cdn_cache_update_worker", namespace)
 
     with pytest.raises(KeyboardInterrupt):
         worker()
 
-    assert events == [("update",), ("sleep", 3600)]
+    assert events == [("update", {"missing_only": True}), ("sleep", 3600)]
+
+
+def test_cdn_worker_keeps_periodic_full_refresh():
+    events = []
+
+    def sleep(seconds):
+        events.append(("sleep", seconds))
+        if sum(event[0] == "sleep" for event in events) == 2:
+            raise KeyboardInterrupt
+
+    namespace = {
+        "threading": SimpleNamespace(current_thread=lambda: SimpleNamespace(name="CDN_Update_Worker", ident=42)),
+        "logging": logging,
+        "time": SimpleNamespace(sleep=sleep),
+        "update_all_cdn_files": lambda **kwargs: events.append(("update", kwargs)),
+    }
+    with pytest.raises(KeyboardInterrupt):
+        _compile_function("cdn_cache_update_worker", namespace)()
+
+    assert events == [
+        ("update", {"missing_only": True}),
+        ("sleep", 3600),
+        ("update", {}),
+        ("sleep", 3600),
+    ]
+
+
+def _run_first_cdn_warmup(cached):
+    downloads = []
+
+    def fetch(url):
+        downloads.append(url)
+        return "downloaded " + url
+
+    def sleep(_seconds):
+        raise KeyboardInterrupt
+
+    files = {
+        "script": {"filename": "script.js", "type": "js", "url": "https://cdn.test/script.js"},
+        "styles": {"filename": "styles.css", "type": "css", "url": "https://cdn.test/styles.css"},
+    }
+    namespace = {
+        "CDN_FILES": files,
+        "js_cache_storage": dict(cached),
+        "js_cache_last_update": {},
+        "js_cache_lock": threading.RLock(),
+        "fetch_cdn_file": fetch,
+        "save_cached_file": lambda *_args: True,
+        "load_cached_file": lambda *_args: None,
+        "process_asset_with_source_map": lambda content, *_args, **_kwargs: content,
+        "cache_google_fonts_with_ttf": lambda content, *_args: content,
+        "logging": logging,
+        "time": SimpleNamespace(time=lambda: 123, sleep=sleep),
+        "threading": SimpleNamespace(current_thread=lambda: SimpleNamespace(name="CDN_Update_Worker", ident=42)),
+    }
+    for name in ("update_single_cdn_file", "update_all_cdn_files", "cdn_cache_update_worker"):
+        _compile_function(name, namespace)
+    with pytest.raises(KeyboardInterrupt):
+        namespace["cdn_cache_update_worker"]()
+    return downloads, namespace
+
+
+def test_first_cdn_warmup_does_not_fetch_valid_cached_files():
+    downloads, namespace = _run_first_cdn_warmup({"script": "existing script", "styles": "existing css"})
+
+    assert downloads == []
+    assert namespace["js_cache_storage"] == {"script": "existing script", "styles": "existing css"}
+
+
+def test_explicit_full_refresh_still_downloads_cached_files():
+    downloads, namespace = _run_first_cdn_warmup({"script": "existing script", "styles": "existing css"})
+
+    assert downloads == []
+    assert namespace["update_all_cdn_files"]() == (2, 0)
+    assert downloads == ["https://cdn.test/script.js", "https://cdn.test/styles.css"]
+
+
+@pytest.mark.parametrize("missing_cache", [{}, {"styles": ""}])
+def test_first_cdn_warmup_only_fetches_missing_or_empty_files(missing_cache):
+    downloads, namespace = _run_first_cdn_warmup({"script": "existing script", **missing_cache})
+
+    assert downloads == ["https://cdn.test/styles.css"]
+    assert namespace["js_cache_storage"]["script"] == "existing script"
+    assert namespace["js_cache_storage"]["styles"] == "downloaded https://cdn.test/styles.css"
 
 
 def test_configured_cdn_cache_miss_is_retryable_503():

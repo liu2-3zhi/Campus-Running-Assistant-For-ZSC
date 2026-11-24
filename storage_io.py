@@ -228,6 +228,18 @@ def _directory_documents(runtime, identity):
                     if document.key.startswith(prefix)]
 
 
+def _directory_keys(runtime, identity):
+    namespace, prefix = identity
+    prefix = _prefix(prefix)
+    keys = getattr(runtime.store, 'keys', None)
+    if callable(keys):
+        return prefix, keys(namespace, prefix)
+    # Legacy document-store adapters and test doubles may lack metadata APIs.
+    # Exceptions from either database method still propagate; no file fallback.
+    return prefix, [document.key for document in runtime.store.list(namespace, prefix)
+                    if document.key.startswith(prefix)]
+
+
 class _PathProxy:
     def __getattr__(self, name):
         return getattr(_os.path, name)
@@ -258,8 +270,10 @@ class _PathProxy:
         runtime = _runtime(path)
         identity = _directory(path, runtime) if runtime is not None else None
         if identity is not None:
-            prefix, documents = _directory_documents(runtime, identity)
-            return not prefix or bool(documents) or _os.path.isdir(path)
+            if not _prefix(identity[1]):
+                return True
+            _, keys = _directory_keys(runtime, identity)
+            return bool(keys) or _os.path.isdir(path)
         return _os.path.isdir(path)
 
     def getsize(self, path):
@@ -302,7 +316,8 @@ class _OSProxy:
         identity = _directory(path, runtime) if runtime is not None else None
         if identity is None:
             return _os.listdir(path)
-        if not self.path.isdir(path):
+        prefix, keys = _directory_keys(runtime, identity)
+        if prefix and not keys and not _os.path.isdir(path):
             raise _missing(path)
         binary = isinstance(_os.fspath(path), bytes)
         plain_path = _os.fsdecode(path)
@@ -311,9 +326,8 @@ class _OSProxy:
             for name in _os.listdir(plain_path):
                 if runtime.policy.identify(_os.path.join(plain_path, name)) is None:
                     names.add(name)
-        prefix, documents = _directory_documents(runtime, identity)
-        for document in documents:
-            remaining = document.key[len(prefix):]
+        for key in keys:
+            remaining = key[len(prefix):]
             if remaining:
                 names.add(remaining.split("/", 1)[0])
         return [_os.fsencode(name) if binary else name for name in sorted(names)]

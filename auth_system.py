@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import collections
 import copy
+import storage_io
 from storage_io import configparser
 import datetime
 import hashlib
@@ -89,6 +90,10 @@ class AuthSystem:
     def _ensure_user_list_cache_state(self):
         if not hasattr(self, "_user_list_cache_lock"):
             self._user_list_cache_lock = threading.RLock()
+        if not hasattr(self, "_user_list_cache_refresh_lock"):
+            self._user_list_cache_refresh_lock = threading.Lock()
+        if not hasattr(self, "_user_list_cache_generation"):
+            self._user_list_cache_generation = 0
         if not hasattr(self, "_user_list_cache"):
             self._user_list_cache = None
         if not hasattr(self, "_user_list_cache_signature"):
@@ -123,13 +128,51 @@ class AuthSystem:
         return tuple(signature)
 
     def _current_user_list_cache_signature(self):
+        source = self._user_list_database_source()
+        if source is not None:
+            runtime, directories = source
+            versions = getattr(runtime.store, "versions", None)
+            if callable(versions):
+                signature = []
+                for directory, namespace, prefix in directories:
+                    for key, mtime_ns, revision, digest in versions(namespace, prefix):
+                        relative = key[len(prefix):]
+                        if "/" in relative or not relative.endswith(".json"):
+                            continue
+                        if namespace == "system_accounts" and relative == "_index.json":
+                            continue
+                        signature.append((os.path.join(directory, relative), mtime_ns, revision, digest))
+                return tuple(sorted(signature))
         return self._user_list_cache_signature_for_paths(self._user_list_cache_paths())
+
+    def _user_list_database_source(self):
+        """Identify managed account directories without initializing unrelated I/O."""
+        account_dir = _main().SYSTEM_ACCOUNTS_DIR
+        binding_dir = os.path.join(_main().SCHOOL_ACCOUNTS_DIR, "user_accounts")
+        runtime = storage_io.get_runtime(account_dir, binding_dir)
+        if runtime is None:
+            return None
+        directories = []
+        for directory, expected in ((account_dir, "system_accounts"), (binding_dir, "school_accounts")):
+            identity = runtime.policy.directory(directory)
+            if identity is None or identity[0] != expected:
+                return None
+            namespace, prefix = identity
+            directories.append((directory, namespace, prefix))
+        return runtime, directories
+
+    def _user_list_cache_expired(self):
+        # Registry revisions track application writes. Periodic bulk refreshes
+        # also observe direct SQL changes to authoritative domain columns.
+        return (self._user_list_database_source() is not None
+                and time.monotonic() - getattr(self, "_user_list_cache_refreshed_at", 0)
+                >= USER_LIST_CACHE_REFRESH_SECONDS)
 
     def _user_list_cache_worker(self):
         while not self._user_list_cache_stop.wait(USER_LIST_CACHE_REFRESH_SECONDS):
             try:
                 signature = self._current_user_list_cache_signature()
-                if signature != self._user_list_cache_signature:
+                if signature != self._user_list_cache_signature or self._user_list_cache_expired():
                     self._refresh_user_list_cache(signature)
             except Exception:
                 logging.exception("[用户列表缓存] 后台刷新失败")
@@ -138,30 +181,41 @@ class AuthSystem:
         self._ensure_user_list_cache_state()
         signature = self._current_user_list_cache_signature()
         with self._user_list_cache_lock:
-            if self._user_list_cache is not None and signature == self._user_list_cache_signature:
+            if (self._user_list_cache is not None and signature == self._user_list_cache_signature
+                    and not self._user_list_cache_expired()):
                 return copy.deepcopy(self._user_list_cache)
-            return self._refresh_user_list_cache(signature)
+        return self._refresh_user_list_cache(signature)
 
     def _refresh_user_list_cache(self, signature):
-        with self._user_list_cache_lock:
+        self._ensure_user_list_cache_state()
+        # Serialize rebuilds separately so login and profile updates never
+        # wait for the database read while holding the short snapshot lock.
+        with self._user_list_cache_refresh_lock:
             for _attempt in range(2):
                 current_signature = self._current_user_list_cache_signature()
-                if self._user_list_cache is not None and current_signature == self._user_list_cache_signature:
-                    return copy.deepcopy(self._user_list_cache)
+                with self._user_list_cache_lock:
+                    if (self._user_list_cache is not None and current_signature == self._user_list_cache_signature
+                            and not self._user_list_cache_expired()):
+                        return copy.deepcopy(self._user_list_cache)
+                    generation = self._user_list_cache_generation
                 users = self._read_user_list_uncached()
                 after_signature = self._current_user_list_cache_signature()
-                if current_signature == after_signature:
-                    self._user_list_cache = users
-                    self._user_list_cache_signature = after_signature
-                    return copy.deepcopy(users)
+                with self._user_list_cache_lock:
+                    if current_signature == after_signature and generation == self._user_list_cache_generation:
+                        self._user_list_cache = users
+                        self._user_list_cache_signature = after_signature
+                        self._user_list_cache_refreshed_at = time.monotonic()
+                        return copy.deepcopy(users)
             logging.warning("[用户列表缓存] 刷新期间文件持续变化，暂不替换现有快照")
-            return copy.deepcopy(self._user_list_cache or [])
+            with self._user_list_cache_lock:
+                return copy.deepcopy(self._user_list_cache or [])
 
     def invalidate_user_list_cache(self):
         self._ensure_user_list_cache_state()
         with self._user_list_cache_lock:
             self._user_list_cache = None
             self._user_list_cache_signature = None
+            self._user_list_cache_generation += 1
 
     def _save_user_data(self, user_file, user_data):
         with open(user_file, "w", encoding="utf-8") as f:
@@ -178,7 +232,10 @@ class AuthSystem:
                     user["last_login"] = last_login
                     user["last_login_ip"] = ip_address or None
                     break
-            self._user_list_cache_signature = self._current_user_list_cache_signature()
+            # Another user may have changed since this snapshot was built.
+            # Do not bless the whole old snapshot with the latest DB versions.
+            self._user_list_cache_signature = None
+            self._user_list_cache_generation += 1
 
     def stop_user_list_cache_worker(self):
         self._user_list_cache_stop.set()
@@ -1684,6 +1741,9 @@ class AuthSystem:
 
     def _read_user_list_uncached(self):
         """从用户资料和学校账号文件重建用户列表快照。"""
+        source = self._user_list_database_source()
+        if source is not None:
+            return self._read_database_user_list(*source)
         users = []
         for filename in os.listdir(_main().SYSTEM_ACCOUNTS_DIR):
             if filename == "_index.json" or not filename.endswith(".json"):
@@ -1731,6 +1791,58 @@ class AuthSystem:
                     exc_info=True,
                 )
         return users
+
+    def _read_database_user_list(self, runtime, directories):
+        """Reconstruct each relevant namespace once instead of per-user reads."""
+        users, bindings = [], {}
+        for directory, namespace, prefix in directories:
+            for document in runtime.store.list(namespace, prefix):
+                relative = document.key[len(prefix):]
+                if "/" in relative or not relative.endswith(".json"):
+                    continue
+                if namespace == "system_accounts" and relative == "_index.json":
+                    continue
+                if namespace == "school_accounts":
+                    bindings[(namespace, document.key)] = document
+                else:
+                    users.append((relative, document))
+        result = []
+        for filename, document in users:
+            try:
+                user_data = json.loads(document.content.decode("utf-8-sig"))
+                auth_username = user_data.get("auth_username")
+                if not auth_username:
+                    logging.warning("[用户管理] 跳过缺少 auth_username 的用户文件: %s", filename)
+                    continue
+                school_accounts = []
+                if auth_username != "guest":
+                    binding_identity = runtime.policy.identify(self._get_user_accounts_file(auth_username))
+                    binding = bindings.get(binding_identity)
+                    if binding is not None:
+                        try:
+                            accounts = json.loads(binding.content.decode("utf-8-sig"))
+                            if isinstance(accounts, dict):
+                                school_accounts = list(accounts)
+                        except (UnicodeError, ValueError):
+                            logging.error("[用户学校账号] 读取用户 %s 的学校账号摘要失败", auth_username)
+                result.append({
+                    "auth_username": auth_username,
+                    "nickname": user_data.get("nickname", ""),
+                    "phone": user_data.get("phone", ""),
+                    "group": user_data.get("group", "user"),
+                    "created_at": user_data.get("created_at"),
+                    "last_login": user_data.get("last_login"),
+                    "last_login_ip": user_data.get("last_login_ip", None),
+                    "last_login_city": user_data.get("last_login_city") or "未知",
+                    "2fa_enabled": user_data.get("2fa_enabled", False),
+                    "banned": user_data.get("banned", False),
+                    "max_sessions": user_data.get("max_sessions", 1),
+                    "school_accounts": school_accounts,
+                    "available_runs": user_data.get("available_runs", 0),
+                })
+            except Exception:
+                logging.exception("[用户管理] 读取用户文件失败 --> 文件名: %s", filename)
+        return result
 
     def get_all_groups(self):
         """获取所有权限组"""

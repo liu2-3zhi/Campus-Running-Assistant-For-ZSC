@@ -215,6 +215,37 @@ class RelationalStore:
             return result[0] if result else None
 
     @_safe_database
+    def exists(self, namespace, key):
+        """Test document identity without loading its layout or domain rows."""
+        identity = self._identity(namespace, key)
+        with self.database.connection() as connection:
+            return connection.execute(select(self.registry.c.document_id).where(
+                self.registry.c.document_id == identity)).first() is not None
+
+    @_safe_database
+    def keys(self, namespace, prefix=''):
+        """List logical paths without reconstructing business documents."""
+        with self.database.connection() as connection:
+            keys = connection.execute(select(self.registry.c.record_key).where(
+                self.registry.c.namespace == namespace).order_by(self.registry.c.record_key)).scalars()
+            # Literal matching preserves '%' and '_' in legacy file names.
+            return [key for key in keys if key.startswith(prefix)]
+
+    @_safe_database
+    def versions(self, namespace, prefix=''):
+        """Read compatibility-write versions in one metadata-only query.
+
+        Direct SQL domain updates intentionally do not change these registry
+        versions; callers caching rendered values must also refresh periodically.
+        """
+        with self.database.connection() as connection:
+            rows = connection.execute(select(self.registry.c.record_key,
+                self.registry.c.mtime_ns, self.registry.c.revision,
+                self.registry.c.content_sha256).where(
+                self.registry.c.namespace == namespace).order_by(self.registry.c.record_key))
+            return [tuple(row) for row in rows if row[0].startswith(prefix)]
+
+    @_safe_database
     def list(self, namespace, prefix=''):
         with self.database.connection() as connection:
             records = connection.execute(select(self.registry).where(self.registry.c.namespace == namespace).order_by(self.registry.c.record_key)).mappings()

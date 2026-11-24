@@ -1700,15 +1700,19 @@ def start_web_server(args_param):
         logging.error(f"[CDN缓存] 获取失败且无本地缓存: {key}")
         return False
 
-    def update_all_cdn_files():
+    def update_all_cdn_files(*, missing_only=False):
         """
-        更新所有CDN文件的缓存
+        更新CDN缓存；首次后台预热仅补足本地未加载的资源
         """
-        logging.info("[CDN缓存] 开始更新所有CDN文件...")
+        logging.info("[CDN缓存] 开始补足缺失CDN文件..." if missing_only else "[CDN缓存] 开始更新所有CDN文件...")
         success_count = 0
         fail_count = 0
 
         for key, config in CDN_FILES.items():
+            if missing_only:
+                with js_cache_lock:
+                    if js_cache_storage.get(key):
+                        continue
             if update_single_cdn_file(key, config):
                 success_count += 1
             else:
@@ -1766,7 +1770,7 @@ def start_web_server(args_param):
 
         try:
             logging.info("[CDN缓存] 后台首次预热任务开始...")
-            update_all_cdn_files()
+            update_all_cdn_files(missing_only=True)
         except Exception as e:
             logging.error(f"[CDN缓存] 后台首次预热任务异常: {e}")
 
@@ -8971,7 +8975,7 @@ def start_web_server(args_param):
             # 定义单条日志处理内部函数
             def process_single_log(data_item):
                 level = data_item.get("level", "INFO").upper()
-                message = data_item.get("message", "")
+                message = _main()._redact_sensitive_log_value(data_item.get("message", ""))
                 timestamp = data_item.get("timestamp", "")
                 source = data_item.get("source", "unknown")
 
@@ -10819,16 +10823,6 @@ def start_web_server(args_param):
 
         try:
             config = _main()._read_config_ini(_main().CONFIG_FILE)
-
-            # [修正] 读取成功后，回写配置文件以清除重复项
-            # 这会利用 ConfigParser 的特性，将重复键合并为最后一个值，并重写文件
-            # 注意：这依赖于全局的 _write_config_with_comments 函数
-            try:
-                _main()._write_config_with_comments(config, _main().CONFIG_FILE)
-                logging.info("[配置] 已自动修复并清理配置文件中的重复项")
-            except Exception as write_err:
-                logging.error(f"[配置] 尝试自动修复配置文件失败: {write_err}")
-
         except Exception as e:
             logging.error(f"[配置] 读取配置文件失败 (get_frontend_config): {e}")
             # 如果读取失败，尝试使用默认配置继续，避免崩馈
