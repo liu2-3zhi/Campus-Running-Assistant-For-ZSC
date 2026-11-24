@@ -154,6 +154,52 @@ class TestFailingSubmissionPath(unittest.TestCase):
 
         self.api._finalize_run.assert_not_called()
 
+    def test_empty_checkpoints_with_school_instructions_emit_room_notice(self):
+        self.acc.api_client.get_run_details.return_value["data"]["errandDetail"] = {
+            "name": "测试任务",
+            "geoCoorList": [],
+            "walkPaths": [],
+            "startTime": "请在21:30分前开始任务",
+            "endTime": "原因：21:30后不开放任务/超时",
+        }
+
+        self.assertEqual(self._run_with_submission_result(True), "failed")
+
+        main_module.socketio.emit.assert_called_once_with("task_unavailable", {
+            "task_name": "测试任务",
+            "message": "请在21:30分前开始任务\n原因：21:30后不开放任务/超时",
+            "notice_id": mock.ANY,
+        }, room=self.api._web_session_id)
+        self.api._submit_chunk_with_retries.assert_not_called()
+
+    def test_empty_checkpoints_with_ordinary_times_do_not_emit_notice(self):
+        self.acc.api_client.get_run_details.return_value["data"]["errandDetail"] = {
+            "geoCoorList": [],
+            "startTime": "08:00",
+            "endTime": "2026-11-24 21:30:00",
+        }
+
+        self.assertEqual(self._run_with_submission_result(True), "failed")
+
+        main_module.socketio.emit.assert_not_called()
+
+    def test_single_task_view_can_retry_when_school_returns_temporary_notice(self):
+        self.api.api_client = self.acc.api_client
+        self.api.user_data = self.acc.user_data
+        self.api.all_run_data = [self.run]
+        self.acc.api_client.get_run_details.return_value["data"]["errandDetail"] = {
+            "geoCoorList": [],
+            "endTime": "原因：21:30后不开放任务/超时",
+        }
+
+        result = self.api.get_task_details(0)
+
+        self.assertTrue(result["success"])
+        self.assertFalse(self.run.details_fetched)
+        notices = [call for call in main_module.socketio.emit.call_args_list if call.args[0] == "task_unavailable"]
+        self.assertEqual(len(notices), 1)
+        self.assertEqual(notices[0].args[1]["message"], "原因：21:30后不开放任务/超时")
+
     def test_stop_during_path_planning_skips_generation_and_submission(self):
         self.api._submit_chunk_with_retries = mock.Mock(return_value=True)
 

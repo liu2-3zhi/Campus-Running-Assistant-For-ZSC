@@ -275,3 +275,69 @@ test('legacy: heartbeat timeout immediately starts both account fallbacks and re
   await settle()
   assert.equal(ctx.clock.timers.size, 0)
 })
+
+test('legacy: task notices use plain text, deduplicate and wait for the preceding popup', async () => {
+  const { clients, context, runtime } = setup('legacy')
+  const popups = []
+  context.Swal = {
+    fire(options) {
+      return new Promise(resolve => popups.push({ options, resolve }))
+    },
+  }
+  runtime.connectWebSocket()
+  const client = clients[0]
+  const first = { notice_id: 'first', task_name: '<b>任务一</b>', message: '<img src=x>' }
+  client.receive('task_unavailable', first)
+  client.receive('task_unavailable', first)
+  client.receive('task_unavailable', { notice_id: 'second', task_name: '任务二', message: '请联系学校。' })
+  await settle()
+
+  assert.equal(popups.length, 1)
+  assert.equal(popups[0].options.icon, 'warning')
+  assert.match(popups[0].options.text, /<b>任务一<\/b>/)
+  assert.match(popups[0].options.text, /<img src=x>/)
+  assert.equal(popups[0].options.html, undefined)
+
+  popups[0].resolve()
+  await settle()
+  assert.equal(popups.length, 2)
+  assert.match(popups[1].options.text, /任务二/)
+  assert.match(popups[1].options.text, /请联系学校。/)
+  popups[1].resolve()
+  await settle()
+})
+
+test('legacy: switching sessions discards stale task notices and their deduplication IDs', async () => {
+  const { clients, context, runtime } = setup('legacy')
+  const popups = []
+  let currentPopup
+  context.Swal = {
+    fire(options) {
+      const popup = {}
+      currentPopup = popup
+      options.didOpen?.(popup)
+      return new Promise(resolve => popups.push({ options, resolve }))
+    },
+    getPopup: () => currentPopup,
+    close() {
+      currentPopup = null
+      popups.at(-1).resolve()
+    },
+  }
+  runtime.connectWebSocket()
+  const client = clients[0]
+  const oldListener = client.events.get('task_unavailable')
+  client.receive('task_unavailable', { notice_id: 'first', task_name: '旧会话', message: '旧提示' })
+  client.receive('task_unavailable', { notice_id: 'old-queued', task_name: '旧会话排队', message: '旧提示' })
+  await settle()
+
+  context.sessionUUID = 'session-B'
+  runtime.connectWebSocket()
+  oldListener?.({ notice_id: 'late', task_name: '旧会话迟到', message: '旧提示' })
+  clients[1].receive('task_unavailable', { notice_id: 'first', task_name: '新会话', message: '新提示' })
+  await settle()
+
+  assert.deepEqual(popups.map(({ options }) => options.text.includes('新会话')), [false, true])
+  popups[1].resolve()
+  await settle()
+})

@@ -1150,8 +1150,35 @@ async function restoreMobileTaskState() {
 let socket = null;
 let wsSocketSession = "";
 let wsHeartbeatState = null;
+let wsTaskNoticeState = null;
 const WS_HEARTBEAT_INTERVAL_MS = 500;
 const WS_HEARTBEAT_TIMEOUT_MS = 2000;
+
+function queueTaskUnavailableNotice(state, data) {
+  if (typeof data?.notice_id !== "string" || !data.notice_id.trim() ||
+      typeof data.task_name !== "string" || !data.task_name.trim() ||
+      typeof data.message !== "string" || !data.message.trim() ||
+      state.seen.has(data.notice_id)) return;
+
+  state.seen.add(data.notice_id);
+  const { task_name: taskName, message } = data;
+  state.queue = state.queue.then(async () => {
+    if (state !== wsTaskNoticeState || state.session !== sessionUUID) return;
+    try {
+      await Swal.fire({
+        icon: "warning",
+        titleText: "任务暂不可用",
+        text: `${taskName}\n${message}`,
+        confirmButtonText: "确定",
+        didOpen: (popup) => { state.popup = popup; },
+      });
+    } finally {
+      state.popup = null;
+    }
+  }).catch((error) => {
+    logMessage_Warning("显示任务不可用提示失败", error);
+  });
+}
 
 function startWsHeartbeat() {
   stopWsHeartbeat();
@@ -1201,6 +1228,12 @@ function connectWebSocket() {
     return;
   }
 
+  if (wsTaskNoticeState?.session !== sessionUUID) {
+    const previousPopup = wsTaskNoticeState?.popup;
+    wsTaskNoticeState = { session: sessionUUID, seen: new Set(), queue: Promise.resolve(), popup: null };
+    if (previousPopup && Swal.getPopup() === previousPopup) Swal.close();
+  }
+
   logMessage_Info("尝试连接 WebSocket...");
   stopWsHeartbeat();
   if (socket) {
@@ -1220,6 +1253,7 @@ function connectWebSocket() {
   });
   const connection = socket;
   const session = sessionUUID;
+  const taskNoticeState = wsTaskNoticeState;
   const isCurrentConnection = () => connection === socket && session === sessionUUID;
 
   socket.on("connect", () => {
@@ -1355,6 +1389,10 @@ function connectWebSocket() {
     if (data && acceptLegacyRunnerExecution(data) && typeof data.task_index !== "undefined") {
       onTaskCompleted(data.task_index);
     }
+  });
+
+  socket.on("task_unavailable", (data) => {
+    if (isCurrentConnection()) queueTaskUnavailableNotice(taskNoticeState, data);
   });
 
   socket.on("run_stopped", (data) => {

@@ -9,6 +9,10 @@ const HEARTBEAT_INTERVAL_MS = 500
 const HEARTBEAT_TIMEOUT_MS = 2000
 const connectionListeners = new Set()
 let socketConnected = false
+let taskNoticeSession = ''
+const taskNoticeIds = new Set()
+let taskNoticeQueue = Promise.resolve()
+let taskNoticePopup = null
 
 export function getSocket() {
   return socket
@@ -75,6 +79,31 @@ function stopHeartbeat() {
   heartbeatState = null
 }
 
+function queueTaskNotice(data, isCurrent) {
+  const { notice_id: id, task_name: name, message } = data ?? {}
+  const swal = window.Swal
+  if (typeof id !== 'string' || !id.trim() || taskNoticeIds.has(id)) return
+  if (typeof name !== 'string' || !name.trim() || typeof message !== 'string' || !message.trim()) return
+  if (!swal?.fire) return
+
+  taskNoticeIds.add(id)
+  taskNoticeQueue = taskNoticeQueue.then(async () => {
+    if (!isCurrent()) return
+    const dismissed = swal.fire({
+      icon: 'warning',
+      titleText: `任务暂不可执行：${name}`,
+      text: message,
+      confirmButtonText: '确定',
+    })
+    taskNoticePopup = swal.getPopup?.() ?? null
+    try {
+      await dismissed
+    } finally {
+      taskNoticePopup = null
+    }
+  }).catch(error => console.warn('[WS] 显示任务提醒失败:', error))
+}
+
 export function connectWebSocket() {
   const auth = useAuthStore()
   if (!auth.sessionUUID) return null
@@ -82,6 +111,10 @@ export function connectWebSocket() {
   if (socket) disconnectWebSocket()
   const connectionSession = auth.sessionUUID
   socketSession = connectionSession
+  if (taskNoticeSession !== connectionSession) {
+    taskNoticeSession = connectionSession
+    taskNoticeIds.clear()
+  }
 
   socket = io({
     autoConnect: false,
@@ -93,8 +126,9 @@ export function connectWebSocket() {
     pingInterval: 25000,
   })
   const connection = socket
+  const isCurrent = () => connection === socket && connectionSession === auth.sessionUUID
   const on = (event, callback) => connection.on(event, (...args) => {
-    if (connection !== socket || connectionSession !== auth.sessionUUID) return
+    if (!isCurrent()) return
     callback(...args)
   })
 
@@ -174,6 +208,8 @@ export function connectWebSocket() {
     app.handleTaskCompleted(data)
   })
 
+  on('task_unavailable', (data) => queueTaskNotice(data, isCurrent))
+
   on('run_stopped', (data) => {
     const app = useAppStore()
     app.handleRunStopped(data)
@@ -215,6 +251,8 @@ export function disconnectWebSocket() {
     socket = null
   }
   socketSession = ''
+  const swal = globalThis.window?.Swal
+  if (taskNoticePopup && swal?.getPopup?.() === taskNoticePopup) swal.close()
   notifyConnectionState(false)
 }
 

@@ -18,6 +18,7 @@ from business_storage import StorageError
 from runtime_cache import cached_json
 import queue
 import random
+import re
 import sys
 import threading
 import time
@@ -3763,6 +3764,40 @@ class Api:
                 details["current_position"] = {"lon": point[0], "lat": point[1]}
         return {"success": True, "task_index": index, "route_ready": bool(coords), "details": details}
 
+    def _notify_task_unavailable(self, run_data, details):
+        """Send the school's availability message when it returned no checkpoints."""
+        if details.get("geoCoorList") != []:
+            return False
+        instructions = []
+        for field in ("startTime", "endTime"):
+            value = details.get(field)
+            if not isinstance(value, str):
+                continue
+            value = value.strip()
+            if (not value or self._try_parse_dt(value)
+                    or re.fullmatch(r"\d{1,2}[:：]\d{2}(?:[:：]\d{2})?", value)
+                    or not any(char.isalpha() for char in value)):
+                continue
+            safe = sanitize_diagnostic(value, 400)
+            if safe and safe not in instructions:
+                instructions.append(safe)
+        if not instructions:
+            return False
+
+        session_id = getattr(self, "_web_session_id", None)
+        socketio = getattr(_main(), "socketio", None)
+        if session_id and socketio:
+            task_name = sanitize_diagnostic(details.get("name") or run_data.run_name or "任务", 180)
+            message = "\n".join(instructions)
+            notice_id = hashlib.sha256(f"{task_name}\n{message}".encode("utf-8")).hexdigest()[:24]
+            try:
+                socketio.emit("task_unavailable", {
+                    "task_name": task_name, "message": message, "notice_id": notice_id,
+                }, room=session_id)
+            except Exception as exc:
+                logging.warning("[任务详情] 发送开放时间提示失败 (%s)", type(exc).__name__)
+        return True
+
     def get_task_details(self, index):
         """获取指定任务的详细信息"""
         logging.info(f"API调用: get_task_details - 获取任务详细信息，任务索引: {index}")
@@ -3796,7 +3831,9 @@ class Api:
                 [p.get("name", "") for p in details.get("geoCoorList", [])]
             )
 
+            temporarily_unavailable = False
             if not run_data.target_points:
+                temporarily_unavailable = self._notify_task_unavailable(run_data, details)
                 logging.warning(
                     f"[警告] 任务 '{run_data.run_name}' (ScheduleID: {run_data.errand_schedule}) 未包含任何打卡点 (geoCoorList为空)。"
                 )
@@ -3822,7 +3859,7 @@ class Api:
                     if i < len(walk_paths) - 1:
                         temp_coords.append((0.0, 0.0))
             run_data.recommended_coords = temp_coords
-            run_data.details_fetched = True
+            run_data.details_fetched = not temporarily_unavailable
             self.log_and_notify_frontend("任务详情加载成功。")
             logging.debug(
                 f"任务详情获取成功: 目标点数量={len(run_data.target_points)}, 推荐路径点数量={len(run_data.recommended_coords)}"
@@ -10283,7 +10320,8 @@ class Api:
             if p.get("lon") is not None
         ]
         if not waypoints:
-            task_name = details.get("title", run_data.run_name)
+            self._notify_task_unavailable(run_data, details)
+            task_name = details.get("name") or details.get("title") or run_data.run_name
             acc.log_and_notify_frontend(f"跳过: 任务 '{task_name}' 无打卡点")
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
         run_data.target_points = waypoints
