@@ -14,7 +14,7 @@
 
 ## 数据库优先存储
 
-- 当前为业务数据库 v3：19 张业务表与 `storage_documents`、`schema_migrations` 两张元数据表。正式运行及迁移目标不允许非空 `MYSQL_TABLE_PREFIX`，旧前缀只通过迁移工具的 `--legacy-table-prefix` 传给 v1/v2 reader；不要在旧表旁静默创建带新前缀的空库。当前指南为 `docs/database-v3.md`，下列 v2 编码说明仅用于旧版本兼容。
+- 当前为业务数据库 v3：19 张业务表与 `storage_documents`、`schema_migrations` 两张元数据表。正式运行及迁移目标忽略 `MYSQL_TABLE_PREFIX` 并固定使用无前缀表，旧前缀通过迁移工具的 `--legacy-table-prefix` 传给 v1/v2 reader。旧库仍须显式迁移，启动时保留就绪检查。当前指南为 `docs/database-v3.md`，下列 v2 编码说明仅用于旧版本兼容。
 - 默认直接运行从程序目录定位资源与 `data/application.sqlite3`，启动记录 `backend=SQLite`；仅显式 `APP_STORAGE_ROOT` 保留代码根目录／工作目录一致性保护。本地旧业务文件须显式导入、完整核验后再移除，日志与二进制资源不移动。
 - 删除原随仓库提供的 `trusted_ips.txt` 后，全新 SQLite 必须先写入注释型默认可信代理记录，再标记 ready，保留“仅信任内置代理”的默认行为；不能让记录缺失触发全信任。已有数据库不可自动补写、覆盖或改变缺失规则的既有语义。
 - v3 使用 `BusinessBuilder`，命名 JSON 列可读，浮点／大整数用保留标识保持精度；MySQL 会重排 JSON 对象键，必须对 v3 写入和重建内容使用同样递归排序，再做持久摘要校验，不能取消摘要检查。v2 继续使用原 Builder 与原序列化。

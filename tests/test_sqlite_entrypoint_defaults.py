@@ -4,9 +4,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import inspect
 
 import business_storage
-from persistence.engine import DatabaseSettings
+from persistence.engine import DatabaseError, DatabaseSettings
 from persistence.store import RelationalStore
 
 
@@ -134,8 +135,14 @@ def test_mysql_startup_mode_log_does_not_expose_connection_credentials(program, 
     monkeypatch.setenv('MYSQL_USER', 'fixture-user')
     monkeypatch.setenv('MYSQL_PASSWORD', 'fixture-password-must-not-appear')
     monkeypatch.setenv('MYSQL_DATABASE', 'fixture-database')
+    monkeypatch.setenv('MYSQL_TABLE_PREFIX', 'app_')
     store = SimpleNamespace(check_ready=lambda: None, get=lambda *args: None)
-    monkeypatch.setattr(business_storage, '_create_relational_store', lambda settings: store)
+
+    def create_store(settings):
+        assert settings.table_prefix == ''
+        return store
+
+    monkeypatch.setattr(business_storage, '_create_relational_store', create_store)
     with caplog.at_level(logging.INFO):
         runtime = business_storage.get_runtime()
     assert runtime.backend == 'mysql'
@@ -145,9 +152,24 @@ def test_mysql_startup_mode_log_does_not_expose_connection_credentials(program, 
     assert not (program.directory / 'data').exists()
 
 
-def test_runtime_rejects_legacy_table_prefix_with_an_explicit_migration_message(program, monkeypatch):
-    monkeypatch.chdir(program.directory)
+def test_fresh_sqlite_ignores_even_an_invalid_legacy_prefix(program, monkeypatch):
+    monkeypatch.setenv('MYSQL_TABLE_PREFIX', 'invalid-prefix!')
+    store = business_storage.get_runtime().store
+    assert store.settings.table_prefix == ''
+    assert 'schema_migrations' in inspect(store.database.engine).get_table_names()
+
+
+def test_ignoring_legacy_prefix_does_not_open_old_tables_or_create_a_schema(program, monkeypatch):
+    settings = DatabaseSettings(root=program.directory, table_prefix='app_')
+    source = RelationalStore(settings, schema_version='2')
     monkeypatch.setenv('MYSQL_TABLE_PREFIX', 'app_')
-    with pytest.raises(business_storage.StorageConfigurationError, match='MYSQL_TABLE_PREFIX'):
-        business_storage.get_runtime()
-    assert not (program.directory / 'data').exists()
+    try:
+        source.init_schema(ready=True)
+        before = set(inspect(source.database.engine).get_table_names())
+        with pytest.raises(DatabaseError, match='run tools/migrate_storage.py'):
+            business_storage.get_runtime()
+        assert set(inspect(source.database.engine).get_table_names()) == before
+        assert 'app_schema_meta' in before
+        assert business_storage._runtime is None
+    finally:
+        source.database.dispose()

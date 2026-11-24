@@ -608,9 +608,9 @@ def main(argv=None, *, store_factory=None):
             environment = dict(os.environ)
             if args.backend:
                 environment['APP_STORAGE_BACKEND'] = args.backend
-            settings = StorageSettings.from_env(environ=environment, root=root)
-            if settings.table_prefix:
-                raise MigrationError('v3 目标使用无前缀表；请移除 MYSQL_TABLE_PREFIX，旧前缀使用 --legacy-table-prefix 指定')
+            settings = StorageSettings.from_env(
+                environ=environment, root=root, ignore_table_prefix=True,
+            )
             if store_factory is None:
                 from persistence.store import RelationalStore
                 store_factory = RelationalStore

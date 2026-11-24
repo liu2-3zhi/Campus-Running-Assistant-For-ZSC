@@ -1,6 +1,6 @@
 # 业务数据库 v3
 
-SQLite 与 MySQL 使用同一业务模型。正式表名不带前缀；运行和迁移目标均拒绝非空 `MYSQL_TABLE_PREFIX`。旧前缀只用于显式选择迁移来源。
+SQLite 与 MySQL 使用同一业务模型。程序启动和迁移目标都固定使用无前缀表，并忽略遗留的 `MYSQL_TABLE_PREFIX`。迁移旧库时通过 `--legacy-table-prefix` 指定源表前缀。
 
 学校登录页和多账号选择器直接查询学校账号、绑定及所选账号的凭据列。批量详情按需查询两项统计，省去逐账号重建配置记录。登录成功只更新当前学校账号配置和当前系统账号的绑定。已有 v3 数据库可以直接使用这些查询。
 
@@ -51,7 +51,7 @@ python tools/migrate_storage.py --root . --backend sqlite verify --database-only
 
 ## 旧数据库迁移
 
-将目标配置中的 `MYSQL_TABLE_PREFIX` 置空，停止旧版，使用新版程序。源和目标可在同一数据库中，表名集合必须互不重叠。Compose 显式设置空值，覆盖镜像可能携带的旧值。修改容器环境后用 `docker compose up -d --force-recreate` 重建。
+停止旧版，使用新版程序迁移。源和目标可在同一数据库中，表名集合必须互不重叠。Compose 仍提供空值覆盖，以便兼容尚未支持自动忽略的旧镜像。更换镜像或容器环境后用 `docker compose up -d --force-recreate` 重建。
 
 ```bash
 python tools/migrate_storage.py --backend mysql --source relational-v2 --source-backend mysql --legacy-table-prefix app_ import --stopped

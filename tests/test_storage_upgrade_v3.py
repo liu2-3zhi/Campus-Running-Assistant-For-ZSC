@@ -31,17 +31,6 @@ class LegacyRelationalSource(MemoryStore):
         return super().get(namespace, key)
 
 
-def test_v3_cli_rejects_a_target_table_prefix_before_opening_database(tmp_path, monkeypatch):
-    monkeypatch.setenv('MYSQL_TABLE_PREFIX', 'app_')
-    opened = []
-    def factory(settings):
-        opened.append(settings)
-        raise AssertionError('a prefixed v3 destination must not be opened')
-    assert migration.main(['--root', str(tmp_path), '--backend', 'sqlite', 'import', '--stopped'],
-                          store_factory=factory) == 2
-    assert opened == []
-
-
 def source_with_values():
     source = LegacyRelationalSource()
     source.put('settings', 'messages.json', b'{"bool":true,"int":1,"string":"001","null":null}')
@@ -307,11 +296,14 @@ def legacy_v2(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize('drop', [False, True])
-def test_real_same_file_v2_to_v3_upgrade_keeps_typed_values_and_only_drops_selected_schema(legacy_v2, tmp_path, capsys, drop):
+def test_real_same_file_v2_to_v3_upgrade_keeps_typed_values_and_only_drops_selected_schema(legacy_v2, tmp_path, capsys, monkeypatch, drop):
     source = legacy_v2
-    argv = ['--root', str(tmp_path), '--backend', 'sqlite', '--source', 'relational-v2',
-            '--source-backend', 'sqlite', '--source-sqlite-path', str(source.settings.sqlite_path),
-            'import', '--stopped']
+    if not drop:
+        monkeypatch.setenv('MYSQL_TABLE_PREFIX', 'invalid-prefix!')
+    arguments = ['--root', str(tmp_path), '--backend', 'sqlite', '--source', 'relational-v2',
+                 '--source-backend', 'sqlite', '--source-sqlite-path', str(source.settings.sqlite_path),
+                 '--legacy-table-prefix', 'app_']
+    argv = [*arguments, 'import', '--stopped']
     if drop:
         argv.append('--drop-legacy')
     assert migration.main(argv) == 0
@@ -329,7 +321,7 @@ def test_real_same_file_v2_to_v3_upgrade_keeps_typed_values_and_only_drops_selec
         assert ('app_schema_meta' not in names) is drop
         if not drop:
             source.check_ready()
-            assert migration.verify_relational_store(source, target).ok
+            assert migration.main([*arguments, 'verify']) == 0
     finally:
         target.database.dispose()
 

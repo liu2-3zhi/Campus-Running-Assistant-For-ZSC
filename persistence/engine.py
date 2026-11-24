@@ -88,7 +88,7 @@ class DatabaseSettings:
             object.__setattr__(self, name, _integer(name, getattr(self, name), maximum))
 
     @classmethod
-    def from_env(cls, environ=None, root=None):
+    def from_env(cls, environ=None, root=None, *, ignore_table_prefix=False):
         environment = os.environ if environ is None else environ
         return cls(
             backend=environment.get('APP_STORAGE_BACKEND', 'sqlite'),
@@ -99,7 +99,7 @@ class DatabaseSettings:
             user=environment.get('MYSQL_USER', ''),
             password=environment.get('MYSQL_PASSWORD', ''),
             database=environment.get('MYSQL_DATABASE', ''),
-            table_prefix=environment.get('MYSQL_TABLE_PREFIX', ''),
+            table_prefix='' if ignore_table_prefix else environment.get('MYSQL_TABLE_PREFIX', ''),
             connect_timeout=environment.get('MYSQL_CONNECT_TIMEOUT', 5),
             read_timeout=environment.get('MYSQL_READ_TIMEOUT', 15),
             write_timeout=environment.get('MYSQL_WRITE_TIMEOUT', 15),

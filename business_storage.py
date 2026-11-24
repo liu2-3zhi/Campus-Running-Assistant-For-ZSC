@@ -392,11 +392,9 @@ def get_runtime():
         if _runtime is None:
             application_root = Path(__file__).resolve().parent
             configured_root = os.environ.get('APP_STORAGE_ROOT')
-            if os.environ.get('MYSQL_TABLE_PREFIX'):
-                raise StorageConfigurationError(
-                    'Schema v3 uses unprefixed tables; migrate the legacy database and remove MYSQL_TABLE_PREFIX'
-                )
-            settings = StorageSettings.from_env(root=configured_root or application_root)
+            settings = StorageSettings.from_env(
+                root=configured_root or application_root, ignore_table_prefix=True,
+            )
             if settings.root != application_root:
                 raise StorageConfigurationError('Database application root must match the code directory; use --root only for offline migration')
             if configured_root and Path.cwd().resolve() != settings.root:
