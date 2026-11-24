@@ -18,7 +18,6 @@ from business_storage import StorageError
 from runtime_cache import cached_json
 import queue
 import random
-import re
 import sys
 import threading
 import time
@@ -29,7 +28,7 @@ from types import SimpleNamespace
 
 
 from main_runtime import _main
-from api_client import ApiClient, is_task_version_incompatible
+from api_client import ApiClient, classify_task_detail_notice, get_school_task_detail
 from route_diagnostics import build_route_failure_summary, detailed_route_failure_message, generic_route_failure_message, sanitize_diagnostic
 from theme_background_state import background_files_locked
 
@@ -3764,33 +3763,18 @@ class Api:
                 details["current_position"] = {"lon": point[0], "lat": point[1]}
         return {"success": True, "task_index": index, "route_ready": bool(coords), "details": details}
 
-    def _notify_task_unavailable(self, run_data, details):
+    def _notify_task_unavailable(self, run_data, details, notice_kind, instructions):
         """Send a task notice without caching temporarily unavailable details."""
-        if details.get("geoCoorList") != []:
+        if notice_kind is None:
             return False
 
-        if is_task_version_incompatible(details):
+        if notice_kind == "compatibility_error":
             notice = {
                 "kind": "compatibility_error",
                 "message": "检测到兼容性错误，请联系管理员处理。",
             }
         else:
-            instructions = []
-            for field in ("startTime", "endTime"):
-                value = details.get(field)
-                if not isinstance(value, str):
-                    continue
-                value = value.strip()
-                if (not value or self._try_parse_dt(value)
-                        or re.fullmatch(r"\d{1,2}[:：]\d{2}(?:[:：]\d{2})?", value)
-                        or not any(char.isalpha() for char in value)):
-                    continue
-                safe = sanitize_diagnostic(value, 400)
-                if safe and safe not in instructions:
-                    instructions.append(safe)
-            if not instructions:
-                return False
-            notice = {"message": "\n".join(instructions)}
+            notice = {"message": "\n".join(sanitize_diagnostic(text, 400) for text in instructions)}
 
         session_id = getattr(self, "_web_session_id", None)
         socketio = getattr(_main(), "socketio", None)
@@ -3826,21 +3810,23 @@ class Api:
         resp = self.api_client.get_run_details(
             run_data.errand_id, self.user_data.id, run_data.errand_schedule
         )
+        details = get_school_task_detail(resp)
+        notice_kind, instructions = classify_task_detail_notice(resp)
+        temporarily_unavailable = self._notify_task_unavailable(run_data, details, notice_kind, instructions)
 
-        if resp and resp.get("success"):
-            details = resp.get("data", {}).get("errandDetail", {})
+        if isinstance(resp, dict) and resp.get("success"):
+            points = details.get("geoCoorList")
+            points = [p for p in points if isinstance(p, dict)] if isinstance(points, list) else []
             run_data.target_points = [
                 (float(p["lon"]), float(p["lat"]))
-                for p in details.get("geoCoorList", [])
+                for p in points
                 if p.get("lon") is not None and p.get("lat") is not None
             ]
             run_data.target_point_names = "|".join(
-                [p.get("name", "") for p in details.get("geoCoorList", [])]
+                p.get("name", "") for p in points
             )
 
-            temporarily_unavailable = False
             if not run_data.target_points:
-                temporarily_unavailable = self._notify_task_unavailable(run_data, details)
                 logging.warning(
                     f"[警告] 任务 '{run_data.run_name}' (ScheduleID: {run_data.errand_schedule}) 未包含任何打卡点 (geoCoorList为空)。"
                 )
@@ -10316,18 +10302,20 @@ class Api:
         )
         if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
             return "aborted"
-        if not (details_resp and details_resp.get("success")):
+        details = get_school_task_detail(details_resp)
+        notice_kind, instructions = classify_task_detail_notice(details_resp)
+        self._notify_task_unavailable(run_data, details, notice_kind, instructions)
+        if not (isinstance(details_resp, dict) and details_resp.get("success")):
             acc.log_and_notify_frontend(f"获取任务详情失败，跳过。")
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
 
-        details = details_resp.get("data", {}).get("errandDetail", {})
+        points = details.get("geoCoorList")
         waypoints = [
             (float(p["lon"]), float(p["lat"]))
-            for p in details.get("geoCoorList", [])
-            if p.get("lon") is not None
+            for p in (points if isinstance(points, list) else [])
+            if isinstance(p, dict) and p.get("lon") is not None and p.get("lat") is not None
         ]
         if not waypoints:
-            self._notify_task_unavailable(run_data, details)
             task_name = details.get("name") or details.get("title") or run_data.run_name
             acc.log_and_notify_frontend(f"跳过: 任务 '{task_name}' 无打卡点")
             return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环

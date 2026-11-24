@@ -151,6 +151,46 @@ def test_run_details_does_not_refresh_for_school_opening_hours_notice(app_client
     assert len(transport.version_calls) == len(transport.business_calls) == 1
 
 
+@pytest.mark.parametrize("details,message", [
+    ({"startTime": "请将 ＡＰＰ 更新至最新版后再跑步", "geoCoorList": None}, "获取任务详情成功"),
+    ({"endTime": "客户端版本号不匹配，请重新尝试"}, "获取任务详情成功"),
+    ({"startTime": "请更新版本后再进行跑步", "geoCoorList": []}, "获取任务详情成功"),
+    ({}, "当前 App 版本不对，请更新后再试"),
+])
+def test_task_version_recovery_accepts_explicit_wording_variants(app_client, details, message):
+    factory, transport = app_client
+    client = factory()
+    client.sync_app_version()
+    gated = _detail_response(details)
+    if not details:
+        gated = {"code": 400, "success": False}
+    gated["message"] = message
+    recovered = _detail_response({"geoCoorList": [{"lon": 1, "lat": 2}]})
+    transport.version_responses.append((200, {"code": 200, "data": {"version": "1.0.86"}}))
+    transport.responses.extend([(200, gated), (200, recovered)])
+
+    assert client.get_run_details("e", "u", "s") == recovered
+    assert len(transport.version_calls) == len(transport.business_calls) == 2
+
+
+@pytest.mark.parametrize("details,message", [
+    ({"startTime": "请更新 APP 后再进行跑步", "geoCoorList": [{"lon": 1, "lat": 2}]}, "成功"),
+    ({"startTime": "请更新路线后再跑步", "geoCoorList": []}, "获取任务详情成功"),
+    ({"startTime": "请登录", "geoCoorList": []}, "请求超时"),
+    ({"startTime": "无需更新 APP，任务尚未开放", "geoCoorList": []}, "获取任务详情成功"),
+    ({"startTime": "任务版本过低", "geoCoorList": []}, "获取任务详情成功"),
+])
+def test_task_version_recovery_ignores_unrelated_text(app_client, details, message):
+    factory, transport = app_client
+    client = factory()
+    client.sync_app_version()
+    response = {**_detail_response(details), "message": message}
+    transport.responses.append((200, response))
+
+    assert client.get_run_details("e", "u", "s") == response
+    assert len(transport.version_calls) == len(transport.business_calls) == 1
+
+
 def test_check_version_uses_get_and_equal_version_cache_is_reused(app_client):
     factory, transport = app_client
     first = factory()

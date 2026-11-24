@@ -183,6 +183,46 @@ class TestFailingSubmissionPath(unittest.TestCase):
 
         main_module.socketio.emit.assert_not_called()
 
+    def test_null_checkpoints_with_opening_message_use_availability_notice(self):
+        self.acc.api_client.get_run_details.return_value = {
+            "success": True,
+            "message": "当前任务尚未开放，请在开放时间内开始",
+            "data": {"errandDetail": {"geoCoorList": None, "startTime": "21:30:00"}},
+        }
+
+        self.assertEqual(self._run_with_submission_result(True), "failed")
+        main_module.socketio.emit.assert_called_once_with("task_unavailable", {
+            "task_name": "测试任务",
+            "message": "当前任务尚未开放，请在开放时间内开始",
+            "notice_id": mock.ANY,
+        }, room=self.api._web_session_id)
+
+    def test_generic_errors_without_checkpoints_do_not_emit_availability_notice(self):
+        for message in ("请求超时", "获取开放时间失败"):
+            with self.subTest(message=message):
+                self.acc.api_client.get_run_details.return_value = {
+                    "success": True,
+                    "data": {"errandDetail": {"geoCoorList": [], "endTime": message}},
+                }
+                self.assertEqual(self._run_with_submission_result(True), "failed")
+        main_module.socketio.emit.assert_not_called()
+
+    def test_compatibility_error_in_response_message_is_reported_by_both_modes(self):
+        self.acc.api_client.get_run_details.return_value = {
+            "code": 400, "success": False, "message": "当前 ＡＰＰ 版本号不匹配",
+        }
+        self.api.api_client = self.acc.api_client
+        self.api.user_data = self.acc.user_data
+        self.api.all_run_data = [self.run]
+
+        self.assertFalse(self.api.get_task_details(0)["success"])
+        self.assertFalse(self.run.details_fetched)
+        self.assertEqual(self._run_with_submission_result(True), "failed")
+        notices = [call.args[1] for call in main_module.socketio.emit.call_args_list if call.args[0] == "task_unavailable"]
+        self.assertEqual(len(notices), 2)
+        self.assertEqual(notices[0], notices[1])
+        self.assertEqual(notices[0]["kind"], "compatibility_error")
+
     def test_incompatible_task_version_uses_compatibility_notice(self):
         self.acc.api_client.get_run_details.return_value["data"]["errandDetail"] = {
             "name": "测试任务",

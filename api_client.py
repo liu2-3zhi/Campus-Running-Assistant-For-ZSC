@@ -6,6 +6,7 @@ import random
 import re
 import threading
 import time
+import unicodedata
 from typing import NamedTuple
 from urllib.parse import urlencode, urlsplit
 
@@ -24,6 +25,21 @@ _ANDROID_UA_RE = re.compile(
     re.IGNORECASE | re.ASCII,
 )
 _EMPTY_DEVICE_UAS = frozenset({"", "null", "none", "undefined"})
+_TASK_VERSION_NOTICE = re.compile(
+    r"(?:(?:app|客户端|应用)(?:的)?版本号?[:：]?(?:过低|太低|过旧|太旧|不对|不正确|不兼容|不匹配|不一致|有误|错误|已?过期|需(?:要)?(?:更新|升级))"
+    r"|请(?:先|将)?(?:更新|升级)(?:app|客户端|应用|版本号?)"
+    r"|请(?:先|将)?(?:app|客户端|应用)(?:版本号?)?(?:更新|升级)"
+    r"|(?<!无需)(?<!无须)(?<!不用)(?<!不要)(?:更新|升级)(?:app|客户端|应用)(?:后|至|到|再|$)"
+    r"|please(?:update|upgrade)(?:the|your)?(?:app|application)"
+    r"|appversion(?:is)?(?:toolow|tooold|outdated|incompatible|mismatch))"
+)
+_TASK_AVAILABILITY_NOTICE = re.compile(
+    r"(?:尚未|暂未|还未|未到|暂不|不再|不|未)(?:对外)?开放"
+    r"|(?:不在|超过|已过|未到).{0,10}(?:开放|可执行|允许执行)时间"
+    r"|(?:任务|活动)(?:已|已过|暂时|暂)?(?:超时|过期|结束|关闭|不可执行|不可用|未开始)"
+    r"|(?:请在|请于|请勿|请等到|请等待).{0,40}(?:开始|进行|执行|开放|跑步)"
+    r"|(?:notyetopen|outside(?:the)?(?:opening|available)hours|task(?:isunavailable|hasexpired|hasended))"
+)
 
 
 def scrub_login_query(message):
@@ -43,17 +59,36 @@ def _version_key(value) -> tuple:
     return tuple(int(part) for part in _VERSION_NUM_RE.findall(str(value or "")))
 
 
-def is_task_version_incompatible(details) -> bool:
-    """Recognize the school detail response that requires an app update."""
-    if not isinstance(details, dict) or details.get("geoCoorList") != []:
-        return False
-    for field in ("startTime", "endTime"):
-        value = details.get(field)
-        if isinstance(value, str):
-            message = "".join(value.casefold().split())
-            if re.search(r"(?:更新|升级)app|app版本(?:过低|太低|不兼容)", message):
-                return True
-    return False
+def get_school_task_detail(payload):
+    data = payload.get("data") if isinstance(payload, dict) else None
+    details = data.get("errandDetail") if isinstance(data, dict) else None
+    return details if isinstance(details, dict) else {}
+
+
+def classify_task_detail_notice(payload):
+    """Classify explicit school notices only when the response has no checkpoints."""
+    if not isinstance(payload, dict):
+        return None, ()
+    details = get_school_task_detail(payload)
+    if details.get("geoCoorList") not in (None, []):
+        return None, ()
+
+    availability = {}
+    messages = (
+        details.get("startTime"), details.get("endTime"), details.get("message"),
+        payload.get("message"), payload.get("msg"),
+    )
+    for value in messages:
+        if not isinstance(value, str):
+            continue
+        message = "".join(unicodedata.normalize("NFKC", value).casefold().split())
+        if _TASK_VERSION_NOTICE.search(message):
+            return "compatibility_error", ()
+        if _TASK_AVAILABILITY_NOTICE.search(message):
+            availability.setdefault(message, value.strip())
+    if availability:
+        return "availability", tuple(availability.values())
+    return None, ()
 
 
 class _AppVersionEntry(NamedTuple):
@@ -662,8 +697,8 @@ class ApiClient:
             ))
 
         payload = fetch()
-        data = payload.get("data") if isinstance(payload, dict) and payload.get("success") else None
-        if isinstance(data, dict) and is_task_version_incompatible(data.get("errandDetail")):
+        kind, _ = classify_task_detail_notice(payload)
+        if kind == "compatibility_error":
             logging.info("[任务详情] 校方要求更新 APP，刷新版本后重新查询")
             self.sync_app_version(force=True)
             return fetch()
