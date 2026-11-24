@@ -165,16 +165,19 @@ def test_config_database_read_error_reaches_caller(database_runtime, monkeypatch
     root, store = database_runtime
     store.put('configs', 'config.json', b'{"SSL":{"ssl_enabled":"true"}}')
     original = store.get
+    original_exists = store.exists
     count = 0
 
-    def fail_read(namespace, key):
+    def fail_operation(operation, namespace, key):
         nonlocal count
         count += 1
         if count == fail_at:
             raise DatabaseError('Synthetic configuration read failure')
-        return original(namespace, key)
+        return operation(namespace, key)
 
-    monkeypatch.setattr(store, 'get', fail_read)
+    # Existence, validation and adapter loading are three separate DB reads.
+    monkeypatch.setattr(store, 'exists', lambda *args: fail_operation(original_exists, *args))
+    monkeypatch.setattr(store, 'get', lambda *args: fail_operation(original, *args))
     with pytest.raises(DatabaseError):
         main._read_config_ini(str(root / 'configs' / 'config.json'))
 
@@ -285,7 +288,7 @@ def test_permission_database_read_errors_propagate_in_every_read_branch(database
         if (namespace, key) != ('settings', 'permissions.json'):
             return original(namespace, key)
         state['reads'] += 1
-        if state['fail_next'] or (phase == 'existing' and state['reads'] == 2):
+        if state['fail_next'] or (phase == 'existing' and state['reads'] == 1):
             state['fail_next'] = False
             raise failure
         if phase == 'after_recovery' and not state['created']:

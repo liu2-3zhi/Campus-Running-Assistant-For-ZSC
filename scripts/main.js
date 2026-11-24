@@ -16288,6 +16288,12 @@ $("username-entry").addEventListener("input", async (e) => {
     const userCombo = $("user-combo");
     const exists = [...userCombo.options].some((o) => o.value === username);
     userCombo.value = exists ? username : "";
+    if (!isUsableClientSessionUUID(sessionUUID)) {
+      const uaText = "(新用户将在登录时自动生成)";
+      $("ua-label").textContent = uaText;
+      syncUAToMobile(uaText);
+      return;
+    }
     const data = await callPythonAPI("on_user_selected", username);
     if (data && data.password) $("password-entry").value = data.password;
     logMessage_Info("获取到的data.ua:", data ? data.ua : "null");
@@ -16559,6 +16565,15 @@ async function onUserChange() {
 
   try {
     const username = $("user-combo").value;
+    // 系统认证会话不能替代尚未选择的业务会话。
+    if (!isUsableClientSessionUUID(sessionUUID)) {
+      $("username-entry").value = username;
+      $("password-entry").value = "";
+      const uaText = "(新用户将在登录时自动生成)";
+      $("ua-label").textContent = uaText;
+      syncUAToMobile(uaText);
+      return;
+    }
     const data = await callPythonAPI("on_user_selected", username);
     $("username-entry").value = username;
     $("password-entry").value = data.password || "";

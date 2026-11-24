@@ -23,7 +23,7 @@ for (const credentials of [
     const allAccountReads = []
     const mobileUAs = []
     const context = vm.createContext({
-      sessionUUID: 'business-session', currentAuthUsername: 'owner',
+      sessionUUID: '11111111-1111-4111-8111-111111111111', currentAuthUsername: 'owner',
       $: element, pythonParams: {},
       callPythonAPI: async (method, ...args) => {
         calls.push({ method, args })
@@ -40,7 +40,11 @@ for (const credentials of [
       updateParamInputs() {}, setBaseColor() {}, setThemeStyle() {},
       logMessage_Info() {}, logMessage_Warning() {},
     })
-    vm.runInContext(source.slice(start, end), context)
+    const sessionCheck = source.slice(
+      source.indexOf('function isUsableClientSessionUUID('),
+      source.indexOf('const ADMIN_RETURN_ORIGIN_STORAGE_KEY'),
+    )
+    vm.runInContext(sessionCheck + '\n' + source.slice(start, end), context)
     await context.onUserChange()
 
     assert.deepEqual(calls, [{ method: 'on_user_selected', args: ['10001'] }])

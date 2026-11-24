@@ -240,6 +240,15 @@ def _directory_keys(runtime, identity):
                     if document.key.startswith(prefix)]
 
 
+def _document_exists(runtime, identity):
+    # Existence is registry metadata, independent of whether a stored body can
+    # be decoded. Database errors still propagate instead of using stale files.
+    exists = getattr(runtime.store, 'exists', None)
+    if callable(exists):
+        return exists(*identity)
+    return runtime.store.get(*identity) is not None
+
+
 class _PathProxy:
     def __getattr__(self, name):
         return getattr(_os.path, name)
@@ -248,7 +257,7 @@ class _PathProxy:
         runtime = _runtime(path)
         identity = _identify(path, runtime) if runtime is not None else None
         if identity is not None:
-            return runtime.store.get(*identity) is not None
+            return _document_exists(runtime, identity)
         if _os.path.exists(path):
             return True
         return self.isdir(path) if _directory(path, runtime) is not None else False
@@ -263,7 +272,7 @@ class _PathProxy:
         runtime = _runtime(path)
         identity = _identify(path, runtime) if runtime is not None else None
         if identity is not None:
-            return runtime.store.get(*identity) is not None
+            return _document_exists(runtime, identity)
         return _os.path.isfile(path)
 
     def isdir(self, path):
@@ -337,6 +346,12 @@ class _OSProxy:
         identity = _identify(path, runtime) if runtime is not None and dir_fd is None else None
         if identity is None:
             return _os.remove(path, dir_fd=dir_fd)
+        if getattr(runtime.store, 'normalized', False):
+            # Relational delete locks the registry row and cascades atomically.
+            # Requiring a body read here makes corrupt sessions undeletable.
+            if not runtime.store.delete(*identity):
+                raise _missing(path)
+            return None
         document = runtime.store.get(*identity)
         if document is None:
             raise _missing(path)

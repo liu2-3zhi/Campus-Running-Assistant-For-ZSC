@@ -64,8 +64,8 @@ def test_directory_and_exists_queries_never_reconstruct_entities(listing_runtime
     with statements(store) as queries:
         assert len(storage_io.os.listdir(facade.SYSTEM_ACCOUNTS_DIR)) == 12
         assert storage_io.os.path.isdir(root / 'school_accounts/user_accounts')
-        assert store.exists('system_accounts', facade._auth_username_storage_key('probe-0') + '.json')
-        assert store.exists('system_accounts', facade._auth_username_storage_key('probe-1') + '.json')
+        assert storage_io.os.path.exists(root / 'system_accounts' / (facade._auth_username_storage_key('probe-0') + '.json'))
+        assert storage_io.os.path.isfile(root / 'system_accounts' / (facade._auth_username_storage_key('probe-1') + '.json'))
         assert not store.exists('system_accounts', facade._auth_username_storage_key('missing') + '.json')
     assert len(queries) <= 6
     assert all(store.registry.name in query and store.entities['users'].name not in query for query in queries)
@@ -142,7 +142,7 @@ def test_managed_lookup_does_not_fall_back_after_database_error(listing_runtime,
     path.write_text('{}', encoding='utf-8')
     def fail(*args):
         raise DatabaseError('offline')
-    monkeypatch.setattr(store, 'get', fail)
+    monkeypatch.setattr(store, 'exists', fail)
     with pytest.raises(DatabaseError, match='offline'):
         storage_io.os.path.exists(path)
 
