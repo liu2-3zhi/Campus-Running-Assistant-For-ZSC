@@ -19,6 +19,7 @@ import storage_io
 from persistence.engine import DatabaseSettings
 from persistence.store import RelationalStore
 from persistence.validation import _storage_alias
+from test_relational_mysql import relational_mysql
 
 
 @pytest.fixture
@@ -61,12 +62,15 @@ def account_bridge(tmp_path=None):
 
 
 @pytest.fixture
-def owner_binding_store(runtime, tmp_path, monkeypatch):
+def owner_binding_store(runtime, tmp_path, monkeypatch, request):
     root = tmp_path / "app"
-    store = RelationalStore(DatabaseSettings(root=root, sqlite_path=":memory:"))
-    store.init_schema(ready=True)
+    if getattr(request, "param", "sqlite") == "mysql":
+        store = request.getfixturevalue("relational_mysql")
+    else:
+        store = RelationalStore(DatabaseSettings(root=root, sqlite_path=":memory:"))
+        store.init_schema(ready=True)
     backend = business_storage.StorageRuntime(
-        "sqlite", business_storage.StoragePolicy(root, {}), store
+        store.settings.backend, business_storage.StoragePolicy(root, {}), store
     )
     monkeypatch.setattr(storage_io, "get_runtime", lambda *paths: backend)
     runtime.SCHOOL_ACCOUNTS_DIR = str(root / "school_accounts")
@@ -80,7 +84,8 @@ def owner_binding_store(runtime, tmp_path, monkeypatch):
     store.put("system_accounts", owner_key + ".json", json.dumps({"auth_username": api.auth_username}).encode())
     binding_key = "user_accounts/" + owner_key + ".json"
     yield SimpleNamespace(store=store, api=api, binding_key=binding_key)
-    store.database.dispose()
+    if store.settings.backend == "sqlite":
+        store.database.dispose()
 
 
 def put_owner_bindings(harness, values):
@@ -93,12 +98,111 @@ def get_owner_bindings(harness):
     return json.loads(document.content.decode())
 
 
+@pytest.mark.parametrize("owner_binding_store", ["sqlite", "mysql"], indirect=True)
+def test_multi_add_replaces_apple_ua_without_saving_unverified_password(owner_binding_store, monkeypatch):
+    harness = owner_binding_store
+    api = harness.api
+    sibling = {"password": "other-password", "ua": "Android sibling UA"}
+    put_owner_bindings(harness, {
+        "10001": {"password": "verified-password", "device_ua": "Mozilla/5.0 (iPhone)", "tag": "keep"},
+        "10002": sibling,
+    })
+    replacement = "Mozilla/5.0 (Linux; Android 16; target)"
+    generate = Mock(return_value=replacement)
+    monkeypatch.setattr(api_client.ApiClient, "generate_random_ua", generate)
+
+    def assert_repaired_before_login(account, _username):
+        assert get_owner_bindings(harness)[account.username]["device_ua"] == replacement
+
+    api._reset_account_session_for_relogin.side_effect = assert_repaired_before_login
+
+    assert api.multi_add_account("10001", "unverified-password")["success"]
+    account = api.accounts["10001"]
+    assert account.api_client._get_headers()["User-Agent"] == replacement + api_client.ApiClient.UA_SUFFIX
+    assert account.password == "unverified-password"
+    assert get_owner_bindings(harness) == {
+        "10001": {"password": "verified-password", "device_ua": replacement, "tag": "keep"},
+        "10002": sibling,
+    }
+    generate.assert_called_once_with()
+
+
+def test_account_selection_repairs_apple_ua_for_only_the_selected_school(owner_binding_store, monkeypatch):
+    harness = owner_binding_store
+    api = harness.api
+    api.is_authenticated = True
+    api.auth_group = "user"
+    api.params = {}
+    api.user_data = SimpleNamespace(name="", student_id="")
+    first = {"password": "one", "ua": "Mozilla/5.0 (iPhone)"}
+    second = {"password": "two", "ua": "Mozilla/5.0 (iPad)"}
+    put_owner_bindings(harness, {"10001": first, "10002": second})
+    replacement = "Mozilla/5.0 (Linux; Android 16; target)"
+    generate = Mock(return_value=replacement)
+    monkeypatch.setattr(api_client.ApiClient, "generate_random_ua", generate)
+
+    assert api.on_user_selected("10001")["ua"] == replacement
+    assert api.on_user_selected("10001")["ua"] == replacement
+    assert get_owner_bindings(harness) == {"10001": {**first, "ua": replacement}, "10002": second}
+    assert api.device_ua == "parent-UA"
+    generate.assert_called_once_with()
+
+
+def test_live_multi_request_repairs_saved_apple_ua(owner_binding_store, runtime, monkeypatch):
+    harness = owner_binding_store
+    api = harness.api
+    old_ua = "Mozilla/5.0 (iPhone)"
+    put_owner_bindings(harness, {"10001": {"password": "verified-password", "ua": old_ua}})
+    account = runtime.AccountSession("10001", "in-memory-password", api)
+    account.device_ua = old_ua
+    replacement = "Mozilla/5.0 (Linux; Android 16; target)"
+    monkeypatch.setattr(api_client.ApiClient, "generate_random_ua", Mock(return_value=replacement))
+
+    assert account.api_client._get_headers()["User-Agent"] == replacement + api_client.ApiClient.UA_SUFFIX
+    assert get_owner_bindings(harness) == {"10001": {"password": "verified-password", "ua": replacement}}
+
+
+def test_single_login_repairs_apple_ua_before_verification(owner_binding_store, runtime, monkeypatch):
+    harness = owner_binding_store
+    api = harness.api
+    api._execution_blocks_mode_change = Mock(return_value=False)
+    sibling = {"password": "other-password", "ua": "Android other-device"}
+    put_owner_bindings(harness, {
+        "10001": {"password": "verified-password", "ua": "iPhone outdated-device"},
+        "10002": sibling,
+    })
+    replacement = "Mozilla/5.0 (Linux; Android 16; target)"
+    monkeypatch.setattr(api_client.ApiClient, "generate_random_ua", Mock(return_value=replacement))
+
+    def verify(username, password):
+        assert (username, password) == ("10001", "unverified-password")
+        assert get_owner_bindings(harness)[username] == {"password": "verified-password", "ua": replacement}
+        assert verification.app.device_ua == replacement
+        return {"success": False, "message": "fixture rejection"}
+
+    verification = SimpleNamespace(session=SimpleNamespace(close=Mock()), login=verify)
+
+    def verification_factory(owner):
+        verification.app = owner
+        return verification
+
+    verification_factory.generate_random_ua = api_client.ApiClient.generate_random_ua
+    monkeypatch.setattr(runtime, "ApiClient", verification_factory)
+
+    result = api.login("10001", "unverified-password")
+    assert result["message"] == "fixture rejection"
+    assert get_owner_bindings(harness) == {
+        "10001": {"password": "verified-password", "ua": replacement}, "10002": sibling,
+    }
+    assert api.device_ua == "parent-UA"
+
+
 def test_explicit_password_keeps_each_accounts_saved_ua(owner_binding_store):
     harness = owner_binding_store
     api = harness.api
     put_owner_bindings(harness, {
         "10001": {"password": "old-password", "ua": "Android account-A"},
-        "10002": {"password": "old-password", "ua": "iPhone account-B"},
+        "10002": {"password": "old-password", "ua": "Android account-B"},
     })
     api._load_accounts_by_permission = Mock(side_effect=AssertionError("must not aggregate school accounts"))
     api._load_user_school_accounts = Mock(side_effect=AssertionError("must not aggregate owner bindings"))
@@ -108,19 +212,19 @@ def test_explicit_password_keeps_each_accounts_saved_ua(owner_binding_store):
 
     first, second = api.accounts.values()
     assert first.device_ua == "Android account-A"
-    assert second.device_ua == "iPhone account-B"
+    assert second.device_ua == "Android account-B"
     assert first.password == second.password == "explicit-password"
     assert first.api_client.app is first
     assert second.api_client.app is second
     assert first.api_client.session is not second.api_client.session
     api.device_ua = "changed-parent-UA"
     assert first.api_client._get_headers()["User-Agent"] == "Android account-A" + api_client.ApiClient.UA_SUFFIX
-    assert second.api_client._get_headers()["User-Agent"] == "iPhone account-B" + api_client.ApiClient.UA_SUFFIX
+    assert second.api_client._get_headers()["User-Agent"] == "Android account-B" + api_client.ApiClient.UA_SUFFIX
     assert first.api_client._get_headers()["platform"] == "android"
-    assert second.api_client._get_headers()["platform"] == "ios"
+    assert second.api_client._get_headers()["platform"] == "android"
     assert get_owner_bindings(harness) == {
         "10001": {"password": "old-password", "ua": "Android account-A"},
-        "10002": {"password": "old-password", "ua": "iPhone account-B"},
+        "10002": {"password": "old-password", "ua": "Android account-B"},
     }
     api._load_accounts_by_permission.assert_not_called()
     api._load_user_school_accounts.assert_not_called()
@@ -153,7 +257,7 @@ def test_new_multi_account_uses_target_credentials_and_binds_only_after_verifica
     configure_multi_storage_runtime(harness, runtime)
     api._get_auth_user_and_check_admin.return_value = ("test-owner", is_admin)
     runtime.auth_system.check_permission.return_value = is_admin
-    owned = {"10002": {"password": "owned-password", "ua": "iPhone owned-UA"}}
+    owned = {"10002": {"password": "owned-password", "ua": "Android owned-UA"}}
     shared = {
         "10001": {"password": "other-owner-password", "ua": "Android target-UA"},
         "10009": {"password": "unrelated-password", "ua": "unrelated-UA"},
@@ -256,19 +360,19 @@ def test_request_repairs_lost_ua_from_its_own_last_value(runtime, monkeypatch, l
     api = account_bridge()
     first = runtime.AccountSession("10001", "test-password", api)
     second = runtime.AccountSession("10002", "test-password", api)
-    first.device_ua, second.device_ua = "Android account-A", "iPhone account-B"
+    first.device_ua, second.device_ua = "Android account-A", "Android account-B"
     assert first.api_client._get_headers()["User-Agent"].startswith("Android account-A")
-    assert second.api_client._get_headers()["platform"] == "ios"
+    assert second.api_client._get_headers()["platform"] == "android"
     first.device_ua = lost_ua
     second.device_ua = lost_ua
     generator = Mock(return_value="unexpected-new-UA")
     monkeypatch.setattr(api_client.ApiClient, "generate_random_ua", generator)
 
     assert first.api_client._get_headers()["User-Agent"] == "Android account-A" + api_client.ApiClient.UA_SUFFIX
-    assert second.api_client._get_headers()["User-Agent"] == "iPhone account-B" + api_client.ApiClient.UA_SUFFIX
-    assert second.api_client._get_headers()["platform"] == "ios"
+    assert second.api_client._get_headers()["User-Agent"] == "Android account-B" + api_client.ApiClient.UA_SUFFIX
+    assert second.api_client._get_headers()["platform"] == "android"
     assert first.device_ua == "Android account-A"
-    assert second.device_ua == "iPhone account-B"
+    assert second.device_ua == "Android account-B"
     generator.assert_not_called()
 
 
@@ -327,7 +431,7 @@ def test_status_reports_each_accounts_runtime_ua(runtime):
     api._is_multi_account_execution_active = lambda acc: False
     api._get_account_login_verification = lambda acc: {}
     api._can_skip_multi_task_wait = lambda acc: False
-    for username, ua in (("10001", "Android account-A"), ("10002", "iPhone account-B")):
+    for username, ua in (("10001", "Android account-A"), ("10002", "Android account-B")):
         acc = runtime.AccountSession(username, "test-password", api)
         acc.device_ua = ua
         acc.user_data.gender = "test"
@@ -336,7 +440,7 @@ def test_status_reports_each_accounts_runtime_ua(runtime):
     result = api.multi_get_all_accounts_status()
 
     assert {row["username"]: row.get("device_ua") for row in result["accounts"]} == {
-        "10001": "Android account-A", "10002": "iPhone account-B",
+        "10001": "Android account-A", "10002": "Android account-B",
     }
 
 

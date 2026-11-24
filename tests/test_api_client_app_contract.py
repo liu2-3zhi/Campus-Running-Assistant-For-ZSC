@@ -1,6 +1,7 @@
 """Exercise the App contract at the real requests serialization boundary."""
 
 import json
+import sys
 import urllib.parse
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -74,6 +75,129 @@ def test_check_version_uses_get_and_equal_version_cache_is_reused(app_client):
     assert request.body is None
     assert factory().sync_app_version() == "1.0.85"
     assert len(transport.calls) == 1
+
+
+def test_check_version_preserves_existing_android_app_ua_suffix(app_client):
+    factory, transport = app_client
+    client = factory()
+    full_ua = ("Mozilla/5.0 (Linux; Android 16; fixture; wv) Chrome/159.0.0.0 Mobile Safari/537.36 "
+               "uni-app (Immersed/29.09091) Html5Plus/1.0")
+    client.app.device_ua = full_ua
+    transport.responses.append((200, {"code": 200, "data": {"version": "1.0.85"}}))
+
+    client.sync_app_version()
+
+    assert transport.calls[0][0].headers["User-Agent"] == full_ua
+
+
+@pytest.mark.parametrize("device_ua", [
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) Mobile/15E148",
+    "Mozilla/5.0 (iPad; CPU OS 18_5 like Mac OS X) Mobile/15E148",
+    "mozilla/5.0 (ipod touch; cpu iphone os 15_8 like mac os x)",
+    "CampusApp (iOS17.5; iPhone15,2)",
+    "CampusApp (iPadOS 18.5)",
+])
+def test_apple_mobile_ua_is_rejected_without_rejecting_custom_nonapple_ua(device_ua):
+    assert api_client.ApiClient.is_unsupported_device_ua(device_ua)
+    assert api_client.ApiClient.normalize_device_ua(device_ua) == ""
+    assert api_client.ApiClient.normalize_device_ua("Custom UA AppleWebKit/537.36") == (
+        "Custom UA AppleWebKit/537.36"
+    )
+
+
+@pytest.mark.parametrize("optional_ua", [
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) Mobile/15E148",
+    "Mobile Safari/537.36",
+    None,
+])
+def test_random_ua_falls_back_to_android_webview_for_bad_mobile_candidates(monkeypatch, optional_ua):
+    monkeypatch.setitem(sys.modules, "fake_useragent", SimpleNamespace(
+        UserAgent=lambda **_kwargs: SimpleNamespace(random=optional_ua),
+    ))
+
+    ua = api_client.ApiClient.generate_random_ua()
+
+    assert "Android " in ua
+    assert "; wv)" in ua
+    assert not api_client.ApiClient.is_unsupported_device_ua(ua)
+
+
+def test_random_ua_accepts_android_candidate_and_limits_optional_library_to_android(monkeypatch):
+    captured = {}
+    android = "Mozilla/5.0 (Linux; Android 14; Test Device) Mobile Safari/537.36"
+
+    def user_agent_catalog(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(random=android)
+
+    monkeypatch.setitem(sys.modules, "fake_useragent", SimpleNamespace(UserAgent=user_agent_catalog))
+
+    assert api_client.ApiClient.generate_random_ua() == android
+    assert captured == {"platforms": ["mobile"], "os": ["Android"]}
+
+
+def test_login_replaces_apple_ua_on_version_probe_and_login_request(app_client, monkeypatch):
+    factory, transport = app_client
+    client = factory()
+    client.app.device_ua = client._device_ua = "iPod account UA"
+    client.app.platform = "ios"
+    android = "Android selected-device"
+    monkeypatch.setattr(client, "generate_random_ua", lambda: android)
+    transport.responses.extend([
+        (200, {"code": 200, "data": {"version": "1.0.100"}}),
+        (200, {"code": 200, "data": {"accessToken": "test-access-token"}}),
+    ])
+
+    assert client.login("test-user", "test-password")["code"] == 200
+
+    assert [urlsplit(request.url).path for request, _ in transport.calls] == [
+        "/app/checkVersion", "/app/login",
+    ]
+    for request, _ in transport.calls:
+        assert request.headers["User-Agent"] == android + client.UA_SUFFIX
+        assert request.headers["platform"] == "android"
+    assert client.app.device_ua == client._device_ua == android
+
+
+def test_version_cache_hit_repairs_apple_ua_without_rechecking_version(app_client, monkeypatch):
+    factory, transport = app_client
+    client = factory()
+    api_client.ApiClient._APP_VERSION_CACHE[client.BASE_URL] = "1.0.100"
+    client.app.device_ua = "iPhone stale saved UA"
+    client.app.platform = "iOS"
+    client._device_ua = "Android previous UA for same account"
+    monkeypatch.setattr(client, "generate_random_ua", pytest.fail)
+
+    assert client.sync_app_version() == "1.0.100"
+    assert not transport.calls
+    assert client.app.device_ua == "Android previous UA for same account"
+    assert client._get_headers()["platform"] == "android"
+
+
+def test_repair_notifies_the_owner_once_without_holding_the_client_ua_lock(
+    app_client, monkeypatch, caplog,
+):
+    factory, _transport = app_client
+    client = factory()
+    client.app.device_ua = "iPhone stored-UA"
+    client._device_ua = "iPhone cached-UA"
+    android = "Android account-specific UA"
+    repaired = []
+    monkeypatch.setattr(client, "generate_random_ua", lambda: android)
+
+    def repair(old_ua, replacement):
+        assert client._device_ua_lock.acquire(blocking=False)
+        client._device_ua_lock.release()
+        repaired.append((old_ua, replacement))
+        raise RuntimeError("private repair details")
+
+    client.app._repair_unsupported_device_ua = repair
+    with caplog.at_level("WARNING"):
+        assert client.ensure_device_ua() == client.ensure_device_ua() == android
+
+    assert repaired == [("iPhone stored-UA", android)]
+    assert "RuntimeError" in caplog.text
+    assert "private repair details" not in caplog.text
 
 
 @pytest.mark.parametrize("data", [[], "unavailable", None, {}, {"version": "invalid"}])

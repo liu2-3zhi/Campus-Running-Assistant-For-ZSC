@@ -200,7 +200,8 @@ def test_empty_or_invalid_names_do_not_open_a_database_query(school_store):
     ('legacy-password', {'password': 'legacy-password', 'ua': None}),
     ('', {'password': '', 'ua': None}),
     ({'password': 0, 'ua': None}, {'password': 0, 'ua': None}),
-    ({'password': 'own-password', 'device_ua': 'legacy-extension'}, {'password': 'own-password', 'ua': None}),
+    ({'password': 'own-password', 'device_ua': 'legacy-extension'}, {'password': 'own-password', 'ua': 'legacy-extension'}),
+    ({'password': 'own-password', 'ua': None, 'device_ua': 'extension'}, {'password': 'own-password', 'ua': None}),
 ])
 def test_target_credentials_keep_owned_mapping_or_string_even_when_blank(school_store, owned, expected):
     store = school_store

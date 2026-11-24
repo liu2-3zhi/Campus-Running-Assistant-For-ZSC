@@ -246,7 +246,8 @@ class RelationalStore:
                 return str(raw).lower() not in ('false', '0', 'no', 'off', '')
             return raw
 
-        return {'password': value('password', password), 'ua': value('ua', device_ua)}
+        ua_source = 'ua' if any(info['source'] == 'ua' for info in fields) else 'device_ua'
+        return {'password': value('password', password), 'ua': value(ua_source, device_ua)}
 
     @_safe_database
     def get_school_account_credentials(self, owner_username, school_username, *, include_all=False):

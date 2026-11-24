@@ -14,6 +14,11 @@ from main_runtime import _main
 # 服务端 checkVersion 返回的 version 形如 "1.0.85"，比较时按数字段比，不能按字符串比
 # （"1.0.9" > "1.0.85" 在字符串比较里成立，在版本语义里不成立）。
 _VERSION_NUM_RE = re.compile(r"\d+")
+_APPLE_MOBILE_UA_RE = re.compile(
+    r"(?<![a-z])(?:iphone|ipad(?:os)?|ipod|ios)(?![a-z])",
+    re.IGNORECASE | re.ASCII,
+)
+_ANDROID_UA_RE = re.compile(r"\bandroid\b", re.IGNORECASE | re.ASCII)
 
 
 def scrub_login_query(message):
@@ -107,31 +112,49 @@ class ApiClient:
         return f"{self.BASE_URL}{self.APP_PREFIX}{path}"
 
     @staticmethod
-    def normalize_device_ua(value) -> str:
-        """空配置和序列化空值不能作为设备 UA 发送。"""
+    def is_unsupported_device_ua(value) -> bool:
+        """识别不能用于校园接口的 Apple 移动设备 UA。"""
+        return isinstance(value, str) and _APPLE_MOBILE_UA_RE.search(value) is not None
+
+    @classmethod
+    def normalize_device_ua(cls, value) -> str:
+        """忽略空配置、序列化空值和不受支持的设备 UA。"""
         if not isinstance(value, str):
             return ""
         value = value.strip()
-        return "" if value.lower() in {"", "null", "none", "undefined"} else value
+        if value.lower() in {"", "null", "none", "undefined"} or cls.is_unsupported_device_ua(value):
+            return ""
+        return value
 
     def ensure_device_ua(self, fallback: str | None = None) -> str:
         """仅使用本客户端所属账号的 UA；丢失时恢复，不借用父会话设备。"""
         with self._device_ua_lock:
-            ua = self.normalize_device_ua(getattr(self.app, "device_ua", None))
-            if not ua:
-                ua = self._device_ua or self.normalize_device_ua(fallback) or self.generate_random_ua()
+            previous_ua = getattr(self.app, "device_ua", None)
+            ua = (
+                self.normalize_device_ua(previous_ua)
+                or self.normalize_device_ua(self._device_ua)
+                or self.normalize_device_ua(fallback)
+                or self.generate_random_ua()
+            )
             self._device_ua = ua
             self.app.device_ua = ua
-            return ua
+        if self.is_unsupported_device_ua(previous_ua):
+            repair = getattr(self.app, "_repair_unsupported_device_ua", None)
+            if callable(repair):
+                try:
+                    repair(previous_ua, ua)
+                except Exception as exc:
+                    logging.warning("[设备 UA] 保存替换后的设备 UA 失败 (%s)", type(exc).__name__)
+        return ua
 
     def _app_platform(self, device_ua: str | None = None) -> str:
-        """uni.getSystemInfoSync().osName 的等价物：android / ios。"""
-        os_name = getattr(self.app, "platform", None)
-        if os_name:
-            return str(os_name)
+        """从设备 UA 确定请求平台，兼容保留其他旧自定义平台。"""
         ua = device_ua if device_ua is not None else self.ensure_device_ua()
-        if "iPhone" in ua or "iPad" in ua or "iOS" in ua:
-            return "ios"
+        if _ANDROID_UA_RE.search(ua):
+            return "android"
+        os_name = getattr(self.app, "platform", None)
+        if os_name and not self.is_unsupported_device_ua(str(os_name)):
+            return str(os_name)
         return "android"
 
     @staticmethod
@@ -169,12 +192,15 @@ class ApiClient:
     def _get_headers(self) -> dict:
         """构建请求头，包含认证信息和设备信息（字段对齐 App 的 request 拦截器）"""
         device_ua = self.ensure_device_ua()
+        user_agent = device_ua
+        if "uni-app" not in device_ua.lower() or "html5plus/" not in device_ua.lower():
+            user_agent += self.UA_SUFFIX
         headers = {
             "Connection": "keep-alive",
             "Accept": "*/*",
             "X-Requested-With": self.APP_CLIENT_ID,
             "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-            "User-Agent": device_ua + self.UA_SUFFIX,
+            "User-Agent": user_agent,
             "platform": self._app_platform(device_ua),
         }
 
@@ -201,6 +227,7 @@ class ApiClient:
         复用同一个结果，不会变成"每次登录多打一次 checkVersion"。
         同步失败不标记完成，后续可重试；force=True 可刷新进程缓存。
         """
+        self.ensure_device_ua()
         cached = ApiClient._APP_VERSION_CACHE.get(self.BASE_URL)
         if cached and not force:
             if _version_key(cached) > _version_key(self.app_version or ""):
@@ -686,20 +713,17 @@ class ApiClient:
 
     # ------------------------------------------------------------------ 设备/UA
 
-    @staticmethod
-    def generate_random_ua():
-        """生成一个随机的、仅限移动端设备的User-Agent字符串。
+    @classmethod
+    def generate_random_ua(cls):
+        """生成一个随机的 Android User-Agent 字符串。
 
-        优先使用 fake_useragent 库（如已安装）生成真实度更高的随机UA；
-        若库不可用则回退到内置的安卓设备UA模板列表。
+        优先使用 fake_useragent 的 Android 候选，否则使用内置 WebView 模板。
         """
-        # ── 方案一：使用 fake_useragent 库（移动端限定）──────────────────────
         try:
             from fake_useragent import UserAgent
-            # 注意：这里必须用刚刚 import 进来的 UserAgent，不能写成 _main().UserAgent
-            # （main 模块里没有这个名字，会被 except 静默吞掉、永远走兜底分支）。
-            ua = UserAgent(platforms=["mobile"]).random
-            if "Mobile" in ua or "Android" in ua:
+
+            ua = cls.normalize_device_ua(UserAgent(platforms=["mobile"], os=["Android"]).random)
+            if _ANDROID_UA_RE.search(ua):
                 return ua
         except Exception:
             pass

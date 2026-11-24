@@ -5608,8 +5608,7 @@ def start_web_server(args_param):
             auth_username = str(data.get("auth_username") or "").strip()
             school_username = str(data.get("school_username") or "").strip()
             password = str(data.get("password") or "").strip()
-            # [修正] 安全获取 ua，防止 None.strip() 报错
-            ua = str(data.get("ua") or "").strip()
+            ua = _main().ApiClient.normalize_device_ua(data.get("ua"))
             if not auth_username or not school_username or not password:
                 return (
                     _main().jsonify(
@@ -5640,11 +5639,12 @@ def start_web_server(args_param):
                     ),
                     400,
                 )
-            # 如果前端未提供UA（为空），则自动生成一个随机UA
-            if (not ua) or (ua.strip() == "") or (ua.lower() == "null") or (ua.lower() == "undefined"):
+            if not ua:
                 ua = _main().ApiClient.generate_random_ua()
                 logging.info(
-                    f"[SchoolAccount] 检测到UA为空，已为 {school_username} 自动生成随机UA")
+                    "[SchoolAccount] UA 缺失或不受支持，已生成 Android UA: %s",
+                    school_username,
+                )
 
         except Exception as e:
             logging.error(f"解析school_account保存请求失败: {e}", exc_info=True)
@@ -5965,7 +5965,7 @@ def start_web_server(args_param):
             auth_username = data.get("auth_username", "").strip()
             school_username = data.get("school_username", "").strip()
             password = data.get("password", "").strip()
-            ua = data.get("ua", "").strip()
+            ua = _main().ApiClient.normalize_device_ua(data.get("ua"))
             if not auth_username or not school_username or not password:
                 return (
                     _main().jsonify(
@@ -5996,10 +5996,12 @@ def start_web_server(args_param):
                     ),
                     400,
                 )
-            if (not ua) or (ua.strip() == "") or (ua.lower() == "null") or (ua.lower() == "undefined"):
+            if not ua:
                 ua = _main().ApiClient.generate_random_ua()
                 logging.info(
-                    f"[SchoolAccount] 检测到UA为空，已为 {school_username} 自动生成随机UA")
+                    "[SchoolAccount] UA 缺失或不受支持，已生成 Android UA: %s",
+                    school_username,
+                )
         except Exception as e:
             logging.error(f"解析school_account更新请求失败: {e}", exc_info=True)
             return _main().jsonify({"success": False, "message": "请求数据格式错误"}), 400

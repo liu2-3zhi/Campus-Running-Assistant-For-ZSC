@@ -1080,7 +1080,7 @@ class Api:
                 return None
             value = accounts[school_username]
             if isinstance(value, dict):
-                entry = {"password": value.get("password"), "ua": value.get("ua")}
+                entry = {"password": value.get("password"), "ua": value.get("ua", value.get("device_ua"))}
             elif isinstance(value, str):
                 entry = {"password": value, "ua": None}
             else:
@@ -1480,13 +1480,14 @@ class Api:
                     entry = {"password": password, "ua": ""}
                 else:
                     raise ValueError("学校账号绑定的凭据格式无效")
+                ua_key = "device_ua" if "device_ua" in entry and "ua" not in entry else "ua"
                 normalized_ua = ApiClient.normalize_device_ua(ua)
                 if login_verified:
                     entry["password"] = password
                     if normalized_ua:
-                        entry["ua"] = normalized_ua
-                elif normalized_ua and not ApiClient.normalize_device_ua(entry.get("ua")):
-                    entry["ua"] = normalized_ua
+                        entry[ua_key] = normalized_ua
+                elif normalized_ua and not ApiClient.normalize_device_ua(entry.get(ua_key)):
+                    entry[ua_key] = normalized_ua
                 if existing == entry:
                     return True
                 accounts[school_username] = entry
@@ -1554,13 +1555,20 @@ class Api:
         return None
 
     def _persist_missing_school_account_ua(self, auth_username, school_username, ua):
-        """只补齐已有账号缺失的设备身份，保留密码与已有有效 UA。"""
+        """修复已有绑定的缺失或不兼容 UA，保留密码和受支持的 UA。"""
         ua = ApiClient.normalize_device_ua(ua)
         if not auth_username or auth_username == "guest" or not ua:
             return
-        self._update_school_account_password(
+        return self._update_school_account_password(
             auth_username, school_username, None, ua=ua, login_verified=False
         )
+
+    def _repair_unsupported_device_ua(self, _previous_ua, replacement_ua):
+        school_username = getattr(getattr(self, "user_data", None), "username", None)
+        if school_username:
+            self._persist_missing_school_account_ua(
+                getattr(self, "auth_username", None), school_username, replacement_ua
+            )
 
     def _get_auth_user_and_check_admin(self):
         """
@@ -2668,7 +2676,7 @@ class Api:
                     response_data["accounts"] = []
 
             if is_logged_in and hasattr(self, "device_ua"):
-                response_data["device_ua"] = self.device_ua
+                response_data["device_ua"] = ApiClient.normalize_device_ua(self.device_ua)
 
             logging.debug(
                 f"Initial data response prepared: users={len(users)}, last user={last_user}, logged_in={is_logged_in}, ua_sent={response_data.get('device_ua') is not None}"
@@ -2899,6 +2907,9 @@ class Api:
             password = ""
         if ua is None:
             ua = self.device_ua or ""
+        if ApiClient.is_unsupported_device_ua(ua):
+            ua = _main().ApiClient.generate_random_ua()
+            self._persist_missing_school_account_ua(auth_username, username, ua)
 
         logging.debug(
             f"on_user_selected: username={username}, ua={ua}, password={'***' if password else 'empty'}"
@@ -2918,6 +2929,7 @@ class Api:
         """生成一个新的UA并保存"""
         logging.info("API调用: generate_new_ua - 生成新的随机User-Agent字符串")
         self.device_ua = _main().ApiClient.generate_random_ua()
+        self._manually_generated_device_ua = self.device_ua
         try:
             cfg = _main()._read_config_ini(self.user_config_path)
             if cfg is None:
@@ -3184,7 +3196,25 @@ class Api:
         self.log_and_notify_frontend("正在登录...")
         logging.debug(f"正在尝试为用户进行登录认证: 用户名={username}")
         input_username = username
-        candidate_ua = self.device_ua or _main().ApiClient.generate_random_ua()
+        auth_username = getattr(self, "auth_username", None)
+        stored_ua = None
+        if auth_username and auth_username != "guest":
+            try:
+                credentials = self._load_school_account_credentials(auth_username, username, own_only=True)
+                stored_ua = credentials.get("ua") if credentials else None
+            except Exception as exc:
+                logging.warning("[学校账号] 读取登录设备标识失败 error_type=%s", type(exc).__name__)
+        current_ua = ApiClient.normalize_device_ua(self.device_ua)
+        saved_ua = ApiClient.normalize_device_ua(stored_ua)
+        manual_ua = current_ua if current_ua == getattr(self, "_manually_generated_device_ua", None) else ""
+        needs_ua_repair = ApiClient.is_unsupported_device_ua(stored_ua) or (
+            not saved_ua and ApiClient.is_unsupported_device_ua(self.device_ua)
+        )
+        if needs_ua_repair:
+            candidate_ua = manual_ua or _main().ApiClient.generate_random_ua()
+            self._persist_missing_school_account_ua(auth_username, username, candidate_ua)
+        else:
+            candidate_ua = manual_ua or saved_ua or current_ua or _main().ApiClient.generate_random_ua()
         # Verification has its own network gate and cookies; the current offline
         # session must remain offline until the new credentials are verified.
         verification_owner = SimpleNamespace(
@@ -3229,7 +3259,8 @@ class Api:
         was_offline = bool(getattr(self, "is_offline_mode", False))
         verification_client.app = self
         self.api_client = verification_client
-        self.device_ua = candidate_ua
+        self.device_ua = verification_owner.device_ua
+        self._manually_generated_device_ua = None
         self.user_data = ud
         self.is_offline_mode = False
         if was_offline:
@@ -7835,9 +7866,7 @@ class Api:
                 if isinstance(account_info, dict):
                     if not password:
                         password = account_info.get("password")
-                    saved_ua = ApiClient.normalize_device_ua(account_info.get("ua"))
-                    if saved_ua:
-                        self.accounts[username].device_ua = saved_ua
+                    self.accounts[username].device_ua = account_info.get("ua") or ""
                 elif isinstance(account_info, str) and not password:
                     password = account_info
             except Exception as e:
@@ -7924,7 +7953,7 @@ class Api:
         if hasattr(self, "_web_session_id") and self._web_session_id:
             _main().save_session_state(self._web_session_id, self, force_save=True)
 
-        # Only repair a missing UA on an existing owned binding here. Credentials
+        # Repair a missing or unsupported UA on an existing owned binding. Credentials
         # and new membership are saved by the worker after successful login.
         if auth_username:
             self._persist_missing_school_account_ua(

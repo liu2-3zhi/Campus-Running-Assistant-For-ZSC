@@ -446,6 +446,11 @@ class AccountSession:
         self.stop_event = threading.Event()
         self.account_operation_lock = threading.Lock()
 
+    def _repair_unsupported_device_ua(self, _previous_ua, replacement_ua):
+        self.api_bridge._persist_missing_school_account_ua(
+            getattr(self.api_bridge, "auth_username", None), self.username, replacement_ua
+        )
+
     def log_and_notify_frontend(self, message: str, *, frontend_message=None, diagnostic_id=None):
         """添加账号前缀后记录日志并通知前端。"""
         if frontend_message is None and diagnostic_id is None:

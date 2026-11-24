@@ -16675,7 +16675,7 @@ async function onLogin() {
       //   `[登录成功] 权限组设置为: ${currentUserData.group}`
       // );
 
-      currentSessionUA = uaOnLoginScreen;
+      currentSessionUA = result.ua || uaOnLoginScreen;
       const name = currentUserData.name || "";
       $("user-name-label").textContent = `姓名: ${name}`;
       $("user-id-label").textContent = `学号: ${currentUserData.student_id}`;

@@ -601,18 +601,20 @@ def restore_session_to_api_instance(api_instance, state):
                                 )
                                 continue
                         else:
-                            # 已存在的账号保留自己的有效身份；只修复缺失值。
+                            # 已存在的账号保留自己的有效身份；修复缺失或不受支持的 UA。
                             acc = api_instance.accounts[username]
-                            if not ApiClient.normalize_device_ua(getattr(acc, "device_ua", None)):
-                                restored_ua = ApiClient.normalize_device_ua(
-                                    account_state.get("device_ua")
-                                )
-                                if not restored_ua:
+                            live_ua = getattr(acc, "device_ua", None)
+                            if not ApiClient.normalize_device_ua(live_ua):
+                                restored_ua = ApiClient.normalize_device_ua(account_state.get("device_ua"))
+                                unsupported_live_ua = ApiClient.is_unsupported_device_ua(live_ua)
+                                if not restored_ua or unsupported_live_ua:
                                     credentials = api_instance._load_school_account_credentials(
                                         auth_username, username
                                     ) or {}
                                     stored_ua = ApiClient.normalize_device_ua(credentials.get("ua"))
-                                    restored_ua = stored_ua
+                                    restored_ua = stored_ua or restored_ua
+                                if unsupported_live_ua and stored_ua:
+                                    acc.device_ua = stored_ua
                                 ensure_ua = getattr(getattr(acc, "api_client", None), "ensure_device_ua", None)
                                 acc.device_ua = (
                                     ensure_ua(restored_ua) if callable(ensure_ua)
@@ -673,6 +675,8 @@ def restore_session_to_api_instance(api_instance, state):
         if not api_instance.is_multi_account_mode:
             # 检查该用户是否启用了自动签到（从JSON配置读取）
             school_username = api_instance.user_data.username if api_instance.user_data and api_instance.user_data.username else None
+            if school_username and ApiClient.is_unsupported_device_ua(state.get("device_ua")):
+                _restore_single_account_device_ua(api_instance, school_username)
             if school_username and _main()._is_auto_attendance_enabled(school_username):
                 api_instance.stop_auto_refresh.clear()
                 api_instance.auto_refresh_thread = threading.Thread(
@@ -713,3 +717,29 @@ def restore_session_to_api_instance(api_instance, state):
 
     except Exception as e:
         logging.error(f"恢复会话状态失败: {e}", exc_info=True)
+
+
+def _restore_single_account_device_ua(api_instance, school_username):
+    """从当前学校账号的自有绑定恢复 Android UA。"""
+    owner = getattr(api_instance, "auth_username", None)
+    credentials = None
+    try:
+        credentials = api_instance._load_school_account_credentials(
+            owner, school_username, own_only=True
+        )
+    except Exception as error:
+        logging.warning(
+            "会话恢复：读取单账号设备 UA 失败 error_type=%s", type(error).__name__,
+        )
+
+    stored_ua = ApiClient.normalize_device_ua((credentials or {}).get("ua"))
+    api_instance.device_ua = stored_ua or _main().ApiClient.generate_random_ua()
+    if credentials and not stored_ua:
+        try:
+            api_instance._persist_missing_school_account_ua(
+                owner, school_username, api_instance.device_ua
+            )
+        except Exception as error:
+            logging.warning(
+                "会话恢复：保存单账号设备 UA 失败 error_type=%s", type(error).__name__,
+            )
