@@ -13,6 +13,8 @@ import json
 import logging
 import math
 from storage_io import os, open, is_managed_path
+import storage_io
+from business_storage import StorageError
 import queue
 import random
 import sys
@@ -1006,6 +1008,101 @@ class Api:
                 exc_info=True
             )
             return False
+
+    def _load_owned_school_account_names(self, auth_username):
+        """Read one owner's valid account names without stats or aggregation."""
+        if not auth_username or auth_username == "guest":
+            return []
+        try:
+            with open(self._get_user_accounts_file(auth_username), "r", encoding="utf-8") as handle:
+                accounts = json.load(handle)
+        except FileNotFoundError:
+            return []
+        except StorageError:
+            raise
+        except (OSError, ValueError):
+            logging.warning("[账号名称] 无法读取用户 %s 的账号绑定", auth_username, exc_info=True)
+            return []
+        return [name for name in accounts if _main().is_valid_school_username(name)] if isinstance(accounts, dict) else []
+
+    def _load_school_account_credentials(self, auth_username, school_username, *, own_only=False):
+        """Load one account's password/UA without billing stats or full aggregation."""
+        if (not auth_username or auth_username == "guest"
+                or not _main().is_valid_school_username(school_username)):
+            return None
+
+        def credentials(accounts, *, require_password=False):
+            if not isinstance(accounts, dict) or school_username not in accounts:
+                return None
+            value = accounts[school_username]
+            if isinstance(value, dict):
+                entry = {"password": value.get("password"), "ua": value.get("ua")}
+            elif isinstance(value, str):
+                entry = {"password": value, "ua": None}
+            else:
+                return None
+            if require_password and not str(entry["password"] or "").strip():
+                return None
+            return entry
+
+        def read_accounts(path):
+            try:
+                with open(path, "r", encoding="utf-8") as handle:
+                    return json.load(handle)
+            except FileNotFoundError:
+                return {}
+            except StorageError:
+                raise
+            except (OSError, ValueError):
+                logging.warning("[账号凭据] 无法读取账号绑定: %s", path, exc_info=True)
+                return {}
+
+        owned = credentials(read_accounts(self._get_user_accounts_file(auth_username)))
+        if owned is not None:
+            return owned
+        if own_only or not _main().auth_system.check_permission(auth_username, "manage_users"):
+            return None
+
+        user_accounts_dir = os.path.join(_main().SCHOOL_ACCOUNTS_DIR, "user_accounts")
+        runtime = storage_io.get_runtime(user_accounts_dir)
+        identity = runtime.policy.directory(user_accounts_dir) if runtime is not None else None
+        if identity is not None:
+            namespace, prefix = identity
+            for document in runtime.store.list(namespace, prefix):
+                relative = document.key[len(prefix):]
+                if "/" in relative or not relative.endswith(".json"):
+                    continue
+                try:
+                    other = json.loads(document.content.decode("utf-8-sig"))
+                except (UnicodeError, ValueError):
+                    logging.warning("[账号凭据] 忽略格式无效的账号绑定: %s", document.key)
+                    continue
+                selected = credentials(other, require_password=True)
+                if selected is not None:
+                    return selected
+        elif os.path.isdir(user_accounts_dir):
+            for filename in os.listdir(user_accounts_dir):
+                if not filename.endswith(".json"):
+                    continue
+                selected = credentials(read_accounts(os.path.join(user_accounts_dir, filename)),
+                                       require_password=True)
+                if selected is not None:
+                    return selected
+
+        # Legacy records share the same database adapter, but only the selected
+        # INI is needed here; there is no reason to load unrelated account stats.
+        try:
+            config = configparser.ConfigParser(strict=False)
+            config.read(os.path.join(_main().SCHOOL_ACCOUNTS_DIR, school_username + ".ini"),
+                        encoding="utf-8")
+            password = config.get("Config", "password", fallback=None)
+            if password is not None and str(password).strip():
+                return {"password": password, "ua": config.get("System", "ua", fallback=None)}
+        except StorageError:
+            raise
+        except (OSError, ValueError, configparser.Error):
+            logging.warning("[账号凭据] 无法读取所选账号配置: %s", school_username, exc_info=True)
+        return None
 
     def _load_user_school_accounts(self, auth_username):
         """
@@ -2425,9 +2522,7 @@ class Api:
                 elif has_view_own_permission:
                     # 中层权限：至少能看到自己关联的学校账号（否则中层用户
                     # 会因为缺少 auto_fill_password 而连自己的账号都看不到）
-                    school_accounts = self._load_user_school_accounts(
-                        auth_username)
-                    users = list(school_accounts.keys()) if school_accounts else []
+                    users = self._load_owned_school_account_names(auth_username)
                     logging.debug(
                         f"用户 {auth_username} 具备本账号密码查看权限，"
                         f"返回其自己的 {len(users)} 个学校账户"
@@ -2858,9 +2953,8 @@ class Api:
         is_guest = getattr(self, "is_guest", False)
         is_authenticated = hasattr(
             self, "is_authenticated") and self.is_authenticated
+        has_view_all_permission = False
         if is_authenticated and auth_username and not is_guest:
-            has_view_all_permission = False
-
             if auth_group in ["admin", "super_admin"]:
                 has_view_all_permission = True
                 logging.debug(f"用户 {auth_username} 是管理员，可以查看所有账户密码")
@@ -2879,35 +2973,15 @@ class Api:
                     )
                     pass
 
-            if not has_view_all_permission:
-                school_accounts = self._load_user_school_accounts(
-                    auth_username)
-
-                if not school_accounts or username not in school_accounts:
-                    logging.warning(
-                        f"权限拒绝: 普通用户 {auth_username} 试图访问未授权的学校账户 {username}"
-                    )
-                    return {
-                        "password": "",
-                        "ua": "",
-                        "params": self.params,
-                        "userInfo": {},
-                    }
-                else:
-                    logging.debug(
-                        f"权限验证通过: 用户 {auth_username} 可以访问其学校账户 {username}"
-                    )
-
-        # 尝试从新路径加载密码和 UA
-        auth_username_local = getattr(self, "auth_username", None)
-        password = None
-        ua = None
-        if auth_username_local:
-            accounts = self._load_user_school_accounts(auth_username_local)
-            account_info = accounts.get(username)
-            if account_info:
-                password = account_info.get("password")
-                ua = account_info.get("ua")
+        account_info = self._load_school_account_credentials(
+            auth_username, username, own_only=not has_view_all_permission)
+        if (is_authenticated and auth_username and not is_guest
+                and not has_view_all_permission and account_info is None):
+            logging.warning(
+                "权限拒绝: 普通用户 %s 试图访问未授权的学校账户 %s", auth_username, username)
+            return {"password": "", "ua": "", "params": self.params, "userInfo": {}}
+        password = account_info.get("password") if account_info is not None else None
+        ua = account_info.get("ua") if account_info is not None else None
 
         # 如果没有找到，使用默认值
         if password is None:

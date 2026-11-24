@@ -151,6 +151,50 @@ function createMultiAccountHarness(options = {}) {
   return { harness, apiCalls, renderedAccounts, refreshStarts, accounts, globalParams }
 }
 
+for (const phase of ['用户上下文初始化', '会话模式查询']) {
+  test(`an initialization timeout in ${phase} is not reported as a disconnected server`, async () => {
+    const harness = createHarness()
+    harness.context.buildLegacyUiPath = path => path
+    const error = Object.assign(new Error(`${phase}超时（30000ms）`), {
+      code: 'LEGACY_INITIALIZATION_TIMEOUT', phase,
+    })
+    if (phase === '用户上下文初始化') {
+      harness.context.onUserChange = async () => { throw error }
+    } else {
+      harness.setModeQuery(async () => { throw error })
+    }
+    await harness.context.initializeApp()
+
+    const notice = harness.notices.find(notice => notice?.title)
+    assert.equal(notice.title, '初始化超时')
+    assert.ok(notice.text.includes(phase))
+    assert.ok(!notice.text.includes('服务器无法连接'))
+    assert.equal(harness.element('loading-overlay').classList.contains('hidden'), true)
+    assert.equal(harness.element('mobile-loading-overlay').classList.contains('hidden'), true)
+  })
+}
+
+test('an initialization programming error is reported without claiming network loss or exposing its details', async () => {
+  const harness = createHarness()
+  harness.context.onUserChange = async () => { throw new TypeError('fixture-secret-property is undefined') }
+  await harness.context.initializeApp()
+
+  const notice = harness.notices.find(notice => notice?.title)
+  assert.equal(notice.title, '初始化失败')
+  assert.ok(!notice.text.includes('服务器无法连接'))
+  assert.ok(!notice.text.includes('fixture-secret'))
+})
+
+test('an actual fetch connection failure retains the network failure notice', async () => {
+  const harness = createHarness()
+  harness.context.onUserChange = async () => { throw new TypeError('Failed to fetch') }
+  await harness.context.initializeApp()
+
+  const notice = harness.notices.find(notice => notice?.title)
+  assert.equal(notice.title, '网络错误')
+  assert.ok(notice.text.includes('服务器无法连接'))
+})
+
 for (const mobile of [false, true]) {
   test(`${mobile ? 'mobile' : 'desktop'} restores an executing multi-account session without requesting a mode change`, async () => {
     const { harness, apiCalls, renderedAccounts, refreshStarts, accounts, globalParams } = createMultiAccountHarness({ mobile })

@@ -16578,58 +16578,7 @@ async function onUserChange() {
 
     const style = pythonParams.theme_style || "default";
     setThemeStyle(style, false); // 传入 false，不保存
-
-    if (sessionUUID && currentAuthUsername) {
-      try {
-        const response = await fetch("/auth/get_user_school_accounts", {
-          method: "GET",
-          headers: {
-            "X-Session-ID": sessionUUID,
-          },
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-
-          if (result.success && result.accounts) {
-            const accountData = result.accounts[username];
-
-            let password = null;
-            let ua = null;
-
-            if (typeof accountData === "string") {
-              password = accountData;
-            } else if (
-              typeof accountData === "object" &&
-              accountData !== null
-            ) {
-              password = accountData.password;
-              ua = accountData.ua;
-            }
-
-            if (password) {
-              $("password-entry").value = password;
-
-              logMessage_Info(
-                `[用户选择] 已从 school_accounts 加载用户 ${username} 的密码`,
-              );
-            }
-
-            if (ua) {
-              $("ua-label").textContent = ua;
-              syncUAToMobile(ua);
-              logMessage_Info(
-                `[用户选择] 已从 school_accounts 加载用户 ${username} 的UA`,
-              );
-            }
-          }
-        }
-      } catch (error) {
-        logMessage_Warning(
-          `[用户选择] 无法加载 school_accounts: ${error.message}`,
-        );
-      }
-    }
+    // 单账号接口已按权限过滤凭据，避免再次读取全体账号统计并覆盖返回值。
   } finally {
     if (loginBtn) {
       loginBtn.disabled = false;

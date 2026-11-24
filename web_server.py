@@ -13986,7 +13986,8 @@ def start_web_server(args_param):
                     #   own  —— 仅当被选账号属于调用者自己关联的学校账号时回传
                     #   none —— 一律清空
                     selected_username = (
-                        params.get("username") if isinstance(params, dict) else None
+                        params.get("username") if isinstance(params, dict)
+                        else params[0] if isinstance(params, list) and params else None
                     )
                     caller = getattr(api_instance, "auth_username", None)
                     allow_password = False
@@ -13996,16 +13997,15 @@ def start_web_server(args_param):
                             allow_password = True
                         elif visibility == "own" and selected_username:
                             try:
-                                own_accounts = api_instance._load_user_school_accounts(
-                                    caller
-                                ) or {}
+                                own_account = api_instance._load_school_account_credentials(
+                                    caller, selected_username, own_only=True)
                             except Exception as own_error:
                                 logging.error(
                                     f"[密码可见性] 加载用户 {caller} 的学校账号失败: {own_error}",
                                     exc_info=True,
                                 )
-                                own_accounts = {}
-                            allow_password = selected_username in own_accounts
+                                own_account = None
+                            allow_password = own_account is not None
                         if not allow_password:
                             logging.info(
                                 f"[密码可见性] 调用者={caller} 级别={visibility} "

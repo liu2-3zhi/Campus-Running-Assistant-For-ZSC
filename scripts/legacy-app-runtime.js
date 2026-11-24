@@ -118,6 +118,32 @@ function waitForLegacyInitialization(promise, phase, timeoutMs) {
   return Promise.race([guardedPromise, timeoutPromise]);
 }
 
+function getLegacyInitializationFailureNotice(error) {
+  if (error?.code === "LEGACY_INITIALIZATION_TIMEOUT") {
+    return {
+      title: "初始化超时",
+      text: `${error.phase || "页面初始化"}处理时间过长，请稍后刷新重试。`,
+      icon: "warning",
+    };
+  }
+
+  const message = String(error?.message || "");
+  const connectionFailed = error?.code === "NETWORK_ERROR" ||
+    (error?.name === "TypeError" && /Failed to fetch|NetworkError|Load failed/i.test(message)) ||
+    message === "网络连接已断开。";
+  return connectionFailed
+    ? {
+        title: "网络错误",
+        text: "服务器无法连接，请检查网络或稍后重试。",
+        icon: "warning",
+      }
+    : {
+        title: "初始化失败",
+        text: "页面初始化未完成，请刷新重试。若问题持续，请联系管理员。",
+        icon: "warning",
+      };
+}
+
 async function initializeApp() {
   let initializationContext = null;
   const initializationStartedAt = Date.now();
@@ -619,9 +645,7 @@ async function initializeApp() {
       logMessage_Error("获取会话模式信息失败:", e);
       hideLoadingOverlays();
       Swal.fire({
-        title: "网络错误",
-        text: "获取会话模式信息失败，请检查网络连接后重试",
-        icon: "warning",
+        ...getLegacyInitializationFailureNotice(e),
         confirmButtonText: "确定",
       }).then(() => {
         logMessage_Info(
@@ -1063,12 +1087,7 @@ async function initializeApp() {
       stack: err?.stack || "",
       sessionUUID: typeof sessionUUID === "string" ? sessionUUID : "",
     });
-    // showModalAlert("服务器无法连接，请检查网络或稍后重试。", "网络错误");
-    Swal.fire({
-      title: "网络错误",
-      text: "服务器无法连接，请检查网络或稍后重试。",
-      icon: "warning",
-    });
+    Swal.fire(getLegacyInitializationFailureNotice(err));
   }
 }
 async function restoreMobileTaskState() {
