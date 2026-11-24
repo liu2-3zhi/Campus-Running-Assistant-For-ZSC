@@ -262,6 +262,20 @@ def test_school_login_keeps_manual_login_options_and_its_last_selection(credenti
     assert result['lastUser'] == '10002'
 
 
+def test_initial_data_uses_current_permissions_even_with_an_old_admin_session(credential_runtime):
+    store, api, facade = credential_runtime
+    put_owner(store, facade, 'owner', {'10001': {}})
+    put_owner(store, facade, 'other', {'20001': {'password': 'fixture-only'}})
+    prepare_initial_data(api, facade)
+    api.auth_group = 'admin'
+    facade.auth_system.resolve_password_visibility = lambda owner: 'all'
+    assert api.get_initial_data()['users'] == ['10001', '20001']
+    facade.auth_system.resolve_password_visibility = lambda owner: 'own'
+    assert api.get_initial_data()['users'] == ['10001']
+    facade.auth_system.resolve_password_visibility = lambda owner: 'none'
+    assert api.get_initial_data()['users'] == []
+
+
 def test_own_names_lookup_propagates_database_failure_and_initial_data_reports_failure(credential_runtime, monkeypatch):
     store, api, facade = credential_runtime
     prepare_initial_data(api, facade)

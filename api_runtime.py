@@ -2422,72 +2422,26 @@ class Api:
                     if filename.endswith(".ini")
                 )
 
-            # ========== 权限检查：根据用户权限过滤可见的用户列表 ==========
+            password_visibility = "none"
+            if auth_username and not is_guest:
+                try:
+                    password_visibility = _main().auth_system.resolve_password_visibility(auth_username)
+                except Exception as exc:
+                    logging.warning("[学校账号] 读取账号可见范围失败 error_type=%s", type(exc).__name__)
+
             if is_guest:
                 users = []
-                logging.debug(f"游客用户请求 get_initial_data，返回空用户列表")
-            elif auth_username and not is_guest:
-                # 账号列表可见性共三档：
-                #   all  —— auto_fill_password（或管理员组）：可见所有学校账号
-                #   own  —— view_school_account_passwords：可见自己的学校账号
-                #   none —— 两者皆无：不可见任何学校账号
-                # 这里只决定"能列出哪些账号"，密码字段是否下发另由
-                # web_server._apply_password_visibility 控制。
-                password_visibility = "none"
-                try:
-                    password_visibility = (
-                        _main().auth_system.resolve_password_visibility(auth_username)
-                    )
-                except Exception as e:
-                    logging.warning(
-                        f"解析用户 {auth_username} 的密码可见级别时出错: {e}"
-                    )
-
-                has_view_all_permission = False
-                has_view_own_permission = False
-
-                if auth_group in ["admin", "super_admin"]:
-                    has_view_all_permission = True
-                    logging.debug(
-                        f"用户 {auth_username} 是管理员，拥有查看所有账户的权限"
-                    )
-                elif password_visibility == "all":
-                    has_view_all_permission = True
-                    logging.debug(
-                        f"用户 {auth_username} 通过 auto_fill_password 获得了查看所有账户的权限"
-                    )
-                elif password_visibility == "own":
-                    has_view_own_permission = True
-                    logging.debug(
-                        f"用户 {auth_username} 具备查看本账号学校账号密码的权限"
-                    )
-
-                if has_view_all_permission:
-                    store = self._school_account_store(self._get_user_accounts_file(auth_username))
-                    users = (self._cached_school_account_names(
-                        store, auth_username, include_all=True, include_manual=True)
-                             if store is not None else configured_users())
-                    logging.debug(
-                        f"用户 {auth_username} 有权限，返回所有 {len(users)} 个学校账户"
-                    )
-                elif has_view_own_permission:
-                    # 中层权限：至少能看到自己关联的学校账号（否则中层用户
-                    # 会因为缺少 auto_fill_password 而连自己的账号都看不到）
-                    users = self._load_owned_school_account_names(auth_username)
-                    logging.debug(
-                        f"用户 {auth_username} 具备本账号密码查看权限，"
-                        f"返回其自己的 {len(users)} 个学校账户"
-                    )
-                else:
-                    users = []
-                    logging.debug(
-                        f"用户 {auth_username} 无学校账号可见权限，返回空列表"
-                    )
-            else:
+            elif password_visibility == "all":
+                store = self._school_account_store(self._get_user_accounts_file(auth_username))
+                users = (self._cached_school_account_names(
+                    store, auth_username, include_all=True, include_manual=True)
+                    if store is not None else configured_users())
+            elif password_visibility == "own":
+                users = self._load_owned_school_account_names(auth_username)
+            elif not auth_username and not getattr(self, "_web_session_id", None):
                 users = configured_users()
-                logging.debug(
-                    f"未认证用户请求 get_initial_data，返回所有 {len(users)} 个账户（向后兼容）"
-                )
+            else:
+                users = []
 
             cfg = _main()._read_config_ini(self.config_path) or _main()._get_default_config()
 

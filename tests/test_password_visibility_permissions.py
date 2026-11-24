@@ -245,7 +245,7 @@ class TestNewPermissionWiredEverywhere(unittest.TestCase):
 
         self.assertIn('password_visibility == "all"', source)
         self.assertIn('password_visibility == "own"', source)
-        self.assertIn("has_view_own_permission", source)
+        self.assertIn("resolve_password_visibility(auth_username)", source)
 
 
 if __name__ == "__main__":
