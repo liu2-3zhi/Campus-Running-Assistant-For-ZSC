@@ -74,6 +74,10 @@ def test_picker_ignores_nested_compatibility_sources(school_store):
     bindings(store, 'owner', {'00101': {'password': 'own'}})
     store.put('school_accounts', 'nested/user_accounts/owner.json', b'{"00102":"hidden"}')
     store.put('school_accounts', 'nested/00201.ini', b'[Config]\npassword=hidden\n')
+    store.put('school_accounts', 'nested/00202.ini', b'[stats]\noverdue_count=9\n')
+    assert store.get_school_account_stats(['00202']) == {
+        '00202': {'overdue_count': 0, 'completed_count': 0},
+    }
     assert store.list_school_account_names('owner', include_all=True) == ['00101']
 
 

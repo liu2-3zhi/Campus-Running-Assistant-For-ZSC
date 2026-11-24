@@ -160,26 +160,31 @@ def test_trusted_networks_use_database_document_without_physical_file(database_r
     assert not (root / 'trusted_ips.txt').exists()
 
 
-@pytest.mark.parametrize('fail_at', [1, 2, 3])
-def test_config_database_read_error_reaches_caller(database_runtime, monkeypatch, fail_at):
+def test_config_database_read_error_reaches_caller(database_runtime, monkeypatch):
+    root, store = database_runtime
+    store.put('configs', 'config.json', b'{"SSL":{"ssl_enabled":"true"}}')
+
+    def fail_read(*args):
+        raise DatabaseError('Synthetic configuration read failure')
+
+    monkeypatch.setattr(store, 'get', fail_read)
+    with pytest.raises(DatabaseError):
+        main._read_config_ini(str(root / 'configs' / 'config.json'))
+
+
+def test_read_config_uses_one_database_snapshot(database_runtime, monkeypatch):
     root, store = database_runtime
     store.put('configs', 'config.json', b'{"SSL":{"ssl_enabled":"true"}}')
     original = store.get
-    original_exists = store.exists
-    count = 0
+    reads = []
 
-    def fail_operation(operation, namespace, key):
-        nonlocal count
-        count += 1
-        if count == fail_at:
-            raise DatabaseError('Synthetic configuration read failure')
-        return operation(namespace, key)
+    def read(*args):
+        reads.append(args)
+        return original(*args)
 
-    # Existence, validation and adapter loading are three separate DB reads.
-    monkeypatch.setattr(store, 'exists', lambda *args: fail_operation(original_exists, *args))
-    monkeypatch.setattr(store, 'get', lambda *args: fail_operation(original, *args))
-    with pytest.raises(DatabaseError):
-        main._read_config_ini(str(root / 'configs' / 'config.json'))
+    monkeypatch.setattr(store, 'get', read)
+    assert main._read_config_ini(str(root / 'configs' / 'config.json')).getboolean('SSL', 'ssl_enabled')
+    assert reads == [('configs', 'config.json')]
 
 
 @pytest.mark.parametrize('helper', ['create_default', 'migrate_ini'])

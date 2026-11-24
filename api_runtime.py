@@ -1030,7 +1030,8 @@ class Api:
     @staticmethod
     def _school_account_store(path):
         runtime = storage_io.get_runtime(path)
-        if runtime is not None and runtime.policy.identify(path) is not None:
+        if (runtime is not None and runtime.policy.identify(path) is not None
+                and callable(getattr(runtime.store, "school_cache_generation", None))):
             return runtime.store
         return None
 

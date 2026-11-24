@@ -28,14 +28,16 @@ class JsonConfigAdapter:
 
     default_write_lock = None
 
-    def __init__(self, json_path: str, write_lock=None):
+    def __init__(self, json_path: str, write_lock=None, *, data=None):
         self._path = json_path
         self._write_lock = write_lock or self.default_write_lock or threading.RLock()
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            raw = {}
+        raw = data
+        if raw is None:
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                raw = {}
         # 规范化：所有 section/key 保持原始大小写，值统一为字符串
         self._data: dict = {}
         for sec, opts in raw.items():

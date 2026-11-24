@@ -7685,15 +7685,15 @@ def _read_config_ini(config_file=CONFIG_FILE):
                 os.path.dirname(os.path.abspath(__file__)), json_cfg_path
             )
 
-        # 不存在则创建默认 JSON
-        if not os.path.exists(json_cfg_path):
-            logging.warning(f"[配置] {json_cfg_path} 不存在，将创建默认 JSON 配置")
-            _create_default_json_config(json_cfg_path)
-
-        # 文件存在但损坏：先备份再重建，避免配置丢失
-        try:
+        def read_config_data():
             with open(json_cfg_path, "r", encoding="utf-8") as vf:
-                json.load(vf)
+                data = json.load(vf)
+            if not isinstance(data, dict):
+                raise json.JSONDecodeError("Configuration must be a JSON object", "", 0)
+            return data
+
+        try:
+            data = read_config_data()
         except json.JSONDecodeError:
             if is_managed_path(json_cfg_path):
                 raise StorageError("Database application configuration is corrupt; explicit repair is required") from None
@@ -7704,12 +7704,12 @@ def _read_config_ini(config_file=CONFIG_FILE):
             except Exception as be:
                 logging.error(f"[配置] JSON 损坏备份失败: {be}")
             _create_default_json_config(json_cfg_path)
+            data = read_config_data()
         except FileNotFoundError:
             _create_default_json_config(json_cfg_path)
+            data = read_config_data()
 
-        adapter = JsonConfigAdapter(json_cfg_path)
-        logging.debug(f"[配置] 已从 {json_cfg_path} 加载 JSON 配置")
-        return adapter
+        return JsonConfigAdapter(json_cfg_path, data=data)
 
     except StorageError:
         raise

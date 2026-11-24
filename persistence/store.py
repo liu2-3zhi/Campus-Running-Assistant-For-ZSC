@@ -270,7 +270,11 @@ class RelationalStore:
         binding = select(links.c.password, links.c.device_ua, *metadata).join(
             self.registry, links.c.document_id == self.registry.c.document_id).where(
                 links.c.school_username == school_username, root_binding)
-        own = binding.where(links.c.owner_username == owner_username).order_by(
+        from .validation import _storage_alias
+        owner_key = f'user_accounts/{_storage_alias(owner_username)}.json'
+        own = binding.where(
+            links.c.document_id == self._identity('school_accounts', owner_key),
+            links.c.owner_username == owner_username).order_by(
             self.registry.c.record_key, links.c.ordinal).limit(1)
         with self.database.connection() as connection:
             credentials = self._binding_credentials(connection.execute(own).first())
@@ -305,6 +309,7 @@ class RelationalStore:
                     schools.c.defaults['ua'].as_string(), schools.c.defaults['UA'].as_string())),
                 else_=None)
             legacy = select(password, ua).where(
+                schools.c.document_id == self._identity('school_accounts', school_username + '.ini'),
                 schools.c.school_username == school_username,
                 schools.c.source_key == school_username + '.ini',
                 func.lower(func.json_type(schools.c.configuration)) == 'object',
@@ -329,8 +334,11 @@ class RelationalStore:
 
         links = self.entities['account_school_links']
         root_binding = self._root_school_binding()
+        from .validation import _storage_alias
+        owner_key = f'user_accounts/{_storage_alias(owner_username)}.json'
         own = select(links.c.school_username.label('school_username')).join(
             self.registry, links.c.document_id == self.registry.c.document_id).where(
+                links.c.document_id == self._identity('school_accounts', owner_key),
             links.c.owner_username == owner_username, root_binding)
         if include_all:
             has_password = self._has_non_whitespace_text(links.c.password)
@@ -400,7 +408,9 @@ class RelationalStore:
         with self.database.connection() as connection:
             for offset in range(0, len(names), 400):
                 batch = names[offset:offset + 400]
-                query = select(*projections).where(schools.c.school_username.in_(batch))
+                ids = [self._identity('school_accounts', name + '.ini') for name in batch]
+                query = select(*projections).where(
+                    schools.c.document_id.in_(ids), schools.c.school_username.in_(batch))
                 for school, overdue, completed in connection.execute(query):
                     parsed = tuple(self._statistic_integer(value) for value in (overdue, completed))
                     # The legacy ConfigParser reader treats either malformed
