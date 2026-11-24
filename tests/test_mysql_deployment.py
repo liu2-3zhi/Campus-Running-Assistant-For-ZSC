@@ -25,7 +25,8 @@ def test_mysql_overlay_only_connects_application_to_external_database():
         return json.loads(result.stdout)
     base = render(['docker-compose.yml'])
     merged = render(['docker-compose.yml', 'docker-compose.mysql.yml'])
-    assert set(merged['services']) == {'python-running-helper'}
+    assert set(merged['services']) == {'python-running-helper', 'python-running-redis'}
+    assert not merged['services']['python-running-redis'].get('ports')
     assert not merged.get('volumes')
     service = merged['services']['python-running-helper']
     assert service['environment']['MYSQL_HOST'] == 'database.example.com'

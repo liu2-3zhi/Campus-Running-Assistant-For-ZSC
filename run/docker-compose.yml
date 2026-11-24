@@ -29,6 +29,12 @@ services:
       APP_STORAGE_BACKEND: sqlite
       APP_STORAGE_ROOT: /app
       SQLITE_DATABASE_PATH: /app/data/application.sqlite3
+      APP_CACHE_BACKEND: redis
+      REDIS_HOST: python-running-redis
+      REDIS_PORT: "6379"
+      REDIS_DATABASE: "0"
+      REDIS_CONNECT_TIMEOUT: "0.25"
+      REDIS_SOCKET_TIMEOUT: "0.25"
     restart: unless-stopped
     
     # 限制Docker容器日志大小
@@ -40,7 +46,37 @@ services:
         
     networks:
       - python-running-helper-network
+      - cache-internal
+
+  python-running-redis:
+    image: redis:7-alpine
+    container_name: python-running-redis
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - cache-internal
 
 networks:
   python-running-helper-network:
     driver: bridge
+  cache-internal:
+    internal: true

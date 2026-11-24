@@ -2,6 +2,8 @@
 
 SQLite 与 MySQL 使用同一业务模型。正式表名不带前缀；运行和迁移目标均拒绝非空 `MYSQL_TABLE_PREFIX`。旧前缀只用于显式选择迁移来源。
 
+学校登录页和多账号选择器直接查询学校账号、绑定及所选账号的凭据列。批量详情按需查询两项统计，省去逐账号重建配置记录。登录成功只更新当前学校账号配置和当前系统账号的绑定。已有 v3 数据库可以直接使用这些查询。
+
 ## 表与职责
 
 | 表 | 内容 |
@@ -69,6 +71,10 @@ docker compose run --rm --entrypoint python python-running-helper tools/migrate_
 ```
 
 Docker 文件迁移须另行只读挂载来源并指定 `--root`，SQLite 目标放在只读来源外。`--remove-source` 仅用于明确允许删除的可写本地来源。v1 MySQL 文档库继续使用 `--source legacy-mysql --legacy-table-prefix app_`。`export --output <new-directory> --stopped` 支持完整导出，包括短信记录，只接受全新目录，不恢复文件运行后端。
+
+## 运行缓存
+
+直接启动默认使用有容量和过期限制的进程内缓存。Compose 通过内部网络使用 Redis，服务没有宿主机端口，断线时回退到内存。缓存仅保存按调用者和权限范围划分的账号名列表，查询前仍检查权限。应用提交学校账号改动后使用新的缓存键。直接 SQL 修改后等待短期缓存过期即可重新读取。
 
 ## 短信与日志
 

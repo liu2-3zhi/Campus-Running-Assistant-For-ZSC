@@ -66,6 +66,23 @@ def test_bulk_account_load_logs_one_backend_summary_without_credentials(account_
     assert 'fixture-private-UA' not in caplog.text
 
 
+def test_database_account_list_loads_statistics_once_after_merging(account_storage, monkeypatch):
+    h = account_storage
+    h.store.put('school_accounts', 'user_accounts/owner.json', b'{"10001":"x","10002":{}}')
+    h.store.put('school_accounts', '10001.ini', b'[stats]\noverdue_count=2\ncompleted_count=3\n')
+    batches = []
+    query = h.store.get_school_account_stats
+
+    def track(usernames):
+        batches.append(set(usernames))
+        return query(usernames)
+
+    monkeypatch.setattr(h.store, 'get_school_account_stats', track)
+    result = h.api._load_user_school_accounts('owner')
+    assert batches == [{'10001', '10002'}]
+    assert (result['10001']['overdue_count'], result['10001']['completed_count']) == (2, 3)
+
+
 @pytest.mark.parametrize('backend', ['sqlite', 'mysql'])
 def test_failed_stats_write_names_backend_and_keeps_error_diagnostic(account_storage, caplog, monkeypatch, backend):
     h = account_storage

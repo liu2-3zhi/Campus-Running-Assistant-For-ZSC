@@ -113,6 +113,7 @@ class _TransactionState:
     owner_thread: int
     rollback_only: bool = False
     active: bool = True
+    commit_actions: set = field(default_factory=set)
 
 
 class Database:
@@ -222,6 +223,8 @@ class Database:
             if not transaction.is_active:
                 raise DatabaseError('Transaction ended before its owning scope completed')
             transaction.commit()
+            for action in state.commit_actions:
+                action()
         except BaseException:
             if transaction.is_active:
                 try:
@@ -239,6 +242,17 @@ class Database:
         """Open a transaction, or reuse the connection in the current scope."""
         with self.transaction() as connection:
             yield connection
+
+    def on_commit(self, action):
+        """Schedule a local state change after the active transaction commits."""
+        state = self._context.get()
+        if state is None or not state.active or state.owner_thread != threading.get_ident():
+            raise RuntimeError('No active database transaction')
+        state.commit_actions.add(action)
+
+    def in_transaction(self):
+        state = self._context.get()
+        return state is not None and state.active and state.owner_thread == threading.get_ident()
 
     def dispose(self):
         self.engine.dispose()

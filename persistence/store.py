@@ -11,10 +11,12 @@ from dataclasses import dataclass
 import hashlib
 import io
 import json
+import secrets
+import threading
 import time
 from functools import wraps
 
-from sqlalchemy import delete, insert, select, update, inspect, event
+from sqlalchemy import delete, insert, select, update, inspect, event, func, literal, case
 from sqlalchemy.exc import IntegrityError, DBAPIError
 
 from .codec import Builder, decode_tree
@@ -99,6 +101,8 @@ class RelationalStore:
         self.settings = settings
         self.schema_version = str(schema_version)
         self.database = Database(settings, connection_factory)
+        self._school_cache_generation = secrets.token_hex(16)
+        self._school_cache_lock = threading.Lock()
         if settings.backend == 'sqlite':
             @event.listens_for(self.database.engine, 'connect')
             def register_digest(connection, _record):
@@ -106,6 +110,17 @@ class RelationalStore:
                     lambda value: hashlib.sha256(value.encode('utf-8')).hexdigest() if value is not None else None, deterministic=True)
         self.metadata, self.registry, self.meta, self.entities, self.definitions = make_schema(
             settings.table_prefix, schema_version=self.schema_version)
+
+    def school_cache_generation(self):
+        # Never put a transaction's uncommitted view into Redis or process memory.
+        if self.database.in_transaction():
+            return None
+        with self._school_cache_lock:
+            return self._school_cache_generation
+
+    def _advance_school_cache_generation(self):
+        with self._school_cache_lock:
+            self._school_cache_generation = secrets.token_hex(16)
 
     @_safe_database
     def init_schema(self, ready=False, *, allow_legacy=False):
@@ -171,6 +186,228 @@ class RelationalStore:
         if '\x00' in namespace or '\x00' in key:
             raise DatabaseError('Invalid storage identity')
         return hashlib.sha256((namespace + '\x00' + key).encode()).hexdigest()
+
+    @staticmethod
+    def _valid_school_account_name(value):
+        return isinstance(value, str) and len(value) >= 4 and value.isascii() and value.isdigit()
+
+    def _has_non_whitespace_text(self, expression):
+        # Keep password values inside the database predicate. This is Python's
+        # Unicode whitespace set, matching the prior str.strip() eligibility
+        # check without projecting any secret into Python. SQLite TRIM accepts
+        # a character set; MySQL's TRIM removes a whole string, so use REPLACE
+        # there instead. Avoiding nested calls on SQLite prevents parser stack
+        # overflow on older SQLite builds.
+        whitespace = ('\t\n\v\f\r\x1c\x1d\x1e\x1f \x85\u00a0\u1680'
+                      '\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007'
+                      '\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000')
+        normalized = func.coalesce(expression, literal(''))
+        if self.settings.backend == 'sqlite':
+            normalized = func.trim(normalized, whitespace)
+        else:
+            for character in whitespace:
+                normalized = func.replace(normalized, character, '')
+        return func.length(normalized) > 0
+
+    def _root_school_binding(self):
+        key = self.registry.c.record_key
+        return (self.registry.c.namespace == 'school_accounts') & (
+            key.startswith('user_accounts/', autoescape=True)) & (
+            key.endswith('.json', autoescape=True)) & (
+            func.instr(func.substr(key, len('user_accounts/') + 1), '/') == 0)
+
+    @staticmethod
+    def _binding_credentials(row):
+        """Decode only the two mapped credential fields, never an account doc."""
+        if row is None:
+            return None
+        password, device_ua, *metadata = row
+        # The four possible mapped binding fields are password, overdue,
+        # completed and UA. Only their source/column/type metadata is projected;
+        # stored representation strings (including old stats) are never read.
+        fields = [dict(zip(('source', 'column', 'type'), metadata[index:index + 3]))
+                  for index in range(0, len(metadata), 3) if metadata[index] is not None]
+        if any(info.get('source') == 'value' and info.get('column') == 'legacy_value'
+               for info in fields):
+            return None
+        if any(info.get('source') == 'value' for info in fields):
+            return {'password': password, 'ua': None}
+
+        def value(source, raw):
+            info = next((item for item in fields if item.get('source') == source), None)
+            if info is None or raw is None:
+                return None
+            kind = info.get('type')
+            if kind == 'int':
+                return int(raw)
+            if kind == 'float':
+                return float(raw)
+            if kind == 'bool':
+                return str(raw).lower() not in ('false', '0', 'no', 'off', '')
+            return raw
+
+        return {'password': value('password', password), 'ua': value('ua', device_ua)}
+
+    @_safe_database
+    def get_school_account_credentials(self, owner_username, school_username, *, include_all=False):
+        """Read one target's credentials; callers own the include_all permission.
+
+        A valid owned dictionary/string binding wins even if its password is
+        blank. An administrator's fallback follows root binding record-key
+        order, then the target's global Config/System fields. Each query filters
+        the school first; unrelated school credentials and stats are not read.
+        """
+        if self.schema_version != SCHEMA_VERSION:
+            raise DatabaseError('School account projections require relational schema v3')
+        if (not isinstance(owner_username, str) or not owner_username or owner_username == 'guest'
+                or not self._valid_school_account_name(school_username)):
+            return None
+
+        links = self.entities['account_school_links']
+        root_binding = self._root_school_binding()
+        metadata = [links.c.fields[index][name].as_string()
+                    for index in range(4) for name in ('source', 'column', 'type')]
+        binding = select(links.c.password, links.c.device_ua, *metadata).join(
+            self.registry, links.c.document_id == self.registry.c.document_id).where(
+                links.c.school_username == school_username, root_binding)
+        own = binding.where(links.c.owner_username == owner_username).order_by(
+            self.registry.c.record_key, links.c.ordinal).limit(1)
+        with self.database.connection() as connection:
+            credentials = self._binding_credentials(connection.execute(own).first())
+            if credentials is not None or not include_all:
+                return credentials
+
+            # Scalar null/list/bool bindings are not dictionaries or passwords.
+            # Mapped password types let SQL skip false/zero dictionary values
+            # just as the old bool(password) eligibility check did.
+            source_column = func.coalesce(links.c.fields[0]['column'].as_string(), '')
+            password_type = func.coalesce(links.c.fields[0]['type'].as_string(), '')
+            usable = self._has_non_whitespace_text(links.c.password) & (
+                source_column != 'legacy_value') & case((
+                    password_type.in_(('int', 'float', 'bool')),
+                    func.lower(links.c.password).not_in(('0', '0.0', '-0.0', 'false')),
+                ), else_=True)
+            shared = binding.where(links.c.owner_username != owner_username, usable).order_by(
+                self.registry.c.record_key, links.c.ordinal).limit(1)
+            credentials = self._binding_credentials(connection.execute(shared).first())
+            if credentials is not None:
+                return credentials
+
+            schools = self.entities['school_accounts']
+            password = func.coalesce(
+                schools.c.configuration['password'].as_string(),
+                schools.c.configuration['Password'].as_string(),
+                schools.c.defaults['password'].as_string(),
+                schools.c.defaults['Password'].as_string())
+            ua = case((func.lower(func.json_type(schools.c.system_parameters)) == 'object',
+                func.coalesce(schools.c.system_parameters['ua'].as_string(),
+                    schools.c.system_parameters['UA'].as_string(),
+                    schools.c.defaults['ua'].as_string(), schools.c.defaults['UA'].as_string())),
+                else_=None)
+            legacy = select(password, ua).where(
+                schools.c.school_username == school_username,
+                schools.c.source_key == school_username + '.ini',
+                func.lower(func.json_type(schools.c.configuration)) == 'object',
+                self._has_non_whitespace_text(password)).limit(1)
+            row = connection.execute(legacy).first()
+            return {'password': row[0], 'ua': row[1]} if row is not None else None
+
+    @_safe_database
+    def list_school_account_names(self, owner_username, *, include_all=False):
+        """Project account picker names without rebuilding or returning secrets.
+
+        Owned links are included regardless of password so an account with a
+        missing credential remains selectable for manual repair. When
+        ``include_all`` is enabled, other owners' nonblank-password links and
+        root-level global school configurations with a nonblank Password are
+        also included. Results are unique and sorted.
+        """
+        if self.schema_version != SCHEMA_VERSION:
+            raise DatabaseError('School account projections require relational schema v3')
+        if not isinstance(owner_username, str) or not owner_username or owner_username == 'guest':
+            return []
+
+        links = self.entities['account_school_links']
+        root_binding = self._root_school_binding()
+        own = select(links.c.school_username.label('school_username')).join(
+            self.registry, links.c.document_id == self.registry.c.document_id).where(
+            links.c.owner_username == owner_username, root_binding)
+        if include_all:
+            has_password = self._has_non_whitespace_text(links.c.password)
+            shared = select(links.c.school_username.label('school_username')).join(
+                self.registry, links.c.document_id == self.registry.c.document_id).where(
+                links.c.owner_username != owner_username, root_binding, has_password)
+
+            schools = self.entities['school_accounts']
+            password = func.coalesce(
+                schools.c.configuration['password'].as_string(),
+                schools.c.configuration['Password'].as_string(),
+                schools.c.defaults['password'].as_string(),
+                schools.c.defaults['Password'].as_string(),
+            )
+            global_config = select(schools.c.school_username.label('school_username')).where(
+                schools.c.source_key.not_like('%/%'),
+                func.lower(func.json_type(schools.c.configuration)) == 'object',
+                self._has_non_whitespace_text(password),
+            )
+            names_query = own.union(shared, global_config).order_by('school_username')
+        else:
+            names_query = own.distinct().order_by('school_username')
+
+        with self.database.connection() as connection:
+            rows = connection.execute(names_query).scalars()
+            return sorted({name for name in rows if self._valid_school_account_name(name)})
+
+    @staticmethod
+    def _statistic_integer(value):
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    @_safe_database
+    def get_school_account_stats(self, school_usernames):
+        """Read only the two shared stats keys using bounded SQL projections.
+
+        INI [stats] values override matching DEFAULT values. Missing, malformed
+        or invalid accounts return zero counts, matching the existing reader.
+        This method does not read user-bound credentials or reconstruct a
+        compatibility document. Queries are split into groups of 400 names.
+        """
+        if self.schema_version != SCHEMA_VERSION:
+            raise DatabaseError('School account projections require relational schema v3')
+        names = list(dict.fromkeys(
+            value for value in school_usernames
+            if self._valid_school_account_name(value)
+        ))
+        result = {name: {'overdue_count': 0, 'completed_count': 0} for name in names}
+        if not names:
+            return result
+
+        schools = self.entities['school_accounts']
+        has_stats_section = func.lower(func.json_type(schools.c.statistics)) == 'object'
+        projections = (
+            schools.c.school_username,
+            case((has_stats_section, func.coalesce(
+                schools.c.statistics['overdue_count'].as_string(),
+                schools.c.defaults['overdue_count'].as_string(), literal('0'))), else_='0'),
+            case((has_stats_section, func.coalesce(
+                schools.c.statistics['completed_count'].as_string(),
+                schools.c.defaults['completed_count'].as_string(), literal('0'))), else_='0'),
+        )
+        with self.database.connection() as connection:
+            for offset in range(0, len(names), 400):
+                batch = names[offset:offset + 400]
+                query = select(*projections).where(schools.c.school_username.in_(batch))
+                for school, overdue, completed in connection.execute(query):
+                    parsed = tuple(self._statistic_integer(value) for value in (overdue, completed))
+                    # The legacy ConfigParser reader treats either malformed
+                    # stats option as a failed stats section and returns zeros.
+                    if None not in parsed:
+                        result[school] = {'overdue_count': parsed[0], 'completed_count': parsed[1]}
+        return result
 
     def _encode(self, namespace, key, document_id, content):
         from . import identity, domains
@@ -303,6 +540,8 @@ class RelationalStore:
             for name, values in entities.items():
                 if values:
                     connection.execute(insert(self.entities[name]), values)
+            if any(row['namespace'] == 'school_accounts' for row in records):
+                self.database.on_commit(self._advance_school_cache_generation)
         return len(records)
 
     @_safe_database
@@ -333,6 +572,8 @@ class RelationalStore:
                     normalized = [dict({field: None for field in columns}, **row) for row in values]
                     if normalized:
                         connection.execute(insert(self.entities[name]), normalized)
+                if namespace == 'school_accounts':
+                    self.database.on_commit(self._advance_school_cache_generation)
         except IntegrityError:
             raise ConflictError('Database entity uniqueness conflict; no partial write committed') from None
         return StoredDocument(namespace, key, canonical, stamp, revision, digest, source_sha256)
@@ -348,4 +589,6 @@ class RelationalStore:
             if expected_revision is not ANY_REVISION and expected_revision != row[0]:
                 raise ConflictError('Storage document revision conflict')
             connection.execute(delete(self.registry).where(self.registry.c.document_id == document_id))
+            if namespace == 'school_accounts':
+                self.database.on_commit(self._advance_school_cache_generation)
             return True

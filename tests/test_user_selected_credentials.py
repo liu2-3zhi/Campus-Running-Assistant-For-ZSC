@@ -1,5 +1,4 @@
 """Selecting one saved account must not load every account's billing stats."""
-import hashlib
 import ast
 import configparser
 import json
@@ -31,7 +30,7 @@ def credential_runtime(tmp_path, monkeypatch):
     check_permission = Mock(return_value=False)
     facade = SimpleNamespace(
         SCHOOL_ACCOUNTS_DIR=str(tmp_path / 'school_accounts'),
-        _auth_username_storage_key=lambda owner: hashlib.sha256(owner.encode()).hexdigest(),
+        _auth_username_storage_key=lambda owner: owner,
         is_valid_school_username=lambda value: isinstance(value, str) and value.isdigit() and len(value) >= 4,
         auth_system=SimpleNamespace(check_permission=check_permission),
     )
@@ -163,7 +162,8 @@ def test_single_account_credentials_own_only_ignores_management_privileges(crede
 
 def test_single_account_lookup_propagates_database_errors(credential_runtime, monkeypatch):
     store, api, facade = credential_runtime
-    monkeypatch.setattr(store, 'get', Mock(side_effect=DatabaseError('synthetic database offline')))
+    monkeypatch.setattr(store, 'get_school_account_credentials',
+                        Mock(side_effect=DatabaseError('synthetic database offline')))
     with pytest.raises(DatabaseError, match='synthetic database offline'):
         api._load_school_account_credentials('owner', '10001')
 
@@ -248,10 +248,41 @@ def test_initial_data_own_visibility_reads_only_owned_names_without_stats_or_sca
 def test_own_names_lookup_propagates_database_failure_and_initial_data_reports_failure(credential_runtime, monkeypatch):
     store, api, facade = credential_runtime
     prepare_initial_data(api, facade)
-    monkeypatch.setattr(store, 'get', Mock(side_effect=DatabaseError('synthetic names database failure')))
+    monkeypatch.setattr(store, 'list_school_account_names',
+                        Mock(side_effect=DatabaseError('synthetic names database failure')))
     with pytest.raises(DatabaseError, match='synthetic names database failure'):
         api._load_owned_school_account_names('owner')
     result = api.get_initial_data()
     assert result['success'] is False
     assert result['offline'] is True
     assert 'users' not in result
+
+
+def test_multi_account_picker_reuses_names_and_refreshes_after_write(credential_runtime, monkeypatch):
+    store, api, facade = credential_runtime
+    put_owner(store, facade, 'owner', {'10001': {'password': 'fixture-only'}})
+    put_owner(store, facade, 'unrelated', {'20001': {'password': 'fixture-only'}})
+    api._load_user_school_accounts = Mock(side_effect=AssertionError('picker must not rebuild accounts'))
+    query = Mock(wraps=store.list_school_account_names)
+    monkeypatch.setattr(store, 'list_school_account_names', query)
+
+    assert api.multi_get_all_config_users() == {'users': ['10001']}
+    assert api.multi_get_all_config_users() == {'users': ['10001']}
+    assert query.call_count == 1
+    facade.auth_system.check_permission.return_value = True
+    assert api.multi_get_all_config_users() == {'users': ['10001', '20001']}
+    facade.auth_system.check_permission.return_value = False
+    store.put('school_accounts', 'user_accounts/owner.json', b'{"10002": {}}')
+    assert api.multi_get_all_config_users() == {'users': ['10002']}
+
+
+def test_multi_account_picker_does_not_cache_rolled_back_names(credential_runtime):
+    store, api, facade = credential_runtime
+    put_owner(store, facade, 'owner', {'10001': {}})
+    assert api.multi_get_all_config_users() == {'users': ['10001']}
+    with pytest.raises(RuntimeError, match='rollback'):
+        with store.transaction():
+            store.put('school_accounts', 'user_accounts/owner.json', b'{"10002": {}}')
+            assert api.multi_get_all_config_users() == {'users': ['10002']}
+            raise RuntimeError('rollback')
+    assert api.multi_get_all_config_users() == {'users': ['10001']}

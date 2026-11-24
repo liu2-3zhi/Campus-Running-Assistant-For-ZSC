@@ -15,6 +15,7 @@ import math
 from storage_io import os, open, is_managed_path
 import storage_io
 from business_storage import StorageError
+from runtime_cache import cached_json
 import queue
 import random
 import sys
@@ -1011,6 +1012,9 @@ class Api:
         """Read one owner's valid account names without stats or aggregation."""
         if not auth_username or auth_username == "guest":
             return []
+        store = self._school_account_store(self._get_user_accounts_file(auth_username))
+        if store is not None:
+            return self._cached_school_account_names(store, auth_username)
         try:
             with open(self._get_user_accounts_file(auth_username), "r", encoding="utf-8") as handle:
                 accounts = json.load(handle)
@@ -1023,11 +1027,37 @@ class Api:
             return []
         return [name for name in accounts if _main().is_valid_school_username(name)] if isinstance(accounts, dict) else []
 
+    @staticmethod
+    def _school_account_store(path):
+        runtime = storage_io.get_runtime(path)
+        if runtime is not None and runtime.policy.identify(path) is not None:
+            return runtime.store
+        return None
+
+    @staticmethod
+    def _cached_school_account_names(store, owner, *, include_all=False):
+        def load():
+            return store.list_school_account_names(owner, include_all=include_all)
+
+        generation = store.school_cache_generation()
+        if generation is None:
+            return load()
+        key = f"school-account-names:{generation}:{int(include_all)}:{owner}"
+        return cached_json(key, load)
+
     def _load_school_account_credentials(self, auth_username, school_username, *, own_only=False):
         """Load one account's password/UA without billing stats or full aggregation."""
         if (not auth_username or auth_username == "guest"
                 or not _main().is_valid_school_username(school_username)):
             return None
+        file_path = self._get_user_accounts_file(auth_username)
+        store = self._school_account_store(file_path)
+        if store is not None:
+            credentials = store.get_school_account_credentials(auth_username, school_username)
+            if (credentials is None and not own_only
+                    and _main().auth_system.check_permission(auth_username, "manage_users")):
+                return store.get_school_account_credentials(auth_username, school_username, include_all=True)
+            return credentials
 
         def credentials(accounts, *, require_password=False):
             if not isinstance(accounts, dict) or school_username not in accounts:
@@ -1055,7 +1085,7 @@ class Api:
                 logging.warning("[账号凭据] 无法读取账号绑定: %s", path, exc_info=True)
                 return {}
 
-        owned = credentials(read_accounts(self._get_user_accounts_file(auth_username)))
+        owned = credentials(read_accounts(file_path))
         if owned is not None:
             return owned
         if own_only or not _main().auth_system.check_permission(auth_username, "manage_users"):
@@ -1159,37 +1189,9 @@ class Api:
 
         try:
 
-            # 步骤2：处理并标准化每个账号的数据格式
-            # 同时从对应的 INI 文件读取统计数据（overdue_count 和 completed_count）
             for school_username, account_info in data.items():
-                # 如果是新格式（字典类型），处理并加载统计数据
-                if isinstance(account_info, dict):
-                    # 从 INI 文件加载该学校账号的统计数据
-                    # _load_school_account_stats_from_ini() 返回：
-                    # {"overdue_count": int, "completed_count": int}
-                    stats = self._load_school_account_stats_from_ini(
-                        school_username)
-
-                    # 将从 INI 读取的统计数据合并到账号信息中
-                    # 这样返回的数据结构就包含了完整信息：密码、UA、欠费次数、完成次数
-                    account_info["overdue_count"] = stats["overdue_count"]
-                    account_info["completed_count"] = stats["completed_count"]
-
-                # 如果是旧格式（字符串密码），转换为新格式并加载统计数据
-                elif isinstance(account_info, str):
-                    # 从 INI 文件加载统计数据
-                    stats = self._load_school_account_stats_from_ini(
-                        school_username)
-
-                    # 转换为新格式：将字符串密码转换为字典结构
-                    data[school_username] = {
-                        "password": account_info,    # 保留原密码
-                        "ua": None,                  # UA 默认为 None
-                        # 从 INI 读取
-                        "overdue_count": stats["overdue_count"],
-                        # 从 INI 读取
-                        "completed_count": stats["completed_count"]
-                    }
+                if isinstance(account_info, str):
+                    data[school_username] = {"password": account_info, "ua": None}
 
             # 如果当前用户具有管理权限，则遍历所有用户的 user_accounts
             # 将其它用户的 school_accounts 汇总（排除 password 为空的数据）并去重
@@ -1248,13 +1250,6 @@ class Api:
                                     entry = {
                                         'password': account_info, 'ua': None}
 
-                                stats = self._load_school_account_stats_from_ini(
-                                    school_username)
-                                entry['overdue_count'] = stats.get(
-                                    'overdue_count', 0)
-                                entry['completed_count'] = stats.get(
-                                    'completed_count', 0)
-
                                 aggregated[school_username] = entry
 
                     # 2. 遍历 school_accounts 根目录下的旧版 INI 文件
@@ -1303,17 +1298,7 @@ class Api:
                                 if password is None or str(password).strip() == "":
                                     continue
 
-                                # 加载统计数据
-                                stats = self._load_school_account_stats_from_ini(
-                                    school_username)
-
-                                # 添加到聚合结果中
-                                aggregated[school_username] = {
-                                    'password': password,
-                                    'ua': ua,
-                                    'overdue_count': stats.get('overdue_count', 0),
-                                    'completed_count': stats.get('completed_count', 0)
-                                }
+                                aggregated[school_username] = {'password': password, 'ua': ua}
 
                             except Exception as e:
                                 logging.warning(
@@ -1326,6 +1311,15 @@ class Api:
                     data = aggregated
             except Exception as e:
                 logging.debug(f"管理员合并 user_accounts 失败: {e}")
+
+            names = [name for name, entry in data.items() if isinstance(entry, dict)]
+            store = self._school_account_store(file_path)
+            if store is not None:
+                stats_by_name = store.get_school_account_stats(names)
+            else:
+                stats_by_name = {name: self._load_school_account_stats_from_ini(name) for name in names}
+            for name, stats in stats_by_name.items():
+                data[name].update(stats)
 
             logging.debug(
                 "[学校账号] 账号绑定加载完成 storage=%s owner=%s count=%d elapsed_ms=%.2f",
@@ -2410,20 +2404,18 @@ class Api:
                 "API调用: get_initial_data - 获取应用初始数据（用户列表和最后登录用户）"
             )
 
-            all_users = sorted(
-                [
-                    os.path.splitext(f)[0]
-                    for f in os.listdir(self.user_dir)
-                    if f.endswith(".ini")
-                ]
-            )
-
             is_authenticated = (
                 hasattr(self, "is_authenticated") and self.is_authenticated
             )
             auth_username = getattr(self, "auth_username", None)
             auth_group = getattr(self, "auth_group", "guest")
             is_guest = getattr(self, "is_guest", False)
+
+            def configured_users():
+                return sorted(
+                    filename[:-4] for filename in os.listdir(self.user_dir)
+                    if filename.endswith(".ini")
+                )
 
             # ========== 权限检查：根据用户权限过滤可见的用户列表 ==========
             if is_guest:
@@ -2466,7 +2458,9 @@ class Api:
                     )
 
                 if has_view_all_permission:
-                    users = all_users
+                    store = self._school_account_store(self._get_user_accounts_file(auth_username))
+                    users = (self._cached_school_account_names(store, auth_username, include_all=True)
+                             if store is not None else configured_users())
                     logging.debug(
                         f"用户 {auth_username} 有权限，返回所有 {len(users)} 个学校账户"
                     )
@@ -2484,7 +2478,7 @@ class Api:
                         f"用户 {auth_username} 无学校账号可见权限，返回空列表"
                     )
             else:
-                users = all_users
+                users = configured_users()
                 logging.debug(
                     f"未认证用户请求 get_initial_data，返回所有 {len(users)} 个账户（向后兼容）"
                 )
@@ -2511,17 +2505,7 @@ class Api:
                     logging.warning(f"获取用户 {auth_username} 的 LastUser 失败: {e}")
 
             # 验证 last_user 是否有效
-            if last_user and last_user not in all_users:
-                logging.debug(f"LastUser '{last_user}' 不在可用列表中，已忽略。")
-                last_user = ""
-                try:
-                    # 使用 _write_config_with_comments() 函数写入配置文件
-                    # 原因：标准的 config.write() 方法会丢失 config.ini 中的所有注释内容
-                    # _write_config_with_comments() 函数会保留配置文件中的注释，保持可读性
-                    # 这对于维护配置文件的可读性和文档性非常重要
-                    _main()._write_config_with_comments(cfg, self.config_path)
-                except Exception as e:
-                    logging.error(f"写回 config.ini 失败：{e}", exc_info=True)
+            if last_user and last_user not in users:
                 last_user = ""
 
             self._load_global_config()
@@ -7550,37 +7534,15 @@ class Api:
         return mode_info
 
     def multi_get_all_config_users(self):
-        """
-        获取所有存在配置文件的用户列表，用于前端便捷添加
-        """
-        # 不再直接遍历旧的 .ini 配置文件以读取 UA 或密码
-        # 改为从 school_accounts 的用户存储中获取已注册的账号列表
-        all_users = []
-        try:
-            if hasattr(self, "auth_username") and self.auth_username:
-                accounts = self._load_user_school_accounts(self.auth_username)
-                if isinstance(accounts, dict):
-                    all_users = sorted(list(accounts.keys()))
-        except Exception:
-            all_users = []
-
-        filtered_users = []
-
-        if hasattr(self, "auth_username") and self.auth_username:
-            school_accounts = self._load_user_school_accounts(
-                self.auth_username)
-
-            for username in all_users:
-                if username in school_accounts:
-                    filtered_users.append(username)
-
-            logging.debug(
-                f"用户 {self.auth_username} 可访问的配置用户: {len(filtered_users)}/{len(all_users)}"
-            )
-        else:
-            logging.warning("multi_get_all_config_users: 没有认证用户信息，返回空列表")
-
-        return {"users": filtered_users}
+        """获取当前用户可添加的学校账号名称。"""
+        owner = getattr(self, "auth_username", None)
+        if not owner or owner == "guest":
+            return {"users": []}
+        store = self._school_account_store(self._get_user_accounts_file(owner))
+        if store is None:
+            return {"users": sorted(self._load_user_school_accounts(owner))}
+        include_all = _main().auth_system.check_permission(owner, "manage_users")
+        return {"users": self._cached_school_account_names(store, owner, include_all=include_all)}
 
     def multi_load_accounts_from_config(self, auth_username):
         """

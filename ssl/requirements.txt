@@ -19,3 +19,4 @@ werkzeug
 fake-useragent
 PyMySQL
 SQLAlchemy>=2.0,<3
+redis>=5,<7
