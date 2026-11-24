@@ -6,6 +6,7 @@ import random
 import re
 import threading
 import time
+from typing import NamedTuple
 from urllib.parse import urlencode, urlsplit
 
 from main_runtime import _main
@@ -40,6 +41,11 @@ def _log_headers(headers):
 def _version_key(value) -> tuple:
     """把 "1.0.85" 这类版本号转成可比较的整数元组。"""
     return tuple(int(part) for part in _VERSION_NUM_RE.findall(str(value or "")))
+
+
+class _AppVersionEntry(NamedTuple):
+    version: str
+    refresh_after: float
 
 
 class ApiClient:
@@ -77,6 +83,8 @@ class ApiClient:
     API_VERSION = 66            # 旧调用兼容常量；App 用请求头 appVersion
     NEW_APP_VERSION = "1.0.85"  # 版本查询不可用时的兼容默认值
     APP_CLIENT_ID = "com.zx.slm"
+    APP_VERSION_TTL_SECONDS = 6 * 60 * 60
+    APP_VERSION_RETRY_SECONDS = 60
     UA_SUFFIX = " uni-app Html5Plus/1.0 (Immersed/29.09091)"
     JSON_CONTENT_TYPE = "application/json;charset=UTF-8"
     FORM_CONTENT_TYPE = "application/x-www-form-urlencoded"
@@ -89,17 +97,17 @@ class ApiClient:
     # 只有这些状态码值得重试：408/425/429 + 5xx。4xx 重试 10 次既浪费 15 秒，
     # 又会把服务端返回的 JSON 错误信封丢掉（原实现就是这么把 401 变成 None 的）。
     RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504, 505})
-    # 进程级版本号缓存：{base_url: 服务端最新版本}
-    _APP_VERSION_CACHE: dict = {}
+    _APP_VERSION_CACHE: dict[str, _AppVersionEntry] = {}
+    _APP_VERSION_REFRESH_IN_FLIGHT: dict[str, threading.Event] = {}
+    _APP_VERSION_CACHE_LOCK = threading.Lock()
 
     def __init__(self, owner_instance):
         self.session = _main().requests.Session()
         self.app = owner_instance
         self._device_ua_lock = threading.Lock()
         self._device_ua = self.normalize_device_ua(getattr(owner_instance, "device_ua", None))
-        # 运行期版本号：默认取类常量，登录前后可被 sync_app_version() 抬到服务端最新版
+        # 学校请求前同步到进程内最近一次有效版本。
         self.app_version = self.NEW_APP_VERSION
-        self._app_version_synced = False
         # App 的登录契约：/login 返回 data.accessToken，之后把它原样放进 Authorization
         self._access_token = None
         self._refresh_token = None
@@ -214,54 +222,76 @@ class ApiClient:
     # ------------------------------------------------------------------ 版本号
 
     def sync_app_version(self, force: bool = False) -> str:
-        """从 /app/checkVersion 拉服务端最新版本号，只升不降。
-
-        这是本项目的版本兼容策略；App 本身使用设备版本，并单独检查更新。
-        有效结果按 BASE_URL 缓存到进程级，每个 ApiClient 实例登录时
-        复用同一个结果，不会变成"每次登录多打一次 checkVersion"。
-        同步失败不标记完成，后续可重试；force=True 可刷新进程缓存。
-        """
+        """按学校请求刷新进程内版本缓存，失败时沿用上一次有效版本。"""
         self.ensure_device_ua()
-        cached = ApiClient._APP_VERSION_CACHE.get(self.BASE_URL)
-        if cached and not force:
-            if _version_key(cached) > _version_key(self.app_version or ""):
-                self.app_version = cached
-            self._app_version_synced = True
+        base_url = self.BASE_URL
+        can_refresh = not self._is_offline() and not self._request_cancelled_by_stop()
+        with self._APP_VERSION_CACHE_LOCK:
+            cached = self._APP_VERSION_CACHE.get(base_url)
+            self._apply_app_version(cached.version if cached else self.NEW_APP_VERSION)
+            if not can_refresh or (cached and not force and time.monotonic() < cached.refresh_after):
+                return self.app_version
+
+            refresh = self._APP_VERSION_REFRESH_IN_FLIGHT.get(base_url)
+            refresh_owner = refresh is None
+            if refresh_owner:
+                refresh = threading.Event()
+                self._APP_VERSION_REFRESH_IN_FLIGHT[base_url] = refresh
+            elif cached and not force:
+                return self.app_version
+
+        if not refresh_owner:
+            # 首次冷启动时，并发请求限时等待同一个版本探测。
+            refresh.wait(timeout=self.CONNECT_TIMEOUT + self.READ_TIMEOUT)
+            with self._APP_VERSION_CACHE_LOCK:
+                cached = self._APP_VERSION_CACHE.get(base_url)
+                if cached:
+                    self._apply_app_version(cached.version)
             return self.app_version
 
-        if self._app_version_synced and not force:
-            return self.app_version
+        current_version = self.app_version
+        latest = None
+        try:
+            response = self._request("GET", "/checkVersion", retries=1)
+            if response is not None and 200 <= response.status_code < 300:
+                payload = self._json(response)
+                if isinstance(payload, dict) and payload.get("code") == 200:
+                    data = payload.get("data")
+                    version = data.get("version") if isinstance(data, dict) else None
+                    if isinstance(version, str) and re.fullmatch(r"[0-9]+(?:\.[0-9]+)*", version):
+                        latest = max(current_version, version, key=_version_key)
+        except Exception as error:
+            logging.debug("appVersion 探测失败 (%s)", type(error).__name__)
+        finally:
+            with self._APP_VERSION_CACHE_LOCK:
+                try:
+                    if latest is not None:
+                        self.app_version = latest
+                        self._APP_VERSION_CACHE[base_url] = _AppVersionEntry(
+                            latest, time.monotonic() + self.APP_VERSION_TTL_SECONDS,
+                        )
+                    elif not self._is_offline() and not self._request_cancelled_by_stop():
+                        self._APP_VERSION_CACHE[base_url] = _AppVersionEntry(
+                            self.app_version, time.monotonic() + self.APP_VERSION_RETRY_SECONDS,
+                        )
+                finally:
+                    del self._APP_VERSION_REFRESH_IN_FLIGHT[base_url]
+                    refresh.set()
 
-        current = self.app_version or self.NEW_APP_VERSION
-        payload = self._json(
-            self._request(
-                "GET",
-                "/checkVersion",
-                retries=3,
-            )
-        )
-        data = payload.get("data") if isinstance(payload, dict) else None
-        latest = data.get("version") if isinstance(data, dict) else None
-        if (
-            isinstance(payload, dict)
-            and payload.get("code") == 200
-            and isinstance(latest, str)
-            and re.fullmatch(r"\d+(?:\.\d+)*", latest)
-        ):
-            if _version_key(latest) > _version_key(current):
-                self.app_version = latest
-                logging.info(
-                    f"appVersion 已从服务端同步：{current} -> {self.app_version}"
-                )
-            else:
-                logging.debug(f"appVersion 保持 {current}（服务端最新：{latest}）")
-            cached = ApiClient._APP_VERSION_CACHE.get(self.BASE_URL)
-            if not cached or _version_key(self.app_version) > _version_key(cached):
-                ApiClient._APP_VERSION_CACHE[self.BASE_URL] = self.app_version
-            self._app_version_synced = True
-        else:
-            logging.debug(f"appVersion 同步失败，继续使用 {current}")
+        if latest is None:
+            logging.debug("appVersion 同步失败，继续使用 %s", self.app_version)
+        elif latest != current_version:
+            logging.info("appVersion 已从服务端同步：%s -> %s", current_version, latest)
         return self.app_version
+
+    def _apply_app_version(self, version: str):
+        if _version_key(version) > _version_key(self.app_version):
+            self.app_version = version
+
+    def _is_offline(self):
+        if hasattr(self.app, "is_offline_mode"):
+            return self.app.is_offline_mode
+        return self.app.api_bridge.is_offline_mode
 
     # ------------------------------------------------------------------ 取消/重试
 
@@ -295,11 +325,6 @@ class ApiClient:
         """统一的网络请求方法（支持取消、按状态码区分是否重试）"""
         log_func = self.app.log_and_notify_frontend if hasattr(
             self.app, "log_and_notify_frontend") else self.app.api_bridge.log_and_notify_frontend
-        is_offline = (
-            self.app.is_offline_mode
-            if hasattr(self.app, "is_offline_mode")
-            else self.app.api_bridge.is_offline_mode
-        )
 
         if self._request_cancelled_by_stop():
             log_func("操作已取消，跳过网络请求。")
@@ -308,7 +333,7 @@ class ApiClient:
             )
             return None
 
-        if is_offline:
+        if self._is_offline():
             log_func("离线模式：网络请求已被禁用。")
             logging.debug(
                 f"[网络请求] 离线模式已启用，已阻止网络请求 --> 请求方法: {method.upper()}, 目标URL: {url}"
@@ -319,7 +344,13 @@ class ApiClient:
         read_timeout = self.READ_TIMEOUT if read_timeout is None else read_timeout
         full_url = self._api_url(url)
         params = self._clean_params(params)
-        private = urlsplit(full_url).path.rstrip("/") == "/app/login"
+        target = urlsplit(full_url)
+        path = target.path.rstrip("/")
+        school_origins = (self.BASE_URL.rstrip("/"), self.RUN_BASE_URL.rstrip("/"))
+        if (f"{target.scheme}://{target.netloc}" in school_origins
+                and path != f"{self.APP_PREFIX}/checkVersion"):
+            self.sync_app_version()
+        private = path == "/app/login"
         safe_request_url = _main()._redact_sensitive_log_text(scrub_login_query(full_url))
         log_value = (lambda _: "<redacted>") if private else _main()._redact_sensitive_log_value
         log_text = (lambda _: "<redacted>") if private else _main()._redact_sensitive_log_text
@@ -529,7 +560,6 @@ class ApiClient:
         """
         self.set_access_token(None)
         self.session.cookies.clear()
-        self.sync_app_version()
         payload = self._json(
             self._request(
                 "POST",

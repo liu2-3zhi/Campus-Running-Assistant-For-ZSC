@@ -1,7 +1,10 @@
 """Exercise the App contract at the real requests serialization boundary."""
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 import sys
+from threading import Event
+import time
 import urllib.parse
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -17,10 +20,16 @@ class AppTransport(BaseAdapter):
     def __init__(self):
         self.calls = []
         self.responses = []
+        self.version_responses = []
 
     def send(self, request, **kwargs):
         self.calls.append((request, kwargs))
-        status, payload = self.responses.pop(0) if self.responses else (200, {"code": 200})
+        if urlsplit(request.url).path == "/app/checkVersion":
+            status, payload = self.version_responses.pop(0) if self.version_responses else (
+                200, {"code": 200, "data": {"version": "1.0.85"}},
+            )
+        else:
+            status, payload = self.responses.pop(0) if self.responses else (200, {"code": 200})
         response = requests.Response()
         response.status_code = status
         response.reason = "OK" if status == 200 else "Error"
@@ -34,9 +43,27 @@ class AppTransport(BaseAdapter):
     def close(self):
         pass
 
+    @property
+    def business_calls(self):
+        return [call for call in self.calls if urlsplit(call[0].url).path != "/app/checkVersion"]
+
+    @property
+    def version_calls(self):
+        return [call for call in self.calls if urlsplit(call[0].url).path == "/app/checkVersion"]
+
 
 @pytest.fixture
-def app_client(monkeypatch):
+def version_clock(monkeypatch):
+    clock = SimpleNamespace(now=1000.0)
+    monkeypatch.setattr(api_client, "time", SimpleNamespace(
+        monotonic=lambda: clock.now,
+        sleep=time.sleep,
+    ))
+    return clock
+
+
+@pytest.fixture
+def app_client(monkeypatch, version_clock):
     runtime = SimpleNamespace(
         requests=requests,
         urllib=urllib,
@@ -45,6 +72,7 @@ def app_client(monkeypatch):
     )
     monkeypatch.setattr(api_client, "_main", lambda: runtime)
     monkeypatch.setattr(api_client.ApiClient, "_APP_VERSION_CACHE", {})
+    monkeypatch.setattr(api_client.ApiClient, "_APP_VERSION_REFRESH_IN_FLIGHT", {}, raising=False)
     owner = SimpleNamespace(
         device_ua="Mozilla/5.0 (Linux; Android 16; test device)", is_offline_mode=False,
         log_and_notify_frontend=lambda _message: None,
@@ -67,7 +95,7 @@ def app_client(monkeypatch):
 def test_check_version_uses_get_and_equal_version_cache_is_reused(app_client):
     factory, transport = app_client
     first = factory()
-    transport.responses.append((200, {"code": 200, "data": {"version": "1.0.85"}}))
+    transport.version_responses.append((200, {"code": 200, "data": {"version": "1.0.85"}}))
     assert first.sync_app_version() == "1.0.85"
     request, _ = transport.calls[0]
     assert request.method == "GET"
@@ -77,6 +105,138 @@ def test_check_version_uses_get_and_equal_version_cache_is_reused(app_client):
     assert len(transport.calls) == 1
 
 
+@pytest.mark.parametrize("blocked_by", ["offline", "cancelled"])
+def test_inactive_request_does_not_probe_or_delay_next_online_request(app_client, blocked_by):
+    factory, transport = app_client
+    client = factory()
+    cancel = Event()
+    client._execution_cancel_event = cancel
+    if blocked_by == "offline":
+        client.app.is_offline_mode = True
+    else:
+        cancel.set()
+
+    assert client._request("GET", "/appNotice/unreadNumber") is None
+    assert client.sync_app_version() == client.NEW_APP_VERSION
+    assert not transport.calls
+
+    client.app.is_offline_mode = False
+    cancel.clear()
+    transport.version_responses.append((200, {"code": 200, "data": {"version": "1.0.104"}}))
+    assert client._request("GET", "/appNotice/unreadNumber").status_code == 200
+    assert len(transport.version_calls) == 1
+    assert transport.business_calls[0][0].headers["appVersion"] == "1.0.104"
+
+
+def test_version_refreshes_on_the_next_active_request_after_six_hours(app_client, version_clock):
+    factory, transport = app_client
+    client = factory()
+    transport.version_responses.extend([
+        (200, {"code": 200, "data": {"version": "1.0.100"}}),
+        (200, {"code": 200, "data": {"version": "1.0.101"}}),
+    ])
+
+    client.get_run_list("test-user")
+    version_clock.now += 6 * 60 * 60 - 1
+    factory().get_unread_notice_count()
+    assert len(transport.version_calls) == 1
+    assert [request.headers["appVersion"] for request, _ in transport.business_calls] == [
+        "1.0.100", "1.0.100",
+    ]
+
+    version_clock.now += 1
+    assert len(transport.version_calls) == 1
+    client.get_run_list("test-user")
+    assert [(urlsplit(request.url).path, request.headers["appVersion"]) for request, _ in transport.calls[-2:]] == [
+        ("/app/checkVersion", "1.0.100"),
+        ("/run/errand/getErrandList", "1.0.101"),
+    ]
+    factory().get_unread_notice_count()
+    assert transport.business_calls[-1][0].headers["appVersion"] == "1.0.101"
+    assert len(transport.version_calls) == 2
+
+
+def test_idle_client_waits_for_a_new_request_to_refresh_an_expired_version(
+    app_client, version_clock, monkeypatch,
+):
+    factory, transport = app_client
+    def unexpected_background_worker(_thread):
+        pytest.fail("version refresh must only run on demand")
+
+    monkeypatch.setattr(api_client.threading.Thread, "start", unexpected_background_worker)
+    client = factory()
+    transport.version_responses.extend([
+        (200, {"code": 200, "data": {"version": "1.0.100"}}),
+        (200, {"code": 200, "data": {"version": "1.0.102"}}),
+    ])
+    client.get_unread_notice_count()
+
+    version_clock.now += 18 * 60 * 60
+    assert len(transport.version_calls) == 1
+    factory().get_unread_notice_count()
+    assert len(transport.version_calls) == 2
+    assert transport.business_calls[-1][0].headers["appVersion"] == "1.0.102"
+
+
+def test_failed_expired_refresh_keeps_stale_version_until_retry(app_client, version_clock):
+    factory, transport = app_client
+    client = factory()
+    transport.version_responses.extend([
+        (200, {"code": 200, "data": {"version": "1.0.100"}}),
+        (200, {"code": 200, "data": {"version": "invalid"}}),
+        (200, {"code": 200, "data": {"version": "1.0.102"}}),
+    ])
+    assert client.sync_app_version() == "1.0.100"
+    version_clock.now += 6 * 60 * 60
+
+    client.get_unread_notice_count()
+    version_clock.now += 59
+    factory().get_run_list("test-user")
+    assert len(transport.version_calls) == 2
+    assert [request.headers["appVersion"] for request, _ in transport.business_calls] == [
+        "1.0.100", "1.0.100",
+    ]
+
+    version_clock.now += 1
+    factory().get_unread_notice_count()
+    assert len(transport.version_calls) == 3
+    assert transport.business_calls[-1][0].headers["appVersion"] == "1.0.102"
+
+
+def test_expired_version_refresh_is_shared_between_clients(app_client, version_clock, monkeypatch):
+    factory, transport = app_client
+    first, second = factory(), factory()
+    transport.version_responses.extend([
+        (200, {"code": 200, "data": {"version": "1.0.100"}}),
+        (200, {"code": 200, "data": {"version": "1.0.103"}}),
+    ])
+    assert first.sync_app_version() == second.sync_app_version() == "1.0.100"
+    version_clock.now += 6 * 60 * 60
+    entered = Event()
+    release = Event()
+    send = transport.send
+
+    def send_while_refreshing(request, **kwargs):
+        if urlsplit(request.url).path == "/app/checkVersion":
+            entered.set()
+            assert release.wait(5)
+        return send(request, **kwargs)
+
+    monkeypatch.setattr(transport, "send", send_while_refreshing)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        refreshing = pool.submit(first.sync_app_version)
+        try:
+            assert entered.wait(5)
+            competing = pool.submit(second.sync_app_version)
+            assert competing.result(timeout=2) == "1.0.100"
+        finally:
+            release.set()
+        assert refreshing.result(timeout=5) == "1.0.103"
+
+    assert len(transport.version_calls) == 2
+    assert first.sync_app_version() == second.sync_app_version() == "1.0.103"
+
+
 def test_check_version_reuses_existing_android_ua_with_app_suffix(app_client, monkeypatch):
     factory, transport = app_client
     client = factory()
@@ -84,7 +244,7 @@ def test_check_version_reuses_existing_android_ua_with_app_suffix(app_client, mo
                "uni-app (Immersed/29.09091) Html5Plus/1.0")
     client.app.device_ua = full_ua
     monkeypatch.setattr(client, "generate_random_ua", pytest.fail)
-    transport.responses.append((200, {"code": 200, "data": {"version": "1.0.85"}}))
+    transport.version_responses.append((200, {"code": 200, "data": {"version": "1.0.85"}}))
 
     client.sync_app_version()
 
@@ -118,7 +278,7 @@ def test_all_campus_requests_send_stable_android_headers(app_client, monkeypatch
     client.app._repair_unsupported_device_ua = repair
     monkeypatch.setattr(api_client.ApiClient, "generate_random_ua", staticmethod(generate))
     monkeypatch.setattr(client, "_wait_for_retry_or_cancel", lambda _seconds: False)
-    transport.responses.append((200, {"code": 200, "data": {"version": "1.0.85"}}))
+    transport.version_responses.append((200, {"code": 200, "data": {"version": "1.0.85"}}))
 
     client.sync_app_version()
     client._request("GET", "/appNotice/getAppNoticeList")
@@ -153,7 +313,7 @@ def test_apple_repair_cannot_reuse_cached_desktop_ua(app_client, monkeypatch, ap
     android = "Mozilla/5.0 (Linux; Android 16; fixture; wv) AppleWebKit/537.36"
     monkeypatch.setattr(api_client.ApiClient, "generate_random_ua", staticmethod(lambda: android))
 
-    client._request("GET", "/checkVersion")
+    client.sync_app_version()
     client._request("POST", "/run/attendanceRecord/getAttendanceByRollCallId")
 
     assert repaired == [(apple_ua, android)]
@@ -216,10 +376,8 @@ def test_login_replaces_apple_ua_on_version_probe_and_login_request(app_client, 
     client.app.platform = "ios"
     android = "Mozilla/5.0 (Linux; Android 16; selected-device)"
     monkeypatch.setattr(client, "generate_random_ua", lambda: android)
-    transport.responses.extend([
-        (200, {"code": 200, "data": {"version": "1.0.100"}}),
-        (200, {"code": 200, "data": {"accessToken": "test-access-token"}}),
-    ])
+    transport.version_responses.append((200, {"code": 200, "data": {"version": "1.0.100"}}))
+    transport.responses.append((200, {"code": 200, "data": {"accessToken": "test-access-token"}}))
 
     assert client.login("test-user", "test-password")["code"] == 200
 
@@ -235,7 +393,8 @@ def test_login_replaces_apple_ua_on_version_probe_and_login_request(app_client, 
 def test_version_cache_hit_repairs_apple_ua_without_rechecking_version(app_client, monkeypatch):
     factory, transport = app_client
     client = factory()
-    api_client.ApiClient._APP_VERSION_CACHE[client.BASE_URL] = "1.0.100"
+    transport.version_responses.append((200, {"code": 200, "data": {"version": "1.0.100"}}))
+    assert client.sync_app_version() == "1.0.100"
     client.app.device_ua = "iPhone stale saved UA"
     client.app.platform = "iOS"
     android = "Mozilla/5.0 (Linux; Android 16; same-account device)"
@@ -243,7 +402,7 @@ def test_version_cache_hit_repairs_apple_ua_without_rechecking_version(app_clien
     monkeypatch.setattr(client, "generate_random_ua", pytest.fail)
 
     assert client.sync_app_version() == "1.0.100"
-    assert not transport.calls
+    assert len(transport.calls) == 1
     assert client.app.device_ua == android
     assert client._get_headers()["platform"] == "android"
 
@@ -275,16 +434,20 @@ def test_repair_notifies_the_owner_once_without_holding_the_client_ua_lock(
 
 
 @pytest.mark.parametrize("data", [[], "unavailable", None, {}, {"version": "invalid"}])
-def test_bad_version_reply_does_not_block_login_or_cache_failure(app_client, data):
+def test_bad_cold_version_reply_allows_login_and_retries_after_cooldown(app_client, version_clock, data):
     factory, transport = app_client
     client = factory()
-    transport.responses.extend([
+    transport.version_responses.extend([
         (200, {"code": 200, "data": data}),
-        (200, {"code": 200, "data": {"accessToken": "new-test-token"}}),
         (200, {"code": 200, "data": {"version": "1.0.100"}}),
     ])
+    transport.responses.append((200, {"code": 200, "data": {"accessToken": "new-test-token"}}))
     assert client.login("test-user", "test-password")["code"] == 200
     assert client.access_token == "new-test-token"
+    assert transport.business_calls[0][0].headers["appVersion"] == client.NEW_APP_VERSION
+    assert factory().sync_app_version() == client.NEW_APP_VERSION
+    assert len(transport.version_calls) == 1
+    version_clock.now += 60
     assert client.sync_app_version() == "1.0.100"
     assert len(transport.calls) == 3
 
@@ -292,7 +455,7 @@ def test_bad_version_reply_does_not_block_login_or_cache_failure(app_client, dat
 def test_forced_version_refresh_does_not_downgrade_client(app_client):
     factory, transport = app_client
     client = factory()
-    transport.responses.extend([
+    transport.version_responses.extend([
         (200, {"code": 200, "data": {"version": "1.0.100"}}),
         (200, {"code": 200, "data": {"version": "1.0.9"}}),
     ])
@@ -305,14 +468,13 @@ def test_forced_version_refresh_does_not_downgrade_client(app_client):
 def test_login_drops_previous_tokens_and_uses_query_credentials(app_client):
     factory, transport = app_client
     client = factory()
-    client._app_version_synced = True
     client.set_access_token("old-test-token")
     client._refresh_token = "old-test-refresh-token"
     client.session.cookies.set("shiroCookie", "old-test-cookie")
     transport.responses.append((401, {"code": 401, "message": "invalid credentials"}))
 
     assert client.login("test-user", "p+ &密")["code"] == 401
-    request, _ = transport.calls[0]
+    request, _ = transport.business_calls[0]
     assert request.method == "POST"
     assert urlsplit(request.url).path == "/app/login"
     assert parse_qs(urlsplit(request.url).query) == {"username": ["test-user"], "password": ["p+ &密"]}
@@ -321,7 +483,7 @@ def test_login_drops_previous_tokens_and_uses_query_credentials(app_client):
     assert client.access_token is None
     assert not client._refresh_token
     assert "Authorization" not in client._get_headers()
-    assert len(transport.calls) == 1
+    assert len(transport.business_calls) == 1
 
 
 @pytest.mark.parametrize("as_string", [True, False])
@@ -331,7 +493,7 @@ def test_run_track_posts_json_with_app_upload_timeout(app_client, as_string):
     payload = {"trid": "test-track", "coordinate": "[]", "userName": "测试用户"}
     argument = json.dumps(payload, ensure_ascii=False) if as_string else payload
     assert client.submit_run_track(argument)["code"] == 200
-    request, options = transport.calls[0]
+    request, options = transport.business_calls[0]
     assert request.method == "POST"
     assert request.url == "https://zslf.zsc.edu.cn/run/errand/addErrandTrackByData"
     assert json.loads(request.body) == payload
@@ -343,12 +505,12 @@ def test_object_data_is_json_and_explicit_form_encoding_remains_available(app_cl
     factory, transport = app_client
     client = factory()
     client._request("POST", "/mobileLogReport/addLog", data={"message": "测试"})
-    request, _ = transport.calls[0]
+    request, _ = transport.business_calls[0]
     assert json.loads(request.body) == {"message": "测试"}
     assert request.headers["Content-Type"] == "application/json;charset=UTF-8"
 
     client._request("POST", "/form-test", data={"value": "a+b"}, force_content_type=client.FORM_CONTENT_TYPE)
-    request, _ = transport.calls[1]
+    request, _ = transport.business_calls[1]
     assert parse_qs(request.body.decode()) == {"value": ["a+b"]}
     assert request.headers["Content-Type"] == "application/x-www-form-urlencoded"
 
@@ -370,7 +532,7 @@ def test_query_endpoints_preserve_app_contract(app_client, method, args, path, q
     client = factory()
     client.set_access_token("test-access-token")
     assert getattr(client, method)(*args)["code"] == 200
-    request, _ = transport.calls[0]
+    request, _ = transport.business_calls[0]
     assert request.method == "POST"
     assert urlsplit(request.url).path == path
     assert parse_qs(urlsplit(request.url).query) == query
@@ -386,13 +548,13 @@ def test_attendance_keeps_distinct_ids_and_does_not_invent_missing_id(app_client
     client = factory()
     payload = {"id": "attendance-record", "rollCallId": "roll-call", "coordinate": "22.5,113.5", "userId": "u", "name": "测试用户"}
     client.submit_attendance(payload)
-    query = parse_qs(urlsplit(transport.calls[0][0].url).query)
+    query = parse_qs(urlsplit(transport.business_calls[0][0].url).query)
     assert query == {key: [value] for key, value in payload.items()}
     assert payload["id"] == "attendance-record"
 
     missing_id = {"rollCallId": "another-roll-call", "userId": "u"}
     client.submit_attendance(missing_id)
-    assert "id" not in parse_qs(urlsplit(transport.calls[1][0].url).query)
+    assert "id" not in parse_qs(urlsplit(transport.business_calls[1][0].url).query)
     assert missing_id == {"rollCallId": "another-roll-call", "userId": "u"}
 
 
@@ -400,4 +562,4 @@ def test_http_auth_error_envelope_is_returned_without_retry(app_client):
     factory, transport = app_client
     transport.responses.append((401, {"code": 401, "message": "expired"}))
     assert factory().get_unread_notice_count() == {"code": 401, "message": "expired"}
-    assert len(transport.calls) == 1
+    assert len(transport.business_calls) == 1
