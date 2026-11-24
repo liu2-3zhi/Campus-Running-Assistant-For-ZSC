@@ -1719,7 +1719,7 @@ def start_web_server(args_param):
 
     def init_cdn_cache():
         """
-        初始化CDN缓存：先尝试加载本地缓存，如果没有则从CDN获取
+        只加载已有CDN缓存；网络下载由后台更新线程异步执行
         """
         logging.info("[CDN缓存] 正在初始化CDN文件缓存...")
 
@@ -1745,8 +1745,7 @@ def start_web_server(args_param):
                             source_map_storage[key] = map_cached
                         logging.info(f"[CDN缓存] 从本地加载source map: {key}")
             else:
-                # 本地没有缓存，从CDN获取
-                update_single_cdn_file(key, config)
+                logging.info(f"[CDN缓存] 本地缓存缺失，等待后台预热: {key}")
 
         logging.info(
             f"[CDN缓存] 初始化完成，已缓存 {len(js_cache_storage)} 个JS/CSS文件, "
@@ -1764,6 +1763,12 @@ def start_web_server(args_param):
         logging.info(f"[CDN Worker] 已在线程中启动: Thread[{current_thread.name}, id={current_thread.ident}]")
         logging.warning("[Eventlet 警告] CDN worker 运行在独立线程中 - 避免使用 eventlet 操作")
         UPDATE_INTERVAL = 3600  # 1小时
+
+        try:
+            logging.info("[CDN缓存] 后台首次预热任务开始...")
+            update_all_cdn_files()
+        except Exception as e:
+            logging.error(f"[CDN缓存] 后台首次预热任务异常: {e}")
 
         while True:
             try:
@@ -11899,6 +11904,15 @@ def start_web_server(args_param):
                     )
                     return response
                 else:
+                    if file_key in CDN_FILES:
+                        logging.info(f"[CDN缓存API] 缓存尚未就绪，客户端可重试: {file_key}")
+                        return (
+                            _main().jsonify(
+                                {"success": False, "message": "CDN缓存尚未就绪"}
+                            ),
+                            503,
+                            {"Retry-After": "5"},
+                        )
                     logging.warning(f"[CDN缓存API] 请求的文件不存在: {file_key}")
                     return (
                         _main().jsonify(
