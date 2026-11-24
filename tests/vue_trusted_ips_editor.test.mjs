@@ -134,7 +134,7 @@ test('save is guarded against repeat clicks and closing until its response compl
 
 test('trust-all warning follows empty and full-wildcard rules but excludes comment-only or partial wildcards', () => {
   const run = setup(async () => ({}))
-  for (const text of ['', '  \n', '*', '* # all', '*.*.*.*', '*.*', '203.0.113.10\n*']) {
+  for (const text of ['', '  \n', '*', '* # all', '*.*.*.*', '*.*', '203.0.113.10\n*', '# comment\r*']) {
     run(`trustedIpsContent.value = ${JSON.stringify(text)}`)
     assert.equal(run('trustedIpsTrustAll.value'), true, JSON.stringify(text))
   }

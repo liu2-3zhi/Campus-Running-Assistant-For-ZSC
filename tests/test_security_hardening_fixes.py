@@ -1,3 +1,4 @@
+import ast
 import json
 import io
 import tempfile
@@ -261,6 +262,74 @@ class TestTrustedProxyIpHandling(unittest.TestCase):
         )
         self.assertEqual(resolved, "8.8.8.8")
 
+    def test_empty_external_rules_still_recognize_ipv4_and_ipv6_local_proxies(self):
+        for peer in ("10.8.0.1", "172.16.5.7", "192.168.0.1", "127.0.0.9", "169.254.0.1",
+                     "::1", "fd00::1", "fe80::1", "::ffff:192.168.0.1",
+                     "::ffff:127.0.0.9", "::ffff:169.254.0.1"):
+            with self.subTest(peer=peer):
+                self.assertEqual(main_module._select_forwarded_client_ip(
+                    "198.51.100.9", peer, trusted_networks=()
+                ), "198.51.100.9")
+
+    def test_mapped_ipv4_peer_obeys_configured_ipv4_rules(self):
+        trusted = [main_module.ipaddress.ip_network("203.0.113.8/32")]
+        self.assertEqual(main_module._select_forwarded_client_ip(
+            "198.51.100.9", "::ffff:203.0.113.8", trusted_networks=trusted
+        ), "198.51.100.9")
+
+    def test_both_forwarding_headers_require_a_trusted_peer(self):
+        self.assertEqual(main_module._select_forwarded_client_ip(
+            "198.51.100.9", "::ffff:203.0.113.8", trusted_networks=(),
+            real_ip="198.51.100.10",
+        ), "::ffff:cb00:7108")
+
+    def test_real_ip_fallback_applies_only_without_a_valid_forwarded_chain(self):
+        for forwarded, expected in (
+            ("198.51.100.9, 10.0.0.4", "198.51.100.9"),
+            ("", "198.51.100.10"),
+            ("invalid", "198.51.100.10"),
+        ):
+            with self.subTest(forwarded=forwarded):
+                self.assertEqual(main_module._select_forwarded_client_ip(
+                    forwarded, "::1", trusted_networks=(), real_ip="198.51.100.10",
+                ), expected)
+        self.assertEqual(main_module._select_forwarded_client_ip(
+            "", "::1", trusted_networks=(), real_ip="invalid",
+        ), "::1")
+
+    def test_ban_check_and_request_hooks_share_resolved_client_ip(self):
+        import logging
+
+        import trusted_ip
+        from flask import Flask, request
+
+        app = Flask(__name__)
+        source = Path(main_module.__file__).with_name("web_server.py")
+        hook_names = {"check_ip_ban_before_request", "handle_forwarded_proto"}
+        hooks = [
+            node for node in ast.walk(ast.parse(source.read_text(encoding="utf-8")))
+            if isinstance(node, ast.FunctionDef) and node.name in hook_names
+        ]
+        ban = mock.Mock(return_value=False)
+        exec(compile(ast.Module(body=hooks, type_ignores=[]), str(source), "exec"), {
+            "app": app,
+            "_main": lambda: main_module,
+            "check_ip_ban": ban,
+            "logging": logging,
+        })
+
+        @app.get("/")
+        def client_ip():
+            return {"environ": request.environ["REMOTE_ADDR"], "remote_addr": request.remote_addr}
+
+        with mock.patch.object(trusted_ip, "_select_forwarded_client_ip",
+                               wraps=trusted_ip._select_forwarded_client_ip) as resolve:
+            response = app.test_client().get("/", headers={"X-Real-IP": "198.51.100.9"},
+                                             environ_overrides={"REMOTE_ADDR": "::ffff:192.168.0.1"})
+        assert response.get_json() == {"environ": "198.51.100.9", "remote_addr": "198.51.100.9"}
+        ban.assert_called_once_with("198.51.100.9", scope="all")
+        resolve.assert_called_once()
+
     def test_trusted_ips_configuration_exists_only_in_database(self):
         self.assertTrue(main_module.os.path.isfile(main_module.TRUSTED_IPS_FILE))
         self.assertIsNotNone(self.store.get('settings', 'trusted_ips.txt'))
@@ -331,22 +400,22 @@ class TestTrustedIpFileFormats(unittest.TestCase):
         )
 
     def test_missing_trusted_ip_file_falls_back_to_trust_all(self):
-        output = io.StringIO()
-        missing_file = str(Path(tempfile.gettempdir()) / "missing-trusted-ips.txt")
-
-        with redirect_stdout(output):
-            matcher = main_module._load_trusted_ip_networks(missing_file)
-
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = io.StringIO()
+            with redirect_stdout(output):
+                matcher = main_module._load_trusted_ip_networks(
+                    str(Path(tmpdir) / "missing-trusted-ips.txt")
+                )
         self.assertTrue(matcher.match_all)
         self.assertIn("\x1b[31m", output.getvalue())
-        self.assertIn("加载失败", output.getvalue())
         self.assertEqual(
             main_module._select_forwarded_client_ip(
-                "8.8.8.8",
-                "1.1.1.1",
+                "",
+                "203.0.113.8",
                 trusted_networks=matcher,
+                real_ip="198.51.100.9",
             ),
-            "8.8.8.8",
+            "198.51.100.9",
         )
 
     def test_blank_trusted_ip_file_falls_back_to_trust_all(self):
@@ -355,7 +424,12 @@ class TestTrustedIpFileFormats(unittest.TestCase):
                 matcher, output = self._load_matcher(content)
                 self.assertTrue(matcher.match_all)
                 self.assertIn("\x1b[31m", output)
-                self.assertIn("加载失败", output)
+
+    def test_comment_only_trusted_ip_file_uses_builtin_proxies(self):
+        matcher, output = self._load_matcher("# no extra proxies")
+        self.assertFalse(matcher.match_all)
+        self.assertEqual(matcher.entries, ())
+        self.assertNotIn("\x1b[31m", output)
 
 
 class TestSessionLimitEnforcement(unittest.TestCase):

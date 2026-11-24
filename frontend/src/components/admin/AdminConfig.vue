@@ -29,7 +29,7 @@ const trustedIpsDirty = computed(() => trustedIpsContent.value !== trustedIpsOri
 const trustedIpsTrustAll = computed(() => {
   const text = trustedIpsContent.value
   if (!text.trim()) return true
-  return text.split(/\r?\n/).some(line => {
+  return text.split(/\r\n?|\n/).some(line => {
     const rule = line.split('#', 1)[0].trim()
     return /^(?:\*\.){0,3}\*$/.test(rule)
   })
@@ -372,7 +372,7 @@ onMounted(loadConfig)
           按纯文本编辑，每行一个 IP、CIDR、起止范围或 IPv4 通配符，支持 # 注释。内网、回环和链路本地地址自动信任。保存后立即生效。
         </p>
         <p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800" :class="{ 'font-semibold': trustedIpsLoaded && trustedIpsTrustAll }">
-          空白内容或单独的 * 规则会信任全部代理来源；仅保留注释时，只信任内置代理。
+          留空或填写 * 会信任全部代理来源。配置规则会自动合并内置 IPv4、IPv6 局域网和本机网段。仅保留注释时，使用内置规则。
         </p>
         <div v-if="trustedIpsError" role="alert" class="rounded-lg bg-red-100 px-3 py-2 text-sm text-red-700">{{ trustedIpsError }}</div>
         <div v-if="trustedIpsSuccess" role="status" class="rounded-lg bg-green-100 px-3 py-2 text-sm text-green-700">{{ trustedIpsSuccess }}</div>

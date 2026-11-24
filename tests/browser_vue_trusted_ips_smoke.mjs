@@ -71,7 +71,7 @@ try {
     await modal.getByRole('button', { name: '重新加载', exact: true }).click()
     await page.waitForFunction(() => document.querySelector('#trusted-ips-editor')?.value.startsWith('# another administrator'))
     await editor.fill('*\n')
-    await modal.getByText('空白内容或单独的 * 规则会信任全部代理来源；仅保留注释时，只信任内置代理。', { exact: true }).waitFor()
+    await modal.getByText('留空或填写 * 会信任全部代理来源。配置规则会自动合并内置 IPv4、IPv6 局域网和本机网段。仅保留注释时，使用内置规则。', { exact: true }).waitFor()
     await editor.press('Escape')
     await modal.waitFor({ state: 'hidden' })
     assert.equal(await entry.evaluate(element => element === document.activeElement), true)

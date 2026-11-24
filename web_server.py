@@ -2334,11 +2334,7 @@ def start_web_server(args_param):
         全局IP封禁检查拦截器
         """
         # 使用统一函数获取客户端真实IP
-        peer_ip = _main().request.environ.get("REMOTE_ADDR") or _main().request.remote_addr
-        client_ip = _main()._select_forwarded_client_ip(
-            _main().request.headers.get("X-Forwarded-For", ""),
-            peer_ip,
-        )
+        client_ip = _main()._get_request_client_ip(_main().request)
         if (
             _main().request.path.startswith("/static/")
             or _main().request.path.startswith("/css/")
@@ -9296,8 +9292,7 @@ def start_web_server(args_param):
             image_url = str(data.get("image_url") or "").strip()
             if target not in ("pc", "mobile"):
                 target = "pc"
-            client_ip = _main().request.headers.get("X-Forwarded-For", _main().request.remote_addr or "-")
-            client_ip = str(client_ip).split(",")[0].strip() or "-"
+            client_ip = _main().request.environ.get("REMOTE_ADDR") or _main().request.remote_addr or "-"
             base_dir = os.path.dirname(os.path.abspath(__file__))
             cache_dir = os.path.join(base_dir, _main().RANDOM_BACKGROUND_IMAGE_DIR)
             os.makedirs(cache_dir, exist_ok=True)
@@ -27408,19 +27403,14 @@ def start_web_server(args_param):
         处理反向代理（nginx）转发的请求头。
 
         功能说明：
-        1. 从X-Forwarded-For头获取真实客户端IP
+        1. 从可信代理的 X-Forwarded-For 或 X-Real-IP 获取客户端 IP
         2. 检查X-Forwarded-Proto头，识别原始请求是HTTP还是HTTPS
 
         注意：HTTPS重定向已交由nginx处理（见docker-entrypoint.sh），
         此处只做IP解析。
         """
-        peer_ip = _main().request.environ.get("REMOTE_ADDR") or _main().request.remote_addr
-        real_ip = _main()._select_forwarded_client_ip(
-            _main().request.headers.get("X-Forwarded-For", ""),
-            peer_ip,
-        )
+        real_ip = _main()._get_request_client_ip(_main().request)
         if real_ip:
-            _main().request.environ["REMOTE_ADDR"] = real_ip
             logging.debug("真实客户端IP已设置为: %s", real_ip)
 
     @app.after_request

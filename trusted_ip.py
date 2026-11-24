@@ -184,8 +184,6 @@ def _load_trusted_ip_networks(file_path=None):
                     ranges.append(entry_value)
                 else:
                     networks.append(entry_value)
-    except FileNotFoundError as exc:
-        load_failure = exc
     except (StorageError, SQLAlchemyError):
         raise
     except Exception as exc:
@@ -239,6 +237,7 @@ def _get_trusted_ip_networks():
 
 
 def _is_builtin_trusted_proxy_ip(ip_obj):
+    ip_obj = getattr(ip_obj, "ipv4_mapped", None) or ip_obj
     return any(
         ip_obj in network for network in _main()._BUILTIN_TRUSTED_PROXY_NETWORKS
     )
@@ -248,6 +247,8 @@ def _select_forwarded_client_ip(
     forwarded_for,
     peer_ip,
     trusted_networks=None,
+    *,
+    real_ip=None,
 ):
     peer_text = str(peer_ip or "").strip()
     try:
@@ -265,9 +266,9 @@ def _select_forwarded_client_ip(
         )
 
     def _is_trusted(ip_obj):
-        return _is_builtin_trusted_proxy_ip(
-            ip_obj
-        ) or trusted_matcher.matches(ip_obj)
+        ipv4_mapped = getattr(ip_obj, "ipv4_mapped", None)
+        return (_is_builtin_trusted_proxy_ip(ip_obj) or trusted_matcher.matches(ip_obj)
+                or (ipv4_mapped is not None and trusted_matcher.matches(ipv4_mapped)))
 
     if not _is_trusted(peer_obj):
         return str(peer_obj)
@@ -287,4 +288,23 @@ def _select_forwarded_client_ip(
             return str(candidate)
     if candidates:
         return str(candidates[0])
-    return str(peer_obj)
+    try:
+        return str(ipaddress.ip_address(str(real_ip or "").strip()))
+    except ValueError:
+        return str(peer_obj)
+
+
+def _get_request_client_ip(request):
+    key = "trusted_ip.client_ip"
+    environ = request.environ
+    if key not in environ:
+        client_ip = _select_forwarded_client_ip(
+            request.headers.get("X-Forwarded-For"),
+            environ.get("REMOTE_ADDR") or request.remote_addr,
+            real_ip=request.headers.get("X-Real-IP"),
+        )
+        environ[key] = client_ip
+        if client_ip:
+            environ["REMOTE_ADDR"] = client_ip
+            request.remote_addr = client_ip
+    return environ[key]

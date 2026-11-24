@@ -63,12 +63,17 @@ def test_fresh_sqlite_preserves_the_builtin_only_proxy_trust_default_in_database
 
 
 def test_existing_database_missing_proxy_rules_is_not_silently_reconfigured(program):
+    import trusted_ip
+
     store = RelationalStore(DatabaseSettings(root=program.directory))
     try:
         store.init_schema(ready=True)
     finally:
         store.database.dispose()
     runtime = business_storage.get_runtime()
+    matcher = trusted_ip._load_trusted_ip_networks(str(program.directory / 'trusted_ips.txt'))
+    assert matcher.match_all
+    assert matcher.entries == ()
     assert runtime.store.get('settings', 'trusted_ips.txt') is None
 
 

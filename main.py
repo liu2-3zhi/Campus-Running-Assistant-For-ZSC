@@ -47,6 +47,7 @@ from runtime_maintenance import (
 )
 from trusted_ip import (
     _TrustedIpMatcher,
+    _get_request_client_ip,
     _get_trusted_ip_networks,
     _is_builtin_trusted_proxy_ip,
     _load_trusted_ip_networks,
@@ -4690,10 +4691,7 @@ class ContextEnrichFilter(logging.Filter):
             if not request_user:
                 request_user = request_obj.headers.get("X-User", None)
 
-            forwarded_for = request_obj.headers.get("X-Forwarded-For", "")
-            client_ip = forwarded_for.split(",")[0].strip() if forwarded_for else ""
-            if not client_ip:
-                client_ip = request_obj.environ.get("REMOTE_ADDR") or request_obj.remote_addr
+            client_ip = request_obj.environ.get("REMOTE_ADDR") or request_obj.remote_addr
 
             if request_id:
                 record.request_id = str(request_id)
@@ -9053,8 +9051,7 @@ class RainbowYiPayClient:
         if not clientip:
             try:
                 clientip = str(
-                    request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-                    or request.environ.get("REMOTE_ADDR")
+                    request.environ.get("REMOTE_ADDR")
                     or request.remote_addr
                     or ""
                 ).strip()
@@ -9069,8 +9066,7 @@ class RainbowYiPayClient:
         if not clientip:
             try:
                 clientip = str(
-                    request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-                    or request.environ.get("REMOTE_ADDR")
+                    request.environ.get("REMOTE_ADDR")
                     or request.remote_addr
                     or ""
                 ).strip()
