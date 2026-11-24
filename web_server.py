@@ -24740,8 +24740,14 @@ def start_web_server(args_param):
 
             target_usernames = set(normalize_input(data.get("school_username")))
             target_usernames.update(normalize_input(data.get("school_usernames")))
+            if scope_supplied and not target_usernames:
+                return _main().jsonify({
+                    "success": True, "has_overdue": False, "overdue_accounts": [],
+                    "can_bypass_overdue": can_bypass_overdue, "is_admin": is_admin,
+                    "available_runs": available_runs,
+                })
+
             started_at = time.perf_counter()
-            # None 表示未指定账号，空集合表示显式指定了空范围。
             allowed_usernames = business_api._list_billing_school_account_names(
                 business_username, school_usernames=target_usernames if scope_supplied else None)
             overdue_accounts = []
