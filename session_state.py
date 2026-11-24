@@ -13,7 +13,7 @@ from api_client import ApiClient
 
 
 def _load_session_index():
-    """加载会话索引文件"""
+    """加载持久化会话索引记录。"""
     try:
         if os.path.exists(_main().SESSION_INDEX_FILE):
             with open(_main().SESSION_INDEX_FILE, "r", encoding="utf-8") as f:
@@ -24,7 +24,7 @@ def _load_session_index():
 
 
 def _save_session_index(index):
-    """保存会话索引文件"""
+    """保存持久化会话索引记录。"""
     try:
         with open(_main().SESSION_INDEX_FILE, "w", encoding="utf-8") as f:
             json.dump(index, f, indent=2, ensure_ascii=False)
@@ -34,7 +34,7 @@ def _save_session_index(index):
 
 def save_session_state(session_id, api_instance, force_save=False):
     """
-    将会话状态保存到文件（完整版：保存所有应用状态包括离线任务数据）
+    持久化会话状态（完整版：保存所有应用状态包括离线任务数据）
 
     Args:
         session_id: 会话UUID
@@ -297,7 +297,7 @@ def save_session_state(session_id, api_instance, force_save=False):
 
 
 def load_session_state(session_id):
-    """从文件加载会话状态"""
+    """读取持久化会话记录。"""
     try:
         index = _main()._load_session_index()
         if session_id in index:
@@ -333,18 +333,18 @@ def load_session_state(session_id):
                     )
                     try:
                         os.remove(session_file)
-                        logging.info(f"[会话管理] 已删除过期会话文件: {session_file}")
+                        logging.info(f"[会话管理] 已删除过期会话记录，记录键: {session_hash}.json")
                     except Exception as remove_err:
-                        logging.error(f"[会话管理] 删除过期会话文件失败: {remove_err}")
+                        logging.error(f"[会话管理] 删除过期会话记录失败: {remove_err}")
                     return None
 
                 tasks_count = len(state.get("loaded_tasks", []))
                 logging.info(
-                    f"[会话管理] 从文件加载会话 --> 会话ID: {session_id[:32]}..., 登录状态: {state.get('login_success')}, 任务数: {tasks_count}, 最后访问: {session_age_days:.1f}天前"
+                    f"[会话管理] 已加载持久化会话 --> 会话ID: {session_id[:32]}..., 记录键: {session_hash}.json, 登录状态: {state.get('login_success')}, 任务数: {tasks_count}, 最后访问: {session_age_days:.1f}天前"
                 )
                 return state
             else:
-                logging.warning(f"[会话管理] 会话文件UUID不匹配，忽略")
+                logging.warning(f"[会话管理] 会话记录UUID不匹配，忽略，记录键: {session_hash}.json")
     except Exception as e:
         logging.error(f"[会话管理] 加载会话状态失败 --> 错误: {e}", exc_info=True)
     return None
@@ -352,9 +352,9 @@ def load_session_state(session_id):
 
 def cleanup_expired_sessions():
     """
-    清理过期的会话文件（7天未访问）
+    清理过期的会话记录（7天未访问）
 
-    此函数遍历所有会话文件，删除超过7天未访问的会话。
+    此函数遍历持久化会话记录，删除超过7天未访问的会话。
     """
     try:
         if not os.path.exists(_main().SESSION_STORAGE_DIR):
@@ -386,13 +386,13 @@ def cleanup_expired_sessions():
                     os.remove(session_file)
                     cleaned_count += 1
                     logging.info(
-                        f"[会话清理] 已删除过期会话 --> 会话ID: {session_id}..., 文件: {filename}, 年龄: {age_days:.1f}天"
+                        f"[会话清理] 已删除过期会话记录 --> 会话ID: {session_id}..., 记录键: {filename}, 年龄: {age_days:.1f}天"
                     )
 
             except Exception as e:
                 error_count += 1
                 logging.debug(
-                    f"[会话清理] 处理会话文件失败 --> 文件: {filename}, 错误: {e}"
+                    f"[会话清理] 处理会话记录失败 --> 记录键: {filename}, 错误: {e}"
                 )
 
         logging.info(

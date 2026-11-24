@@ -10,7 +10,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EDITORMD_PATH = PROJECT_ROOT / "editor.md" / "editormd.js"
 MARKED_PATH = PROJECT_ROOT / "cache" / "cdn" / "marked.js"
-MESSAGES_PATH = PROJECT_ROOT / "messages.json"
+MESSAGES_PATH = PROJECT_ROOT / "tests" / "fixtures" / "message_markdown.json"
 
 
 def _extract_js_section(source: str, start_marker: str, end_marker: str) -> str:

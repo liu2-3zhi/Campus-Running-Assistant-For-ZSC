@@ -235,15 +235,15 @@ def test_sqlite_authoritative_financial_child_columns_change_reconstructed_order
     assert restored['refund_records'][0]['refund_amount'] == 0.75
 
 
-def test_sqlite_configurations_keep_each_leaf_in_its_own_authoritative_row(domain_store):
+def test_sqlite_configurations_keep_each_section_in_one_readable_authoritative_row(domain_store):
     from sqlalchemy import select, update
-    from persistence.codec import Builder
     source = {'System': {'UA': 'device-A', 'enabled': False, 'count': 0}}
     domain_store.put('configs', 'config.json', json.dumps(source).encode())
-    settings = domain_store.entities['application_settings']
+    settings = domain_store.entities['system_settings']
     with domain_store.database.connection() as connection:
-        assert len(connection.execute(select(settings.c.row_id)).all()) == 3
-        connection.execute(update(settings).where(settings.c.setting_key == 'UA')
-                           .values(value=Builder.finish('device-B')))
+        assert len(connection.execute(select(settings.c.row_id)).all()) == 1
+        assert connection.execute(select(settings.c.value)).scalar_one() == source['System']
+        connection.execute(update(settings).where(settings.c.section == 'System')
+                           .values(value={'UA': 'device-B', 'enabled': False, 'count': 0}))
     restored = json.loads(domain_store.get('configs', 'config.json').content)
     assert restored == {'System': {'UA': 'device-B', 'enabled': False, 'count': 0}}

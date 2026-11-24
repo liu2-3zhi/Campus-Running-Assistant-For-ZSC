@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -24,6 +25,11 @@ class ConflictError(StorageError):
 
 ANY_REVISION = object()
 SCHEMA_VERSION = '1'
+DEFAULT_TRUSTED_IP_RULES = (
+    '# Trusted external proxy addresses, one per line.\n'
+    '# Private, loopback and link-local proxies are trusted automatically.\n'
+    '# No external proxy is trusted until an address is added.\n'
+).encode('utf-8')
 
 
 class StoragePolicy:
@@ -60,6 +66,7 @@ class StoragePolicy:
             'payment_orders': self.root / 'payment_orders',
             'billing': self.root / 'User_Billing',
             'background_tasks': self.root / 'background_tasks',
+            'sms_records': self.root / 'sms_records',
             'deleted_accounts': self.root / 'Remove_Acoount',
             'legacy_deleted_accounts': self.root / 'remove',
             'configs': self.root / 'configs',
@@ -69,6 +76,8 @@ class StoragePolicy:
         self.excluded_roots = tuple({location(logging_config.get('log_dir', 'logs')),
                                      self.root / 'logs', self.root / 'cache',
                                      self.root / 'uploads', self.root / 'ssl'})
+        # Audit history is a read-only migration input, never a managed file.
+        self.sms_history_path = location(logging_config.get('log_dir', 'logs')) / 'sms_history.jsonl'
         self._ordered_roots = sorted(((name, path) for name, path in self.roots.items()
                                       if name != 'settings'), key=lambda item: len(str(item[1])), reverse=True)
 
@@ -381,10 +390,16 @@ def get_runtime():
         return _runtime
     with _runtime_lock:
         if _runtime is None:
-            settings = StorageSettings.from_env()
-            if settings.root != Path(__file__).resolve().parent:
+            application_root = Path(__file__).resolve().parent
+            configured_root = os.environ.get('APP_STORAGE_ROOT')
+            if os.environ.get('MYSQL_TABLE_PREFIX'):
+                raise StorageConfigurationError(
+                    'Schema v3 uses unprefixed tables; migrate the legacy database and remove MYSQL_TABLE_PREFIX'
+                )
+            settings = StorageSettings.from_env(root=configured_root or application_root)
+            if settings.root != application_root:
                 raise StorageConfigurationError('Database application root must match the code directory; use --root only for offline migration')
-            if Path.cwd().resolve() != settings.root:
+            if configured_root and Path.cwd().resolve() != settings.root:
                 raise StorageConfigurationError('Start the database application with its working directory set to the application root')
             new_sqlite = settings.backend == 'sqlite' and (
                 str(settings.sqlite_path) == ':memory:' or not settings.sqlite_path.exists())
@@ -403,11 +418,20 @@ def get_runtime():
                     )
             store = _create_relational_store(settings)
             if new_sqlite:
-                store.init_schema(ready=True)
+                store.init_schema(ready=False)
+                # The former shipped comment-only file must remain a database
+                # default: a missing record deliberately has different semantics.
+                store.put('settings', 'trusted_ips.txt', DEFAULT_TRUSTED_IP_RULES,
+                          create_only=True)
+                store.mark_ready()
             else:
                 store.check_ready()
             policy = StoragePolicy(settings.root, _stored_config(store))
             _runtime = StorageRuntime(settings.backend, policy, store)
+            if settings.backend == 'sqlite':
+                logging.getLogger(__name__).info('[存储] backend=SQLite database=%s', settings.sqlite_path)
+            else:
+                logging.getLogger(__name__).info('[存储] backend=MySQL')
     return _runtime
 
 

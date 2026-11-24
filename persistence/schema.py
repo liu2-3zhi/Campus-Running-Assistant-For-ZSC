@@ -8,7 +8,7 @@ from sqlalchemy.dialects import mysql
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.elements import ColumnElement
 
-SCHEMA_VERSION = '2'
+SCHEMA_VERSION = '3'
 
 
 class FullValueDigest(ColumnElement):
@@ -38,20 +38,17 @@ def _mysql_digest(element, compiler, **kw):
 
 
 def declarations():
-    from . import identity, domains
-    tables = {}
-    indexes = []
-    for module in (identity, domains):
-        for name, fields in module.TABLES.items():
-            if name in tables:
-                raise ValueError('Duplicate domain table: ' + name)
-            tables[name] = fields
-        indexes.extend(getattr(module, 'INDEXES', []))
-    tables['compatibility_values'] = {'path': 'text', 'value': 'json'}
-    return tables, indexes
+    from .schema_v3 import TABLES, INDEXES
+    return {name: dict(fields) for name, fields in TABLES.items()}, list(INDEXES)
 
 
-def make_schema(prefix='app_'):
+def make_schema(prefix='', *, schema_version=SCHEMA_VERSION):
+    if str(schema_version) == '2':
+        from .schema_v2 import make_schema as legacy_schema
+        return legacy_schema(prefix)
+    if str(schema_version) != SCHEMA_VERSION:
+        from .engine import DatabaseConfigurationError
+        raise DatabaseConfigurationError('Unsupported relational schema version')
     definitions, indexes = declarations()
     if any(len(prefix + name) > 64 for name in definitions):
         from .engine import DatabaseConfigurationError
@@ -61,7 +58,7 @@ def make_schema(prefix='app_'):
     identifier = String(64).with_variant(mysql.VARCHAR(64, collation='ascii_bin', charset='ascii'), 'mysql')
     label = String(128).with_variant(mysql.VARCHAR(128, collation='utf8mb4_bin'), 'mysql')
     long_text = Text().with_variant(mysql.LONGTEXT(collation='utf8mb4_bin'), 'mysql')
-    registry = Table(prefix + 'document_registry', metadata,
+    registry = Table(prefix + 'storage_documents', metadata,
         Column('document_id', identifier, primary_key=True),
         Column('namespace', label, nullable=False, index=True),
         Column('record_key', long_text, nullable=False),
@@ -73,7 +70,7 @@ def make_schema(prefix='app_'):
         Column('content_sha256', String(64), nullable=False),
         Column('source_sha256', String(64)),
         mysql_charset='utf8mb4', mysql_engine='InnoDB')
-    meta = Table(prefix + 'schema_meta', metadata,
+    meta = Table(prefix + 'schema_migrations', metadata,
         Column('meta_key', String(64), primary_key=True),
         Column('meta_value', String(256), nullable=False),
         mysql_charset='utf8mb4', mysql_engine='InnoDB')

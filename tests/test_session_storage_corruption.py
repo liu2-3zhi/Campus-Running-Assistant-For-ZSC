@@ -40,11 +40,11 @@ def sessions(tmp_path, monkeypatch, request):
                  'last_accessed': time.time(), 'created_at': time.time(), 'is_guest': True,
                  'params': {'fixture': name}, 'user_data': {'username': name}}
         store.put('sessions', keys[name], json.dumps(state).encode())
-    # Reproduce the deployed database: registry, profile and snapshot remain,
-    # while the root session entity has been removed.
+    # Reproduce a registry whose root entity has been removed. In v3 the
+    # snapshot/profile belong to that same aggregate, without child-row chains.
     with store.database.connection() as connection:
-        connection.execute(delete(store.entities['sessions']).where(
-            store.entities['sessions'].c.document_id == store._identity('sessions', keys['broken'])))
+        connection.execute(delete(store.entities['account_sessions']).where(
+            store.entities['account_sessions'].c.document_id == store._identity('sessions', keys['broken'])))
     yield SimpleNamespace(store=store, ids=ids, keys=keys, root=tmp_path,
                           path=lambda name: tmp_path / 'sessions' / keys[name])
     if request.param == 'sqlite':
@@ -69,7 +69,7 @@ def test_remove_corrupt_session_cascades_without_reading_its_body(sessions):
     storage_io.os.remove(sessions.path('broken'))
     assert not sessions.store.exists('sessions', sessions.keys['broken'])
     with sessions.store.database.connection() as connection:
-        for name in ('session_profiles', 'session_snapshots'):
+        for name in ('account_sessions',):
             table = sessions.store.entities[name]
             assert connection.execute(select(table.c.row_id).where(table.c.document_id ==
                 sessions.store._identity('sessions', sessions.keys['broken']))).first() is None

@@ -14,18 +14,26 @@
 
 ## 数据库优先存储
 
+- 当前为业务数据库 v3：19 张业务表与 `storage_documents`、`schema_migrations` 两张元数据表。正式运行及迁移目标不允许非空 `MYSQL_TABLE_PREFIX`，旧前缀只通过迁移工具的 `--legacy-table-prefix` 传给 v1/v2 reader；不要在旧表旁静默创建带新前缀的空库。当前指南为 `docs/database-v3.md`，下列 v2 编码说明仅用于旧版本兼容。
+- 默认直接运行从程序目录定位资源与 `data/application.sqlite3`，启动记录 `backend=SQLite`；仅显式 `APP_STORAGE_ROOT` 保留代码根目录／工作目录一致性保护。本地旧业务文件须显式导入、完整核验后再移除，日志与二进制资源不移动。
+- 删除原随仓库提供的 `trusted_ips.txt` 后，全新 SQLite 必须先写入注释型默认可信代理记录，再标记 ready，保留“仅信任内置代理”的默认行为；不能让记录缺失触发全信任。已有数据库不可自动补写、覆盖或改变缺失规则的既有语义。
+- v3 使用 `BusinessBuilder`，命名 JSON 列可读，浮点／大整数用保留标识保持精度；MySQL 会重排 JSON 对象键，必须对 v3 写入和重建内容使用同样递归排序，再做持久摘要校验，不能取消摘要检查。v2 继续使用原 Builder 与原序列化。
+- v2 迁移的只读快照直接通过同一连接读取 registry 和实体、逐记录解码；不要在外层事务内调用会标记 rollback-only 的嵌套 `get()` 再捕获解码异常，否则显式跳过损坏会话也会在退出时失败。只允许显式跳过普通坏会话，不跳过索引、账号、支付或连接错误。
+- 短信审计保存于 `sms_records`，新事件只存元数据、不存验证码／正文，记录失败不能触发短信重发。旧 JSONL 只读无损导入并保留原日志，不恢复验证码缓存；导出和再导入须支持 `sms_records` 命名空间。历史查询先 SQL 过滤／排序／限量再重建。
+- 数据库存储日志须写真实来源，避免逐账号“成功读取 INI 文件”刷屏；批量摘要包含 storage、owner、count、elapsed_ms。持久化会话日志使用“记录／记录键”，物理日志和静态文件保持原术语。
+
 - 运行期只允许 SQLite/MySQL，默认测试数据库为 `data/application.sqlite3`，`file` 后端冻结并拒绝。`business_storage.py` 的 `StoragePolicy` 是运行期和离线迁移共同的结构化资料白名单，包含 `configs/config.json` 和信任 IP。默认及自定义 `Logging.log_dir` 必须整棵排除；日志位置、归档和挂载不变，图片、上传、缓存和证书继续走磁盘。
 - 业务模块通过 `storage_io` 显式导入局部 `open/os/glob/shutil/configparser` 代理，禁止修改标准库全局对象。`main.py` 的动态依赖导入与 `_try_import_builtin()` 不能重新绑定为原始模块；验证须检查真实 `import main` 后的绑定和数据库中已存在的索引，避免启动覆盖旧索引。
-- 运行期要求代码根目录、`APP_STORAGE_ROOT` 和当前工作目录一致；离线 CLI 的 `--root` 可独立指定只读源目录。受管文档只能读写数据库，数据库错误不得回退旧物理文件；启动存储错误须以非零退出，同时保持 daily restart helper 成功返回语义。存在未迁移旧文件时不能静默初始化空库。
+- 显式设置 `APP_STORAGE_ROOT` 时要求代码根目录、该变量和当前工作目录一致；默认入口自动切换到程序目录。离线 CLI 的 `--root` 可独立指定只读源目录。受管文档只能读写数据库，数据库错误不得回退旧物理文件；启动存储错误须以非零退出，同时保持 daily restart helper 成功返回语义。存在未迁移旧文件时不能静默初始化空库。
 - 关系化 v2 以领域核心类型列为唯一权威，兼容 registry 只保留布局、定位、摘要、修订号与来源元数据，不存整份业务 BLOB；动态扩展才使用实体 JSON。重建须反映 SQL 列改动，保留缺失/null/空集合和旧类型。金额精确到整数分，禁止静默 ROUND。时间/进度数值的 SQLite 列用双精度，MySQL 列用 DECIMAL(65,30) 且以 Decimal 传输；扩展 JSON 的 float/int 由 codec 以 hex/十进制字符串编码再恢复类型，不能依赖 MySQL 原生 JSON 数字保持 Python 浮点末位。UA 按 owner + 学校账号绑定隔离，账单仍归属学校账号，Token 生命周期不因会话或用户级联规则而改变。
 - MySQL 自定义 creator 未启用 CLIENT_FOUND_ROWS 时，重复赋同一值的 UPDATE 返回 rowcount=0，不代表行不存在；不能据此 INSERT 导致主键冲突。元数据修改须先确认行身份。完整标识的唯一约束用全值生成摘要，不可用前 191 字符唯一索引。
 - 数据库备份必须显式枚举全部列（含 INVISIBLE），保存 generated 列值校验但从可恢复写入列中排除，并固定 UTC/记录会话语义。SHOW GRANTS 既可能返回 ALL PRIVILEGES，也可能枚举完整数据库级静态权限；仅接受精确作用域及等价完整权限。系统表未升级等原因导致对象清点失败时必须拒绝清库，不能跳过 routines 清点。
 - 受管 Guest 索引、背景状态和配置直接写数据库，不能再用物理 .tmp/.bak 中转；受管 INI 不读取陈旧 .bak。敏感配置遇 StorageError 向上传播，不能吞错后重建默认配置或信任全部代理；非受管日志、图片资源的临时文件仍按原机制。
 - 保留持久摘要和 CAS 修订号；校验须读取持久值，不能重新计算后与自身比较；新建文档也用缺失修订号 0 保护并发创建。事务失败不自动重试覆盖，嵌套事务失败使外层回滚。v2 比较业务语义与类型，不承诺规范化 JSON/INI 导出与原文件逐字节一致。
-- 迁移先预检全部来源、身份冲突和类型，再关闭就绪标志并分批事务导入，最后复查源及目标缺失、多余和内容差异，全通过才标记就绪。`--backend sqlite/mysql` 选择目标；v1 `--source legacy-mysql` 同库目标必须改前缀，且须单独核对 v1 未收录的本地主配置。导出只写全新目录，供备份或再次导入数据库，不重启文件后端；禁止合并陈旧源文件导致删除记录复活。
+- 迁移先预检全部来源、身份冲突和类型，再关闭就绪标志并分批事务导入，最后复查源及目标缺失、多余和内容差异，全通过才标记就绪。`--backend sqlite/mysql` 选择目标；v1 `--source legacy-mysql` 同库须保持旧前缀源表与无前缀目标表互不重叠，且须单独核对 v1 未收录的本地主配置。导出只写全新目录，供备份或再次导入数据库，不重启文件后端；禁止合并陈旧源文件导致删除记录复活。
 - Compose 直接填写 literal `environment`，不依赖 `.env`、`env_file` 或变量替换；真实值只在本地部署配置或测试进程环境中使用，不提交。MySQL 覆盖文件只连接外部库，不内置数据库服务、数据库卷或启动依赖。旧受管目录运行挂载已移除，升级迁移必须显式只读挂载来源并指定 `--root /legacy`，SQLite 目标放在来源之外。当前只支持单应用实例，进程内锁不等于分布式锁。
 - `tools/test_storage_migration.py --source-root --report` 默认临时 SQLite；MySQL 清理测试须明确 `--backend mysql --reset-target --stopped --backup-dir`。先完整 SQLite 预检、全源摘要核验、指定库备份及锁内复核才清理；无有效备份、对象不支持或内容变化就拒绝。备份 v2 保存隐藏列和生成列元数据，读取固定 UTC；DDL 自提交，失败不能靠事务恢复，备份留在仓库及来源之外。不得连接或清理未经授权的真实库。
-- 回归覆盖 SQLite/MySQL 关系化实体和 I/O、SQL 核心列权威、账号/学校凭据/UA/Token、迁移与导出往返、启动拒绝及 Compose 合并结果。测试使用临时样本和独立目标，源副本只读，报告不输出真实正文；测试通过不能代替部署和真实业务验收。以 `docs/database-first-design.md`、`docs/database-first-plan.md`、`docs/mysql-storage.md` 为当前设计与操作依据。
+- 回归覆盖 SQLite/MySQL 关系化实体和 I/O、SQL 核心列权威、账号/学校凭据/UA/Token、迁移与导出往返、启动拒绝及 Compose 合并结果。测试使用临时样本和独立目标，源副本只读，报告不输出真实正文；测试通过不能代替部署和真实业务验收。当前设计与操作依据为 `docs/database-v3.md`，`docs/database-first-design.md`、`docs/database-first-plan.md`、`docs/mysql-storage.md` 保留 v2 背景说明。
 
 ## 安全要素
 

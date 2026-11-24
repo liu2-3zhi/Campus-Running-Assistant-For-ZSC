@@ -1,5 +1,7 @@
 # 数据库优先实施计划
 
+> 此计划为 v2 历史实施记录，当前结构与操作指南见[业务数据库 v3](database-v3.md)。
+
 > 执行方式：superpowers:subagent-driven-development；任务先写失败测试，再实现，再复审。
 
 **Goal:** 冻结文件运行后端，以默认 SQLite 和外部 MySQL 共用的关系化存储替换通用文档运行表，并验证真实副本迁移。

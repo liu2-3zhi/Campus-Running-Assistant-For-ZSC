@@ -42,7 +42,7 @@ def test_direct_column_corruption_is_detected_by_saved_checksum(setup):
     source, policy, store = setup
     import_documents(policy, store)
     with store.database.connection() as connection:
-        connection.execute(text("UPDATE app_users SET auth_username='changed'"))
+        connection.execute(text("UPDATE system_accounts SET auth_username='changed'"))
     saved = store.get('system_accounts', 'user.json')
     assert json.loads(saved.content)['auth_username'] == 'changed'
     assert not verify_documents(policy, store).ok

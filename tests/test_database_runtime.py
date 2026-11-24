@@ -45,6 +45,12 @@ class FakeStore:
         if not self.ready:
             raise DatabaseError('Database migration is incomplete')
 
+    def put(self, namespace, key, content, **kwargs):
+        assert (namespace, key) == ('settings', 'trusted_ips.txt')
+
+    def mark_ready(self):
+        self.ready = True
+
     def get(self, namespace, key):
         if (namespace, key) == ('configs', 'config.json') and self.config is not None:
             return SimpleNamespace(content=json.dumps(self.config).encode())
@@ -66,7 +72,8 @@ def test_new_sqlite_runtime_initializes_only_database_storage(app_root, monkeypa
     runtime = business_storage.get_runtime()
     assert runtime.backend == 'sqlite'
     assert runtime.store is store
-    assert store.initializations == [True]
+    assert store.initializations == [False]
+    assert store.ready
     assert len(calls) == 1
     assert business_storage.get_runtime() is runtime
 

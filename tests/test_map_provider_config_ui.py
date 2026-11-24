@@ -1,8 +1,9 @@
-import json
 import re
 import unittest
 from pathlib import Path
 from tests.backend_source_utils import read_backend_source
+from main import _get_default_config
+from map_runtime_origin import merge_map_settings
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -10,7 +11,6 @@ INDEX_PATH = PROJECT_ROOT / "index.html"
 SCRIPT_PATH = PROJECT_ROOT / "scripts" / "main.js"
 ADMIN_CONFIG_PATH = PROJECT_ROOT / "scripts" / "legacy-admin-config.js"
 MAIN_PATH = PROJECT_ROOT / "main.py"
-CONFIG_PATH = PROJECT_ROOT / "configs" / "config.json"
 
 
 def _extract_js_section(source: str, start_marker: str, end_marker: str) -> str:
@@ -20,9 +20,10 @@ def _extract_js_section(source: str, start_marker: str, end_marker: str) -> str:
 
 
 class TestMapProviderConfigUi(unittest.TestCase):
-    def test_config_json_defines_global_provider_and_provider_sections(self):
-        config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        map_config = config.get("Map", {})
+    def test_default_map_settings_define_global_provider_and_provider_sections(self):
+        # Test the same normalized defaults used for database initialization,
+        # independent of personal settings or old physical config files.
+        map_config = merge_map_settings(_get_default_config(), {})
 
         self.assertIn("provider", map_config)
         self.assertIn(map_config.get("provider"), {"amap", "tencent", "tianditu", "baidu"})

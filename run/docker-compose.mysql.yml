@@ -10,7 +10,6 @@ services:
       MYSQL_USER: campus_app
       MYSQL_PASSWORD: replace-with-your-own-password
       MYSQL_DATABASE: campus_running
-      MYSQL_TABLE_PREFIX: app_
       MYSQL_CONNECT_TIMEOUT: "5"
       MYSQL_READ_TIMEOUT: "15"
       MYSQL_WRITE_TIMEOUT: "15"

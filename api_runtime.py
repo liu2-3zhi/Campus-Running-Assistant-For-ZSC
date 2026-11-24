@@ -32,6 +32,14 @@ from route_diagnostics import build_route_failure_summary, detailed_route_failur
 from theme_background_state import background_files_locked
 
 
+def _storage_log_source(path):
+    """Name the actual backend, rather than the legacy document extension."""
+    runtime = storage_io.get_runtime(path)
+    if runtime is not None and runtime.policy.identify(path) is not None:
+        return runtime.backend
+    return 'file'
+
+
 # ===================== 折返路径规划：路段缓存 =====================
 # 折返点探测会针对「折返点 -> 打卡点」「打卡点 -> 最后一个打卡点」反复规划同一条腿，
 # 同一任务的不同轮次、以及重复生成路线时都会命中，因此做进程内缓存。
@@ -802,9 +810,6 @@ class Api:
             # 复制所有 stats 节中的配置项
             for key, value in cfg_cn.items("stats"):
                 cfg_en.set("stats", key, value)
-            logging.debug(
-                f"normalize_chinese_config_to_english 保留了 [stats] 节 - 文件: {path}"
-            )
 
         if not is_managed_path(path):
             try:
@@ -827,7 +832,7 @@ class Api:
 
     def _load_school_account_stats_from_ini(self, school_username):
         """
-        从 INI 文件读取指定学校账号的统计数据（overdue_count 和 completed_count）。
+        读取学校账号统计。保留旧方法名；受管路径从数据库读取。
         """
         # 直接构建 INI 文件路径，指向 school_accounts 目录
         ini_file = os.path.join(self.user_dir, f"{school_username}.ini")
@@ -840,9 +845,6 @@ class Api:
 
         # 检查 INI 文件是否存在
         if not os.path.exists(ini_file):
-            logging.debug(
-                f"[统计数据] 配置文件不存在，返回默认值: {school_username}"
-            )
             return default_stats
 
         try:
@@ -859,12 +861,6 @@ class Api:
             completed_count = config.getint(
                 'stats', 'completed_count', fallback=0)
 
-            # 记录成功读取的日志（调试级别）
-            logging.debug(
-                f"[统计数据] 成功读取 INI 文件: {school_username}, "
-                f"overdue_count={overdue_count}, completed_count={completed_count}"
-            )
-
             # 返回读取到的统计数据
             return {
                 "overdue_count": overdue_count,
@@ -873,18 +869,19 @@ class Api:
 
         except Exception as e:
             logging.error(
-                f"[统计数据] 读取 INI 文件失败: {school_username}, 错误: {e}",
+                "[统计数据] 读取学校账号统计失败 storage=%s school_account=%s error=%s",
+                _storage_log_source(ini_file), school_username, e,
                 exc_info=True
             )
             return default_stats
 
     def _save_school_account_stats_to_ini(self, school_username, overdue_count, completed_count):
         """
-        将学校账号的统计数据保存到 INI 文件（合并模式）。
+        合并保存学校账号统计；受管路径写入数据库，保留兼容方法名。
         """
         if not _main().is_valid_school_username(school_username):
             logging.warning(
-                "[统计数据] 拒绝为非法学号写入统计 INI: %r"
+                "[统计数据] 拒绝为非法学号保存统计: %r"
                 "（学号必须是至少4位纯数字）",
                 school_username,
             )
@@ -906,7 +903,10 @@ class Api:
                     self.normalize_chinese_config_to_english(ini_file)
                     config.read(ini_file, encoding='utf-8')
                 except Exception as read_e:
-                    logging.warning(f"[统计数据] 读取现有配置文件出错 (将覆盖): {read_e}")
+                    logging.warning(
+                        "[统计数据] 读取现有账号配置失败 storage=%s school_account=%s error=%s",
+                        _storage_log_source(ini_file), school_username, read_e,
+                    )
 
             # 确保 [stats] 配置节存在
             if not config.has_section('stats'):
@@ -921,24 +921,19 @@ class Api:
             with open(ini_file, 'w', encoding='utf-8') as f:
                 config.write(f)
 
-            # 记录成功保存的日志
-            logging.debug(
-                f"[统计数据] 成功合并保存 INI 文件: {school_username}, "
-                f"overdue_count={overdue_count}, completed_count={completed_count}"
-            )
-
             return True
 
         except Exception as e:
             logging.error(
-                f"[统计数据] 保存 INI 文件失败: {school_username}, 错误: {e}",
+                "[统计数据] 保存学校账号统计失败 storage=%s school_account=%s error=%s",
+                _storage_log_source(ini_file), school_username, e,
                 exc_info=True
             )
             return False
 
     def _save_school_account_password_to_ini(self, school_username, password, ua=None):
         """
-        将学校账号的密码和UA信息保存到 INI 文件（作为备份）。
+        更新学校账号兼容凭据记录；受管路径写入数据库。
 
         功能说明：
             将学校账号登录成功后的密码和 User-Agent 保存到对应的 INI 文件中。
@@ -954,7 +949,7 @@ class Api:
         """
         if not _main().is_valid_school_username(school_username):
             logging.warning(
-                "[密码备份] 拒绝为非法学号写入 INI: %r"
+                "[学校账号] 拒绝为非法学号更新兼容凭据记录: %r"
                 "（学号必须是至少4位纯数字）",
                 school_username,
             )
@@ -973,7 +968,10 @@ class Api:
                 try:
                     config.read(ini_file, encoding='utf-8')
                 except Exception as read_e:
-                    logging.warning(f"[密码备份] 读取现有配置文件出错 (将覆盖): {read_e}")
+                    logging.warning(
+                        "[学校账号] 读取兼容凭据记录失败 storage=%s school_account=%s error=%s",
+                        _storage_log_source(ini_file), school_username, read_e,
+                    )
 
             # 确保 [Config] 和 [System] 配置节存在
             if not config.has_section('Config'):
@@ -984,27 +982,27 @@ class Api:
             # 设置密码信息（仅写入小写格式，与读取逻辑保持一致）
             if password:
                 config.set('Config', 'password', password)
-                logging.debug(f"[密码备份] 已在 INI 文件中保存密码: {school_username}")
 
             # 设置 UA 信息（仅写入小写格式，与读取逻辑保持一致）
             if ua:
                 config.set('System', 'ua', ua)
-                logging.debug(f"[密码备份] 已在 INI 文件中保存UA: {school_username}")
 
             # 将配置写回文件
             with open(ini_file, 'w', encoding='utf-8') as f:
                 config.write(f)
 
             # 记录成功保存的日志
-            logging.info(
-                f"[密码备份] 成功将密码和UA备份到 INI 文件: {school_username}"
+            logging.debug(
+                "[学校账号] 已更新兼容凭据记录 storage=%s school_account=%s",
+                _storage_log_source(ini_file), school_username,
             )
 
             return True
 
         except Exception as e:
             logging.error(
-                f"[密码备份] 保存密码到 INI 文件失败: {school_username}, 错误: {e}",
+                "[学校账号] 更新兼容凭据记录失败 storage=%s school_account=%s error=%s",
+                _storage_log_source(ini_file), school_username, e,
                 exc_info=True
             )
             return False
@@ -1118,6 +1116,7 @@ class Api:
         if not auth_username or auth_username == "guest":
             return {}
 
+        started_at = time.perf_counter()
         file_path = self._get_user_accounts_file(auth_username)
         data = {}
 
@@ -1129,10 +1128,12 @@ class Api:
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
             except Exception as e:
-                logging.error(f"读取用户 {auth_username} 的 JSON 文件失败: {e}")
+                logging.error(
+                    "[学校账号] 读取账号绑定失败 storage=%s owner=%s error=%s",
+                    _storage_log_source(file_path), auth_username, e,
+                )
                 data = {}
         else:
-            logging.debug(f"用户 {auth_username} 的 JSON 文件不存在，初始化为空字典")
             data = {}
 
         if not isinstance(data, dict):
@@ -1190,13 +1191,6 @@ class Api:
                         "completed_count": stats["completed_count"]
                     }
 
-            # 记录加载成功的日志
-            if data:
-                logging.debug(
-                    f"成功加载用户 {auth_username} 的 school_accounts，共 {len(data)} 个账户 "
-                    f"(从 JSON 加载密码和 UA，从 INI 加载统计数据)"
-                )
-
             # 如果当前用户具有管理权限，则遍历所有用户的 user_accounts
             # 将其它用户的 school_accounts 汇总（排除 password 为空的数据）并去重
             try:
@@ -1218,8 +1212,10 @@ class Api:
                                 with open(fpath, 'r', encoding='utf-8') as uf:
                                     other = json.load(uf)
                             except Exception:
-                                logging.debug(
-                                    f"跳过无法读取的 user_accounts 文件: {fpath}")
+                                logging.warning(
+                                    "[学校账号] 忽略无法读取的账号绑定 storage=%s record=%s",
+                                    _storage_log_source(fpath), fname,
+                                )
                                 continue
 
                             # 合并 other 中的账号
@@ -1319,19 +1315,23 @@ class Api:
                                     'completed_count': stats.get('completed_count', 0)
                                 }
 
-                                logging.debug(f"从旧版INI加载账号: {school_username}")
                             except Exception as e:
-                                logging.debug(
-                                    f"跳过无法读取的 INI 文件: {ini_path}, 错误: {e}")
+                                logging.warning(
+                                    "[学校账号] 忽略无法读取的账号配置 storage=%s school_account=%s error=%s",
+                                    _storage_log_source(ini_path), school_username, e,
+                                )
                                 continue
 
                     # 替换为汇总后的结果
                     data = aggregated
-                    logging.debug(
-                        f"管理员权限聚合完成，总共 {len(data)} 个账户（包含JSON和INI格式）")
             except Exception as e:
                 logging.debug(f"管理员合并 user_accounts 失败: {e}")
 
+            logging.debug(
+                "[学校账号] 账号绑定加载完成 storage=%s owner=%s count=%d elapsed_ms=%.2f",
+                _storage_log_source(file_path), auth_username, len(data),
+                (time.perf_counter() - started_at) * 1000,
+            )
             return data
         except Exception as e:
             logging.error(
@@ -1363,6 +1363,7 @@ class Api:
             logging.debug("游客用户不保存 school_accounts")
             return
 
+        started_at = time.perf_counter()
         file_path = self._get_user_accounts_file(auth_username)
 
         try:
@@ -1422,8 +1423,9 @@ class Api:
 
             # 记录成功保存的日志
             logging.debug(
-                f"成功保存用户 {auth_username} 的 school_accounts，共 {len(json_data)} 个账户 "
-                f"(密码和 UA 保存到 JSON，统计数据保存到各账号的 INI 文件)"
+                "[学校账号] 账号绑定保存完成 storage=%s owner=%s count=%d elapsed_ms=%.2f",
+                _storage_log_source(file_path), auth_username, len(json_data),
+                (time.perf_counter() - started_at) * 1000,
             )
         except Exception as e:
             logging.error(
@@ -1959,11 +1961,15 @@ class Api:
             # 步骤6：检查保存是否成功
             if success:
                 logging.debug(
-                    f"[任务计数] 成功更新学校账号 {school_username} 的任务计数到 INI 文件"
+                    "[任务计数] 学校账号计数已保存 storage=%s school_account=%s",
+                    _storage_log_source(os.path.join(self.user_dir, f"{school_username}.ini")),
+                    school_username,
                 )
             else:
                 logging.warning(
-                    f"[任务计数] 保存学校账号 {school_username} 的任务计数到 INI 文件失败"
+                    "[任务计数] 学校账号计数保存失败 storage=%s school_account=%s",
+                    _storage_log_source(os.path.join(self.user_dir, f"{school_username}.ini")),
+                    school_username,
                 )
 
         except Exception as e:
@@ -1977,13 +1983,9 @@ class Api:
 
     def _save_config(self, username, password=None, ua=None):
         """保存指定用户的配置到 user/<username>.ini；当 password 为 None 时保留现有密码；当 ua 为 None 时保留现有 UA。同时更新主 config.ini 的 LastUser 和 amap_js_key。"""
-        logging.debug(
-            f"Saving config: username={username!r}, password provided: {password is not None}, ua provided: {ua is not None}"
-        )
-
         if not _main().is_valid_school_username(username):
             logging.warning(
-                "[配置] 拒绝保存非法学号的 INI 配置: %r"
+                "[配置] 拒绝保存非法学号的账号配置: %r"
                 "（学号必须是至少4位纯数字）",
                 username,
             )
@@ -1997,21 +1999,10 @@ class Api:
         if os.path.exists(user_ini_path):
             try:
                 cfg_to_save.read(user_ini_path, encoding="utf-8")
-                # 记录读取到的所有节
-                logging.debug(
-                    f" _save_config读取INI文件 - "
-                    f"用户: {username}, 包含的节: {cfg_to_save.sections()}"
-                )
-                # 如果存在stats节，记录其内容
-                if cfg_to_save.has_section('stats'):
-                    stats_items = dict(cfg_to_save.items('stats'))
-                    logging.debug(
-                        f" _save_config读取到 [stats] 节 - "
-                        f"用户: {username}, 内容: {stats_items}"
-                    )
             except Exception as e:
                 logging.warning(
-                    f"读取旧配置文件 {user_ini_path} 失败: {e}, 将创建新的。"
+                    "[学校账号] 读取现有账号配置失败 storage=%s school_account=%s error=%s",
+                    _storage_log_source(user_ini_path), username, e,
                 )
 
         # ========== 保留 [stats] 节，避免覆盖欠费数据 ==========
@@ -2037,19 +2028,6 @@ class Api:
             for option in cfg_to_save.options('stats'):
                 # 将每个配置项的名称和值保存到备份字典中
                 stats_section_backup[option] = cfg_to_save.get('stats', option)
-
-            # 记录调试日志：已检测到并备份 [stats] 节
-            # 这有助于排查问题，确认备份操作是否执行
-            logging.debug(
-                f"检测到现有 [stats] 节，已备份 - "
-                f"用户: {username}, 备份数据: {stats_section_backup}"
-            )
-        else:
-            # [stats] 节不存在，记录调试日志
-            # 这是正常情况，说明该用户的INI文件中还没有欠费统计数据
-            logging.debug(
-                f"用户配置中不存在 [stats] 节 - 用户: {username}"
-            )
 
         if not cfg_to_save.has_section("Config"):
             cfg_to_save.add_section("Config")
@@ -2116,54 +2094,23 @@ class Api:
             # 如果没有，则创建一个新的 [stats] 节
             if not cfg_to_save.has_section('stats'):
                 cfg_to_save.add_section('stats')
-                logging.debug(
-                    f"重新创建 [stats] 节 - 用户: {username}"
-                )
 
             # 遍历备份字典，将所有配置项恢复到 [stats] 节中
             for option, value in stats_section_backup.items():
                 cfg_to_save.set('stats', option, value)
 
-            # 记录调试日志：已成功恢复 [stats] 节
-            # 这是关键的验证步骤，确保数据恢复成功
-            logging.debug(
-                f"已恢复 [stats] 节到配置文件 - "
-                f"用户: {username}, 恢复的配置项数量: {len(stats_section_backup)}"
-            )
-
-            # 记录信息日志：用于监控和审计
-            # 让管理员知道 [stats] 节被正确保留了
-            logging.info(
-                f"成功保留 [stats] 节数据 - "
-                f"用户: {username}, overdue_count: {stats_section_backup.get('overdue_count', 'N/A')}, "
-                f"completed_count: {stats_section_backup.get('completed_count', 'N/A')}"
-            )
-
         try:
-            # ========== 记录即将写入的所有节 ==========
-            logging.debug(
-                f" _save_config即将写入INI文件 - "
-                f"用户: {username}, 包含的节: {cfg_to_save.sections()}"
-            )
-            # 如果存在stats节，记录其内容
-            if cfg_to_save.has_section('stats'):
-                stats_items = dict(cfg_to_save.items('stats'))
-                logging.debug(
-                    f" _save_config即将写入 [stats] 节 - "
-                    f"用户: {username}, 内容: {stats_items}"
-                )
-            else:
-                logging.warning(
-                    f" _save_config即将写入但没有 [stats] 节 - "
-                    f"用户: {username}"
-                )
-
             with open(user_ini_path, "w", encoding="utf-8") as f:
                 cfg_to_save.write(f)
             logging.debug(
-                f"Saved user config for {username} -> {user_ini_path}")
+                "[学校账号] 配置保存完成 storage=%s school_account=%s preserved_stats=%d",
+                _storage_log_source(user_ini_path), username, len(stats_section_backup),
+            )
         except Exception as e:
-            logging.error(f"写入用户配置文件 {user_ini_path} 失败: {e}", exc_info=True)
+            logging.error(
+                "[学校账号] 配置保存失败 storage=%s school_account=%s error=%s",
+                _storage_log_source(user_ini_path), username, e, exc_info=True,
+            )
 
         if (
             password is not None
@@ -2208,9 +2155,15 @@ class Api:
         # 如果只是更新了用户配置，没必要每次都覆写 config.ini
         try:
             _main()._write_config_with_comments(main_cfg, self.config_path)
-            logging.debug(f"更新主配置文件 {self.config_path} 成功 (Map Key)")
+            logging.debug(
+                "[系统设置] 地图设置保存完成 storage=%s",
+                _storage_log_source(self.config_path),
+            )
         except Exception as e:
-            logging.error(f"写入主配置文件 {self.config_path} 失败: {e}", exc_info=True)
+            logging.error(
+                "[系统设置] 地图设置保存失败 storage=%s error=%s",
+                _storage_log_source(self.config_path), e, exc_info=True,
+            )
 
     def _load_global_config(self):
         """从主 config.ini 加载全局配置（优先读取新版 Map.amap_js_key，兼容旧版 System.AmapJsKey）"""
@@ -3338,7 +3291,7 @@ class Api:
         )
         self._save_config(ud.username, password, self.device_ua)
 
-        # 将密码和UA备份到旧版 INI 文件（兼容旧版本）
+        # 更新兼容凭据记录；受管路径由数据库存储。
         try:
             if ud.username:
                 self._save_school_account_password_to_ini(
@@ -3346,9 +3299,8 @@ class Api:
                     password,
                     self.device_ua
                 )
-                logging.info(f"已将登录密码备份到 INI 文件: {ud.username}")
         except Exception as e:
-            logging.error(f"备份密码到 INI 文件失败: {e}", exc_info=True)
+            logging.error("同步学校账号兼容凭据失败: %s", e, exc_info=True)
 
         if hasattr(self, "auth_username") and self.auth_username:
             self._update_school_account_password(

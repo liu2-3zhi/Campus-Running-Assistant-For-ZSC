@@ -42,6 +42,9 @@ def _typed(value, kind):
         return None
     if kind == 'json':
         return _tree(value)
+    if kind == 'json_native':
+        from .json_values import encode_native_json
+        return encode_native_json(value)
     if kind == 'text':
         return str(value)
     if kind == 'money':
@@ -114,7 +117,7 @@ class Builder:
             info = {'source': source, 'column': column, 'kind': kind, 'type': _type(value)}
             # Representation metadata preserves historical string formatting.
             # Text values themselves are never duplicated in metadata.
-            if isinstance(value, str) and kind not in ('text', 'json'):
+            if isinstance(value, str) and kind not in ('text', 'json', 'json_native'):
                 info['representation'] = value
             if kind == 'float' and isinstance(value, float) and value == 0 and math.copysign(1, value) < 0:
                 info['negative_zero'] = True
@@ -169,6 +172,9 @@ def decode_tree(layout, rows):
                 value = None
             elif kind == 'json':
                 value = decode(value)
+            elif kind == 'json_native':
+                from .json_values import decode_native_json
+                value = decode_native_json(value)
             elif 'representation' in info:
                 # Use the original representation only while its semantic
                 # value still matches the current authoritative column.

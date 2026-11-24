@@ -75,3 +75,19 @@ def test_mysql_metadata_reassignment_cas_and_rollback(relational_mysql):
             raise ValueError('rollback')
     assert json.loads(store.get('settings', 'messages.json').content) == []
     assert store.get('settings', 'reminders.json') is None
+
+
+def test_native_json_key_order_does_not_change_persistent_document_digest(relational_mysql):
+    store = relational_mysql
+    value = {'System': {'zzzz': 'last', 'a': 'first', 'middle': {'zzz': False, 'b': [1.5, 2**90]}}}
+    store.put('configs', 'config.json', json.dumps(value).encode())
+    loaded = store.get('configs', 'config.json')
+    assert json.loads(loaded.content) == value
+    assert loaded.digest == hashlib.sha256(loaded.content).hexdigest()
+
+
+def test_native_ini_section_order_does_not_change_persistent_document_digest(relational_mysql):
+    store = relational_mysql
+    store.put('school_accounts', '10001.ini', b'[System]\nzzzz=last\na=first\n[Config]\nUsername=10001\n')
+    loaded = store.get('school_accounts', '10001.ini')
+    assert loaded.digest == hashlib.sha256(loaded.content).hexdigest()

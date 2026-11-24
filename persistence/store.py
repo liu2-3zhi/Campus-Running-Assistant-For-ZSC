@@ -69,7 +69,17 @@ def parse_content(key, content):
     return 'json', json.loads(text, parse_constant=lambda value: (_ for _ in ()).throw(ValueError('Nonfinite JSON')))
 
 
-def render_content(format, value):
+def render_content(format, value, *, canonical=False):
+    if canonical:
+        # Native MySQL JSON sorts object keys on disk. Hash the same stable
+        # representation on both engines without changing the v2 reader.
+        def ordered(item):
+            if isinstance(item, dict):
+                return {key: ordered(item[key]) for key in sorted(item)}
+            if isinstance(item, list):
+                return [ordered(child) for child in item]
+            return item
+        value = ordered(value)
     if format == 'text':
         return value.encode('utf-8')
     if format == 'json':
@@ -85,31 +95,37 @@ def render_content(format, value):
 class RelationalStore:
     normalized = True
 
-    def __init__(self, settings, connection_factory=None):
+    def __init__(self, settings, connection_factory=None, *, schema_version=SCHEMA_VERSION):
         self.settings = settings
+        self.schema_version = str(schema_version)
         self.database = Database(settings, connection_factory)
         if settings.backend == 'sqlite':
             @event.listens_for(self.database.engine, 'connect')
             def register_digest(connection, _record):
                 connection.create_function('application_sha256', 1,
                     lambda value: hashlib.sha256(value.encode('utf-8')).hexdigest() if value is not None else None, deterministic=True)
-        self.metadata, self.registry, self.meta, self.entities, self.definitions = make_schema(settings.table_prefix)
+        self.metadata, self.registry, self.meta, self.entities, self.definitions = make_schema(
+            settings.table_prefix, schema_version=self.schema_version)
 
     @_safe_database
-    def init_schema(self, ready=False):
+    def init_schema(self, ready=False, *, allow_legacy=False):
         # create_all never upgrades an incompatible existing schema.
         with self.database.connection() as connection:
             names = set(inspect(connection).get_table_names())
-            if self.settings.table_prefix + 'documents' in names:
-                raise DatabaseError('Legacy schema v1 exists; export it before initializing relational schema v2')
+            if self.settings.table_prefix + 'documents' in names and not allow_legacy:
+                raise DatabaseError('Legacy schema v1 exists; run an explicit migration')
+            if self.schema_version == SCHEMA_VERSION and self.meta.name not in names and not allow_legacy:
+                legacy = {name for name in names if name.endswith('schema_meta') or name.endswith('storage_meta')}
+                if legacy:
+                    raise DatabaseError('Legacy database tables exist; run an explicit migration before creating schema v3')
             if self.meta.name in names:
                 version = connection.execute(select(self.meta.c.meta_value).where(self.meta.c.meta_key == 'schema_version')).scalar_one_or_none()
-                if version not in (None, SCHEMA_VERSION):
+                if version not in (None, self.schema_version):
                     raise DatabaseError('Unsupported database schema version; run an explicit migration')
             self.metadata.create_all(connection)
             current = dict(connection.execute(select(self.meta.c.meta_key, self.meta.c.meta_value)).all())
             if not current:
-                connection.execute(insert(self.meta), [{'meta_key': 'schema_version', 'meta_value': SCHEMA_VERSION},
+                connection.execute(insert(self.meta), [{'meta_key': 'schema_version', 'meta_value': self.schema_version},
                     {'meta_key': 'ready', 'meta_value': '1' if ready else '0'}])
 
     @_safe_database
@@ -132,7 +148,7 @@ class RelationalStore:
         try:
             with self.database.connection() as connection:
                 values = dict(connection.execute(select(self.meta.c.meta_key, self.meta.c.meta_value)).all())
-            if values.get('schema_version') != SCHEMA_VERSION or values.get('ready') != '1':
+            if values.get('schema_version') != self.schema_version or values.get('ready') != '1':
                 raise DatabaseError('Database schema is incompatible or migration is incomplete')
         except DatabaseError:
             raise
@@ -159,16 +175,24 @@ class RelationalStore:
     def _encode(self, namespace, key, document_id, content):
         from . import identity, domains
         format, value = parse_content(key, content)
-        builder = Builder(document_id, self.definitions)
+        if self.schema_version == '2':
+            builder = Builder(document_id, self.definitions)
+        else:
+            from .codec_v3 import BusinessBuilder
+            builder = BusinessBuilder(document_id, self.definitions)
         builder.owner_aliases = dict(getattr(self, 'migration_owner_aliases', {}))
         if namespace == 'school_accounts' and key.startswith('user_accounts/') and not builder.owner_aliases:
             from .validation import aliases_from_usernames
-            table = self.entities['users']
+            table = self.entities['users' if self.schema_version == '2' else 'system_accounts']
             with self.database.connection() as connection:
                 builder.owner_aliases = aliases_from_usernames(connection.execute(select(table.c.auth_username)).scalars())
-        tree = identity.encode(builder, namespace, key, value)
-        if tree is None:
-            tree = domains.encode(builder, namespace, key, value)
+        if self.schema_version == '2':
+            tree = identity.encode(builder, namespace, key, value)
+            if tree is None:
+                tree = domains.encode(builder, namespace, key, value)
+        else:
+            from .codec_v3 import encode
+            tree = encode(builder, namespace, key, value)
         if tree is None:
             def leaves(item, path):
                 if isinstance(item, dict):
@@ -181,7 +205,7 @@ class RelationalStore:
         rebuilt = decode_tree(layout, builder.rows)
         if rebuilt != value:
             raise DatabaseError('Domain codec changed source values')
-        canonical = render_content(format, rebuilt)
+        canonical = render_content(format, rebuilt, canonical=self.schema_version != '2')
         return format, layout, builder.rows, canonical
 
     def _documents(self, connection, records):
@@ -198,7 +222,8 @@ class RelationalStore:
                 grouped[row['document_id']].setdefault(name, []).append(dict(row))
         result = []
         for row in records:
-            content = render_content(row['format'], decode_tree(row['layout'], grouped[row['document_id']]))
+            content = render_content(row['format'], decode_tree(row['layout'], grouped[row['document_id']]),
+                                     canonical=self.schema_version != '2')
             # Typed columns are authoritative: SQL updates intentionally change
             # the reconstructed content. The stored digest records the last
             # compatibility write, and verification may flag out-of-band edits.

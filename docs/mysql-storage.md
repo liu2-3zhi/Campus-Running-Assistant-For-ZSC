@@ -1,5 +1,7 @@
 # 数据库存储与离线迁移
 
+> 当前版本为 v3，请使用[业务数据库 v3：表结构、SQLite 默认运行与旧版本迁移](database-v3.md)。下文保留为 v2 历史说明；其中表前缀、逐叶设置拆分及旧迁移示例不适用于 v3 目标。v3 不使用 `MYSQL_TABLE_PREFIX`，旧前缀通过 `--legacy-table-prefix` 指定。
+
 运行后端只有 SQLite 和 MySQL/MariaDB。默认创建本地 `data/application.sqlite3` 供开发测试使用；`APP_STORAGE_BACKEND=file` 已冻结并显式拒绝。数据库不可用、未初始化或迁移未完成时不会回退旧 JSON/INI。架构边界见[数据库优先存储设计](database-first-design.md)和[实施计划](database-first-plan.md)。
 
 本版本只支持**单个应用实例**。数据库事务和修订号不能替代任务、账号执行和账单操作的进程内锁；不要启动多个应用副本共同操作同一数据库。

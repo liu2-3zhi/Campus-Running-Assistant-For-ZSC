@@ -49,7 +49,7 @@ class DatabaseSettings:
     user: str = ''
     password: str = field(default='', repr=False)
     database: str = ''
-    table_prefix: str = 'app_'
+    table_prefix: str = ''
     connect_timeout: int = 5
     read_timeout: int = 15
     write_timeout: int = 15
@@ -62,9 +62,9 @@ class DatabaseSettings:
                 'APP_STORAGE_BACKEND must be sqlite or mysql; the file backend is frozen'
             )
         prefix = str(self.table_prefix)
-        if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,39}', prefix) is None:
+        if prefix and re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,39}', prefix) is None:
             raise DatabaseConfigurationError(
-                'MYSQL_TABLE_PREFIX must start with a letter and contain only letters, numbers and underscores'
+                'MYSQL_TABLE_PREFIX must be empty or start with a letter and contain only letters, numbers and underscores'
             )
         try:
             root = Path(self.root).resolve()
@@ -99,7 +99,7 @@ class DatabaseSettings:
             user=environment.get('MYSQL_USER', ''),
             password=environment.get('MYSQL_PASSWORD', ''),
             database=environment.get('MYSQL_DATABASE', ''),
-            table_prefix=environment.get('MYSQL_TABLE_PREFIX', 'app_'),
+            table_prefix=environment.get('MYSQL_TABLE_PREFIX', ''),
             connect_timeout=environment.get('MYSQL_CONNECT_TIMEOUT', 5),
             read_timeout=environment.get('MYSQL_READ_TIMEOUT', 15),
             write_timeout=environment.get('MYSQL_WRITE_TIMEOUT', 15),

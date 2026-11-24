@@ -9885,28 +9885,8 @@ def start_web_server(args_param):
             # 获取过滤参数
             date_filter = _main().request.args.get("date", "").strip()
             phone_filter = _main().request.args.get("phone", "").strip()
-            history_file = os.path.join(_main().LOGIN_LOGS_DIR, "sms_history.jsonl")
-
-            if not os.path.exists(history_file):
-                return _main().jsonify({"success": True, "records": []})
-
-            records = []
-            with open(history_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    try:
-                        record = json.loads(line.strip())
-                        if date_filter and not record.get("datetime", "").startswith(
-                            date_filter
-                        ):
-                            continue
-                        if phone_filter and phone_filter not in record.get("phone", ""):
-                            continue
-
-                        records.append(record)
-                    except json.JSONDecodeError:
-                        continue
-            records.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
-            records = records[:100]
+            from sms_history import SMSHistoryRepository
+            records = SMSHistoryRepository().list(date=date_filter, phone=phone_filter, limit=100)
             _ = getattr(_main().g, "api_instance", None)
 
             return _main().jsonify({"success": True, "records": _main()._redact_sensitive_display_value(records)})
@@ -10090,41 +10070,14 @@ def start_web_server(args_param):
                 f"[验证码管理] {g.user} 手动添加验证码: {phone} (有效期{code_expire_minutes}分钟)"
             )
 
-            try:
-
-                log_dir = _main().LOGIN_LOGS_DIR
-                os.makedirs(log_dir, exist_ok=True)
-
-                session_id = (
-                    _main().g.api_instance._web_session_id
-                    if hasattr(_main().g, "api_instance")
-                    else None
-                )
-                # 使用统一函数获取客户端真实IP
-                client_ip = _main().request.environ.get(
-                    "REMOTE_ADDR") or _main().request.remote_addr
-                content = f"管理员 {g.user} 手动添加的验证码: {code}，{code_expire_minutes}分钟内有效。"
-
-                history_entry = {
-                    "session_id": session_id,
-                    "username": _main().g.user,
-                    "phone": phone,
-                    "scene": "admin_manual_add",
-                    "timestamp": time.time(),
-                    "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "content": content,
-                    "ip": client_ip,
-                }
-
-                history_file = os.path.join(log_dir, "sms_history.jsonl")
-                with open(history_file, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(history_entry, ensure_ascii=False) + "\n")
-
-                app.logger.debug(
-                    f"[短信历史] 已记录手动添加验证码: {phone} -> {g.user}"
-                )
-            except Exception as e:
-                app.logger.error(f"[短信历史] 记录手动添加验证码失败: {str(e)}")
+            from sms_history import record_sms_event
+            record_sms_event(
+                phone=phone, scene="admin_manual_add", status="added", provider="manual",
+                source="admin_manual", auth_username=_main().g.user, username=_main().g.user,
+                session_id=getattr(getattr(_main().g, "api_instance", None), "_web_session_id", None),
+                timestamp=current_ts,
+                ip=_main().request.environ.get("REMOTE_ADDR") or _main().request.remote_addr,
+            )
             _emit_verification_codes_update(_main().g.api_instance._web_session_id)
 
             return _main().jsonify(

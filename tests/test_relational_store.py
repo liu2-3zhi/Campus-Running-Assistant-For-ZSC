@@ -20,12 +20,12 @@ def test_document_is_split_and_reconstructed_without_body_blob(store):
     assert saved.revision == 1
     assert json.loads(store.get('system_accounts', '000123.json').content) == payload
     schema = inspect(store.database.engine)
-    assert 'app_users' in schema.get_table_names()
+    assert 'system_accounts' in schema.get_table_names()
     assert 'app_documents' not in schema.get_table_names()
-    columns = {col['name'] for col in schema.get_columns('app_document_registry')}
+    columns = {col['name'] for col in schema.get_columns('storage_documents')}
     assert not {'content', 'body', 'payload'} & columns
     with store.database.connection() as connection:
-        assert connection.execute(text('SELECT auth_username FROM app_users')).scalar_one() == '000123'
+        assert connection.execute(text('SELECT auth_username FROM system_accounts')).scalar_one() == '000123'
 
 
 def test_revision_and_transaction_are_atomic(store):
@@ -125,5 +125,5 @@ def test_rewriting_migrated_trimmed_owner_alias_keeps_original_identity(store):
     store.migration_owner_aliases = {}
     store.put('school_accounts', 'user_accounts/Alice.json', content)
     with store.database.connection() as connection:
-        table = store.entities['user_school_accounts']
+        table = store.entities['account_school_links']
         assert connection.execute(select(table.c.owner_username)).scalar_one() == ' Alice '

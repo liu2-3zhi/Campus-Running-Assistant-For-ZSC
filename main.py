@@ -8585,7 +8585,7 @@ def _create_default_admin():
 
 
 def get_session_file_path(session_id: str) -> str:
-    """根据 session_id (UUID) 计算会话文件的完整路径"""
+    """根据 session_id (UUID) 计算持久化会话记录的兼容路径。"""
     session_hash = hashlib.sha256(session_id.encode()).hexdigest()
     return os.path.join(SESSION_STORAGE_DIR, f"{session_hash}.json")
 
@@ -10363,7 +10363,7 @@ def cleanup_inactive_session(session_id, reason="manual"):
             SESSION_STORAGE_DIR, f"{session_hash}.json")
         if os.path.exists(session_file):
             os.remove(session_file)
-            logging.info(f"已删除会话文件: {session_hash}")
+            logging.info(f"已删除持久化会话记录，记录键: {session_hash}")
         with session_activity_lock:
             if session_id in session_activity:
                 del session_activity[session_id]
@@ -10615,16 +10615,16 @@ def load_all_sessions(args):
 
                 session_id = state.get("session_id")
                 if not session_id:
-                    raise ValueError(f"文件 {filename} 缺少 session_id")
+                    raise ValueError(f"会话记录 {filename} 缺少 session_id")
                 last_accessed = state.get("last_accessed", 0)
                 if time.time() - last_accessed > 7 * 24 * 3600:
                     logging.info(
-                        f"清理过期会话: {session_id[:8]}... (文件: {filename})"
+                        f"清理过期会话记录: {session_id[:8]}... (记录键: {filename})"
                     )
                     try:
                         os.remove(session_file)
                     except Exception as remove_err:
-                        logging.error(f"删除过期会话文件 {filename} 失败: {remove_err}")
+                        logging.error(f"删除过期会话记录 {filename} 失败: {remove_err}")
                     continue
                 api_instance = Api(args)
                 api_instance._session_created_at = state.get(
@@ -10632,7 +10632,7 @@ def load_all_sessions(args):
                 api_instance._web_session_id = session_id
                 restore_session_to_api_instance(api_instance, state)
                 logging.info(
-                    f"成功恢复会话: {session_id}... (用户: {api_instance.auth_username if hasattr(api_instance, 'auth_username') else 'Unknown'}, 文件: {filename})"
+                    f"成功恢复持久化会话: {session_id}... (用户: {api_instance.auth_username if hasattr(api_instance, 'auth_username') else 'Unknown'}, 记录键: {filename})"
                 )
                 web_sessions[session_id] = api_instance
                 session_activity[session_id] = last_accessed
@@ -10647,23 +10647,23 @@ def load_all_sessions(args):
                 AttributeError,
             ) as e:
                 logging.error(
-                    f"加载或恢复会话文件 {filename} 失败: {e}", exc_info=False
+                    f"加载或恢复会话记录 {filename} 失败: {e}", exc_info=False
                 )
-                logging.warning(f"将删除损坏的/无法恢复的会话文件: {filename}")
+                logging.warning(f"将删除损坏的/无法恢复的会话记录，记录键: {filename}")
                 try:
                     os.remove(session_file)
                 except Exception as remove_err:
-                    logging.error(f"删除损坏的会话文件 {filename} 失败: {remove_err}")
+                    logging.error(f"删除损坏的会话记录 {filename} 失败: {remove_err}")
                 continue
             except Exception as e:
                 logging.error(
-                    f"处理会话文件 {filename} 时发生未知错误: {e}", exc_info=True
+                    f"处理会话记录 {filename} 时发生未知错误: {e}", exc_info=True
                 )
                 try:
                     os.remove(session_file)
                 except Exception as remove_err:
                     logging.error(
-                        f"删除未知错误的会话文件 {filename} 失败: {remove_err}"
+                        f"删除未知错误的会话记录 {filename} 失败: {remove_err}"
                     )
                 continue
     if successful_sessions:
@@ -10674,7 +10674,7 @@ def load_all_sessions(args):
         for f in os.listdir(SESSION_STORAGE_DIR)
     ):
         _save_session_index({})
-        logging.info("会话目录为空，已清空会话索引。")
+        logging.info("没有持久化会话记录，已清空会话索引。")
     if new_index:
         _save_session_index(new_index)
         logging.debug(f"会话索引已更新，包含 {len(new_index)} 个有效会话")
@@ -11390,6 +11390,8 @@ def _register_sms_routes(app, login_required):
 
     @app.route("/api/sms/send_code", methods=["POST"])
     def sms_send_code():
+        from sms_history import record_sms_event
+        phone, scene = "", "register"
         try:
             config = _read_config_ini(CONFIG_JSON_FILE) or _get_default_config()
             if (
@@ -11494,6 +11496,10 @@ def _register_sms_routes(app, login_required):
                 cache[ip_limit_key] = ip_count + 1
                 cache[phone_limit_key] = phone_count + 1
                 cache[last_send_key] = current_time
+                record_sms_event(
+                    phone=phone, scene=scene, status="sent", response_code=result,
+                    source="verification", auth_username=getattr(g, "user", ""), ip=client_ip,
+                )
                 return jsonify(
                     {
                         "success": True,
@@ -11504,6 +11510,11 @@ def _register_sms_routes(app, login_required):
                 )
 
             error_msg = _get_smsbao_error_message(result)
+            record_sms_event(
+                phone=phone, scene=scene, status="rejected", response_code=result,
+                response_message=error_msg, source="verification",
+                auth_username=getattr(g, "user", ""), ip=client_ip,
+            )
             logging.error(
                 f"[SMS] 验证码发送失败: phone={phone}, scene={scene}, smsbao_result={result}, error={error_msg}"
             )
@@ -11515,6 +11526,11 @@ def _register_sms_routes(app, login_required):
                 }
             )
         except Exception as e:
+            record_sms_event(
+                phone=phone, scene=scene, status="error", response_message=type(e).__name__,
+                source="verification", auth_username=getattr(g, "user", ""),
+                ip=request.environ.get("REMOTE_ADDR") or request.remote_addr,
+            )
             logging.error(
                 f"[SMS] 验证码发送异常: phone={phone}, scene={scene}, error={e}",
                 exc_info=True,
@@ -11524,6 +11540,8 @@ def _register_sms_routes(app, login_required):
     @app.route("/api/sms/test_send", methods=["POST"])
     @login_required
     def sms_test_send():
+        from sms_history import record_sms_event
+        phone = ""
         try:
             current_user = g.user
             user_group = auth_system.get_user_group(current_user)
@@ -11587,6 +11605,11 @@ def _register_sms_routes(app, login_required):
             response = urllib.request.urlopen(url, timeout=10)
             result = response.read().decode("utf-8").strip()
             if result == "0":
+                record_sms_event(
+                    phone=phone, scene="test", status="sent", response_code=result,
+                    source="admin_test", auth_username=current_user,
+                    ip=request.environ.get("REMOTE_ADDR") or request.remote_addr,
+                )
                 return jsonify(
                     {
                         "success": True,
@@ -11597,6 +11620,11 @@ def _register_sms_routes(app, login_required):
                 )
 
             error_msg = _get_smsbao_error_message(result)
+            record_sms_event(
+                phone=phone, scene="test", status="rejected", response_code=result,
+                response_message=error_msg, source="admin_test", auth_username=current_user,
+                ip=request.environ.get("REMOTE_ADDR") or request.remote_addr,
+            )
             return jsonify(
                 {
                     "success": False,
@@ -11605,6 +11633,11 @@ def _register_sms_routes(app, login_required):
                 }
             )
         except Exception as e:
+            record_sms_event(
+                phone=phone, scene="test", status="error", response_message=type(e).__name__,
+                source="admin_test", auth_username=getattr(g, "user", ""),
+                ip=request.environ.get("REMOTE_ADDR") or request.remote_addr,
+            )
             logging.error(
                 f"[SMS] 测试短信发送异常: phone={phone}, error={e}",
                 exc_info=True,
@@ -11746,6 +11779,12 @@ def _acquire_single_instance_lock(lock_path=None):
 
 
 
+def _prepare_application_working_directory():
+    """Resolve default local resources beside the entrypoint, independent of cwd."""
+    if not os.environ.get('APP_STORAGE_ROOT'):
+        os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+
 def main():
     """主函数，启动Web服务器模式（已弃用桌面模式）"""
     parser = _build_main_arg_parser()
@@ -11754,8 +11793,9 @@ def main():
     if getattr(args, "daily_restart_helper", False):
         return _run_daily_restart_helper(args)
 
+    _prepare_application_working_directory()
     try:
-        require_storage_ready()
+        storage_runtime = require_storage_ready()
     except StorageError as storage_error:
         print(f"[存储初始化失败] {storage_error}")
         raise SystemExit(1) from None
@@ -11809,6 +11849,10 @@ def main():
 
     logging.info("=" * 60)
     logging.info("跑步助手 Web 模式启动中...")
+    if storage_runtime.backend == 'sqlite':
+        logging.info('[业务存储] backend=SQLite database=%s', storage_runtime.store.settings.sqlite_path)
+    else:
+        logging.info('[业务存储] backend=MySQL schema=%s', storage_runtime.store.schema_version)
     level_name_map = {
         logging.DEBUG: "调试",
         logging.INFO: "信息",

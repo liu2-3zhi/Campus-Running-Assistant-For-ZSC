@@ -68,7 +68,7 @@ def test_directory_and_exists_queries_never_reconstruct_entities(listing_runtime
         assert storage_io.os.path.isfile(root / 'system_accounts' / (facade._auth_username_storage_key('probe-1') + '.json'))
         assert not store.exists('system_accounts', facade._auth_username_storage_key('missing') + '.json')
     assert len(queries) <= 6
-    assert all(store.registry.name in query and store.entities['users'].name not in query for query in queries)
+    assert all(store.registry.name in query and store.entities['system_accounts'].name not in query for query in queries)
     record_property('select_count', len(queries))
 
 
@@ -128,7 +128,7 @@ def test_direct_sql_change_is_visible_after_one_refresh_period(listing_runtime, 
     monkeypatch.setattr(auth_system.time, 'monotonic', lambda: clock[0])
     assert auth.list_users()[0]['nickname'] == 'before'
     with store.database.connection() as connection:
-        table = store.entities['users']
+        table = store.entities['system_accounts']
         connection.execute(update(table).where(table.c.auth_username == 'probe-0').values(nickname='after!'))
     clock[0] += auth_system.USER_LIST_CACHE_REFRESH_SECONDS + .1
     users = {entry['auth_username']: entry for entry in auth.list_users()}

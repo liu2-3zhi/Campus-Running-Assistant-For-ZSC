@@ -19,9 +19,9 @@
 
 ## 数据库存储
 
-默认创建 SQLite 数据库 `data/application.sqlite3` 用于本地开发和测试，也可连接外部 MySQL/MariaDB。文件运行后端已冻结并拒绝；账号、会话、Token、订单、账单、主配置与信任 IP 等结构化资料按领域拆表保存，核心类型列为权威来源，多账号 UA 按用户绑定隔离。日志位置与挂载不变，图片、上传、缓存与证书继续保留在原磁盘路径。
+直接运行 `python main.py` 默认在程序目录创建 `data/application.sqlite3`，启动日志标明 SQLite 模式，也可连接外部 MySQL/MariaDB。v3 使用 19 张业务表与 2 张元数据表，正式表名无前缀；系统账号、学校账号、关联、资料、设置、订单、账单和短信记录职责分明，多账号密码与 UA 按 owner 绑定隔离。日志位置与挂载不变，图片、上传、缓存与证书继续保留在原磁盘路径。
 
-旧数据须停写后通过 `tools/migrate_storage.py` 的 `--backend sqlite` 或 `--backend mysql` 离线导入并独立核验；导出可供备份或再次导入数据库，不恢复文件后端。Compose 直接在 `environment` 配置连接变量，不使用 env 文件；`run/docker-compose.mysql.yml` 只连接外部数据库，不内置 MySQL。旧受管目录挂载已移除，迁移须另行只读挂载完整源目录。本版本仅支持单个应用实例。操作与测试工具见[数据库存储与离线迁移](docs/mysql-storage.md)，结构说明见[数据库优先存储设计](docs/database-first-design.md)。
+支持旧文件版、v1 文档库和 v2 关系库离线迁移，完整验证后可选择删除旧文件或旧表，不自动备份；文件运行后端保持冻结。Compose 直接在 `environment` 配置连接变量，不使用 env 文件；`run/docker-compose.mysql.yml` 只连接外部数据库，不内置 MySQL。升级旧数据库时移除 `MYSQL_TABLE_PREFIX`，通过 `--legacy-table-prefix` 单独选择来源。本版本仅支持单个应用实例。结构、命令和迁移边界见[业务数据库 v3](docs/database-v3.md)。
 
 ## 本地运行
 
