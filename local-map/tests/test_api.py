@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from campus_map.api import create_app
 from campus_map.pipeline import COORDINATE_METADATA
+from campus_map.service import CampusMap, RouteInputError
 
 
 BOUNDS = [113.3798, 22.5255, 113.3901, 22.5355]
@@ -54,7 +55,7 @@ class RoutingDouble:
 
 @pytest.fixture
 def client(data_root, monkeypatch):
-    monkeypatch.setattr("campus_map.api.RoutingService", RoutingDouble)
+    monkeypatch.setattr("campus_map.service.RoutingService", RoutingDouble)
     return TestClient(create_app(data_root))
 
 
@@ -71,7 +72,7 @@ def test_manifest_features_and_tiles_are_local(client):
 
 
 def test_embedded_map_sdk_serves_only_allowlisted_assets(data_root, monkeypatch, tmp_path):
-    monkeypatch.setattr("campus_map.api.PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr("campus_map.service.PROJECT_ROOT", tmp_path)
     sdk_root = tmp_path / "web" / "dist" / "static" / "vendor" / "maplibre"
     sdk_root.mkdir(parents=True)
     (sdk_root / "maplibre-gl-csp.js").write_bytes(b"window.maplibregl = {};")
@@ -161,6 +162,15 @@ def test_task_input_checks_coordinates_and_requires_two_targets(client):
         assert response.json()["error"]["code"] == "INVALID_INPUT"
 
 
+def test_shared_service_accepts_application_coordinates_and_validates_direct_calls(data_root):
+    campus_map = CampusMap(data_root)
+    start, end = (113.383, 22.529), (113.385, 22.529)
+    result = campus_map.tasks({"target_points": [start, end], "recommended_coords": [start, end]})
+    assert result["route"]["geometry"]["coordinates"] == [list(start), list(end)]
+    with pytest.raises(RouteInputError):
+        campus_map.tasks({"target_points": [start, [True, end[1]]]})
+
+
 @pytest.mark.parametrize("body", [
     {"start": [True, 22.529], "end": [113.385, 22.531]},
     {"start": [113.383, 22.529], "end": [113.385, 22.531], "waypoints": [[113.384, 22.53]] * 21},
@@ -228,7 +238,7 @@ def test_file_read_error_is_reported_as_unavailable(client, monkeypatch):
     def fail_read(*_args):
         raise PermissionError("fixture unreadable")
 
-    monkeypatch.setattr("campus_map.api.hashlib.file_digest", fail_read)
+    monkeypatch.setattr("campus_map.service.hashlib.file_digest", fail_read)
     assert client.get("/api/v1/features/roads").status_code == 503
 
 

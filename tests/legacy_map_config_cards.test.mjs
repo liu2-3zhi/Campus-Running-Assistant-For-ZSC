@@ -12,7 +12,7 @@ vm.runInContext(source, context)
 const plain = value => JSON.parse(JSON.stringify(value))
 
 // Model only the DOM operations used by the editor; browser smoke tests cover rendering.
-function editorFixture(configs, frontend, backend) {
+function editorFixture(configs, frontend, backend, newProvider = 'amap') {
   const selects = { frontend: { value: frontend }, backend: { value: backend } }
   const list = {
     cards: [],
@@ -36,7 +36,7 @@ function editorFixture(configs, frontend, backend) {
     },
     querySelector(selector) {
       if (selector === '[data-map-config-list]') return list
-      if (selector === '[data-map-add-provider]') return { value: 'amap' }
+      if (selector === '[data-map-add-provider]') return { value: newProvider }
       return selects[selector.includes('frontend') ? 'frontend' : 'backend']
     },
   }
@@ -92,6 +92,7 @@ test('the local map card exposes only its service origin and retains both select
   const local = { id: 'local', name: '校园离线地图', provider: 'local_map', service_url: 'https://Campus.Test:9443/' }
   const html = context.renderMapConfigCard(local)
   assert.match(html, /type="url" data-map-config-field="service_url"/)
+  assert.match(html, /placeholder="留空使用内置地图"/)
   assert.doesNotMatch(html, /type="password"|data-map-config-field="backend_page_origin"/)
   const amap = { id: 'amap', name: '高德', provider: 'amap', js_key: '', backend_page_origin: '' }
   const fixture = editorFixture([local, amap], 'amap', 'local')
@@ -99,8 +100,19 @@ test('the local map card exposes only its service origin and retains both select
   assert.equal(payload.configs[0].service_url, 'https://campus.test:9443')
   assert.equal(payload.frontend_config_id, 'amap')
   assert.equal(payload.backend_config_id, 'local')
+  fixture.list.cards[0].fields.service_url.value = ' '
+  assert.equal(context.readMapConfigCards(fixture.panel).configs[0].service_url, '')
   fixture.list.cards[0].fields.service_url.value = 'https://campus.test/public'
   assert.throws(() => context.readMapConfigCards(fixture.panel), /校园离线地图服务地址/)
+})
+
+test('adding a local map card uses the embedded map endpoint by default', () => {
+  const amap = { id: 'amap', name: '高德', provider: 'amap', js_key: '', backend_page_origin: '' }
+  const fixture = editorFixture([amap], 'amap', 'amap', 'local_map')
+  context.addMapConfigCard(fixture.button())
+  const added = context.readMapConfigCards(fixture.panel).configs.at(-1)
+  assert.equal(added.provider, 'local_map')
+  assert.equal(added.service_url, '')
 })
 
 test('adding, moving, renaming and deleting cards preserve independent frontend/backend choices', () => {

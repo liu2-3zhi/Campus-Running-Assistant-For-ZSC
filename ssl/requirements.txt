@@ -20,3 +20,5 @@ fake-useragent
 PyMySQL
 SQLAlchemy>=2.0,<3
 redis>=5,<7
+shapely==2.2.0
+pyvalhalla==3.9.1; python_version >= "3.12"

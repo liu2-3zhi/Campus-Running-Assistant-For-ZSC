@@ -142,7 +142,7 @@ onBeforeUnmount(() => stopDrag())
           </label>
           <label v-for="field in MAP_PROFILE_FIELDS[profile.provider]" :key="field.key" class="space-y-1 text-sm" :for="`map-profile-${profile.id}-${field.key}`">
             <span class="text-[var(--ink-secondary)]">{{ field.label }}</span>
-            <input :id="`map-profile-${profile.id}-${field.key}`" v-model="profile[field.key]" :type="field.type || 'password'" class="input-field" autocomplete="off" />
+            <input :id="`map-profile-${profile.id}-${field.key}`" v-model="profile[field.key]" :type="field.type || 'password'" :placeholder="field.placeholder" class="input-field" autocomplete="off" />
           </label>
           <div v-if="profile.provider !== 'local_map'" class="space-y-1 text-sm">
             <label class="text-[var(--ink-secondary)]" :for="`map-profile-${profile.id}-origin`">地图页面来源（选填）</label>

@@ -51,7 +51,9 @@ MAP_RUNTIME_PAGE_HTML = """<!doctype html>
 PROVIDER_KEY_FIELDS = {"amap": "js_key", "tencent": "map_key", "tianditu": "token", "baidu": "ak"}
 LEGACY_KEY_FIELDS = {"amap": "amap_js_key", "tencent": "tencent_map_key", "tianditu": "tianditu_token", "baidu": "baidu_map_ak"}
 PROVIDER_NAMES = {"amap": "高德", "tencent": "腾讯", "tianditu": "天地图", "baidu": "百度", "local_map": "校园离线地图"}
-LOCAL_MAP_DEFAULT_SERVICE_URL = "http://127.0.0.1:8765"
+# An empty service URL selects the campus map in the main application process.
+LOCAL_MAP_DEFAULT_SERVICE_URL = ""
+_LEGACY_LOCAL_MAP_DEFAULT_SERVICE_URL = "http://127.0.0.1:8765"
 LOCAL_MAP_DEFAULT_ID = "local-map-default"
 
 
@@ -146,7 +148,11 @@ def _normalize_map_configs(values, existing=None):
             old = {}
         entry = {"id": config_id, "name": name.strip(), "provider": provider}
         if provider == "local_map":
-            entry["service_url"] = normalize_local_map_service_url(value.get("service_url", old.get("service_url", "")))
+            service_url = normalize_local_map_service_url(value.get("service_url", old.get("service_url", "")))
+            if (service_url == _LEGACY_LOCAL_MAP_DEFAULT_SERVICE_URL
+                    and re.fullmatch(rf"{LOCAL_MAP_DEFAULT_ID}(?:-[0-9]+)?", config_id)):
+                service_url = LOCAL_MAP_DEFAULT_SERVICE_URL
+            entry["service_url"] = service_url
             result.append(entry)
             continue
         fields = [PROVIDER_KEY_FIELDS[provider], "backend_page_origin"]

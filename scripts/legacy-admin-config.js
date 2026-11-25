@@ -1041,15 +1041,13 @@ function normalizeBackendPageOrigin(value) {
   }
 }
 
-const localMapDefaultServiceUrl = "http://127.0.0.1:8765";
-
 function normalizeLocalMapServiceUrl(value) {
   const raw = String(value ?? "");
   const input = raw.trim();
   try {
     const origin = normalizeBackendPageOrigin(raw);
     if (input && !/^https?:\/\/[^/?#]+\/?$/i.test(input)) throw new Error();
-    return origin || localMapDefaultServiceUrl;
+    return origin;
   } catch {
     throw new Error("校园离线地图服务地址必须为不含账号密码、路径、查询参数或片段的 HTTP/HTTPS 来源");
   }
@@ -1072,7 +1070,7 @@ function getMapConfigProviderDetails() {
     tencent: { label: "腾讯地图", key: "map_key", keyLabel: "Key" },
     tianditu: { label: "天地图", key: "token", keyLabel: "Token" },
     baidu: { label: "百度地图", key: "ak", keyLabel: "AK" },
-    local_map: { label: "校园离线地图", key: "service_url", keyLabel: "地图服务地址", type: "url" },
+    local_map: { label: "校园离线地图", key: "service_url", keyLabel: "地图服务地址（选填）", type: "url" },
   };
 }
 
@@ -1100,7 +1098,10 @@ function renderMapConfigCard(config) {
   const details = getMapConfigProviderDetails()[config.provider];
   if (!details) return "";
   const escape = escapeMapConfigAttribute;
-  const field = (name, label, type = "text") => `<label class="block text-sm text-slate-700"><span class="block mb-1 font-medium">${label}</span><input type="${type}" data-map-config-field="${name}" value="${escape(config[name])}" ${name === "name" ? 'maxlength="100" oninput="syncMapConfigCardOptions(this.closest(\'[data-map-config-editor]\'))"' : 'autocomplete="off"'} class="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"></label>`;
+  const field = (name, label, type = "text") => {
+    const placeholder = name === "service_url" ? ' placeholder="留空使用内置地图"' : "";
+    return `<label class="block text-sm text-slate-700"><span class="block mb-1 font-medium">${label}</span><input type="${type}" data-map-config-field="${name}" value="${escape(config[name])}"${placeholder} ${name === "name" ? 'maxlength="100" oninput="syncMapConfigCardOptions(this.closest(\'[data-map-config-editor]\'))"' : 'autocomplete="off"'} class="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"></label>`;
+  };
   return `<article data-map-config-card data-config-id="${escape(config.id)}" data-provider="${escape(config.provider)}" class="p-4 border border-slate-200 rounded-xl bg-gradient-to-br from-white to-slate-50 shadow-sm">
     <div class="flex items-center gap-2 mb-3 flex-wrap">
       <button type="button" data-map-drag-handle class="cursor-grab px-3 py-2 border border-slate-200 rounded-lg text-slate-500" style="touch-action:none" aria-label="拖动配置卡片排序" title="拖动排序">拖动</button>
@@ -1170,7 +1171,7 @@ function addMapConfigCard(button) {
   if (!details) return;
   const count = Array.from(editor.querySelectorAll("[data-map-config-card]")).filter((card) => card.dataset.provider === provider).length;
   const id = `map-${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)}`;
-  const config = { id, provider, name: `${details.label}${count + 1}`, [details.key]: provider === "local_map" ? localMapDefaultServiceUrl : "", security_js_code: "", backend_page_origin: "" };
+  const config = { id, provider, name: `${details.label}${count + 1}`, [details.key]: "", security_js_code: "", backend_page_origin: "" };
   editor.querySelector("[data-map-config-list]").insertAdjacentHTML("beforeend", renderMapConfigCard(config));
   syncMapConfigCardOptions(editor);
   editor.querySelector("[data-map-config-list]").lastElementChild.querySelector('[data-map-config-field="name"]').focus();

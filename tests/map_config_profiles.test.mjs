@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  createMapConfigProfile, normalizeMapConfigProfiles, moveMapConfigProfile,
+  MAP_PROFILE_FIELDS, createMapConfigProfile, normalizeMapConfigProfiles, moveMapConfigProfile,
   removeMapConfigProfile, serializeMapConfigProfiles,
 } from '../frontend/src/utils/mapConfigProfiles.js'
 
@@ -35,7 +35,9 @@ test('local profiles save a service origin independently from the frontend choic
   const local = createMapConfigProfile('local_map')
   map.configs.push(local)
   map.backend_config_id = local.id
-  assert.equal(local.service_url, 'http://127.0.0.1:8765')
+  assert.equal(local.service_url, '')
+  assert.equal(serializeMapConfigProfiles(map).configs.at(-1).service_url, '')
+  assert.match(MAP_PROFILE_FIELDS.local_map[0].placeholder, /留空使用内置地图/)
   local.service_url = 'https://Maps.Test:8443/'
   const saved = serializeMapConfigProfiles(map)
   assert.equal(saved.frontend_config_id, 'legacy-amap')
@@ -43,6 +45,8 @@ test('local profiles save a service origin independently from the frontend choic
   assert.deepEqual(saved.configs.at(-1), {
     id: local.id, name: local.name, provider: 'local_map', service_url: 'https://maps.test:8443',
   })
+  local.service_url = ' '
+  assert.equal(serializeMapConfigProfiles(map).configs.at(-1).service_url, '')
   local.service_url = 'https://maps.test/api/'
   assert.throws(() => serializeMapConfigProfiles(map), /校园离线地图服务地址/)
 })

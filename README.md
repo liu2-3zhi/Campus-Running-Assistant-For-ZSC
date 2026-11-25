@@ -14,6 +14,7 @@
 - 支持自动签到配置与会话持久化
 - 支持支付订单状态流转、二维码缓存与支付方式配置
 - 提供 `/health` 健康检查与 Nginx 访问日志转发能力
+- 主程序内置校园离线底图和步行路线规划
 - 支持主题样式与随机背景缓存
 - 内置支付商品名生成器，当前已注册 `lomei` 与 `travel_service` 两种模式
 
@@ -28,7 +29,7 @@
 以下示例以 Linux / macOS 为例：
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r ssl/requirements.txt
 python -m playwright install chromium
@@ -36,6 +37,8 @@ python main.py --host 127.0.0.1 --port 5000
 ```
 
 启动后可通过 `http://127.0.0.1:5000` 访问系统。
+
+校园离线地图默认由 `main.py` 在同一进程内提供。请先按[地图数据准备说明](local-map/README.md)生成地图发布和 MapLibre 资源，然后运行根目录的 `main.py`。内置路线规划使用 Python 3.12 的 Valhalla 运行库。地图配置中的服务地址留空使用内置地图，填写 HTTP 或 HTTPS 地址可接入独立部署的校园地图。
 
 如果在 Linux 环境下使用 Playwright 时仍缺少浏览器依赖，可额外执行：
 
@@ -78,6 +81,8 @@ python main.py --host 0.0.0.0 --port 5000 --log-level info
 持久化日志默认不脱敏，保留请求参数、响应正文和异常详情。`configs/config.json` 中的 `Logging.redact_sensitive_logs` 默认值为 `false`；旧配置缺少该项时也按 `false` 处理。需要对 Python 落盘日志脱敏时可显式设为 `true`，修改后重启服务生效。控制台、Web 日志列表/详情和实时通知始终脱敏，不受该开关影响。后台 SDK 原始回调仅供服务端日志使用；详细网络、SDK 回调和后台执行过程可通过 `--log-level debug` 查看。Nginx 原生访问与错误日志保留完整请求。
 
 ## 容器运行
+
+镜像包含内置地图代码和 MapLibre 资源。启用校园离线地图时，将已准备的 `local-map/data` 目录只读挂载至 `/app/local-map/data`，确保其中包含 `current.json` 和它指向的 `builds/<版本>`。
 
 项目已经提供可直接拉取的镜像：
 

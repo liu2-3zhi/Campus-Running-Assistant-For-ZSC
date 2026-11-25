@@ -2,28 +2,31 @@
 
 # --- 配置 ---
 VENV_NAME="zs_campus_run_helper_venv"
-PYTHON_CMD="python3" # 如果你的默认 python 是 3.x，可以改成 "python"
+PYTHON_CMD="${PYTHON_CMD:-python3.12}"
+if [ "$PYTHON_CMD" = "python3.12" ] && ! command -v "$PYTHON_CMD" &> /dev/null; then
+    PYTHON_CMD="python3"
+fi
 EXTRA_SCRIPT_NAME="After_pip_install.sh" # 定义额外脚本的文件名
 # --- 结束配置 ---
 
 # 获取脚本文件所在的绝对路径
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REQUIREMENTS_FILE="${SCRIPT_DIR}/ssl/requirements.txt"
 
 # --- 功能函数 ---
 
 # 检查环境函数
 check_environment() {
     # 检查 python 命令是否存在
-    if ! command -v $PYTHON_CMD &> /dev/null; then
+    if ! command -v "$PYTHON_CMD" &> /dev/null; then
         echo "错误: $PYTHON_CMD 未找到。"
         echo "请安装 Python 3 并确保它在您的 PATH 中。"
         exit 1
     fi
     
     # 检查依赖文件是否存在
-    if [ ! -f "${SCRIPT_DIR}/requirements.txt" ]; then
-        echo "错误: 未找到 requirements.txt 文件。"
-        echo "请确保依赖文件与此脚本位于同一目录。"
+    if [ ! -f "$REQUIREMENTS_FILE" ]; then
+        echo "错误: 未找到 ssl/requirements.txt 文件。"
         exit 1
     fi
 }
@@ -34,9 +37,9 @@ show_manual_mode() {
     echo "请按以下步骤手动操作："
     echo "1. (如果需要) 创建虚拟环境: $PYTHON_CMD -m venv $VENV_NAME"
     echo "2. 激活虚拟环境: source $VENV_NAME/bin/activate"
-    echo "3. 安装依赖: pip install -r ${SCRIPT_DIR}/requirements.txt"
+    echo "3. 安装依赖: python -m pip install -r ${REQUIREMENTS_FILE}"
     echo "4. (可选) 赋予权限并执行: chmod +x ${SCRIPT_DIR}/$EXTRA_SCRIPT_NAME && source ${SCRIPT_DIR}/$EXTRA_SCRIPT_NAME"
-    echo "5. 运行程序: $PYTHON_CMD ${SCRIPT_DIR}/main.py"
+    echo "5. 运行程序: python ${SCRIPT_DIR}/main.py"
     echo "6. (完成后) 退出虚拟环境: deactivate"
 }
 
@@ -47,7 +50,7 @@ run_auto_start() {
     # 1. 检查虚拟环境是否存在
     if [ ! -f "$VENV_NAME/bin/activate" ]; then
         echo "未找到虚拟环境 '$VENV_NAME'。正在创建..."
-        $PYTHON_CMD -m venv $VENV_NAME
+        "$PYTHON_CMD" -m venv "$VENV_NAME"
         if [ $? -ne 0 ]; then
             echo "创建虚拟环境失败。请尝试使用 'manual' 模式运行。"
             exit 1
@@ -58,15 +61,15 @@ run_auto_start() {
     
     # 2. 激活虚拟环境
     echo "正在激活虚拟环境..."
-    source $VENV_NAME/bin/activate
+    source "$VENV_NAME/bin/activate"
     if [ $? -ne 0 ]; then
         echo "激活虚拟环境失败。请尝试使用 'manual' 模式运行。"
         exit 1
     fi
     
     # 3. 安装/更新依赖
-    echo "正在从 requirements.txt 安装/更新依赖..."
-    pip install -r "${SCRIPT_DIR}/requirements.txt"
+    echo "正在从 ssl/requirements.txt 安装/更新依赖..."
+    python -m pip install -r "$REQUIREMENTS_FILE"
     if [ $? -ne 0 ]; then
         echo "安装依赖失败。请检查 requirements.txt 文件和网络连接。"
         echo "请尝试使用 'manual' 模式运行。"
@@ -100,7 +103,7 @@ run_auto_start() {
     echo "准备就绪。正在启动 main.py ..."
     cd "$SCRIPT_DIR"
     # 注意：这里的 "$@" 将传递任何命令行参数给 Python
-    $PYTHON_CMD "${SCRIPT_DIR}/main.py" "$@"
+    python "${SCRIPT_DIR}/main.py" "$@"
     
     echo "-----------------------------------------"
     echo "程序已退出。"

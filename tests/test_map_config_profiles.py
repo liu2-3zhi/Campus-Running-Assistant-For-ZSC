@@ -75,8 +75,32 @@ def test_missing_map_settings_select_the_builtin_campus_profile():
     for scope in ("frontend", "backend"):
         selected = get_map_config_selection(config, scope)
         assert selected["provider"] == "local_map"
-        assert selected["service_url"] == "http://127.0.0.1:8765"
+        assert selected["service_url"] == ""
         assert map_runtime_origin.get_map_config_candidates(config, scope) == [selected]
+
+
+def test_legacy_builtin_campus_addresses_migrate_to_embedded_without_rebinding():
+    configs = [
+        {"id": config_id, "name": config_id, "provider": "local_map", "service_url": url}
+        for config_id, url in [
+            ("local-map-default", "http://127.0.0.1:8765"),
+            ("local-map-default-2", "http://127.0.0.1:8765/"),
+            ("local-map-default-3", "https://campus.test"),
+            ("custom-campus", "http://127.0.0.1:8765"),
+        ]
+    ]
+    config = adapter({"Map": {
+        "configs": configs, "frontend_config_id": "local-map-default", "backend_config_id": "local-map-default-2",
+    }})
+
+    settings = get_map_config_settings(config)
+    assert settings["frontend_config_id"] == "local-map-default"
+    assert settings["backend_config_id"] == "local-map-default-2"
+    assert [profile["service_url"] for profile in settings["configs"]] == [
+        "", "", "https://campus.test", "http://127.0.0.1:8765",
+    ]
+    assert config.get("Map", "configs") == configs
+    assert merge_map_settings(config, {})["configs"] == settings["configs"]
 
 
 def test_candidates_keep_the_selected_profile_first_then_usable_cards_in_order():
@@ -120,7 +144,7 @@ def test_frontend_uses_builtin_campus_if_the_only_campus_card_is_backend_only():
 
     frontend = map_runtime_origin.get_map_config_candidates(config, "frontend")
     assert [row["id"] for row in frontend] == ["amap-front", "amap-back", "local-map-default"]
-    assert frontend[-1]["service_url"] == "http://127.0.0.1:8765"
+    assert frontend[-1]["service_url"] == ""
     assert map_runtime_origin.get_map_config_candidates(config, "backend")[0]["id"] == "campus-private"
 
 
@@ -137,7 +161,7 @@ def test_local_profiles_keep_service_urls_private_and_skip_key_runtime(monkeypat
         "frontend_config_id": "local-front",
         "backend_config_id": "local-back",
     }})
-    assert get_map_config_selection(config, "frontend")["service_url"] == "http://127.0.0.1:8765"
+    assert get_map_config_selection(config, "frontend")["service_url"] == ""
     backend = main._get_map_provider_runtime_config(config, scope="backend")
     assert backend["service_url"] == "https://campus.internal:9443"
     assert backend["coordinate_system"] == "gcj02"

@@ -1,7 +1,5 @@
 import { normalizeBackendPageOrigin } from '../services/mapBackendOrigin.js'
 
-const LOCAL_MAP_DEFAULT_SERVICE_URL = 'http://127.0.0.1:8765'
-
 export const MAP_PROVIDER_OPTIONS = [
   { value: 'amap', label: '高德地图' },
   { value: 'tencent', label: '腾讯地图' },
@@ -15,7 +13,7 @@ export const MAP_PROFILE_FIELDS = {
   tencent: [{ key: 'map_key', label: '地图 Key' }],
   tianditu: [{ key: 'token', label: 'Token' }],
   baidu: [{ key: 'ak', label: 'AK' }],
-  local_map: [{ key: 'service_url', label: '地图服务地址', type: 'url' }],
+  local_map: [{ key: 'service_url', label: '地图服务地址（选填）', type: 'url', placeholder: '留空使用内置地图' }],
 }
 
 const providerName = provider => MAP_PROVIDER_OPTIONS.find(option => option.value === provider)?.label || provider
@@ -26,10 +24,8 @@ export function createMapConfigProfile(provider = 'amap', configs = []) {
   const count = configs.filter(config => config.provider === provider).length + 1
   return {
     id: `config-${suffix}`, name: `${providerName(provider)} ${count}`, provider,
-    ...(provider === 'local_map' ? { service_url: LOCAL_MAP_DEFAULT_SERVICE_URL } : {
-      ...Object.fromEntries(MAP_PROFILE_FIELDS[provider].map(field => [field.key, ''])),
-      backend_page_origin: '',
-    }),
+    ...Object.fromEntries(MAP_PROFILE_FIELDS[provider].map(field => [field.key, ''])),
+    ...(provider === 'local_map' ? {} : { backend_page_origin: '' }),
   }
 }
 
@@ -91,7 +87,7 @@ export function serializeMapConfigProfiles(map, normalizeOrigin = value => Strin
       try {
         const origin = normalizeBackendPageOrigin(rawUrl)
         if (input && !/^https?:\/\/[^/?#]+\/?$/i.test(input)) throw new Error()
-        return { id, name, provider: config.provider, service_url: origin || LOCAL_MAP_DEFAULT_SERVICE_URL }
+        return { id, name, provider: config.provider, service_url: origin }
       } catch {
         throw new Error('校园离线地图服务地址必须为不含账号密码、路径、查询参数或片段的 HTTP/HTTPS 来源')
       }

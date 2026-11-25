@@ -55,10 +55,18 @@ COPY frontend/ ./frontend/
 RUN cd frontend && npm run build
 # 构建产物位于 /build/dist/
 
+COPY local-map/web/package.json local-map/web/package-lock.json ./local-map/web/
+RUN npm ci --prefix local-map/web --ignore-scripts --omit=dev && \
+    mkdir -p /build/local-map-sdk && \
+    cp local-map/web/node_modules/maplibre-gl/dist/maplibre-gl-csp.js \
+       local-map/web/node_modules/maplibre-gl/dist/maplibre-gl-csp-worker.js \
+       local-map/web/node_modules/maplibre-gl/dist/maplibre-gl.css \
+       local-map/web/node_modules/maplibre-gl/dist/LICENSE.txt /build/local-map-sdk/
+
 # ============================================================
 # Stage 2: Python 应用镜像
 # ============================================================
-FROM python:3.11-slim
+FROM python:3.12-slim-bookworm
 
 # 设置工作目录
 WORKDIR /app
@@ -157,6 +165,8 @@ RUN find /app/ \
       -type f \( -name "*.py" -o -name "*.sh" -o -name "*.js" -o -name "*.css" -o -name "*.html" -o -name "*.txt" -o -name "*.md" \) -print0 \
     | parallel -0 -j$(nproc) --verbose dos2unix {}
 
+# 锁定的 SDK 字节须通过校验，作为预构建资源在换行符转换之后复制。
+COPY --from=frontend-builder /build/local-map-sdk/ /app/local-map/web/dist/static/vendor/maplibre/
 
 # 源码的换行符已在镜像构建阶段转换。启动时不重写挂载目录。
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

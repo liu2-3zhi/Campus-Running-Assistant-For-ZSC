@@ -1,7 +1,9 @@
-"""HTTP client for the configured campus map service."""
+"""Campus map access for the embedded dataset and configured HTTP services."""
 
 import hashlib
+from importlib import import_module
 import json
+import logging
 import secrets
 from threading import Lock
 from time import monotonic
@@ -20,10 +22,57 @@ SDK_ASSETS = {
 JSON_TYPE = "application/json"
 RESOURCE_CONTEXT_TTL_S = 6 * 3600
 RESOURCE_CONTEXT_LIMIT = 64
+MAX_ASSET_BYTES = 4 * 1024 * 1024
+_embedded_lock = Lock()
+_embedded_map = None
+
+
+def _fetch_embedded_map(path, body):
+    global _embedded_map
+    try:
+        # The standalone CLI lives in a hyphenated directory. Import the shared
+        # service by package path so its entry point and server never run here.
+        service = import_module("local-map.campus_map.service")
+    except (ImportError, OSError) as error:
+        logging.warning("[校园地图] 内置地图依赖加载失败 (%s)", type(error).__name__)
+        return 503, None
+    with _embedded_lock:
+        if _embedded_map is None:
+            _embedded_map = service.CampusMap()
+        campus = _embedded_map
+    try:
+        if path == "/api/v1/map":
+            return 200, campus.map_metadata()
+        if path == "/api/v1/routes":
+            return 200, campus.routes(body["start"], body["end"], body["waypoints"])
+        if path == "/api/v1/tasks/plan":
+            return 200, campus.tasks(body)
+        if path.startswith("/api/v1/sdk/"):
+            file = campus.sdk_asset(path.removeprefix("/api/v1/sdk/"))
+        elif path.startswith("/api/v1/tiles/") and path.endswith(".png"):
+            coordinates = path.removeprefix("/api/v1/tiles/").removesuffix(".png").split("/")
+            file = campus.tile(*map(int, coordinates))
+        else:
+            return 404, None
+        with file.open("rb") as resource:
+            data = resource.read(MAX_ASSET_BYTES + 1)
+        if len(data) > MAX_ASSET_BYTES:
+            raise ValueError("Local map response is too large")
+        return 200, data
+    except (FileNotFoundError, service.RouteNotFoundError):
+        return 404, None
+    except service.RouteInputError:
+        return 422, None
+    except (OSError, service.DataUnavailableError, service.RoutingUnavailableError) as error:
+        cause = error.__cause__ or error
+        logging.warning("[校园地图] 内置地图资源不可用 path=%s reason=%s", path, type(cause).__name__)
+        return 503, None
 
 
 def fetch_local_map(origin, path, *, body=None, content_type=JSON_TYPE):
-    """Fetch a fixed service path without forwarding browser state or redirects."""
+    """Read an embedded resource or fetch it from an explicitly configured origin."""
+    if origin == "":
+        return _fetch_embedded_map(path, body)
     with requests.Session() as session:
         session.trust_env = False
         with session.request(
@@ -40,7 +89,7 @@ def fetch_local_map(origin, path, *, body=None, content_type=JSON_TYPE):
             data = bytearray()
             for chunk in response.iter_content(65536):
                 data.extend(chunk)
-                if len(data) > 4 * 1024 * 1024:
+                if len(data) > MAX_ASSET_BYTES:
                     raise ValueError("Local map response is too large")
             return status, json.loads(data) if content_type == JSON_TYPE else bytes(data)
 
@@ -121,13 +170,15 @@ def register_local_map_asset_routes(app, load_selected_origin, load_candidate_or
             return origin
 
     def fetch_asset(origin, path, content_type=JSON_TYPE):
-        if not origin:
+        if origin is None:
             abort(404)
         try:
             status, data = fetch_local_map(origin, path, content_type=content_type)
         except (requests.RequestException, ValueError):
             abort(502)
         if status != 200 or data is None:
+            if status != 404:
+                logging.warning("[校园地图] 资源加载失败 path=%s status=%s", path, status)
             abort(404 if status == 404 else 502)
         return data
 

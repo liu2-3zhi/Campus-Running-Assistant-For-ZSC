@@ -19,12 +19,16 @@ build
 # Node.js 相关
 frontend/node_modules
 frontend/.vite
+local-map/**/node_modules
+local-map/web/dist
 
 # 虚拟环境
 venv
 env
 ENV
 zs_campus_run_helper_venv
+local-map/.venv
+local-map/.runtime
 
 # IDE相关
 .vscode
@@ -44,6 +48,12 @@ temp/
 
 # 数据文件
 data/
+local-map/data/builds
+local-map/data/staging
+local-map/data/current.json
+local-map/.local-config.json
+local-map/valhalla_config_*.json
+valhalla_config_*.json
 *.db
 *.sqlite
 

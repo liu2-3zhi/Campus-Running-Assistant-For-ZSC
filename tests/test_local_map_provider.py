@@ -1,9 +1,56 @@
-from unittest.mock import patch
+import hashlib
+from unittest.mock import Mock, patch
 
 from flask import Flask
 
+import local_map_provider
 import main
 from local_map_provider import RESOURCE_CONTEXT_TTL_S, register_local_map_asset_routes
+from map_runtime_origin import get_map_config_candidates
+
+
+def test_builtin_map_serves_assets_and_plans_without_http_upstream(monkeypatch, tmp_path):
+    config = main._get_default_config()
+    profile = get_map_config_candidates(config, "frontend")[0]
+    assert profile["provider"] == "local_map"
+    assert profile["service_url"] == ""
+    app = Flask(__name__)
+    register_local_map_asset_routes(app, lambda: profile["service_url"], {profile["id"]: ""}.get)
+
+    sdk = tmp_path / "maplibre-gl-csp.js"
+    sdk.write_bytes(b"test sdk")
+    tile = tmp_path / "tile.png"
+    tile.write_bytes(b"\x89PNG\r\n\x1a\n")
+    monkeypatch.setitem(local_map_provider.SDK_ASSETS, sdk.name,
+                        ("application/javascript", hashlib.sha256(sdk.read_bytes()).hexdigest()))
+    campus = Mock()
+    campus.sdk_asset.return_value = sdk
+    campus.tile.return_value = tile
+    campus.map_metadata.return_value = {
+        "coordinate_system": "GCJ-02", "bounds": [113.38, 22.52, 113.39, 22.53],
+        "center": [113.385, 22.525], "minzoom": 14, "maxzoom": 20, "version": "test",
+    }
+    start, end = [113.385, 22.525], [113.386, 22.526]
+    campus.tasks.return_value = {
+        "coordinate_system": "GCJ-02",
+        "route": {"geometry": {"type": "LineString", "coordinates": [start, end]}},
+    }
+    monkeypatch.setattr(local_map_provider, "_embedded_map", campus)
+    monkeypatch.setattr("requests.Session.request", Mock(side_effect=AssertionError("embedded map used HTTP")))
+
+    client = app.test_client()
+    config_id = {"config_id": profile["id"]}
+    assert client.get(f"/api/local-map/sdk/{sdk.name}", query_string=config_id).data == sdk.read_bytes()
+    metadata = client.get("/api/local-map/map", query_string=config_id).get_json()
+    assert metadata["version"] == "test"
+    response = client.get("/api/local-map/tiles/0/0/0.png", query_string={"context": metadata["resource_context"]})
+    assert response.data == tile.read_bytes()
+    campus.tile.assert_called_once_with(0, 0, 0)
+
+    result = main._plan_route_path_with_provider_runtime("session", [start, end], runtime_config=config,
+                                                        recommended_coords=[])
+    assert result["path"] == [{"lng": lng, "lat": lat} for lng, lat in (start, end)]
+    campus.tasks.assert_called_once_with({"target_points": [start, end], "recommended_coords": []})
 
 
 def test_local_task_route_uses_task_footpaths_without_a_browser():
