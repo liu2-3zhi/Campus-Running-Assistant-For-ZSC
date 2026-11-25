@@ -77,6 +77,27 @@ def _detour_leg_cache_put(provider, start, end, geometry):
         _DETOUR_LEG_CACHE.popitem(last=False)
 
 
+def _parse_recommended_walk_paths(paths):
+    coordinates = []
+    if not isinstance(paths, list):
+        return coordinates
+    for segment in paths:
+        if not isinstance(segment, list):
+            continue
+        points = []
+        for point in segment:
+            if isinstance(point, list) and len(point) == 2:
+                try:
+                    points.append((float(point[0]), float(point[1])))
+                except (TypeError, ValueError):
+                    logging.warning("Invalid coordinate in recommended path")
+        if points:
+            if coordinates:
+                coordinates.append((0.0, 0.0))
+            coordinates.extend(points)
+    return coordinates
+
+
 def _detour_dedupe_points(points):
     """按顺序归一化并去重相邻重复点，保留原始顺序。
 
@@ -2794,6 +2815,8 @@ class Api:
         """由JS调用，保存当前地图提供方对应的 API Key 到主配置文件。"""
         try:
             provider = _main()._normalize_map_provider(provider)
+            if provider == "local_map":
+                return {"success": False, "message": "校园离线地图无需 API Key"}
             key_field = _main().MAP_PROVIDER_KEY_FIELDS[provider]
             api_key = str(api_key or "").strip()
             if not api_key:
@@ -3831,27 +3854,7 @@ class Api:
                     f"[警告] 任务 '{run_data.run_name}' (ScheduleID: {run_data.errand_schedule}) 未包含任何打卡点 (geoCoorList为空)。"
                 )
 
-            temp_coords = []
-            walk_paths = details.get("walkPaths", [])
-            if walk_paths:
-                for i, seg in enumerate(walk_paths):
-                    for pt in seg:
-                        if (
-                            isinstance(pt, list)
-                            and len(pt) == 2
-                            and pt[0] is not None
-                            and pt[1] is not None
-                        ):
-                            try:
-                                temp_coords.append(
-                                    (float(pt[0]), float(pt[1])))
-                            except (TypeError, ValueError):
-                                logging.warning(
-                                    f"Invalid coordinate in recommended path: {pt}"
-                                )
-                    if i < len(walk_paths) - 1:
-                        temp_coords.append((0.0, 0.0))
-            run_data.recommended_coords = temp_coords
+            run_data.recommended_coords = _parse_recommended_walk_paths(details.get("walkPaths"))
             run_data.details_fetched = not temporarily_unavailable
             self.log_and_notify_frontend("任务详情加载成功。")
             logging.debug(
@@ -6246,6 +6249,7 @@ class Api:
                 python_params=self.params,
                 guard_label="SingleManualPathPlanning",
                 app_base_url=getattr(self, "_web_app_base_url", None),
+                recommended_coords=getattr(run, "recommended_coords", []),
             )
         except Exception as exc:
             path_result = {"error": sanitize_diagnostic(exc)}
@@ -6517,6 +6521,7 @@ class Api:
                         python_params=self.params,
                         guard_label="SingleRunPathPlanning",
                         app_base_url=getattr(self, "_web_app_base_url", None),
+                        recommended_coords=getattr(run_data, "recommended_coords", []),
                     )
                     if not isinstance(path_result, dict) or not path_result.get("path"):
                         self._notify_route_planning_failure(path_result, execution_id=execution_id)
@@ -10363,10 +10368,6 @@ class Api:
 
         api_path_coords = None
 
-        if not _main().chrome_pool:
-            self._notify_route_planning_failure({"error": "Chrome浏览器池不可用，无法进行路径规划"}, account=acc)
-            return "failed"   # 详情失败/无打卡点/规划失败等，交回主循环
-
         try:
             acc.log_and_notify_frontend("正在按当前地图供应商进行路径规划...")
 
@@ -10381,6 +10382,7 @@ class Api:
                 python_params=acc.params,
                 guard_label="MultiAccountPathPlanning",
                 app_base_url=getattr(self, "_web_app_base_url", None),
+                recommended_coords=_parse_recommended_walk_paths(details.get("walkPaths")),
             )
             if self.multi_run_stop_flag.is_set() or acc.stop_event.is_set():
                 return "aborted"

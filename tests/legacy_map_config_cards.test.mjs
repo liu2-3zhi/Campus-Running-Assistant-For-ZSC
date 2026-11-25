@@ -88,6 +88,21 @@ test('rendering escapes names, IDs and credentials and uses password fields', ()
   assert.ok(html.includes('&quot; autofocus onfocus=&quot;bad'))
 })
 
+test('the local map card exposes only its service origin and retains both selections', () => {
+  const local = { id: 'local', name: '校园离线地图', provider: 'local_map', service_url: 'https://Campus.Test:9443/' }
+  const html = context.renderMapConfigCard(local)
+  assert.match(html, /type="url" data-map-config-field="service_url"/)
+  assert.doesNotMatch(html, /type="password"|data-map-config-field="backend_page_origin"/)
+  const amap = { id: 'amap', name: '高德', provider: 'amap', js_key: '', backend_page_origin: '' }
+  const fixture = editorFixture([local, amap], 'amap', 'local')
+  const payload = plain(context.readMapConfigCards(fixture.panel))
+  assert.equal(payload.configs[0].service_url, 'https://campus.test:9443')
+  assert.equal(payload.frontend_config_id, 'amap')
+  assert.equal(payload.backend_config_id, 'local')
+  fixture.list.cards[0].fields.service_url.value = 'https://campus.test/public'
+  assert.throws(() => context.readMapConfigCards(fixture.panel), /校园离线地图服务地址/)
+})
+
 test('adding, moving, renaming and deleting cards preserve independent frontend/backend choices', () => {
   const first = { id: 'front', name: '高德1', provider: 'amap', js_key: 'front-placeholder', security_js_code: '', backend_page_origin: '' }
   const second = { ...first, id: 'back', name: '高德2', js_key: 'back-placeholder', backend_page_origin: 'https://backend.test/path' }

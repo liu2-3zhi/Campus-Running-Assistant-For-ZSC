@@ -33,6 +33,7 @@ import requests
 from flask import g, request
 
 from captcha_static_cache import behavior_static_cache
+from local_map_provider import register_local_map_asset_routes
 from main_runtime import _main
 from map_request_proxy import register_map_proxy_routes
 
@@ -1994,6 +1995,14 @@ def start_web_server(args_param):
         _authorize_map_proxy_actor,
         on_context_authenticated=_refresh_map_proxy_context_actor,
     )
+
+    def _load_local_map_frontend_origin():
+        config = _load_map_proxy_runtime_config()
+        if _main()._get_active_map_provider(config, scope="frontend") != "local_map":
+            return None
+        return _main()._get_map_provider_runtime_config(config, provider="local_map", scope="frontend")["service_url"]
+
+    register_local_map_asset_routes(app, _load_local_map_frontend_origin)
 
     # ==================== [修正] 添加缺失的 admin_required 装饰器，并采用权限组判断 ====================
     def admin_required(f):

@@ -762,6 +762,7 @@ function createRuntime(provider, options = {}) {
     'finishProviderMapInitialization',
     'isCurrentBaiduInitialization',
     'initializeBaiduProviderMap',
+    'initializeLocalCampusMap',
     'getProviderOverlayBucket',
     'clearProviderRunnerMarkers',
     'clearProviderMapOverlays',
@@ -950,7 +951,7 @@ function createRuntime(provider, options = {}) {
     let sessionUUID = 'session-a';
     const providerMapDestructions = {};
     const providerMapPendingInitializations = {};
-    const providerBaiduInitializations = {};
+    const providerMapLoading = {};
     let providerMapSurfaceSequence = 0;
     let providerMapInstanceProviders = {};
     let providerMapEventsBound = {};
@@ -1089,6 +1090,43 @@ test('legacy Baidu uses its iframe SDK for map, overlays, controls and progress'
   assert.equal(realm.disposed, true);
   assert.equal(instance.destroyed, undefined, 'realm disposal owns SDK cancellation instead of native destroy');
   assert.equal(realm.window.document.events.length, 0);
+});
+
+test('legacy campus map initializes without a key and keeps GCJ-02 route and runner coordinates', async () => {
+  const runtime = createRuntime('local_map');
+  const instance = {
+    on() {}, off() {}, getZoom() { return 17; }, resetCampusView() {},
+    remove() { this.removed = true; },
+  };
+  const fitting = [];
+  const lines = [];
+  runtime.getWindow().ZXLocalCampusMap = {
+    create: async () => instance,
+    fit(_map, points) { fitting.push(points); },
+    addLine(_map, points) {
+      const line = { points, setPath(path) { this.points = path; }, setOptions() {}, remove() { this.removed = true; } };
+      lines.push(line);
+      return line;
+    },
+    addMarker(_map, point, options) {
+      return { point, label: options.label, setLngLat(next) { this.point = next; }, remove() { this.removed = true; } };
+    },
+  };
+  assert.equal(await runtime.ensureActiveMapProviderRuntimeIfNeeded(), true);
+  assert.equal(runtime.initProviderMap('map-container'), false);
+  assert.equal(await runtime.waitForProviderMapReady('map-container'), true);
+  const route = [[113.39, 22.52], [113.391, 22.521]];
+  runtime.drawProviderRouteOnMap('map-container', route, { showEndpoints: false });
+  assert.deepEqual(lines[0].points, route);
+  assert.deepEqual(fitting.at(-1), route);
+  assert.equal(runtime.addProviderMarker('map-container', { lng: route[0][0], lat: route[0][1] }, { label: '求知路2' }).label, '求知路2');
+  const runner = runtime.updateProviderRunnerMarker('map-container', route[0]);
+  assert.equal(runtime.updateProviderRunnerMarker('map-container', route[1]), runner);
+  assert.deepEqual(runner.point, route[1]);
+  assert.equal(await runtime.destroyProviderMapInstance('map-container'), true);
+  assert.equal(runner.removed, true);
+  assert.equal(instance.removed, true);
+  assert.equal(lines[0].removed, true);
 });
 
 test('legacy Baidu waits for iframe readiness and replays only the latest route', async () => {

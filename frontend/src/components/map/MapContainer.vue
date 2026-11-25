@@ -364,6 +364,33 @@ async function initBaidu() {
   }
 }
 
+async function initCampusMap() {
+  const generation = initialization
+  const controller = new AbortController()
+  const cancel = () => controller.abort()
+  cancelReadiness = cancel
+  try {
+    const instance = await window.ZXLocalCampusMap.create(nativeMapHost(), { signal: controller.signal })
+    if (disposed || generation !== initialization) { instance.remove(); return }
+    map = instance
+    zoomHandler = () => {
+      if (ownsMap(instance, generation)) zoomLevel.value = instance.getZoom()
+    }
+    instance.on('zoom', zoomHandler)
+    zoomLevel.value = instance.getZoom()
+    mapStore.setMapInstance(instance)
+    mapReady.value = true
+  } catch (error) {
+    if (disposed || generation !== initialization) return
+    await destroyMap()
+    console.error('[MapContainer] 校园离线地图加载失败:', error)
+    placeholderError.value = '请检查校园离线地图服务是否已启动。'
+    showPlaceholder.value = true
+  } finally {
+    if (cancelReadiness === cancel) cancelReadiness = null
+  }
+}
+
 // --- Map initialization dispatcher ---
 async function initMap() {
   const generation = ++initialization
@@ -385,7 +412,7 @@ async function initMap() {
   const provider = mapStore.activeProvider
   boundProvider = provider
   const proxy = window.ZXMapRequestProxy
-  if (proxy) {
+  if (provider !== 'local_map' && proxy) {
     try {
       await proxy.initialize({
         map_config_id: mapStore.mapConfig.frontendConfigId,
@@ -401,7 +428,7 @@ async function initMap() {
       }
       return
     }
-  } else if (mapStore.mapConfig.frontendProxyEnabled === true) {
+  } else if (provider !== 'local_map' && mapStore.mapConfig.frontendProxyEnabled === true) {
     placeholderError.value = '地图代理脚本未加载'
     showPlaceholder.value = true
     return
@@ -419,6 +446,9 @@ async function initMap() {
       break
     case 'baidu':
       await initBaidu()
+      break
+    case 'local_map':
+      await initCampusMap()
       break
     default:
       showPlaceholder.value = true
@@ -446,7 +476,7 @@ function destroyMap() {
   unbindDrawingClick()
   if (map && zoomHandler) {
     try {
-      if (boundProvider === 'amap' || boundProvider === 'tencent') map.off(boundProvider === 'amap' ? 'zoomchange' : 'zoom', zoomHandler)
+      if (boundProvider === 'amap' || boundProvider === 'tencent' || boundProvider === 'local_map') map.off(boundProvider === 'amap' ? 'zoomchange' : 'zoom', zoomHandler)
       else map.removeEventListener('zoomend', zoomHandler)
     } catch (_) {}
   }
@@ -494,6 +524,7 @@ function destroyMap() {
     try {
       if (provider === 'tianditu') instance.clearOverLays?.()
       if (realm) realm.dispose()
+      else if (provider === 'local_map') instance.remove()
       else instance.destroy?.()
       if (!waitForDestroyed) finish()
     } catch (error) { finish(error) }
@@ -521,6 +552,8 @@ function fitView(coords) {
   const provider = boundProvider || mapStore.activeProvider
   if (provider === 'amap') {
     map.setFitView()
+  } else if (provider === 'local_map') {
+    window.ZXLocalCampusMap.fit(map, coords)
   } else if (provider === 'tencent') {
     const TMap = window.TMap
     if (!TMap) return
@@ -565,6 +598,8 @@ function addMarker(pos, opts = {}) {
       marker.setLabel({ content: label, direction: 'top' })
     }
     map.add(marker)
+  } else if (provider === 'local_map') {
+    marker = window.ZXLocalCampusMap.addMarker(map, pos, opts)
   } else if (provider === 'tencent') {
     const TMap = window.TMap
     if (!TMap) return null
@@ -643,6 +678,10 @@ function drawPolyline(path, opts = {}) {
       ...opts,
     })
     map.add(polyline)
+  } else if (provider === 'local_map') {
+    polyline = window.ZXLocalCampusMap.addLine(map, path, {
+      color, weight, opacity: opts.opacity ?? 0.8, dashed: opts.dashed,
+    })
   } else if (provider === 'tencent') {
     const TMap = window.TMap
     if (!TMap) return null
@@ -687,7 +726,10 @@ function drawPolyline(path, opts = {}) {
 function clearOverlays() {
   const provider = boundProvider || mapStore.activeProvider
 
-  if (provider === 'amap' && map) {
+  if (provider === 'local_map') {
+    markers.forEach(marker => marker.remove())
+    polylines.forEach(polyline => polyline.remove())
+  } else if (provider === 'amap' && map) {
     markers.forEach(m => { try { map.remove(m) } catch (_) {} })
     polylines.forEach(p => { try { map.remove(p) } catch (_) {} })
   } else if (provider === 'tencent') {
@@ -792,6 +834,10 @@ function updateMarker(marker, point, opts = {}) {
   if (!marker || !pos) return
   const provider = mapStore.activeProvider
   if (provider === 'amap') marker.setPosition?.(new window.AMap.LngLat(...pos))
+  else if (provider === 'local_map') {
+    marker.setLngLat(pos)
+    if (opts.title || opts.color) marker.updateCampusMarker(opts)
+  }
   else if (provider === 'tencent') {
     const geometryId = opts.id || marker.__geometryId || 'position'
     const geometry = { id: geometryId, position: new window.TMap.LatLng(pos[1], pos[0]) }
@@ -813,7 +859,7 @@ function updateMarker(marker, point, opts = {}) {
 function updatePolyline(polyline, path, color, id) {
   const coords = path.map(providerPoint).filter(Boolean)
   const provider = mapStore.activeProvider
-  if (provider === 'amap') { polyline.setPath?.(coords); polyline.setOptions?.({ strokeColor: color }) }
+  if (provider === 'amap' || provider === 'local_map') { polyline.setPath?.(coords); polyline.setOptions?.({ strokeColor: color }) }
   else if (provider === 'tencent') polyline.setGeometries?.([{ id: id || polyline.__geometryId || 'route', styleId: 'style', paths: coords.map(p => new window.TMap.LatLng(p[1], p[0])) }])
   else if (provider === 'tianditu') { polyline.setLngLats?.(coords.map(p => new window.T.LngLat(...p))); polyline.setColor?.(color) }
   else if (provider === 'baidu') { polyline.setPath?.(coords.map(p => new map.__baiduRealm.sdk.Point(...p))); polyline.setStrokeColor?.(color) }
@@ -827,6 +873,7 @@ watch([() => app.runData, () => mapReady.value], renderTask, { deep: true })
 // 常见事件结构尽力实现，未经运行时验证，详见报告。
 function extractClickLngLat(provider, e) {
   try {
+    if (provider === 'local_map') return e?.lngLat
     if (provider === 'amap') {
       const ll = e && e.lnglat
       if (!ll) return null
@@ -904,7 +951,8 @@ function removeSingleOverlay(overlay) {
   if (!overlay) return
   const provider = boundProvider || mapStore.activeProvider
   try {
-    if (provider === 'amap' && map) map.remove(overlay)
+    if (provider === 'local_map') overlay.remove()
+    else if (provider === 'amap' && map) map.remove(overlay)
     else if (provider === 'tencent') releaseTencentOverlay(overlay)
     else if (provider === 'tianditu' && map) map.removeOverLay(overlay)
     else if (provider === 'baidu' && map) map.removeOverlay(overlay)
@@ -949,7 +997,7 @@ function bindDrawingClick() {
     redrawDraft()
   }
   boundClickProvider = provider
-  if (provider === 'amap' || provider === 'tencent') {
+  if (provider === 'amap' || provider === 'tencent' || provider === 'local_map') {
     map.on('click', clickHandler)
   } else if (provider === 'tianditu' || provider === 'baidu') {
     map.addEventListener('click', clickHandler)
@@ -960,7 +1008,7 @@ function bindDrawingClick() {
 function unbindDrawingClick() {
   if (map && clickHandler && boundClickProvider) {
     try {
-      if (boundClickProvider === 'amap' || boundClickProvider === 'tencent') {
+      if (boundClickProvider === 'amap' || boundClickProvider === 'tencent' || boundClickProvider === 'local_map') {
         map.off('click', clickHandler)
       } else if (boundClickProvider === 'tianditu' || boundClickProvider === 'baidu') {
         map.removeEventListener('click', clickHandler)
@@ -978,7 +1026,7 @@ function unbindDrawingClick() {
 function handleZoomIn() {
   if (!map) return
   const provider = mapStore.activeProvider
-  if (provider === 'amap' || provider === 'tencent') {
+  if (provider === 'amap' || provider === 'tencent' || provider === 'local_map') {
     map.setZoom(map.getZoom() + 1)
     zoomLevel.value = Math.round(map.getZoom())
   } else if (provider === 'tianditu') {
@@ -991,7 +1039,7 @@ function handleZoomIn() {
 function handleZoomOut() {
   if (!map) return
   const provider = mapStore.activeProvider
-  if (provider === 'amap' || provider === 'tencent') {
+  if (provider === 'amap' || provider === 'tencent' || provider === 'local_map') {
     map.setZoom(map.getZoom() - 1)
     zoomLevel.value = Math.round(map.getZoom())
   } else if (provider === 'tianditu') {
@@ -1011,6 +1059,10 @@ function handleResetView() {
   const provider = mapStore.activeProvider
   if (provider === 'amap') {
     map.setZoomAndCenter(DEFAULT_ZOOM, DEFAULT_CENTER)
+  } else if (provider === 'local_map') {
+    map.resetCampusView()
+    zoomLevel.value = map.getZoom()
+    return
   } else if (provider === 'tencent') {
     const TMap = window.TMap
     if (TMap) {
@@ -1113,7 +1165,7 @@ defineExpose({
       v-if="showPlaceholder"
       class="legacy-map-placeholder"
       :provider-name="mapStore.displayName"
-      :has-key="!!mapStore.getKeyRequirement().value"
+      :has-key="mapStore.getKeyRequirement().required === false || !!mapStore.getKeyRequirement().value"
       :error-reason="placeholderError"
       @retry="initMap"
     />

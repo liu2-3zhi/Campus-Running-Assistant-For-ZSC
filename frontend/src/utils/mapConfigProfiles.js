@@ -1,8 +1,13 @@
+import { normalizeBackendPageOrigin } from '../services/mapBackendOrigin.js'
+
+const LOCAL_MAP_DEFAULT_SERVICE_URL = 'http://127.0.0.1:8765'
+
 export const MAP_PROVIDER_OPTIONS = [
   { value: 'amap', label: '高德地图' },
   { value: 'tencent', label: '腾讯地图' },
   { value: 'tianditu', label: '天地图' },
   { value: 'baidu', label: '百度地图' },
+  { value: 'local_map', label: '校园离线地图' },
 ]
 
 export const MAP_PROFILE_FIELDS = {
@@ -10,6 +15,7 @@ export const MAP_PROFILE_FIELDS = {
   tencent: [{ key: 'map_key', label: '地图 Key' }],
   tianditu: [{ key: 'token', label: 'Token' }],
   baidu: [{ key: 'ak', label: 'AK' }],
+  local_map: [{ key: 'service_url', label: '地图服务地址', type: 'url' }],
 }
 
 const providerName = provider => MAP_PROVIDER_OPTIONS.find(option => option.value === provider)?.label || provider
@@ -20,8 +26,10 @@ export function createMapConfigProfile(provider = 'amap', configs = []) {
   const count = configs.filter(config => config.provider === provider).length + 1
   return {
     id: `config-${suffix}`, name: `${providerName(provider)} ${count}`, provider,
-    ...Object.fromEntries(MAP_PROFILE_FIELDS[provider].map(field => [field.key, ''])),
-    backend_page_origin: '',
+    ...(provider === 'local_map' ? { service_url: LOCAL_MAP_DEFAULT_SERVICE_URL } : {
+      ...Object.fromEntries(MAP_PROFILE_FIELDS[provider].map(field => [field.key, ''])),
+      backend_page_origin: '',
+    }),
   }
 }
 
@@ -31,7 +39,7 @@ export function normalizeMapConfigProfiles(map = {}) {
     configs = map.configs.map(config => ({ ...config }))
   } else {
     const aliases = { amap: 'amap_js_key', tencent: 'tencent_map_key', tianditu: 'tianditu_token', baidu: 'baidu_map_ak' }
-    configs = MAP_PROVIDER_OPTIONS.map(({ value: provider, label }) => {
+    configs = MAP_PROVIDER_OPTIONS.filter(({ value }) => value !== 'local_map').map(({ value: provider, label }) => {
       const source = map.providers?.[provider] || {}
       return {
         id: `legacy-${provider}`, name: `${label} 1`, provider,
@@ -77,6 +85,17 @@ export function serializeMapConfigProfiles(map, normalizeOrigin = value => Strin
     const rawName = String(config.name || '')
     const name = rawName.trim()
     if (!name || Array.from(name).length > 100 || /[\x00-\x1f]/.test(rawName)) throw new Error('地图配置名称须为 1 至 100 个字符，且不能包含控制字符')
+    if (config.provider === 'local_map') {
+      const rawUrl = String(config.service_url ?? '')
+      const input = rawUrl.trim()
+      try {
+        const origin = normalizeBackendPageOrigin(rawUrl)
+        if (input && !/^https?:\/\/[^/?#]+\/?$/i.test(input)) throw new Error()
+        return { id, name, provider: config.provider, service_url: origin || LOCAL_MAP_DEFAULT_SERVICE_URL }
+      } catch {
+        throw new Error('校园离线地图服务地址必须为不含账号密码、路径、查询参数或片段的 HTTP/HTTPS 来源')
+      }
+    }
     return {
       id, name, provider: config.provider,
       ...Object.fromEntries(MAP_PROFILE_FIELDS[config.provider].map(field => [field.key, String(config[field.key] || '').trim()])),

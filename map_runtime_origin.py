@@ -50,7 +50,8 @@ MAP_RUNTIME_PAGE_HTML = """<!doctype html>
 
 PROVIDER_KEY_FIELDS = {"amap": "js_key", "tencent": "map_key", "tianditu": "token", "baidu": "ak"}
 LEGACY_KEY_FIELDS = {"amap": "amap_js_key", "tencent": "tencent_map_key", "tianditu": "tianditu_token", "baidu": "baidu_map_ak"}
-PROVIDER_NAMES = {"amap": "高德", "tencent": "腾讯", "tianditu": "天地图", "baidu": "百度"}
+PROVIDER_NAMES = {"amap": "高德", "tencent": "腾讯", "tianditu": "天地图", "baidu": "百度", "local_map": "校园离线地图"}
+LOCAL_MAP_DEFAULT_SERVICE_URL = "http://127.0.0.1:8765"
 
 
 def normalize_backend_page_origin(value):
@@ -90,6 +91,19 @@ def normalize_backend_page_origin(value):
         raise ValueError("后端规划页面来源无效，请输入不含账号密码的 HTTP/HTTPS 地址") from None
 
 
+def normalize_local_map_service_url(value):
+    try:
+        origin = normalize_backend_page_origin(value)
+        if not origin:
+            return LOCAL_MAP_DEFAULT_SERVICE_URL
+        url = value.strip()
+        if urlsplit(url).path not in ("", "/") or "?" in url or "#" in url:
+            raise ValueError()
+        return origin
+    except ValueError:
+        raise ValueError("校园离线地图服务地址必须为不含账号密码、路径、查询参数或片段的 HTTP/HTTPS 来源") from None
+
+
 def _stored_map_providers(config):
     providers = config.get("Map", "providers", fallback=None)
     if isinstance(providers, str):
@@ -121,7 +135,7 @@ def _normalize_map_configs(values, existing=None):
             raise ValueError("地图配置 ID 不能重复")
         seen.add(config_id)
         provider = value.get("provider")
-        if not isinstance(provider, str) or provider not in PROVIDER_KEY_FIELDS:
+        if not isinstance(provider, str) or provider not in PROVIDER_NAMES:
             raise ValueError("地图供应商无效")
         name = value.get("name")
         if not isinstance(name, str) or not name.strip() or len(name.strip()) > 100 or any(ord(char) < 32 for char in name):
@@ -130,6 +144,10 @@ def _normalize_map_configs(values, existing=None):
         if old.get("provider") != provider:
             old = {}
         entry = {"id": config_id, "name": name.strip(), "provider": provider}
+        if provider == "local_map":
+            entry["service_url"] = normalize_local_map_service_url(value.get("service_url", old.get("service_url", "")))
+            result.append(entry)
+            continue
         fields = [PROVIDER_KEY_FIELDS[provider], "backend_page_origin"]
         if provider == "amap":
             fields.append("security_js_code")
@@ -149,7 +167,7 @@ def get_map_config_settings(config):
     """Read ordered profiles, migrating the single-profile layout in memory."""
     stored = config.get("Map", "configs", fallback=None)
     provider = str(config.get("Map", "provider", fallback="amap") or "amap").strip().lower()
-    if provider not in PROVIDER_KEY_FIELDS:
+    if provider not in PROVIDER_NAMES:
         provider = "amap"
     if stored is None:
         providers = _stored_map_providers(config)
@@ -236,7 +254,7 @@ def merge_map_settings(config, updates):
         raise ValueError("前端或后端选择的地图配置不存在")
     if "provider" in updates and "configs" not in updates:
         provider = updates["provider"]
-        if not isinstance(provider, str) or provider not in PROVIDER_KEY_FIELDS:
+        if not isinstance(provider, str) or provider not in PROVIDER_NAMES:
             raise ValueError("地图供应商无效")
         candidate = next((entry for entry in configs if entry["id"] == selected_ids["frontend"] and entry["provider"] == provider),
                          next((entry for entry in configs if entry["provider"] == provider), None))

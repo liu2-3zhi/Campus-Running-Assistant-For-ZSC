@@ -115,7 +115,7 @@ function renderMapProviderFrontendPlaceholder(containerId, isMultiAccount = fals
   const provider = getActiveMapProvider();
   const displayName = getMapProviderDisplayName();
   const requirement = getMapProviderKeyRequirement(provider);
-  const hasKey = !!requirement.value;
+  const hasKey = requirement.required === false || !!requirement.value;
   let statusHtml;
   if (!hasKey) {
     statusHtml = `
@@ -268,6 +268,8 @@ function fitProviderMapToCoordinates(containerId, coords, overlay = null) {
       instance.setViewport(providerCoords.map((coord) => new T.LngLat(coord.lng, coord.lat)));
     } else if (provider === "baidu" && typeof instance.setViewport === "function" && BMap) {
       instance.setViewport(providerCoords.map((coord) => new BMap.Point(coord.lng, coord.lat)), { enableAnimation: false });
+    } else if (provider === "local_map") {
+      window.ZXLocalCampusMap.fit(instance, providerCoords.map((coord) => [coord.lng, coord.lat]));
     }
   } catch (e) {
     logMessage_Warning(`[地图] 调整${containerId}视野失败:`, e);
@@ -485,6 +487,8 @@ function addProviderMarker(containerId, coord, options = {}) {
         zIndex: options.zIndex || 100,
         map: instance,
       });
+    } else if (provider === "local_map") {
+      marker = window.ZXLocalCampusMap.addMarker(instance, [providerCoord.lng, providerCoord.lat], options);
     } else if (provider === "tencent" && window.TMap) {
       const label = normalizeProviderMarkerLabel(options);
       const markerStyleOptions = createTencentMarkerStyleOptions(label, options);
@@ -581,6 +585,10 @@ function updateProviderRunnerMarker(containerId, coord, options = {}) {
   const markerKey = options.markerKey || containerId;
   const previousMarker = providerRunnerMarkers[markerKey];
   const provider = providerMapInstanceProviders[containerId] || getActiveMapProvider();
+  if (previousMarker && provider === "local_map" && typeof previousMarker.setLngLat === "function") {
+    previousMarker.setLngLat([normalized.lng, normalized.lat]);
+    return previousMarker;
+  }
   if (
     previousMarker &&
     provider === "tencent" &&
@@ -731,6 +739,8 @@ function drawProviderRouteOnMap(containerId, coords, options = {}) {
         return polyline;
       });
       fitOverlay = line;
+    } else if (provider === "local_map") {
+      line = routeSegments.map((segment) => createProviderProgressPolyline(containerId, provider, segment, options));
     } else if (provider === "tencent" && window.TMap) {
       const styleConfigs = {
         route: {
@@ -1302,7 +1312,7 @@ function syncProviderTaskCheckpointMarkers(containerId, data, routeCoords) {
   if (Array.isArray(data.target_points)) {
     const sequence = resolveVisualTaskProgressSequence(data, routeCoords);
     const names = (data.target_point_names || "").split("|");
-    const shouldSnapMarkerToRoute = getActiveMapProvider() !== "amap";
+    const shouldSnapMarkerToRoute = !["amap", "local_map"].includes(getActiveMapProvider());
     data.target_points.forEach((point, index) => {
       const coord = normalizeRouteCoord(point);
       if (Number.isFinite(coord.lng) && Number.isFinite(coord.lat)) {
@@ -1377,6 +1387,8 @@ function updateProviderCheckpointMarkerStyle(marker, options, BMap = null) {
       marker.setIcon(baiduIcon);
     } else if (provider === "amap" && typeof marker.setContent === "function") {
       marker.setContent(options.content);
+    } else if (provider === "local_map") {
+      marker.updateCampusMarker(options);
     } else {
       return false;
     }
@@ -1430,7 +1442,7 @@ function updateProviderRouteProgressSegmentsInPlace(containerId, data) {
   const color = cached.options?.strokeColor || cached.options?.color || "#ef4444";
 
   try {
-    if (provider === "amap" || provider === "tianditu" || provider === "baidu") {
+    if (provider === "amap" || provider === "tianditu" || provider === "baidu" || provider === "local_map") {
       if (!Array.isArray(cached.lines)) {
         return false;
       }
@@ -1459,6 +1471,7 @@ function updateProviderRouteProgressSegmentsInPlace(containerId, data) {
         );
         const path = segment.coords.map((coord) => {
           const point = convertGcj02ToProviderCoordinates(provider, coord);
+          if (provider === "local_map") return [point.lng, point.lat];
           return provider === "baidu"
             ? new BMap.Point(point.lng, point.lat)
             : provider === "tianditu"
@@ -1466,7 +1479,7 @@ function updateProviderRouteProgressSegmentsInPlace(containerId, data) {
               : new AMapInstance.LngLat(point.lng, point.lat);
         });
         line[pathSetter](path);
-        if (provider === "amap") {
+        if (provider === "amap" || provider === "local_map") {
           line.setOptions({ strokeColor: segmentColor });
         } else {
           line[colorSetter](segmentColor);
@@ -1520,7 +1533,11 @@ function createProviderProgressPolyline(containerId, provider, segment, options 
   const weight = options.strokeWeight || options.weight || 5;
   const opacity = options.strokeOpacity ?? 0.85;
   let line;
-  if (provider === "tianditu" && window.T) {
+  if (provider === "local_map") {
+    line = window.ZXLocalCampusMap.addLine(instance, coords.map((coord) => [coord.lng, coord.lat]), {
+      color, weight, opacity, dashed: options.strokeStyle === "dashed",
+    });
+  } else if (provider === "tianditu" && window.T) {
     line = new T.Polyline(coords.map((coord) => new T.LngLat(coord.lng, coord.lat)), {
       color, weight, opacity, lineStyle: options.strokeStyle === "dashed" ? "dashed" : "solid",
     });

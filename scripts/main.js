@@ -16644,7 +16644,7 @@ async function onLogin() {
       logMessage_Info("[前端-登录] ✓ 登录成功！");
       showButtonSuccess("login-button", "登录成功");
       syncMapProviderConfigFromInitialData(result);
-      if (getActiveMapProviderApiKey()) {
+      if (getActiveMapProvider() === "local_map" || getActiveMapProviderApiKey()) {
         logMessage_Info(`[前端-登录] 加载${getMapProviderDisplayName()}地图配置...`);
         try {
           await ensureActiveMapProviderRuntimeIfNeeded("登录成功");

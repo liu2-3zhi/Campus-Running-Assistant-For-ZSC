@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, shallowRef, markRaw, computed } from 'vue'
 
 export const useMapStore = defineStore('map', () => {
-  const activeProvider = ref('amap') // amap | tencent | tianditu | baidu
+  const activeProvider = ref('amap')
   const mapInstance = shallowRef(null)
   const providerInstances = shallowRef({})
   const isMapReady = ref(false)
@@ -66,6 +66,7 @@ export const useMapStore = defineStore('map', () => {
     tencent: '腾讯地图',
     tianditu: '天地图',
     baidu: '百度地图',
+    local_map: '校园离线地图',
   }
 
   const displayName = computed(() => providerDisplayNames[activeProvider.value] || activeProvider.value)
@@ -89,6 +90,7 @@ export const useMapStore = defineStore('map', () => {
       tencent: { field: 'tencent_map_key', fieldLabel: 'Key', value: mapConfig.value.tencentKey },
       tianditu: { field: 'tianditu_map_key', fieldLabel: 'Key', value: mapConfig.value.tiandituKey },
       baidu: { field: 'baidu_map_ak', fieldLabel: 'AK', value: mapConfig.value.baiduKey },
+      local_map: { required: false, value: '' },
     }
     return requirements[activeProvider.value] || requirements.amap
   }

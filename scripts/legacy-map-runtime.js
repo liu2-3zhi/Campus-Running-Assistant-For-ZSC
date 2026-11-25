@@ -2,7 +2,7 @@
 
 function normalizeSupportedMapProvider(provider) {
   const normalized = String(provider || "").trim().toLowerCase();
-  return ["amap", "tencent", "tianditu", "baidu"].includes(normalized)
+  return ["amap", "tencent", "tianditu", "baidu", "local_map"].includes(normalized)
     ? normalized
     : "";
 }
@@ -19,6 +19,7 @@ function getMapProviderDisplayName(provider) {
     tencent: "腾讯地图",
     tianditu: "天地图",
     baidu: "百度地图",
+    local_map: "校园离线地图",
   };
   return displayNames[normalizedProvider] || displayNames.amap;
 }
@@ -32,6 +33,9 @@ function getMapProviderConfig(provider) {
 
 function getMapProviderKeyRequirement(provider) {
   const normalizedProvider = String(provider || getActiveMapProvider()).trim().toLowerCase();
+  if (normalizedProvider === "local_map") {
+    return { provider: normalizedProvider, displayName: getMapProviderDisplayName(normalizedProvider), required: false, value: "" };
+  }
   const requirements = {
     amap: {
       provider: "amap",
@@ -92,7 +96,7 @@ let taskMapAutoResetTimer = null;
 let taskMapAutoResetContainerId = "";
 const providerMapDestructions = {};
 const providerMapPendingInitializations = {};
-const providerBaiduInitializations = {};
+const providerMapLoading = {};
 let providerMapSurfaceSequence = 0;
 
 function createMapProviderRuntimeConfigSnapshot(data) {
@@ -313,6 +317,7 @@ function syncMapProviderConfigFromInitialData(data) {
 
 function showMissingMapProviderKeyModal(provider) {
   const requirement = getMapProviderKeyRequirement(provider);
+  if (requirement.required === false) return;
   const modal = $("amap-key-modal");
   if (!modal) {
     return;
@@ -360,6 +365,8 @@ function showMissingMapProviderKeyModal(provider) {
 async function ensureActiveMapProviderRuntimeIfNeeded(contextLabel = "地图") {
   const provider = getActiveMapProvider();
   const requirement = getMapProviderKeyRequirement(provider);
+  // The campus SDK and tiles already use the application's same-origin endpoint.
+  if (provider === "local_map") return true;
   if (!requirement.value) {
     logMessage_Info(
       `[警告] 未配置${requirement.displayName} ${requirement.fieldLabel}，请在弹窗中输入。`,
@@ -533,6 +540,8 @@ async function loadActiveMapProviderRuntime(provider = getActiveMapProvider()) {
   const requirement = getMapProviderKeyRequirement(provider);
   installGenericMapRuntimeGuards();
   switch (requirement.provider) {
+    case "local_map":
+      return window.ZXLocalCampusMap.load();
     case "tencent":
       return loadTencentMapOnce(requirement.value);
     case "tianditu":
@@ -642,7 +651,7 @@ function waitForProviderMapDestruction(containerId) {
 }
 
 function waitForProviderMapReady(containerId) {
-  return providerBaiduInitializations[containerId]?.promise || Promise.resolve(!!getProviderMapInstance(containerId));
+  return providerMapLoading[containerId]?.promise || Promise.resolve(!!getProviderMapInstance(containerId));
 }
 
 function showProviderMapLifecycleError(containerId, message) {
@@ -660,11 +669,12 @@ function showProviderMapLifecycleError(containerId, message) {
 
 function destroyProviderMapInstance(containerId) {
   delete providerMapPendingInitializations[containerId];
-  const loading = providerBaiduInitializations[containerId];
+  const loading = providerMapLoading[containerId];
   if (loading) {
-    delete providerBaiduInitializations[containerId];
+    delete providerMapLoading[containerId];
     loading.runnerUpdates?.clear();
-    loading.realm.dispose();
+    loading.realm?.dispose();
+    loading.controller?.abort();
     if (loading.surface?.parentNode) loading.surface.parentNode.removeChild(loading.surface);
   }
   const instance = providerMapInstances[containerId];
@@ -751,7 +761,7 @@ function clearProviderRunnerMarkers(containerId) {
       delete providerRunnerMarkers[markerKey];
     }
   });
-  const pendingUpdates = providerBaiduInitializations[containerId]?.runnerUpdates;
+  const pendingUpdates = providerMapLoading[containerId]?.runnerUpdates;
   if (pendingUpdates instanceof Map) {
     Array.from(pendingUpdates.keys()).forEach((markerKey) => {
       if (markerKey === containerId || markerKey.startsWith(`${containerId}:`)) pendingUpdates.delete(markerKey);
@@ -780,6 +790,10 @@ function removeProviderOverlayFromMap(containerId, overlay) {
   const provider = providerMapInstanceProviders[containerId] || getActiveMapProvider();
   const instance = providerMapInstances[containerId];
   try {
+    if (provider === "local_map" && typeof overlay.remove === "function") {
+      overlay.remove();
+      return true;
+    }
     if (provider === "tencent") {
       const sdk = window.TMap || {};
       if ((typeof sdk.MultiPolyline === "function" && overlay instanceof sdk.MultiPolyline) ||
@@ -853,6 +867,10 @@ function applyProviderMapDefaultView(containerId) {
   const providerCenter = convertGcj02ToProviderCoordinates(provider, center);
   const zoom = getProviderMapDefaultZoom(provider);
   try {
+    if (provider === "local_map") {
+      instance.resetCampusView();
+      return true;
+    }
     if (provider === "tencent" && window.TMap) {
       if (typeof instance.setViewMode === "function") instance.setViewMode("3D");
       if (typeof instance.setCenter === "function") {
@@ -1150,7 +1168,7 @@ function bindProviderMapZoomSync(containerId, provider, instance) {
   if (!instance) return false;
   if (!instance.__providerZoomSyncBound) {
     const eventNames =
-      provider === "tencent"
+      provider === "tencent" || provider === "local_map"
         ? ["zoom", "zoomend"]
         : provider === "baidu"
           ? ["zoomend", "zoom_changed"]
@@ -1400,12 +1418,12 @@ function applyTianDiTuDefaultMapType(instance) {
 function rememberProviderMapRedraw(containerId, redraw) {
   const instance = getProviderMapInstance(containerId);
   if (instance) instance.__providerRedraw = redraw;
-  else if (providerBaiduInitializations[containerId]) providerBaiduInitializations[containerId].redraw = redraw;
+  else if (providerMapLoading[containerId]) providerMapLoading[containerId].redraw = redraw;
   else if (providerMapDestructions[containerId]?.pending) providerMapDestructions[containerId].redraw = redraw;
 }
 
 function rememberProviderRunnerUpdate(containerId, coord, options = {}) {
-  const loading = providerBaiduInitializations[containerId];
+  const loading = providerMapLoading[containerId];
   if (loading) {
     if (!(loading.runnerUpdates instanceof Map)) loading.runnerUpdates = new Map();
     const markerKey = String(options.markerKey || containerId);
@@ -1416,7 +1434,7 @@ function rememberProviderRunnerUpdate(containerId, coord, options = {}) {
 }
 
 function clearPendingProviderRunnerUpdate(containerId, markerKey) {
-  const updates = providerBaiduInitializations[containerId]?.runnerUpdates;
+  const updates = providerMapLoading[containerId]?.runnerUpdates;
   return updates instanceof Map ? updates.delete(String(markerKey || containerId)) : false;
 }
 
@@ -1472,7 +1490,7 @@ function finishProviderMapInitialization(containerId, provider, instance) {
 }
 
 function isCurrentBaiduInitialization(containerId, request) {
-  return providerBaiduInitializations[containerId] === request &&
+  return providerMapLoading[containerId] === request &&
     document.getElementById(containerId) === request.container &&
     getProviderMapSurface(containerId) === request.surface &&
     request.surface.parentNode === request.container && getActiveMapProvider() === "baidu" &&
@@ -1484,9 +1502,9 @@ function initializeBaiduProviderMap(containerId, isMultiAccount, container, surf
   if (typeof factory !== "function") throw new Error("百度地图隔离运行时未加载");
   const realm = factory({ host: surface, key: getMapProviderKeyRequirement("baidu").value });
   const request = { realm, container, surface, session: typeof sessionUUID === "undefined" ? null : sessionUUID };
-  providerBaiduInitializations[containerId] = request;
+  providerMapLoading[containerId] = request;
   const releaseStale = () => {
-    if (providerBaiduInitializations[containerId] === request) delete providerBaiduInitializations[containerId];
+    if (providerMapLoading[containerId] === request) delete providerMapLoading[containerId];
     realm.dispose();
   };
   const complete = () => {
@@ -1516,7 +1534,7 @@ function initializeBaiduProviderMap(containerId, isMultiAccount, container, surf
       request.redraw();
     }
     request.runnerUpdates?.forEach(({ coord, options }) => updateProviderRunnerMarker(containerId, coord, options));
-    delete providerBaiduInitializations[containerId];
+    delete providerMapLoading[containerId];
     return true;
   };
   const fail = (error) => {
@@ -1524,7 +1542,7 @@ function initializeBaiduProviderMap(containerId, isMultiAccount, container, surf
       releaseStale();
       return false;
     }
-    delete providerBaiduInitializations[containerId];
+    delete providerMapLoading[containerId];
     logMessage_Error("[地图] 百度地图前端地图初始化失败:", error);
     if (providerMapInstances[containerId]?.__baiduRealm === realm) destroyProviderMapInstance(containerId);
     else realm.dispose();
@@ -1540,6 +1558,42 @@ function initializeBaiduProviderMap(containerId, isMultiAccount, container, surf
   return false;
 }
 
+function initializeLocalCampusMap(containerId, isMultiAccount, container, surface) {
+  const controller = new AbortController();
+  const request = { controller, container, surface, session: typeof sessionUUID === "undefined" ? null : sessionUUID };
+  providerMapLoading[containerId] = request;
+  const isCurrent = () => providerMapLoading[containerId] === request &&
+    getActiveMapProvider() === "local_map" && document.getElementById(containerId) === container &&
+    surface.parentNode === container && (typeof sessionUUID === "undefined" ? null : sessionUUID) === request.session;
+  request.promise = Promise.resolve().then(() =>
+    window.ZXLocalCampusMap.create(surface, { signal: controller.signal })
+  ).then((instance) => {
+    if (!isCurrent()) {
+      instance.remove();
+      return false;
+    }
+    registerProviderMapInstance(containerId, instance, "local_map", container, surface);
+    finishProviderMapInitialization(containerId, "local_map", instance);
+    if (typeof request.redraw === "function") {
+      instance.__providerRedraw = request.redraw;
+      request.redraw();
+    }
+    request.runnerUpdates?.forEach(({ coord, options }) => updateProviderRunnerMarker(containerId, coord, options));
+    return true;
+  }).catch((error) => {
+    if (isCurrent()) {
+      delete providerMapLoading[containerId];
+      destroyProviderMapInstance(containerId);
+      logMessage_Error("[地图] 校园离线地图初始化失败:", error);
+      renderMapProviderFrontendPlaceholder(containerId, isMultiAccount, "请检查校园离线地图服务是否已启动。");
+    }
+    return false;
+  }).finally(() => {
+    if (providerMapLoading[containerId] === request) delete providerMapLoading[containerId];
+  });
+  return false;
+}
+
 function initProviderMap(containerId, isMultiAccount = false) {
   applyPendingMapProviderConfigIfAny();
   const provider = getActiveMapProvider();
@@ -1551,8 +1605,10 @@ function initProviderMap(containerId, isMultiAccount = false) {
   if (!container) {
     return false;
   }
-  const loading = providerBaiduInitializations[containerId];
+  const loading = providerMapLoading[containerId];
   if (loading) {
+    if (provider === "local_map" && loading.controller && loading.container === container &&
+        loading.surface.parentNode === container && loading.session === (typeof sessionUUID === "undefined" ? null : sessionUUID)) return false;
     if (isCurrentBaiduInitialization(containerId, loading)) return false;
     destroyProviderMapInstance(containerId);
   }
@@ -1633,6 +1689,10 @@ function initProviderMap(containerId, isMultiAccount = false) {
       if (!instance) {
         return initializeBaiduProviderMap(containerId, isMultiAccount, container, surface);
       }
+    } else if (provider === "local_map") {
+      if (!instance) return initializeLocalCampusMap(containerId, isMultiAccount, container, surface);
+      instance.resize();
+      return true;
     } else {
       throw new Error(`不支持的地图提供方: ${provider}`);
     }

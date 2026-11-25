@@ -12,10 +12,11 @@ import tempfile
 import threading
 
 from flask import jsonify, make_response, request, send_from_directory
+from local_map_provider import plan_local_map_route
 
 from payment_crypto import RsaSigner
 from config_adapter import JsonConfigAdapter
-from map_runtime_origin import describe_backend_page_origin_candidates, get_map_config_selection, get_map_config_settings, get_tile_cache_settings, merge_map_settings, resolve_backend_page_origin
+from map_runtime_origin import LOCAL_MAP_DEFAULT_SERVICE_URL, describe_backend_page_origin_candidates, get_map_config_selection, get_map_config_settings, get_tile_cache_settings, merge_map_settings, resolve_backend_page_origin
 from log_archiving import ArchiveManager, move_no_replace
 from auto_attendance_config import (
     _disable_auto_attendance,
@@ -611,6 +612,7 @@ MAP_PROVIDER_DISPLAY_NAMES = {
     "tencent": "腾讯地图",
     "tianditu": "天地图",
     "baidu": "百度地图",
+    "local_map": "校园离线地图",
 }
 
 MAP_PROVIDER_KEY_FIELDS = {
@@ -859,6 +861,13 @@ def _get_map_provider_runtime_config(config=None, provider=None, scope="backend"
             "coordinate_system": "bd09",
             "business_coordinate_system": "gcj02",
         },
+        "local_map": {
+            "provider": "local_map",
+            "display_name": MAP_PROVIDER_DISPLAY_NAMES["local_map"],
+            "service_url": selected.get("service_url", LOCAL_MAP_DEFAULT_SERVICE_URL),
+            "coordinate_system": "gcj02",
+            "business_coordinate_system": "gcj02",
+        },
     }
     result = provider_configs[provider]
     if runtime_config.has_option("Map", "configs"):
@@ -886,10 +895,16 @@ def _get_map_provider_frontend_config(config=None):
         "tianditu": _get_map_provider_runtime_config(runtime_config, provider="tianditu", scope="frontend"),
         "baidu": _get_map_provider_runtime_config(runtime_config, provider="baidu", scope="frontend"),
     }
+    if map_provider == "local_map":
+        local_config = _get_map_provider_runtime_config(runtime_config, provider="local_map", scope="frontend")
+        local_config.pop("service_url")
+        map_providers["local_map"] = local_config
     if runtime_config.has_option("Map", "configs"):
         for provider, provider_config in map_providers.items():
             if provider != map_provider:
-                provider_config.pop(MAP_PROVIDER_KEY_FIELDS[provider], None)
+                secret_field = MAP_PROVIDER_KEY_FIELDS.get(provider)
+                if secret_field:
+                    provider_config.pop(secret_field, None)
                 provider_config.pop("security_js_code", None)
                 provider_config.pop("config_id", None)
     for provider_config in map_providers.values():
@@ -913,6 +928,7 @@ def _strip_map_provider_secret_fields(map_providers):
             entry.pop(secret_field, None)
         entry.pop("security_js_code", None)
         entry.pop("backend_page_origin", None)
+        entry.pop("service_url", None)
         sanitized[provider] = entry
     return sanitized
 
@@ -979,6 +995,14 @@ def _build_map_provider_key_bundle(
     requested_provider = _normalize_map_provider(
         provider or _get_active_map_provider()
     )
+    if requested_provider == "local_map":
+        return {
+            "provider": requested_provider,
+            "runtime_version": "",
+            "runtime_script": "",
+            "providers": {},
+            "available": False,
+        }
     requested_key_field = MAP_PROVIDER_KEY_FIELDS[requested_provider]
     try:
         if runtime_context is None and allow_global_fallback:
@@ -1054,14 +1078,15 @@ def _build_public_map_provider_frontend_payload(
         else required_provider or frontend_config.get("map_provider", "amap")
     )
     runtime_context = None
-    normalized_session_id, session_username, session_exists = (
-        _get_map_key_runtime_session_identity(session_id)
-    )
-    if session_exists:
-        runtime_context = _get_map_key_runtime_context_for_session(
-            session_id=normalized_session_id,
-            username=session_username,
+    if provider != "local_map":
+        normalized_session_id, session_username, session_exists = (
+            _get_map_key_runtime_session_identity(session_id)
         )
+        if session_exists:
+            runtime_context = _get_map_key_runtime_context_for_session(
+                session_id=normalized_session_id,
+                username=session_username,
+            )
     return {
         "map_provider": frontend_config.get("map_provider", "amap"),
         "map_providers": _strip_map_provider_secret_fields(map_providers),
@@ -3020,6 +3045,7 @@ def _plan_route_path_with_provider_runtime(
     runtime_config=None,
     guard_label="MapRoutePlanning",
     app_base_url=None,
+    recommended_coords=None,
 ):
     diagnostic_id = new_diagnostic_id()
     started = time.monotonic()
@@ -3049,40 +3075,44 @@ def _plan_route_path_with_provider_runtime(
         actual_mode = provider_plan.get("actual_mode") or "walking"
         log_entry()
         entry_logged = True
-        pool = globals().get("chrome_pool")
-        if not pool:
-            raise RuntimeError("Chrome浏览器池不可用，无法进行路径规划。")
-        # The worker creates the context inside the same queued command and deadline.
-        page = None
         diagnostic_context = {
             "diagnostic_id": diagnostic_id, "provider": provider,
             "guard_label": guard_label, "actual_mode": actual_mode, "waypoint_count": waypoint_count,
             "sensitive_values": sensitive_values,
         }
-        runtime_page_origin, origin_source = resolve_backend_page_origin(runtime_config, provider, app_base_url)
-        diagnostic_context.update({"runtime_page_origin": runtime_page_origin, "origin_source": origin_source})
-        try:
-            origin_candidates = describe_backend_page_origin_candidates(runtime_config, provider, app_base_url)
-        except Exception:
-            origin_candidates = [{"source": "unavailable", "configured": False, "origin": ""}]
-        origin_trace = {
-            "selected_source": origin_source,
-            "selected_origin": runtime_page_origin,
-            "candidates": origin_candidates,
-        }
-        logging.info("[路径诊断] phase=origin_resolution id=%s provider=%s trace=%s",
-                     diagnostic_id, _format_log_diagnostic(provider, 80, sensitive_values),
-                     _format_log_diagnostic(origin_trace, 4096, sensitive_values))
-        logging.info("[路径诊断] id=%s provider=%s origin=%s origin_source=%s",
-                     diagnostic_id, provider, runtime_page_origin, origin_source)
-        execution_plan = dict(provider_plan)
-        execution_plan["_diagnostic_context"] = diagnostic_context
-        execution_plan["_runtime_page_origin"] = runtime_page_origin
-        execution_plan["_deadline_epoch_ms"] = time.time() * 1000 + max(0, 45000 - (time.monotonic() - started) * 1000)
-        logging.info("[路径诊断] phase=dispatch id=%s provider=%s total_budget_ms=45000 setup_elapsed_ms=%s remaining_ms=%s",
-                     diagnostic_id, provider, round((time.monotonic() - started) * 1000),
-                     max(0, round(execution_plan["_deadline_epoch_ms"] - time.time() * 1000)))
-        if provider == "amap":
+        if provider != "local_map":
+            if not globals().get("chrome_pool"):
+                raise RuntimeError("Chrome浏览器池不可用，无法进行路径规划。")
+            # The worker creates the context inside the same queued command and deadline.
+            page = None
+            runtime_page_origin, origin_source = resolve_backend_page_origin(runtime_config, provider, app_base_url)
+            diagnostic_context.update({"runtime_page_origin": runtime_page_origin, "origin_source": origin_source})
+            try:
+                origin_candidates = describe_backend_page_origin_candidates(runtime_config, provider, app_base_url)
+            except Exception:
+                origin_candidates = [{"source": "unavailable", "configured": False, "origin": ""}]
+            origin_trace = {
+                "selected_source": origin_source,
+                "selected_origin": runtime_page_origin,
+                "candidates": origin_candidates,
+            }
+            logging.info("[路径诊断] phase=origin_resolution id=%s provider=%s trace=%s",
+                         diagnostic_id, _format_log_diagnostic(provider, 80, sensitive_values),
+                         _format_log_diagnostic(origin_trace, 4096, sensitive_values))
+            logging.info("[路径诊断] id=%s provider=%s origin=%s origin_source=%s",
+                         diagnostic_id, provider, runtime_page_origin, origin_source)
+            execution_plan = dict(provider_plan)
+            execution_plan["_diagnostic_context"] = diagnostic_context
+            execution_plan["_runtime_page_origin"] = runtime_page_origin
+            execution_plan["_deadline_epoch_ms"] = time.time() * 1000 + max(0, 45000 - (time.monotonic() - started) * 1000)
+            logging.info("[路径诊断] phase=dispatch id=%s provider=%s total_budget_ms=45000 setup_elapsed_ms=%s remaining_ms=%s",
+                         diagnostic_id, provider, round((time.monotonic() - started) * 1000),
+                         max(0, round(execution_plan["_deadline_epoch_ms"] - time.time() * 1000)))
+        if provider == "local_map":
+            origin = provider_plan["provider_config"]["service_url"]
+            sensitive_values.append(origin)
+            result = plan_local_map_route(origin, waypoints, recommended_coords)
+        elif provider == "amap":
             result = _plan_route_path_with_amap_runtime(session_id, page, waypoints, execution_plan, python_params)
         elif provider == "tencent":
             result = _plan_route_path_with_tencent_runtime(session_id, page, waypoints, execution_plan, python_params)
@@ -3123,7 +3153,8 @@ def _plan_route_path_with_provider_runtime(
     diagnostic = result.get("diagnostic")
     diagnostic = dict(diagnostic) if isinstance(diagnostic, dict) else ({"detail": sanitize_diagnostic(diagnostic, 1200, sensitive_values)} if diagnostic is not None else {})
     diagnostic.update({"guard_label": guard_label, "actual_mode": actual_mode, "waypoint_count": waypoint_count})
-    api_type = {"amap": "amap_jsapi", "tencent": "tencent_webservice", "tianditu": "tianditu_drive", "baidu": "baidu_jsapi_route"}.get(provider, "unknown")
+    api_type = {"amap": "amap_jsapi", "tencent": "tencent_webservice", "tianditu": "tianditu_drive",
+                "baidu": "baidu_jsapi_route", "local_map": "local_map_route"}.get(provider, "unknown")
     diagnostic.setdefault("api_type", api_type)
     diagnostic.setdefault("stage", "route")
     if result.get("error"):

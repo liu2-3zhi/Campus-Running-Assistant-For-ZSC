@@ -1041,6 +1041,20 @@ function normalizeBackendPageOrigin(value) {
   }
 }
 
+const localMapDefaultServiceUrl = "http://127.0.0.1:8765";
+
+function normalizeLocalMapServiceUrl(value) {
+  const raw = String(value ?? "");
+  const input = raw.trim();
+  try {
+    const origin = normalizeBackendPageOrigin(raw);
+    if (input && !/^https?:\/\/[^/?#]+\/?$/i.test(input)) throw new Error();
+    return origin || localMapDefaultServiceUrl;
+  } catch {
+    throw new Error("校园离线地图服务地址必须为不含账号密码、路径、查询参数或片段的 HTTP/HTTPS 来源");
+  }
+}
+
 function useCurrentMapPageOrigin(button) {
   const input = button.parentElement.querySelector("[data-map-origin]");
   if (input) input.value = normalizeBackendPageOrigin(window.location.origin);
@@ -1058,6 +1072,7 @@ function getMapConfigProviderDetails() {
     tencent: { label: "腾讯地图", key: "map_key", keyLabel: "Key" },
     tianditu: { label: "天地图", key: "token", keyLabel: "Token" },
     baidu: { label: "百度地图", key: "ak", keyLabel: "AK" },
+    local_map: { label: "校园离线地图", key: "service_url", keyLabel: "地图服务地址", type: "url" },
   };
 }
 
@@ -1066,7 +1081,7 @@ function normalizeLegacyMapConfigSettings(map = {}) {
   const legacyKeys = { amap: "amap_js_key", tencent: "tencent_map_key", tianditu: "tianditu_token", baidu: "baidu_map_ak" };
   const configs = Array.isArray(map.configs) && map.configs.length
     ? map.configs.map((entry) => ({ ...entry }))
-    : Object.entries(providers).map(([provider, details]) => ({
+    : Object.entries(providers).filter(([provider]) => provider !== "local_map").map(([provider, details]) => ({
       id: `legacy-${provider}`, name: details.label, provider,
       [details.key]: map.providers?.[provider]?.[details.key] ?? map[legacyKeys[provider]] ?? "",
       ...(provider === "amap" ? { security_js_code: map.providers?.amap?.security_js_code || "" } : {}),
@@ -1094,9 +1109,10 @@ function renderMapConfigCard(config) {
       <button type="button" onclick="moveMapConfigCard(this,1)" data-map-move-down class="px-2 py-2 border border-slate-200 rounded-lg text-xs disabled:opacity-40" aria-label="下移配置">下移</button>
       <button type="button" onclick="removeMapConfigCard(this)" data-map-remove class="px-2 py-2 border border-red-100 text-red-600 rounded-lg text-xs disabled:opacity-40">删除</button>
     </div>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field("name", "配置名称")}${field(details.key, details.keyLabel, "password")}${config.provider === "amap" ? field("security_js_code", "安全密钥（选填）", "password") : ""}</div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field("name", "配置名称")}${field(details.key, details.keyLabel, details.type || "password")}${config.provider === "amap" ? field("security_js_code", "安全密钥（选填）", "password") : ""}</div>
+    ${config.provider === "local_map" ? "" : `
     <label class="block text-sm text-slate-700 mt-3"><span class="block mb-1 font-medium">地图页面来源（选填）</span><div class="flex flex-col sm:flex-row gap-2"><input type="text" data-map-config-field="backend_page_origin" data-map-origin value="${escape(config.backend_page_origin)}" placeholder="https://example.com" onblur="validateMapConfigOrigin(this)" class="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white"><button type="button" onclick="useCurrentMapPageOrigin(this)" class="px-3 py-2 border border-slate-200 rounded-lg whitespace-nowrap">使用当前页面来源</button></div></label>
-    <p class="text-xs text-slate-500 mt-2">留空继承全局来源；前端直连地图时使用当前页面来源。</p>
+    <p class="text-xs text-slate-500 mt-2">留空继承全局来源；前端直连地图时使用当前页面来源。</p>`}
   </article>`;
 }
 
@@ -1154,7 +1170,7 @@ function addMapConfigCard(button) {
   if (!details) return;
   const count = Array.from(editor.querySelectorAll("[data-map-config-card]")).filter((card) => card.dataset.provider === provider).length;
   const id = `map-${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)}`;
-  const config = { id, provider, name: `${details.label}${count + 1}`, [details.key]: "", security_js_code: "", backend_page_origin: "" };
+  const config = { id, provider, name: `${details.label}${count + 1}`, [details.key]: provider === "local_map" ? localMapDefaultServiceUrl : "", security_js_code: "", backend_page_origin: "" };
   editor.querySelector("[data-map-config-list]").insertAdjacentHTML("beforeend", renderMapConfigCard(config));
   syncMapConfigCardOptions(editor);
   editor.querySelector("[data-map-config-list]").lastElementChild.querySelector('[data-map-config-field="name"]').focus();
@@ -1181,11 +1197,16 @@ function readMapConfigCards(container) {
   const configs = Array.from(editor.querySelectorAll("[data-map-config-card]")).map((card) => {
     const config = { id: card.dataset.configId, provider: card.dataset.provider };
     card.querySelectorAll("[data-map-config-field]").forEach((input) => {
-      config[input.dataset.mapConfigField] = input.value.trim();
+      const name = input.dataset.mapConfigField;
+      config[name] = name === "service_url" ? input.value : input.value.trim();
     });
     if (!config.name) throw new Error("请填写地图配置名称");
     if (config.name.length > 100) throw new Error("地图配置名称不能超过 100 字符");
-    config.backend_page_origin = normalizeBackendPageOrigin(config.backend_page_origin);
+    if (config.provider === "local_map") {
+      config.service_url = normalizeLocalMapServiceUrl(config.service_url);
+    } else {
+      config.backend_page_origin = normalizeBackendPageOrigin(config.backend_page_origin);
+    }
     return config;
   });
   return { configs, frontend_config_id: editor.querySelector('[data-map-config-select="frontend"]').value, backend_config_id: editor.querySelector('[data-map-config-select="backend"]').value };

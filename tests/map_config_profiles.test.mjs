@@ -30,6 +30,23 @@ test('same-provider profiles keep independent credentials and selected IDs after
   assert.equal(second.name, '高德地图 2')
 })
 
+test('local profiles save a service origin independently from the frontend choice', () => {
+  const map = normalizeMapConfigProfiles({})
+  const local = createMapConfigProfile('local_map')
+  map.configs.push(local)
+  map.backend_config_id = local.id
+  assert.equal(local.service_url, 'http://127.0.0.1:8765')
+  local.service_url = 'https://Maps.Test:8443/'
+  const saved = serializeMapConfigProfiles(map)
+  assert.equal(saved.frontend_config_id, 'legacy-amap')
+  assert.equal(saved.backend_config_id, local.id)
+  assert.deepEqual(saved.configs.at(-1), {
+    id: local.id, name: local.name, provider: 'local_map', service_url: 'https://maps.test:8443',
+  })
+  local.service_url = 'https://maps.test/api/'
+  assert.throws(() => serializeMapConfigProfiles(map), /校园离线地图服务地址/)
+})
+
 test('removing the selected profile redirects only affected selections to the first remaining card', () => {
   const map = normalizeMapConfigProfiles({ provider: 'amap' })
   map.backend_config_id = 'legacy-tencent'

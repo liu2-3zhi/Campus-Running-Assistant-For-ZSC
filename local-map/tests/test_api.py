@@ -70,6 +70,20 @@ def test_manifest_features_and_tiles_are_local(client):
     assert client.get("/healthz").status_code == 200
 
 
+def test_embedded_map_sdk_serves_only_allowlisted_assets(data_root, monkeypatch, tmp_path):
+    monkeypatch.setattr("campus_map.api.PROJECT_ROOT", tmp_path)
+    sdk_root = tmp_path / "web" / "dist" / "static" / "vendor" / "maplibre"
+    sdk_root.mkdir(parents=True)
+    (sdk_root / "maplibre-gl-csp.js").write_bytes(b"window.maplibregl = {};")
+    (sdk_root / "other.js").write_bytes(b"")
+    with TestClient(create_app(data_root)) as client:
+        response = client.get("/api/v1/sdk/maplibre-gl-csp.js")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/javascript")
+        assert response.content == b"window.maplibregl = {};"
+        assert client.get("/api/v1/sdk/other.js").status_code == 404
+
+
 def test_routes_and_native_endpoint(client):
     response = client.post("/api/v1/routes", json={"start": [113.383, 22.529], "end": [113.385, 22.531], "waypoints": [[113.384, 22.53]]})
     assert response.status_code == 200

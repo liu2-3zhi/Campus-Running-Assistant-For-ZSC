@@ -53,6 +53,7 @@
       "/scripts/legacy-mobile-multi.js",
       "/scripts/legacy-watermark.js",
       "/scripts/legacy-app-runtime.js",
+      "/scripts/local-campus-map.js",
       "/scripts/legacy-map-runtime.js",
       "/scripts/legacy-map-render.js",
       "/scripts/legacy-multi-accounts.js",

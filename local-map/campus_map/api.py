@@ -301,6 +301,23 @@ def create_app(data_root: Path | None = None):
     def map_metadata():
         return release().manifest
 
+    @app.get("/api/v1/sdk/{filename}", include_in_schema=False)
+    def embedded_map_sdk(filename: str):
+        media_types = {
+            "maplibre-gl-csp.js": "text/javascript",
+            "maplibre-gl-csp-worker.js": "text/javascript",
+            "maplibre-gl.css": "text/css",
+            "LICENSE.txt": "text/plain",
+        }
+        if filename not in media_types:
+            raise HTTPException(status_code=404, detail="Unknown map SDK asset")
+        path = web_root / "static" / "vendor" / "maplibre" / filename
+        if not path.is_file():
+            path = web_root.parent / "node_modules" / "maplibre-gl" / "dist" / filename
+        if not path.is_file():
+            raise DataUnavailableError("MapLibre SDK assets are missing; build the local-map web app.")
+        return FileResponse(path, media_type=media_types[filename])
+
 
     @app.get("/api/v1/map-style")
     def map_style():

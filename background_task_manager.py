@@ -489,6 +489,7 @@ class BackgroundTaskManager:
                                 python_params=api_instance.params,
                                 guard_label="BackgroundTaskPathPlanning",
                                 app_base_url=getattr(api_instance, "_web_app_base_url", None),
+                                recommended_coords=getattr(run_data, "recommended_coords", []),
                             )
                             for notice in path_coords.get("notices", []):
                                 logging.info(notice)

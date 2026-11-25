@@ -25,6 +25,26 @@ export default defineConfig({
   base: getBaseUrl(),
   plugins: [
     react(),
+    {
+      name: 'embedded-map-sdk',
+      apply: 'build',
+      generateBundle() {
+        for (const name of [
+          'maplibre-gl-csp.js',
+          'maplibre-gl-csp-worker.js',
+          'maplibre-gl.css',
+          'LICENSE.txt',
+        ]) {
+          this.emitFile({
+            type: 'asset',
+            fileName: `static/vendor/maplibre/${name}`,
+            source: readFileSync(
+              path.resolve(__dirname, 'node_modules/maplibre-gl/dist', name)
+            ),
+          });
+        }
+      },
+    },
     svgr({
       include: '**/*.svg',
       svgrOptions: { exportType: 'named', namedExport: 'ReactComponent' },

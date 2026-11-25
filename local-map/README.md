@@ -2,7 +2,7 @@
 
 独立的校园地图、步行路线规划 API 和 Web 测试台。使用真实 OpenStreetMap
 数据，路线引擎复用 Valhalla，使用 TileServer GL 在本地渲染 OSM 矢量数据，Web
-基于 Valhalla 官方 Web App 适配。所有代码和数据均限定在本目录，未接入主程序。
+基于 Valhalla 官方 Web App 适配。可以独立使用，也可以加入跑步助手的地图配置。
 
 ## 启动
 
@@ -53,6 +53,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 各命令均支持 `--data-dir`；`serve` 另支持 `--host` 和 `--port`。
 修改本地道路可使用 JOSM 编辑 OSM 文件，再导入重建。准备或构建失败不会替换
 已发布的数据版本；`data/current.json` 指向校验通过的完整版本。
+
+## 接入跑步助手
+
+在跑步助手的「系统配置 → 地图配置」中添加「校园离线地图」，将服务地址填为主程序能访问的
+HTTP 或 HTTPS 来源。服务监听默认端口时使用 `http://127.0.0.1:8765`，使用其他端口时填启动脚本输出的地址。
+可分别选择前端底图和后端路径规划使用的配置，无需地图 Key。
+
+底图资源由主程序同源转发。选择校园离线底图时，`local-map` 服务须提供依赖锁定版本的
+MapLibre 资源。后端任务规划使用原始有序 GCJ-02 打卡点和任务附带的推荐小路，保留重复打卡点。
 
 ## Web 使用
 

@@ -69,6 +69,47 @@ def test_independent_profiles_resolve_credentials_and_origins():
     assert get_map_config_selection(config)["js_key"] == "back-key"
 
 
+def test_local_profiles_keep_service_urls_private_and_skip_key_runtime(monkeypatch):
+    import main
+
+    config = adapter({"Map": {
+        "configs": [
+            {"id": "local-front", "name": "Campus browser", "provider": "local_map",
+             "js_key": "irrelevant"},
+            {"id": "local-back", "name": "Campus routes", "provider": "local_map",
+             "service_url": "https://Campus.Internal:9443/"},
+        ],
+        "frontend_config_id": "local-front",
+        "backend_config_id": "local-back",
+    }})
+    assert get_map_config_selection(config, "frontend")["service_url"] == "http://127.0.0.1:8765"
+    backend = main._get_map_provider_runtime_config(config, scope="backend")
+    assert backend["service_url"] == "https://campus.internal:9443"
+    assert backend["coordinate_system"] == "gcj02"
+    assert "js_key" not in get_map_config_selection(config, "frontend")
+    runtime = Mock(side_effect=AssertionError("key runtime must not initialize"))
+    monkeypatch.setattr(main, "_get_map_key_runtime_session_identity", runtime)
+    public = main._build_public_map_provider_frontend_payload(config, session_id="local-session")
+    assert public["map_provider"] == "local_map"
+    assert public["map_config_id"] == "local-front"
+    assert public["map_provider_key_bundle"]["providers"] == {}
+    assert "service_url" not in public["map_providers"]["local_map"]
+    assert "campus.internal" not in json.dumps(public)
+
+
+@pytest.mark.parametrize("url", [
+    "file:///maps", "https://user:secret@maps.test", "https://maps.test/api", "https://maps.test/?q=1",
+    "https://maps.test/#tag", {"host": "https://maps.test"},
+])
+def test_local_profile_service_url_requires_an_http_origin(url):
+    settings = get_map_config_settings(profiles_config())
+    rows = settings["configs"] + [
+        {"id": "local-one", "name": "Campus", "provider": "local_map", "service_url": url},
+    ]
+    with pytest.raises(ValueError, match="校园离线地图服务地址"):
+        merge_map_settings(profiles_config(), {"configs": rows})
+
+
 def test_order_and_names_do_not_change_profile_bindings():
     config = profiles_config()
     rows = list(reversed(config.get("Map", "configs")))
