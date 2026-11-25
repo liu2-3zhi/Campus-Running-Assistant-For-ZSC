@@ -2851,18 +2851,8 @@ def _align_waypoints_to_route(route_points, waypoints):
 
 
 def _complete_route_path_with_waypoint_endpoints(path, waypoints):
-    """把地图服务「吸附」后偏掉的打卡点补回规划路径。
-
-    关键约束：**顺序保持的单调对齐**。历史实现在每一轮都从路径末尾做全局
-    最近邻匹配，后面的打卡点被依次追加到路径尾部，等于用直线把打卡点串起来
-    （实测 115 点主路线被补成 124 点，出现 285m/277m/214m 的直线段）。
-
-    现在的做法：
-    1. 先用动态规划把打卡点按顺序单调对齐到路线点（最小化总偏移）；
-    2. 对齐误差超过阈值的中间打卡点，在对应位置插入，保留既有道路点；
-    3. 首尾打卡点只在两端补齐，不在道路几何内部再次插入，避免折返。
-    """
-    if not isinstance(path, list) or not isinstance(waypoints, list) or len(waypoints) < 2:
+    """在道路首尾缺点时直线接回原始打卡点，兼容缺少中间点的旧拼接结果。"""
+    if not isinstance(path, list) or not isinstance(waypoints, (list, tuple)) or len(waypoints) < 2:
         return path
     normalized_waypoints = [
         _normalize_provider_route_point(point)
@@ -2877,7 +2867,14 @@ def _complete_route_path_with_waypoint_endpoints(path, waypoints):
     if not route_points:
         return normalized_waypoints
 
-    # 吸附误差量级：超过该距离才认为打卡点不在规划路径上，需要替换
+    # 正常的分段执行结果已按顺序补齐各段端点。
+    start, end = normalized_waypoints[0], normalized_waypoints[-1]
+    remaining = iter(route_points)
+    if (route_points[0] == start and route_points[-1] == end
+            and all(waypoint in remaining for waypoint in normalized_waypoints)):
+        return route_points
+
+    # 旧的平坦几何没有分段边界，按单调对齐处理缺失的中间打卡点。
     snap_tolerance_m = 30.0
     tolerance_sq = snap_tolerance_m * snap_tolerance_m
 
@@ -2891,18 +2888,8 @@ def _complete_route_path_with_waypoint_endpoints(path, waypoints):
         return dx * dx + dy * dy
 
     aligned = _align_waypoints_to_route(route_points, normalized_waypoints)
-    if aligned is None:
-        completed_path = list(route_points)
-        first = _normalize_provider_route_point(completed_path[0])
-        if not _route_points_are_close(first, normalized_waypoints[0]):
-            completed_path.insert(0, normalized_waypoints[0])
-        last = _normalize_provider_route_point(completed_path[-1])
-        if not _route_points_are_close(last, normalized_waypoints[-1]):
-            completed_path.append(normalized_waypoints[-1])
-        return completed_path
-
     replacements = {}
-    for waypoint_index, route_index in enumerate(aligned):
+    for waypoint_index, route_index in enumerate(aligned or []):
         if waypoint_index in (0, len(normalized_waypoints) - 1):
             continue
         waypoint = normalized_waypoints[waypoint_index]
@@ -2921,13 +2908,10 @@ def _complete_route_path_with_waypoint_endpoints(path, waypoints):
             if not _route_points_are_close(completed_path[-1], waypoint):
                 completed_path.append(waypoint)
 
-    start = normalized_waypoints[0]
-    if not _route_points_are_close(completed_path[0], start):
+    if completed_path[0] != start:
         completed_path.insert(0, start)
-    end = normalized_waypoints[-1]
-    if not _route_points_are_close(completed_path[-1], end):
+    if completed_path[-1] != end:
         completed_path.append(end)
-
     return completed_path
 
 
@@ -3119,10 +3103,8 @@ def _plan_route_path_with_provider_runtime(
             if not normalized_path:
                 result.pop("path", None)
                 result["error"] = "路径规划未返回可用路线几何（path 缺失、为空或坐标无效）。"
-            elif provider in ("tencent", "tianditu", "baidu"):
-                result["path"] = _complete_route_path_with_waypoint_endpoints(normalized_path, waypoints)
             else:
-                result["path"] = normalized_path
+                result["path"] = _complete_route_path_with_waypoint_endpoints(normalized_path, waypoints)
     except Exception as error:
         result = {"error": str(error)}
     if not entry_logged:

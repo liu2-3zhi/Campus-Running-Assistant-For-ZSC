@@ -5257,6 +5257,8 @@ class Api:
         if len(normalized_waypoints) < 2:
             return self._get_path_for_distance(base, cumulative, target_dist_m)
         dest = normalized_waypoints[-1]
+        base_steps = iter(base)
+        complete_base = base[-1] == dest and all(point in base_steps for point in normalized_waypoints)
         self._detour_base_length_m = total_len
 
         def _leg_distance(geometry):
@@ -5397,7 +5399,7 @@ class Api:
             added = self._path_length(final_path)
 
         # ---- 兜底：折返不可用或轮次用尽时，沿主路线整圈循环凑足距离 ----
-        if added + 1.0 < target_dist_m:
+        if not complete_base and added + 1.0 < target_dist_m:
             fill_cumulative = [0.0]
             for i in range(len(final_path) - 1):
                 fill_cumulative.append(
@@ -5413,8 +5415,41 @@ class Api:
                 final_path, fill_cumulative, target_dist_m
             )
 
-        # ---- 收尾：长度不超过 target_dist_m，且末点落在最后一个打卡点 ----
-        return self._finalize_detoured_path(final_path, target_dist_m, dest)
+        if complete_base and len(final_path) == turn_idx + 1:
+            return self._fill_distance_before_route_end(base, turn_idx, target_dist_m)
+
+        result = self._finalize_detoured_path(final_path, target_dist_m, dest)
+        if not complete_base:
+            return result
+        # 预算裁剪可能丢掉最后一段或尾部打卡点。保留完整主路线，沿已有道路补距。
+        result_steps = iter(result)
+        if (
+            result[-1] != dest
+            or self._path_length(result) > target_dist_m + 0.5
+            or not all(point in result_steps for point in normalized_waypoints)
+        ):
+            result = base
+        return self._fill_distance_before_route_end(result, turn_idx, target_dist_m)
+
+    def _fill_distance_before_route_end(self, path, turn_index, target_dist_m):
+        """Follow the existing road out and back, keeping the final approach intact."""
+        remaining = target_dist_m - self._path_length(path)
+        if remaining <= 0.5 or not 0 < turn_index < len(path):
+            return path
+
+        backtrack = path[turn_index::-1]
+        cumulative = self._route_cumulative(backtrack)
+        if cumulative[-1] <= 0:
+            return path
+        full_rounds, partial_round = divmod(remaining / 2, cumulative[-1])
+        round_trip = backtrack[1:] + backtrack[-2::-1]
+        filled = path[: turn_index + 1] + round_trip * int(full_rounds)
+        if partial_round > 0:
+            turn = self._point_at_cumulative(backtrack, cumulative, partial_round)
+            out_leg = backtrack[:bisect.bisect_left(cumulative, partial_round)] + [turn]
+            filled.extend(out_leg[1:] + out_leg[-2::-1])
+        filled.extend(path[turn_index + 1:])
+        return filled
 
     def _finalize_detoured_path(self, path, target_dist_m, dest):
         """收尾：长度不超过 ``target_dist_m``，且不低于主路线长度，末点尽量落在终点。"""
@@ -6043,14 +6078,18 @@ class Api:
         s, e = path[idx - 1], path[idx]
         return (s[0] + (e[0] - s[0]) * ratio, s[1] + (e[1] - s[1]) * ratio)
 
-    def auto_generate_path_with_api(self, api_path_coords, min_t_m, max_t_m, min_d_m, *, apply_result=True):
+    def auto_generate_path_with_api(
+        self, api_path_coords, min_t_m, max_t_m, min_d_m, *, apply_result=True, target_points=None
+    ):
         """接收地图供应商规划好的路径点，并生成模拟数据"""
         logging.info(
             f"API CALL: auto_generate_path_with_api with {len(api_path_coords)} points"
         )
-        if self.current_run_idx == -1:
-            return {"success": False, "message": "请先选择任务"}
-        run = self.all_run_data[self.current_run_idx]
+        if apply_result or target_points is None:
+            if self.current_run_idx == -1:
+                return {"success": False, "message": "请先选择任务"}
+            run = self.all_run_data[self.current_run_idx]
+            target_points = run.target_points
 
         self.log_and_notify_frontend("收到地图路径规划结果，正在生成模拟数据...")
         logging.info(
@@ -6079,7 +6118,7 @@ class Api:
 
         final_geo_path = self._build_route_path_with_random_detours(
             final_path_dedup,
-            run.target_points,
+            target_points,
             target_dist_m,
             session_id=getattr(self, "_web_session_id", None),
             python_params=self.params,
@@ -6497,6 +6536,7 @@ class Api:
                         p.get("max_time_m", 30),
                         p.get("min_dist_m", 2000),
                         apply_result=False,
+                        target_points=waypoints,
                     )
                     if not gen_resp.get("success"):
                         self._notify_route_planning_failure({**path_result, "error": gen_resp.get("message", "生成轨迹失败")}, execution_id=execution_id)

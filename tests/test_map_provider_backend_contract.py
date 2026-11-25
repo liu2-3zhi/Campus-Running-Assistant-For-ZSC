@@ -1353,36 +1353,28 @@ globalThis.fetch = async (url, options) => {
         self.assertEqual(result["provider"], "tianditu")
         self.assertEqual([], result["notices"])
 
-    def test_tencent_provider_runtime_completes_snapped_route_endpoints(self):
-        runtime_config = self._runtime_config_with_map("tencent", {
-            "tencent": {"map_key": "tencent-key"},
-        })
-
-        class ChromePoolStub:
-            def get_context(self, session_id):
-                return {"page": mock.Mock(on=mock.Mock())}
-
+    def test_provider_runtime_completes_snapped_route_endpoints(self):
+        start, end = (113.39, 22.52), (113.40, 22.53)
         snapped_path = [
-            {"lng": 113.391, "lat": 22.521},
-            {"lng": 113.399, "lat": 22.529},
+            {"lng": 113.3900005, "lat": 22.52},
+            {"lng": 113.39985, "lat": 22.529935},
         ]
-
-        def tencent_helper(session_id, page, waypoints, provider_plan, python_params):
-            return {"path": snapped_path.copy()}
-
-        with mock.patch.object(main_module, "chrome_pool", ChromePoolStub(), create=True), \
-             mock.patch.object(main_module, "_plan_route_path_with_tencent_runtime", side_effect=tencent_helper):
-            result = main_module._plan_route_path_with_provider_runtime(
-                "session-1",
-                [[113.39, 22.52], [113.40, 22.53]],
-                runtime_config=runtime_config,
-            )
-
-        self.assertEqual(result["provider"], "tencent")
-        self.assertEqual(result["path"][0], {"lng": 113.39, "lat": 22.52})
-        self.assertEqual(result["path"][1], snapped_path[0])
-        self.assertEqual(result["path"][-2], snapped_path[-1])
-        self.assertEqual(result["path"][-1], {"lng": 113.40, "lat": 22.53})
+        key_fields = {"amap": "js_key", "tencent": "map_key", "tianditu": "token", "baidu": "ak"}
+        for provider, key_field in key_fields.items():
+            runtime_config = self._runtime_config_with_map(provider, {provider: {key_field: "test-key"}})
+            helper = f"_plan_route_path_with_{provider}_runtime"
+            with self.subTest(provider=provider), \
+                 mock.patch.object(main_module, "chrome_pool", mock.Mock(), create=True), \
+                 mock.patch.object(main_module, helper, return_value={"path": snapped_path}):
+                result = main_module._plan_route_path_with_provider_runtime(
+                    "session-1", [start, end], runtime_config=runtime_config,
+                )
+                self.assertEqual(result["provider"], provider)
+                self.assertEqual(result["path"], [
+                    {"lng": start[0], "lat": start[1]},
+                    *snapped_path,
+                    {"lng": end[0], "lat": end[1]},
+                ])
 
     def test_tencent_provider_runtime_preserves_intermediate_waypoint_coordinates(self):
         runtime_config = self._runtime_config_with_map("tencent", {

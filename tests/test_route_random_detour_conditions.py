@@ -197,6 +197,31 @@ class TestRouteRandomDetourConditions(unittest.TestCase):
         self.assertLessEqual(_path_length(self.runtime, result), total + 400.0 + 0.5)
         self.assertGreater(_path_length(self.runtime, result), total)
 
+    def test_distance_budget_cannot_remove_the_final_checkpoint(self):
+        base = [(113.39 + i * 0.0001, 22.53) for i in range(60)]
+        waypoints = [base[index] for index in (0, 12, 25, 41, 54, 59)]
+        target = _path_length(self.runtime, base) + 10.0
+
+        with mock.patch.object(api_runtime.random, "choice", side_effect=api_runtime.random.Random(0).choice):
+            result = self._build(waypoints, base, target, _RoutePlannerStub())
+
+        self.assertEqual(result[-1], waypoints[-1])
+        self.assertAlmostEqual(_path_length(self.runtime, result), target, delta=0.5)
+
+    def test_failed_detours_keep_the_original_curved_tail_and_checkpoints(self):
+        base = [(113.39 + i * 0.0001, 22.53) for i in range(55)]
+        base.extend([(base[-1][0], 22.5301), (base[-1][0] + 0.0001, 22.5302)])
+        waypoints = [base[0], base[35], base[-2], base[-2], base[-1]]
+        target = _path_length(self.runtime, base) + 185.0
+        planner = mock.Mock(return_value={"error": "no route"})
+
+        with mock.patch.object(api_runtime.random, "choice", side_effect=lambda choices: choices[0]):
+            result = self._build(waypoints, base, target, planner)
+
+        self.assertEqual(result[-3:], base[-3:])
+        self.assertIn(waypoints[1], result)
+        self.assertAlmostEqual(_path_length(self.runtime, result), target, delta=0.5)
+
     def test_detour_legs_are_planned_on_road_network(self):
         base = [(113.39 + i * 0.0001, 22.53) for i in range(60)]
         total = _path_length(self.runtime, base)

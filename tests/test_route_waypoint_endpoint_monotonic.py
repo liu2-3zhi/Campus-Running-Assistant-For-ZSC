@@ -141,6 +141,18 @@ class TestRouteWaypointEndpointMonotonic(unittest.TestCase):
         coords = [(point["lng"], point["lat"]) for point in completed]
         self.assertEqual(coords, [*route, waypoints[-1]])
 
+    def test_legacy_geometry_keeps_missing_waypoints_aligned_to_route_boundaries(self):
+        start, middle, end = (113.39, 22.52), (113.391, 22.52), (113.392, 22.52)
+        route = [start, middle, end]
+        before_start, beyond_end = (113.3896, 22.52), (113.3924, 22.52)
+        for missing, expected in (
+            (before_start, [start, before_start, middle, end]),
+            (beyond_end, [start, middle, end, beyond_end, end]),
+        ):
+            with self.subTest(missing=missing):
+                completed = self._complete(route, [start, missing, end])
+                self.assertEqual([(point["lng"], point["lat"]) for point in completed], expected)
+
     def test_duplicate_waypoints_do_not_break_alignment(self):
         """重复打卡点（首尾同坐标）不应破坏顺序对齐。"""
         completed = self._complete(ROUTE, WAYPOINTS)

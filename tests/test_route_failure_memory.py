@@ -72,13 +72,14 @@ def test_superseded_generation_cannot_mutate_run_or_submit_old_task():
         instance.begin_route_planning_batch("session")
         instance.tasks["session"] = {"status": "running", "marker": "new"}
         return {"success": True, "run_coords": [(1, 2, 10), (3, 4, 10)], "total_dist": 1, "total_time": 1}
-    api.auto_generate_path_with_api = generate
+    api.auto_generate_path_with_api = Mock(side_effect=generate)
     runtime = SimpleNamespace(
         _plan_route_path_with_provider_runtime=Mock(return_value={"path": [(1, 2), (3, 4)], "diagnostic_id": "d1"}),
         _release_school_account_execution=Mock(),
     )
     with patch.object(background_runtime, "_main", return_value=runtime):
         instance._execute_tasks_background("session", api, [0], True, batch)
+    assert api.auto_generate_path_with_api.call_args.kwargs["target_points"] is run.target_points
     assert run.run_coords == []
     api._run_submission_thread.assert_not_called()
     assert instance.tasks["session"] == {"status": "running", "marker": "new"}

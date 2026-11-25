@@ -518,6 +518,7 @@ class BackgroundTaskManager:
                                 p.get("max_time_m", 30),
                                 p.get("min_dist_m", 2000),
                                 apply_result=False,
+                                target_points=waypoints,
                             )
                             with self.lock:
                                 if not is_current_batch():
