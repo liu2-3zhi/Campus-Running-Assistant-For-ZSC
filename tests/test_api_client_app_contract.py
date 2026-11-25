@@ -151,6 +151,18 @@ def test_run_details_does_not_refresh_for_school_opening_hours_notice(app_client
     assert len(transport.version_calls) == len(transport.business_calls) == 1
 
 
+def test_task_expiry_annotation_is_matched_without_leaking_the_date():
+    payload = _detail_response({
+        "name": "第十二次2公里跑步30分钟内完成",
+        "geoCoorList": [],
+        "endTime": "2026-11-24(当前任务已超时)",
+    })
+
+    assert api_client.classify_task_detail_notice(payload) == (
+        "availability", ("当前任务已超时",),
+    )
+
+
 @pytest.mark.parametrize("details,message", [
     ({"startTime": "请将 ＡＰＰ 更新至最新版后再跑步", "geoCoorList": None}, "获取任务详情成功"),
     ({"endTime": "客户端版本号不匹配，请重新尝试"}, "获取任务详情成功"),

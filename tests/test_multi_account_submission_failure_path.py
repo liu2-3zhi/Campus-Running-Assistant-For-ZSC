@@ -172,6 +172,21 @@ class TestFailingSubmissionPath(unittest.TestCase):
         }, room=self.api._web_session_id)
         self.api._submit_chunk_with_retries.assert_not_called()
 
+    def test_expired_task_date_annotation_emits_only_the_status_reason(self):
+        self.acc.api_client.get_run_details.return_value["data"]["errandDetail"] = {
+            "name": "第十二次2公里跑步30分钟内完成",
+            "geoCoorList": [],
+            "endTime": "2026-11-24(当前任务已超时)",
+        }
+
+        self.assertEqual(self._run_with_submission_result(True), "failed")
+
+        main_module.socketio.emit.assert_called_once_with("task_unavailable", {
+            "task_name": "第十二次2公里跑步30分钟内完成",
+            "message": "当前任务已超时",
+            "notice_id": mock.ANY,
+        }, room=self.api._web_session_id)
+
     def test_empty_checkpoints_with_ordinary_times_do_not_emit_notice(self):
         self.acc.api_client.get_run_details.return_value["data"]["errandDetail"] = {
             "geoCoorList": [],

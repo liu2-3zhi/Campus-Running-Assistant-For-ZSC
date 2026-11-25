@@ -25,6 +25,9 @@ _ANDROID_UA_RE = re.compile(
     re.IGNORECASE | re.ASCII,
 )
 _EMPTY_DEVICE_UAS = frozenset({"", "null", "none", "undefined"})
+_TASK_DATE_ANNOTATION_RE = re.compile(
+    r"^\s*\d{4}-\d{1,2}-\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?\s*[（(]\s*(.*?)\s*[）)]\s*$"
+)
 _TASK_VERSION_NOTICE = re.compile(
     r"(?:(?:app|客户端|应用)(?:的)?版本号?[:：]?(?:过低|太低|过旧|太旧|不对|不正确|不兼容|不匹配|不一致|有误|错误|已?过期|需(?:要)?(?:更新|升级))"
     r"|请(?:先|将)?(?:更新|升级)(?:app|客户端|应用|版本号?)"
@@ -81,11 +84,14 @@ def classify_task_detail_notice(payload):
     for value in messages:
         if not isinstance(value, str):
             continue
-        message = "".join(unicodedata.normalize("NFKC", value).casefold().split())
+        value = value.strip()
+        annotation = _TASK_DATE_ANNOTATION_RE.fullmatch(value)
+        notice_text = annotation.group(1).strip() if annotation else value
+        message = "".join(unicodedata.normalize("NFKC", notice_text).casefold().split())
         if _TASK_VERSION_NOTICE.search(message):
             return "compatibility_error", ()
         if _TASK_AVAILABILITY_NOTICE.search(message):
-            availability.setdefault(message, value.strip())
+            availability.setdefault(message, notice_text)
     if availability:
         return "availability", tuple(availability.values())
     return None, ()
@@ -601,8 +607,10 @@ class ApiClient:
             json_data = resp.json()
             logging.debug(
                 f"[JSON解析] 成功解析JSON响应 --> 响应状态码: {resp.status_code}, "
-                f"响应内容: {log_text(resp.text)}, "
-                f"JSON数据: {log_value(json_data)}"
+                f"响应内容: "
+                f"{log_text(resp.text)}"
+                f", JSON数据: "
+                f"{log_value(json_data)}"
             )
             return json_data
         except ValueError as e:
