@@ -11,6 +11,7 @@ import pytest
 from flask import Flask, jsonify, request
 
 from config_adapter import JsonConfigAdapter
+import map_runtime_origin
 from map_runtime_origin import (
     get_map_config_selection,
     get_map_config_settings,
@@ -49,7 +50,7 @@ def test_legacy_migration_preserves_keys_origins_and_active_provider():
     }})
     settings = get_map_config_settings(config)
     assert [row["id"] for row in settings["configs"]] == [
-        "legacy-amap", "legacy-tencent", "legacy-tianditu", "legacy-baidu",
+        "legacy-amap", "legacy-tencent", "legacy-tianditu", "legacy-baidu", "local-map-default",
     ]
     assert settings["frontend_config_id"] == settings["backend_config_id"] == "legacy-tencent"
     assert get_map_config_selection(config)["map_key"] == "legacy-tencent"
@@ -67,6 +68,60 @@ def test_independent_profiles_resolve_credentials_and_origins():
     selected = get_map_config_selection(config)
     selected["js_key"] = "changed"
     assert get_map_config_selection(config)["js_key"] == "back-key"
+
+
+def test_missing_map_settings_select_the_builtin_campus_profile():
+    config = adapter({})
+    for scope in ("frontend", "backend"):
+        selected = get_map_config_selection(config, scope)
+        assert selected["provider"] == "local_map"
+        assert selected["service_url"] == "http://127.0.0.1:8765"
+        assert map_runtime_origin.get_map_config_candidates(config, scope) == [selected]
+
+
+def test_candidates_keep_the_selected_profile_first_then_usable_cards_in_order():
+    config = profiles_config()
+    cards = config.get("Map", "configs")
+    cards[:0] = [
+        {"id": "campus", "name": "Campus", "provider": "local_map"},
+        {"id": "empty", "name": "Empty", "provider": "baidu", "ak": " "},
+        {"id": "tencent", "name": "Tencent", "provider": "tencent", "map_key": "key"},
+    ]
+    assert [row["id"] for row in map_runtime_origin.get_map_config_candidates(config)] == [
+        "amap-back", "tencent", "amap-front", "campus",
+    ]
+    config.set("Map", "backend_config_id", "campus")
+    assert [row["id"] for row in map_runtime_origin.get_map_config_candidates(config)] == [
+        "campus", "tencent", "amap-front", "amap-back",
+    ]
+
+
+def test_frontend_candidates_skip_missing_keys_and_the_separate_backend_profile():
+    config = profiles_config()
+    config.get("Map", "configs")[0]["js_key"] = ""
+    config.get("Map", "configs").append(
+        {"id": "amap-fallback", "name": "Fallback", "provider": "amap", "js_key": "fallback-key",
+         "backend_page_origin": "https://fallback.test"},
+    )
+    candidates = map_runtime_origin.get_map_config_candidates(config, "frontend")
+    assert [row["id"] for row in candidates] == ["amap-fallback", "local-map-default"]
+    assert resolve_backend_page_origin(
+        config, "amap", scope="frontend", selected_profile=candidates[0],
+    ) == ("https://fallback.test", "provider")
+
+
+def test_frontend_uses_builtin_campus_if_the_only_campus_card_is_backend_only():
+    config = profiles_config()
+    config.get("Map", "configs").append(
+        {"id": "campus-private", "name": "Backend campus", "provider": "local_map",
+         "service_url": "https://campus-backend.test"},
+    )
+    config.set("Map", "backend_config_id", "campus-private")
+
+    frontend = map_runtime_origin.get_map_config_candidates(config, "frontend")
+    assert [row["id"] for row in frontend] == ["amap-front", "amap-back", "local-map-default"]
+    assert frontend[-1]["service_url"] == "http://127.0.0.1:8765"
+    assert map_runtime_origin.get_map_config_candidates(config, "backend")[0]["id"] == "campus-private"
 
 
 def test_local_profiles_keep_service_urls_private_and_skip_key_runtime(monkeypatch):
@@ -115,7 +170,7 @@ def test_order_and_names_do_not_change_profile_bindings():
     rows = list(reversed(config.get("Map", "configs")))
     rows[0]["name"] = "Renamed"
     merged = merge_map_settings(config, {"configs": rows})
-    assert [row["id"] for row in merged["configs"]] == ["amap-back", "amap-front"]
+    assert [row["id"] for row in merged["configs"]] == ["amap-back", "amap-front", "local-map-default"]
     assert merged["frontend_config_id"] == "amap-front"
     assert merged["backend_config_id"] == "amap-back"
     assert merged["providers"]["amap"]["js_key"] == "front-key"
@@ -136,7 +191,7 @@ def test_legacy_admin_projection_roundtrip_cannot_copy_backend_credentials_to_fr
 def test_legacy_provider_updates_only_modify_frontend_profile():
     config = profiles_config()
     merged = merge_map_settings(config, {"providers": {"amap": {"js_key": "replacement", "security_js_code": ""}}})
-    front, back = merged["configs"]
+    front, back, _ = merged["configs"]
     assert front["js_key"] == "replacement"
     assert front["security_js_code"] == ""
     assert back["js_key"] == "back-key"

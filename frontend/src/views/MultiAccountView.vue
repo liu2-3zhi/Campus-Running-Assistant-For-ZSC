@@ -7,7 +7,6 @@ import { useMapStore } from '@/stores/map'
 import { useNotificationStore } from '@/stores/notification'
 import { callAPI, callRawAPI } from '@/services/api'
 import { connectWebSocket, disconnectWebSocket, isWebSocketConnected, onWebSocketStatus } from '@/services/socket'
-import { hydrateMapProviderSecrets } from '@/services/mapKeyRuntime'
 import MapContainer from '@/components/map/MapContainer.vue'
 import NotificationsPanel from '@/components/main/NotificationsPanel.vue'
 import AppModal from '@/components/common/AppModal.vue'
@@ -912,22 +911,10 @@ async function loadMapProviderConfig() {
   const requestSession = authStore.sessionUUID
   const context = appStore.captureBusinessContext()
   try {
-    const responseData = await callAPI('get_initial_data')
-    if (!viewMounted || requestSession !== authStore.sessionUUID || !appStore.isCurrentBusinessContext(context)) return
-    const data = await hydrateMapProviderSecrets(responseData)
+    const data = await callAPI('get_initial_data')
     if (!viewMounted || requestSession !== authStore.sessionUUID || !appStore.isCurrentBusinessContext(context)) return
     appStore.applyBusinessMode(data, context)
-    const providers = data?.map_providers || {}
-    mapStore.setConfig({
-      amapKey: providers.amap?.js_key || '',
-      amapSecurityJsCode: providers.amap?.security_js_code || '',
-      tencentKey: providers.tencent?.map_key || '',
-      tiandituKey: providers.tianditu?.token || '',
-      baiduKey: providers.baidu?.ak || '',
-      frontendProxyEnabled: data?.frontend_proxy_enabled === true,
-      frontendConfigId: data?.map_config_id || '',
-    })
-    if (data?.map_provider) mapStore.setProvider(data.map_provider)
+    if (data?.map_provider) mapStore.setProviderPayload(data)
   } catch (error) {
     if (viewMounted && requestSession === authStore.sessionUUID && appStore.isCurrentBusinessContext(context)) appStore.addLog(`加载地图配置失败: ${error.message || error}`, 'ERROR', 'Multi')
   }

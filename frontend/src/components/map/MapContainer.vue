@@ -5,6 +5,9 @@ import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { gcj02ToBd09, bd09ToGcj02, gcj02ToWgs84, wgs84ToGcj02 } from '@/utils/coordinates'
 import { routePoint, ROUTE_COLORS, buildTaskRoutePresentation } from '@/utils/routeProgress'
+import { callRawAPI } from '@/services/api'
+import { hydrateMapProviderSecrets } from '@/services/mapKeyRuntime'
+import Swal from 'sweetalert2'
 import MapPlaceholder from './MapPlaceholder.vue'
 import MapControls from './MapControls.vue'
 
@@ -32,6 +35,7 @@ let taskMarkers = new Map()
 let zoomHandler = null
 let completeHandler = null
 let boundProvider = null
+let mapConfig = null
 let initialization = 0
 let disposed = false
 let licenseObserver = null
@@ -160,7 +164,7 @@ function removeAmapLicenseOverlay() {
 // --- Provider initialization ---
 async function initAmap() {
   const generation = initialization
-  const config = mapStore.mapConfig
+  const config = mapConfig
   if (!config.amapKey) {
     showPlaceholder.value = true
     return
@@ -211,6 +215,8 @@ async function initAmap() {
     }
     map.on('zoomchange', zoomHandler)
 
+    await waitForMapReady(instance, 'complete')
+    if (!ownsMap(instance, generation)) return
     zoomLevel.value = Math.round(map.getZoom())
     mapStore.setMapInstance(map)
     mapReady.value = true
@@ -222,9 +228,26 @@ async function initAmap() {
   }
 }
 
+function waitForMapReady(instance, eventName) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => finish(new Error('地图初始化超时')), 10000)
+    const onReady = () => finish()
+    const cancel = () => finish(new Error('地图初始化已取消'))
+    function finish(error) {
+      clearTimeout(timer)
+      instance.off(eventName, onReady)
+      if (cancelReadiness === cancel) cancelReadiness = null
+      if (error) reject(error)
+      else resolve()
+    }
+    cancelReadiness = cancel
+    instance.on(eventName, onReady)
+  })
+}
+
 async function initTencent() {
   const generation = initialization
-  const config = mapStore.mapConfig
+  const config = mapConfig
   if (!config.tencentKey) {
     showPlaceholder.value = true
     return
@@ -274,7 +297,7 @@ async function initTencent() {
 
 async function initTianditu() {
   const generation = initialization
-  const config = mapStore.mapConfig
+  const config = mapConfig
   if (!config.tiandituKey) {
     showPlaceholder.value = true
     return
@@ -320,7 +343,7 @@ async function initTianditu() {
 
 async function initBaidu() {
   const generation = initialization
-  const config = mapStore.mapConfig
+  const config = mapConfig
   if (!config.baiduKey) {
     showPlaceholder.value = true
     return
@@ -370,7 +393,9 @@ async function initCampusMap() {
   const cancel = () => controller.abort()
   cancelReadiness = cancel
   try {
-    const instance = await window.ZXLocalCampusMap.create(nativeMapHost(), { signal: controller.signal })
+    const instance = await window.ZXLocalCampusMap.create(nativeMapHost(), {
+      signal: controller.signal, configId: mapConfig.frontendConfigId,
+    })
     if (disposed || generation !== initialization) { instance.remove(); return }
     map = instance
     zoomHandler = () => {
@@ -391,47 +416,20 @@ async function initCampusMap() {
   }
 }
 
-// --- Map initialization dispatcher ---
-async function initMap() {
-  const generation = ++initialization
-  mapReady.value = false
-  showPlaceholder.value = false
-  placeholderError.value = ''
-  try {
-    await destroyMap()
-  } catch (error) {
-    if (!disposed && generation === initialization) {
-      placeholderError.value = error.message || '地图释放失败，请重试'
-      showPlaceholder.value = true
-    }
-    return
-  }
-  if (disposed || generation !== initialization) return
-  disposing = false
-
-  const provider = mapStore.activeProvider
+async function initMapCandidate(provider, generation) {
   boundProvider = provider
   const proxy = window.ZXMapRequestProxy
   if (provider !== 'local_map' && proxy) {
-    try {
-      await proxy.initialize({
-        map_config_id: mapStore.mapConfig.frontendConfigId,
-        enabled: mapStore.mapConfig.frontendProxyEnabled === true,
-        provider,
-        sessionId: auth.getSessionHeaderValue?.('get_initial_data') || auth.sessionUUID || '',
-        originSessionId: auth.getAdminOriginHeaderValue?.(auth.sessionUUID || '') || '',
-      })
-    } catch (error) {
-      if (!disposed && generation === initialization) {
-        placeholderError.value = error?.message || '地图代理初始化失败'
-        showPlaceholder.value = true
-      }
-      return
-    }
-  } else if (provider !== 'local_map' && mapStore.mapConfig.frontendProxyEnabled === true) {
-    placeholderError.value = '地图代理脚本未加载'
-    showPlaceholder.value = true
-    return
+    const sessionId = auth.getSessionHeaderValue?.('get_initial_data') || auth.sessionUUID || ''
+    await proxy.initialize({
+      map_config_id: mapConfig.frontendConfigId,
+      enabled: mapConfig.frontendProxyEnabled,
+      provider,
+      sessionId,
+      originSessionId: auth.getAdminOriginHeaderValue?.(sessionId) || '',
+    })
+  } else if (provider !== 'local_map' && mapConfig.frontendProxyEnabled) {
+    throw new Error('地图代理脚本未加载')
   }
   if (disposed || generation !== initialization) return
   switch (provider) {
@@ -454,7 +452,81 @@ async function initMap() {
       showPlaceholder.value = true
       placeholderError.value = `不支持的地图提供商: ${provider}`
   }
-  if (!disposed && generation === initialization && mapReady.value && mapStore.isDrawing) bindDrawingClick()
+}
+
+async function getCandidateConfig(candidate, payload) {
+  if (!payload) return { ...mapStore.mapConfig }
+  const { config_id: id, provider } = candidate
+  const data = provider === 'local_map' || id === payload.map_config_id
+    ? payload
+    : await callRawAPI('/api/frontend-config?map_config_id=' + encodeURIComponent(id), 'GET', null, {
+      sessionContext: 'business', signal: AbortSignal.timeout(15000),
+    })
+  if (provider !== 'local_map' && (data?.map_config_id !== id || data?.map_provider !== provider)) {
+    throw new Error('地图候选配置已变更')
+  }
+  const { map_providers: providers = {}, frontend_proxy_enabled: proxy } =
+    provider === 'local_map' ? data : await hydrateMapProviderSecrets(data)
+  return {
+    amapKey: providers.amap?.js_key || '',
+    amapSecurityJsCode: providers.amap?.security_js_code || '',
+    tencentKey: providers.tencent?.map_key || '',
+    tiandituKey: providers.tianditu?.token || '',
+    baiduKey: providers.baidu?.ak || '',
+    frontendProxyEnabled: proxy === true,
+    frontendConfigId: id,
+  }
+}
+
+// --- Map initialization dispatcher ---
+async function initMap() {
+  const generation = ++initialization
+  const isCurrent = () => !disposed && generation === initialization
+  const payload = mapStore.providerPayload
+  const candidates = payload?.map_candidates?.length ? payload.map_candidates : [{
+    config_id: payload?.map_config_id || mapStore.mapConfig.frontendConfigId,
+    provider: payload?.map_provider || mapStore.activeProvider,
+  }]
+  const preferred = payload?.map_preferred || candidates[0]
+  mapReady.value = false
+  showPlaceholder.value = false
+  placeholderError.value = ''
+  for (const candidate of candidates) {
+    try {
+      await destroyMap()
+    } catch (error) {
+      if (isCurrent()) {
+        placeholderError.value = error.message || '地图释放失败，请重试'
+        showPlaceholder.value = true
+      }
+      return
+    }
+    if (!isCurrent()) return
+    disposing = false
+    try {
+      const config = await getCandidateConfig(candidate, payload)
+      if (!isCurrent()) return
+      mapConfig = config
+      await initMapCandidate(candidate.provider, generation)
+    } catch (error) {
+      if (isCurrent()) console.warn('[MapContainer] 地图候选加载失败:', candidate.provider)
+    }
+    if (!isCurrent()) return
+    if (mapReady.value) {
+      showPlaceholder.value = false
+      if (mapStore.isDrawing) bindDrawingClick()
+      if (auth.isAdmin && mapStore.shouldReportFallback(auth.sessionUUID, preferred?.config_id, candidate.config_id)) {
+        void Swal.fire({ toast: true, position: 'top-end', icon: 'warning', showConfirmButton: false,
+          timer: 5000, text: `首选地图不可用，已切换到${candidate.display_name || candidate.provider}。` })
+      }
+      return
+    }
+    showPlaceholder.value = false
+  }
+  if (isCurrent()) {
+    placeholderError.value = '地图暂不可用，请稍后重试。'
+    showPlaceholder.value = true
+  }
 }
 
 function destroyMap() {
@@ -662,7 +734,7 @@ function drawPolyline(path, opts = {}) {
   path = path.map(providerPoint).filter(Boolean)
   if (path.length < 2) return null
 
-  const provider = mapStore.activeProvider
+  const provider = boundProvider || mapStore.activeProvider
   let polyline = null
   const color = opts.color || '#2563eb'
   const weight = opts.weight || 4
@@ -754,11 +826,12 @@ function providerPoint(point) {
   const normalized = routePoint(point)
   if (!normalized) return null
   const [lng, lat] = normalized
-  if (mapStore.activeProvider === 'baidu') {
+  const provider = boundProvider || mapStore.activeProvider
+  if (provider === 'baidu') {
     const converted = gcj02ToBd09(lng, lat)
     return [converted.lng, converted.lat]
   }
-  if (mapStore.activeProvider === 'tianditu') {
+  if (provider === 'tianditu') {
     const converted = gcj02ToWgs84(lng, lat)
     return [converted.lng, converted.lat]
   }
@@ -832,7 +905,7 @@ function syncTaskOverlays(collection, specs, create, update) {
 function updateMarker(marker, point, opts = {}) {
   const pos = providerPoint(point)
   if (!marker || !pos) return
-  const provider = mapStore.activeProvider
+  const provider = boundProvider || mapStore.activeProvider
   if (provider === 'amap') marker.setPosition?.(new window.AMap.LngLat(...pos))
   else if (provider === 'local_map') {
     marker.setLngLat(pos)
@@ -858,7 +931,7 @@ function updateMarker(marker, point, opts = {}) {
 
 function updatePolyline(polyline, path, color, id) {
   const coords = path.map(providerPoint).filter(Boolean)
-  const provider = mapStore.activeProvider
+  const provider = boundProvider || mapStore.activeProvider
   if (provider === 'amap' || provider === 'local_map') { polyline.setPath?.(coords); polyline.setOptions?.({ strokeColor: color }) }
   else if (provider === 'tencent') polyline.setGeometries?.([{ id: id || polyline.__geometryId || 'route', styleId: 'style', paths: coords.map(p => new window.TMap.LatLng(p[1], p[0])) }])
   else if (provider === 'tianditu') { polyline.setLngLats?.(coords.map(p => new window.T.LngLat(...p))); polyline.setColor?.(color) }
@@ -1025,7 +1098,7 @@ function unbindDrawingClick() {
 // --- Zoom controls ---
 function handleZoomIn() {
   if (!map) return
-  const provider = mapStore.activeProvider
+  const provider = boundProvider || mapStore.activeProvider
   if (provider === 'amap' || provider === 'tencent' || provider === 'local_map') {
     map.setZoom(map.getZoom() + 1)
     zoomLevel.value = Math.round(map.getZoom())
@@ -1038,7 +1111,7 @@ function handleZoomIn() {
 
 function handleZoomOut() {
   if (!map) return
-  const provider = mapStore.activeProvider
+  const provider = boundProvider || mapStore.activeProvider
   if (provider === 'amap' || provider === 'tencent' || provider === 'local_map') {
     map.setZoom(map.getZoom() - 1)
     zoomLevel.value = Math.round(map.getZoom())
@@ -1056,7 +1129,7 @@ function handleResetView() {
     fitView(coords)
     return
   }
-  const provider = mapStore.activeProvider
+  const provider = boundProvider || mapStore.activeProvider
   if (provider === 'amap') {
     map.setZoomAndCenter(DEFAULT_ZOOM, DEFAULT_CENTER)
   } else if (provider === 'local_map') {
@@ -1091,6 +1164,7 @@ function handleResetView() {
 
 // --- Watch provider changes ---
 watch([
+  () => mapStore.providerPayload,
   () => mapStore.activeProvider,
   () => mapStore.getKeyRequirement().value,
   () => mapStore.mapConfig.amapSecurityJsCode,

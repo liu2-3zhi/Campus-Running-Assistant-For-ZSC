@@ -87,7 +87,7 @@ def plan_local_map_route(origin, waypoints, recommended_coords):
         return {"error": "校园离线地图返回了无效的路线数据。"}
 
 
-def register_local_map_asset_routes(app, load_selected_origin):
+def register_local_map_asset_routes(app, load_selected_origin, load_candidate_origin=None):
     contexts = {}
     context_lock = Lock()
 
@@ -131,9 +131,15 @@ def register_local_map_asset_routes(app, load_selected_origin):
             abort(404 if status == 404 else 502)
         return data
 
+    def asset_origin():
+        config_id = request.args.get("config_id")
+        if config_id is None:
+            return load_selected_origin()
+        return load_candidate_origin(config_id) if load_candidate_origin is not None else None
+
     @app.get("/api/local-map/map")
     def campus_map_metadata():
-        origin = load_selected_origin()
+        origin = asset_origin()
         data = fetch_asset(origin, "/api/v1/map")
         fields = ("coordinate_system", "bounds", "center", "minzoom", "maxzoom", "version")
         if not isinstance(data, dict) or not all(field in data for field in fields) or data["coordinate_system"] != "GCJ-02":
@@ -158,7 +164,7 @@ def register_local_map_asset_routes(app, load_selected_origin):
         if not asset:
             abort(404)
         content_type, digest = asset
-        data = fetch_asset(load_selected_origin(), f"/api/v1/sdk/{filename}", content_type)
+        data = fetch_asset(asset_origin(), f"/api/v1/sdk/{filename}", content_type)
         if hashlib.sha256(data).hexdigest() != digest:
             abort(502)
         return Response(data, mimetype=content_type, headers={

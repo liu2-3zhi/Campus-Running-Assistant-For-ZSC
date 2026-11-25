@@ -9,7 +9,7 @@ function normalizeSupportedMapProvider(provider) {
 
 function getActiveMapProvider() {
   const config = window.APP_CONFIG || {};
-  return normalizeSupportedMapProvider(config.map_provider) || "amap";
+  return normalizeSupportedMapProvider(config.map_provider) || "local_map";
 }
 
 function getMapProviderDisplayName(provider) {
@@ -98,6 +98,9 @@ const providerMapDestructions = {};
 const providerMapPendingInitializations = {};
 const providerMapLoading = {};
 let providerMapSurfaceSequence = 0;
+let legacyMapFallbackReported = null;
+let legacyMapProviderAttempts = Promise.resolve();
+let legacyMapCandidateLoading = false;
 
 function createMapProviderRuntimeConfigSnapshot(data) {
   if (!data || typeof data !== "object") {
@@ -107,6 +110,9 @@ function createMapProviderRuntimeConfigSnapshot(data) {
   if (typeof data.map_config_id === "string") {
     snapshot.map_config_id = data.map_config_id;
   }
+  if (Array.isArray(data.map_candidates)) snapshot.map_candidates = data.map_candidates;
+  if (data.map_preferred) snapshot.map_preferred = data.map_preferred;
+  if (data.map_provider_key_bundle) snapshot.map_provider_key_bundle = data.map_provider_key_bundle;
   if (typeof data.frontend_proxy_enabled === "boolean") {
     snapshot.frontend_proxy_enabled = data.frontend_proxy_enabled;
   }
@@ -279,6 +285,9 @@ function syncMapProviderConfigFromInitialData(data) {
     },
   };
   if (typeof data.map_config_id === "string") nextConfig.map_config_id = data.map_config_id;
+  if (Array.isArray(data.map_candidates)) nextConfig.map_candidates = data.map_candidates;
+  if (data.map_preferred) nextConfig.map_preferred = data.map_preferred;
+  if (data.map_provider_key_bundle) nextConfig.map_provider_key_bundle = data.map_provider_key_bundle;
 
   if (typeof data.frontend_proxy_enabled === "boolean") {
     nextConfig.frontend_proxy_enabled = data.frontend_proxy_enabled;
@@ -291,7 +300,8 @@ function syncMapProviderConfigFromInitialData(data) {
   }
   if (data.map_providers && typeof data.map_providers === "object") {
     Object.entries(data.map_providers).forEach(([provider, value]) => {
-      const currentProviderConfig = nextConfig.map_providers[provider];
+      const currentProviderConfig = data.map_config_id && data.map_config_id !== currentConfig.map_config_id
+        ? null : nextConfig.map_providers[provider];
       nextConfig.map_providers[provider] = {
         ...(currentProviderConfig && typeof currentProviderConfig === "object"
           ? currentProviderConfig
@@ -312,66 +322,87 @@ function syncMapProviderConfigFromInitialData(data) {
   }
 
   window.APP_CONFIG = nextConfig;
-  AMAP_API_KEY = getMapProviderKeyRequirement("amap").value || "";
+  AMAP_API_KEY = String(nextConfig.map_providers.amap?.js_key || "").trim();
 }
 
-function showMissingMapProviderKeyModal(provider) {
-  const requirement = getMapProviderKeyRequirement(provider);
-  if (requirement.required === false) return;
-  const modal = $("amap-key-modal");
-  if (!modal) {
-    return;
+function ensureActiveMapProviderRuntimeIfNeeded(contextLabel = "地图", initialize) {
+  if (!window.APP_CONFIG?.map_candidates?.length || typeof initialize !== "function") {
+    return loadConfiguredMapProviderRuntime(contextLabel).then((ready) => ready &&
+      (typeof initialize === "function" ? initialize(getActiveMapProvider()) : true));
   }
-
-  const title = $("map-provider-key-modal-title");
-  const description = $("map-provider-key-modal-description");
-  const link = $("map-provider-key-modal-link");
-  const extra = $("map-provider-key-modal-extra");
-  const label = $("map-provider-key-input-label");
-  const input = $("amap-key-input");
-  const confirmButton = $("confirm-amap-key-btn");
-
-  if (title) {
-    title.textContent = `缺少${requirement.displayName} ${requirement.fieldLabel}`;
-  }
-  if (description) {
-    description.firstChild.textContent = `当前地图提供方是${requirement.displayName}，程序需要一个有效的 ${requirement.fieldLabel} 才能使用对应地图功能。请前往`;
-  }
-  if (link) {
-    link.href = requirement.applyUrl;
-    link.textContent = requirement.platformName;
-  }
-  if (extra) {
-    extra.textContent = `${requirement.applyHint}也可在系统配置的地图配置卡片中编辑。`;
-  }
-  if (label) {
-    label.textContent = `${requirement.displayName} ${requirement.fieldLabel}:`;
-  }
-  if (input) {
-    input.value = "";
-    input.placeholder = `请在此处粘贴${requirement.displayName} ${requirement.fieldLabel}`;
-    input.dataset.provider = requirement.provider;
-    input.dataset.configId = window.APP_CONFIG?.map_config_id || "";
-  }
-  if (confirmButton) {
-    confirmButton.textContent = "确认并保存";
-  }
-
-  modal.classList.remove("hidden");
-  modal.classList.add("flex");
-  document.body.classList.add("modal-visible");
+  const context = captureLegacyBusinessContext();
+  const run = async () => {
+    if (!isCurrentLegacyBusinessContext(context)) return false;
+    const initial = window.APP_CONFIG;
+    const active = initial.map_candidates.find((item) => item.config_id === initial.map_config_id);
+    const candidates = active ? [active, ...initial.map_candidates.filter((item) => item !== active)] : initial.map_candidates;
+    const preferred = initial.map_preferred || initial.map_candidates[0];
+    const sessionId = getApiRequestSessionHeaderValue("get_initial_data");
+    for (const candidate of candidates) {
+      if (!isCurrentLegacyBusinessContext(context)) return false;
+      const provider = normalizeSupportedMapProvider(candidate.provider);
+      if (!provider) continue;
+      try {
+        let config = initial;
+        if (provider !== "local_map" && candidate.config_id !== initial.map_config_id) {
+          const headers = { "X-Session-ID": sessionId };
+          addAdminViewOriginSessionHeader(headers, sessionId);
+          const response = await fetch("/api/frontend-config?map_config_id=" + encodeURIComponent(candidate.config_id), {
+            cache: "no-store", credentials: "include", headers, signal: AbortSignal.timeout(15000),
+          });
+          if (!response.ok) continue;
+          config = await hydrateMapProviderSecretsForLegacy(await response.json(), sessionId);
+          if (config.map_provider !== provider || config.map_config_id !== candidate.config_id) continue;
+        } else if (provider !== "local_map" && !getMapProviderKeyRequirement(provider).value) {
+          config = await hydrateMapProviderSecretsForLegacy(config, sessionId);
+        }
+        if (!isCurrentLegacyBusinessContext(context)) return false;
+        window.APP_CONFIG = {
+          ...initial, map_provider: provider, map_config_id: candidate.config_id,
+          map_providers: config.map_providers || {}, map_provider_key_bundle: config.map_provider_key_bundle,
+        };
+        AMAP_API_KEY = String(config.map_providers?.amap?.js_key || "").trim();
+        legacyMapCandidateLoading = true;
+        if (await loadConfiguredMapProviderRuntime(contextLabel) && await initialize(provider)) {
+          if (!isCurrentLegacyBusinessContext(context)) return false;
+          const group = typeof currentUserData === "undefined" ? "" : currentUserData?.group;
+          if (["admin", "super_admin"].includes(group) && preferred?.config_id !== candidate.config_id &&
+              legacyMapFallbackReported !== sessionId && typeof swal !== "undefined") {
+            legacyMapFallbackReported = sessionId;
+            void swal.fire({ toast: true, position: "top-end", icon: "warning", showConfirmButton: false,
+              timer: 5000, text: `首选地图不可用，已切换到${getMapProviderDisplayName(provider)}。` });
+          }
+          return true;
+        }
+      } catch (error) {
+        if (isCurrentLegacyBusinessContext(context)) console.warn("[地图] 地图候选加载失败", provider);
+      } finally {
+        legacyMapCandidateLoading = false;
+      }
+    }
+    if (isCurrentLegacyBusinessContext(context)) {
+      window.APP_CONFIG = initial;
+      AMAP_API_KEY = String(initial.map_providers?.amap?.js_key || "").trim();
+    }
+    return false;
+  };
+  const result = legacyMapProviderAttempts.then(run);
+  legacyMapProviderAttempts = result.catch(() => {});
+  return result;
 }
 
-async function ensureActiveMapProviderRuntimeIfNeeded(contextLabel = "地图") {
+function initializeLegacyProviderContainer(containerId, provider, isMultiAccount = false) {
+  if (!document.getElementById(containerId) || provider === "amap") return false;
+  initProviderMap(containerId, isMultiAccount);
+  return waitForProviderMapReady(containerId);
+}
+
+async function loadConfiguredMapProviderRuntime(contextLabel) {
   const provider = getActiveMapProvider();
   const requirement = getMapProviderKeyRequirement(provider);
   // The campus SDK and tiles already use the application's same-origin endpoint.
   if (provider === "local_map") return true;
   if (!requirement.value) {
-    logMessage_Info(
-      `[警告] 未配置${requirement.displayName} ${requirement.fieldLabel}，请在弹窗中输入。`,
-    );
-    showMissingMapProviderKeyModal(provider);
     return false;
   }
 
@@ -462,6 +493,23 @@ function assertMapSdkConfigSignature(provider, key, securityCode = "") {
   const signature = JSON.stringify([key, securityCode]);
   const previous = legacyMapSdkConfigSignatures[provider];
   if (previous && previous !== signature) {
+    if (legacyMapCandidateLoading) {
+      if (provider === "amap") {
+        window.AMapLoader?.reset?.();
+        window.AMap = undefined;
+        AMapReady = false;
+        AMapInstance = null;
+        amapLoadingPromise = null;
+      } else if (provider === "tencent") {
+        window.TMap = undefined;
+        tencentMapLoadingPromise = null;
+      } else if (provider === "tianditu") {
+        window.T = undefined;
+        tiandituMapLoadingPromise = null;
+      }
+      legacyMapSdkConfigSignatures[provider] = signature;
+      return;
+    }
     window.location?.reload?.();
     throw new Error("地图配置已更改，正在刷新页面以应用新的密钥；如未自动刷新，请手动刷新。");
   }
@@ -643,6 +691,7 @@ function isCurrentProviderMapInstance(containerId, instance) {
     providerMapInstances[containerId] === instance &&
     document.getElementById(containerId) === instance.__providerContainer &&
     getActiveMapProvider() === instance.__providerName &&
+    (window.APP_CONFIG?.map_config_id || "") === instance.__providerConfigId &&
     (typeof sessionUUID === "undefined" ? null : sessionUUID) === instance.__providerSession;
 }
 
@@ -1466,6 +1515,7 @@ function registerProviderMapInstance(containerId, instance, provider, container,
   instance.__providerContainer = container;
   instance.__providerSurface = surface;
   instance.__providerName = provider;
+  instance.__providerConfigId = window.APP_CONFIG?.map_config_id || "";
   instance.__providerSession = typeof sessionUUID === "undefined" ? null : sessionUUID;
   instance.__providerDisposed = false;
   providerMapInstances[containerId] = instance;
@@ -1494,6 +1544,7 @@ function isCurrentBaiduInitialization(containerId, request) {
     document.getElementById(containerId) === request.container &&
     getProviderMapSurface(containerId) === request.surface &&
     request.surface.parentNode === request.container && getActiveMapProvider() === "baidu" &&
+    (window.APP_CONFIG?.map_config_id || "") === request.configId &&
     (typeof sessionUUID === "undefined" ? null : sessionUUID) === request.session;
 }
 
@@ -1501,7 +1552,8 @@ function initializeBaiduProviderMap(containerId, isMultiAccount, container, surf
   const factory = window.ZXMapRequestProxy?.createBaiduMapFrame;
   if (typeof factory !== "function") throw new Error("百度地图隔离运行时未加载");
   const realm = factory({ host: surface, key: getMapProviderKeyRequirement("baidu").value });
-  const request = { realm, container, surface, session: typeof sessionUUID === "undefined" ? null : sessionUUID };
+  const request = { realm, container, surface, configId: window.APP_CONFIG?.map_config_id || "",
+    session: typeof sessionUUID === "undefined" ? null : sessionUUID };
   providerMapLoading[containerId] = request;
   const releaseStale = () => {
     if (providerMapLoading[containerId] === request) delete providerMapLoading[containerId];
@@ -1560,13 +1612,15 @@ function initializeBaiduProviderMap(containerId, isMultiAccount, container, surf
 
 function initializeLocalCampusMap(containerId, isMultiAccount, container, surface) {
   const controller = new AbortController();
-  const request = { controller, container, surface, session: typeof sessionUUID === "undefined" ? null : sessionUUID };
+  const configId = window.APP_CONFIG?.map_config_id || "";
+  const request = { controller, container, surface, configId, session: typeof sessionUUID === "undefined" ? null : sessionUUID };
   providerMapLoading[containerId] = request;
   const isCurrent = () => providerMapLoading[containerId] === request &&
     getActiveMapProvider() === "local_map" && document.getElementById(containerId) === container &&
+    (window.APP_CONFIG?.map_config_id || "") === request.configId &&
     surface.parentNode === container && (typeof sessionUUID === "undefined" ? null : sessionUUID) === request.session;
   request.promise = Promise.resolve().then(() =>
-    window.ZXLocalCampusMap.create(surface, { signal: controller.signal })
+    window.ZXLocalCampusMap.create(surface, { signal: controller.signal, configId })
   ).then((instance) => {
     if (!isCurrent()) {
       instance.remove();
@@ -1608,6 +1662,7 @@ function initProviderMap(containerId, isMultiAccount = false) {
   const loading = providerMapLoading[containerId];
   if (loading) {
     if (provider === "local_map" && loading.controller && loading.container === container &&
+        loading.configId === (window.APP_CONFIG?.map_config_id || "") &&
         loading.surface.parentNode === container && loading.session === (typeof sessionUUID === "undefined" ? null : sessionUUID)) return false;
     if (isCurrentBaiduInitialization(containerId, loading)) return false;
     destroyProviderMapInstance(containerId);

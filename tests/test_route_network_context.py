@@ -369,7 +369,7 @@ class RouteNetworkContextTests(unittest.TestCase):
             main, "resolve_backend_page_origin", return_value=("https://profile.test", "provider")
         ), self.assertLogs(level="INFO") as logs:
             result = main._plan_route_path_with_provider_runtime(
-                "private-session", [[1, 2], [3, 4]], runtime_config=RuntimeConfig(),
+                "private-session", [[1, 2], [3, 4]], provider="amap", runtime_config=RuntimeConfig(),
                 app_base_url="http://request.test/app?private=request",
             )
         entry = next(line for line in logs.output if "phase=origin_resolution" in line)

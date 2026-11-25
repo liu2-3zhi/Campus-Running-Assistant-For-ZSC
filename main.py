@@ -16,7 +16,7 @@ from local_map_provider import plan_local_map_route
 
 from payment_crypto import RsaSigner
 from config_adapter import JsonConfigAdapter
-from map_runtime_origin import LOCAL_MAP_DEFAULT_SERVICE_URL, describe_backend_page_origin_candidates, get_map_config_selection, get_map_config_settings, get_tile_cache_settings, merge_map_settings, resolve_backend_page_origin
+from map_runtime_origin import LOCAL_MAP_DEFAULT_SERVICE_URL, describe_backend_page_origin_candidates, get_map_config_candidates, get_map_config_selection, get_map_config_settings, get_tile_cache_settings, merge_map_settings, resolve_backend_page_origin
 from log_archiving import ArchiveManager, move_no_replace
 from auto_attendance_config import (
     _disable_auto_attendance,
@@ -808,10 +808,10 @@ def _get_active_map_provider(config=None, scope="backend"):
 
 
 
-def _get_map_provider_runtime_config(config=None, provider=None, scope="backend"):
+def _get_map_provider_runtime_config(config=None, provider=None, scope="backend", selected_profile=None):
     runtime_config = config or _read_config_ini(CONFIG_FILE)
     provider = _normalize_map_provider(provider or _get_active_map_provider(runtime_config, scope=scope))
-    selected = get_map_config_selection(runtime_config, scope=scope, provider=provider)
+    selected = selected_profile if selected_profile is not None else get_map_config_selection(runtime_config, scope=scope, provider=provider)
     providers_config = {provider: selected}
     if isinstance(providers_config, dict):
         amap_provider = providers_config.get("amap") or {}
@@ -870,7 +870,7 @@ def _get_map_provider_runtime_config(config=None, provider=None, scope="backend"
         },
     }
     result = provider_configs[provider]
-    if runtime_config.has_option("Map", "configs"):
+    if selected_profile is not None or runtime_config.has_option("Map", "configs"):
         result["config_id"] = selected.get("id", "")
     return result
 
@@ -882,9 +882,14 @@ def _get_map_provider_admin_config(config, provider):
     return provider_config
 
 
-def _get_map_provider_frontend_config(config=None):
+def _get_map_provider_frontend_config(config=None, *, config_id=None):
     runtime_config = config or _read_config_ini(CONFIG_FILE)
-    map_provider = _get_active_map_provider(runtime_config, scope="frontend")
+    preferred = get_map_config_selection(runtime_config, scope="frontend")
+    candidates = get_map_config_candidates(runtime_config, scope="frontend")
+    active = next((entry for entry in candidates if entry["id"] == config_id), None) if config_id is not None else candidates[0]
+    if active is None:
+        raise ValueError("地图配置已切换，请刷新页面后重试")
+    map_provider = active["provider"]
     proxy_value = str(
         runtime_config.get("Map", "frontend_proxy_enabled", fallback="false")
     ).strip().lower()
@@ -895,26 +900,32 @@ def _get_map_provider_frontend_config(config=None):
         "tianditu": _get_map_provider_runtime_config(runtime_config, provider="tianditu", scope="frontend"),
         "baidu": _get_map_provider_runtime_config(runtime_config, provider="baidu", scope="frontend"),
     }
-    if map_provider == "local_map":
-        local_config = _get_map_provider_runtime_config(runtime_config, provider="local_map", scope="frontend")
-        local_config.pop("service_url")
-        map_providers["local_map"] = local_config
-    if runtime_config.has_option("Map", "configs"):
-        for provider, provider_config in map_providers.items():
-            if provider != map_provider:
-                secret_field = MAP_PROVIDER_KEY_FIELDS.get(provider)
-                if secret_field:
-                    provider_config.pop(secret_field, None)
-                provider_config.pop("security_js_code", None)
-                provider_config.pop("config_id", None)
+    map_providers[map_provider] = _get_map_provider_runtime_config(
+        runtime_config, provider=map_provider, scope="frontend", selected_profile=active,
+    )
+    map_providers[map_provider].pop("service_url", None)
+    for provider, provider_config in map_providers.items():
+        if provider != map_provider:
+            secret_field = MAP_PROVIDER_KEY_FIELDS.get(provider)
+            if secret_field:
+                provider_config.pop(secret_field, None)
+            provider_config.pop("security_js_code", None)
+            provider_config.pop("config_id", None)
     for provider_config in map_providers.values():
         provider_config["frontend_proxy_enabled"] = frontend_proxy_enabled
+    def public_profile(entry):
+        return {
+            "config_id": entry["id"], "provider": entry["provider"],
+            "display_name": MAP_PROVIDER_DISPLAY_NAMES[entry["provider"]],
+        }
+
     return {
         "map_provider": map_provider,
         "map_providers": map_providers,
         "frontend_proxy_enabled": frontend_proxy_enabled,
-        **({"map_config_id": map_providers[map_provider].get("config_id", "")}
-           if runtime_config.has_option("Map", "configs") else {}),
+        "map_config_id": active["id"],
+        "map_preferred": public_profile(preferred),
+        "map_candidates": [public_profile(entry) for entry in candidates],
     }
 
 
@@ -1070,8 +1081,9 @@ def _build_public_map_provider_frontend_payload(
     required_provider=None,
     session_id=None,
     username=None,
+    config_id=None,
 ):
-    frontend_config = _get_map_provider_frontend_config(config)
+    frontend_config = _get_map_provider_frontend_config(config, config_id=config_id)
     map_providers = frontend_config.get("map_providers", {})
     provider = _normalize_map_provider(
         frontend_config.get("map_provider", "amap") if "map_config_id" in frontend_config
@@ -1091,7 +1103,7 @@ def _build_public_map_provider_frontend_payload(
         "map_provider": frontend_config.get("map_provider", "amap"),
         "map_providers": _strip_map_provider_secret_fields(map_providers),
         "frontend_proxy_enabled": frontend_config.get("frontend_proxy_enabled") is True,
-        **({"map_config_id": frontend_config["map_config_id"]} if "map_config_id" in frontend_config else {}),
+        **{key: frontend_config[key] for key in ("map_config_id", "map_preferred", "map_candidates") if key in frontend_config},
         "map_provider_key_bundle": _build_map_provider_key_bundle(
             map_providers,
             provider=provider,
@@ -1174,10 +1186,13 @@ def _is_map_runtime_request_authorized(session_id):
         return normalized_session_id in sessions
 
 
-def _plan_route_with_map_provider(waypoints, provider=None, route_mode="walking", runtime_config=None):
+def _plan_route_with_map_provider(waypoints, provider=None, route_mode="walking", runtime_config=None, selected_profile=None):
     runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
     provider = _normalize_map_provider(provider or _get_active_map_provider(runtime_config))
-    provider_config = _get_map_provider_runtime_config(runtime_config, provider=provider)
+    if selected_profile is None:
+        provider_config = _get_map_provider_runtime_config(runtime_config, provider=provider)
+    else:
+        provider_config = _get_map_provider_runtime_config(runtime_config, provider=provider, selected_profile=selected_profile)
     actual_mode = str(route_mode or "walking").strip().lower() or "walking"
     notices = []
     plugins = _get_map_provider_plugins(provider, actual_mode)
@@ -3047,6 +3062,69 @@ def _plan_route_path_with_provider_runtime(
     app_base_url=None,
     recommended_coords=None,
 ):
+    kwargs = {
+        "python_params": python_params,
+        "runtime_config": runtime_config,
+        "guard_label": guard_label,
+        "app_base_url": app_base_url,
+        "recommended_coords": recommended_coords,
+    }
+    if provider is not None:
+        return _execute_provider_route(session_id, waypoints, provider=provider, **kwargs)
+
+    deadline = time.monotonic() + 45
+    try:
+        runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
+        kwargs["runtime_config"] = runtime_config
+        candidates = get_map_config_candidates(runtime_config)
+        selected_id = get_map_config_selection(runtime_config)["id"]
+    except Exception as error:
+        return _execute_provider_route(session_id, waypoints, configuration_error=error, **kwargs)
+
+    first_failure = None
+    online_remaining = sum(profile["provider"] != "local_map" for profile in candidates)
+    has_local_fallback = candidates[-1]["provider"] == "local_map"
+    for profile in candidates:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        provider = profile["provider"]
+        attempt_budget = remaining
+        if provider != "local_map":
+            # Each queued browser call can spend an extra second delivering its result.
+            reserve = 13 if has_local_fallback else 0
+            attempt_budget = max(0.1, (remaining - reserve) / online_remaining - 1)
+            online_remaining -= 1
+        result = _execute_provider_route(
+            session_id, waypoints, provider=provider, selected_profile=profile,
+            budget_ms=attempt_budget * 1000, **kwargs,
+        )
+        if result.get("path") and not result.get("error"):
+            result["fallback_used"] = profile["id"] != selected_id
+            return result
+        if first_failure is None:
+            first_failure = result
+    if first_failure is not None:
+        return first_failure
+    return _execute_provider_route(
+        session_id, waypoints, configuration_error=RuntimeError("路线规划已超时。"), **kwargs,
+    )
+
+
+def _execute_provider_route(
+    session_id,
+    waypoints,
+    *,
+    python_params=None,
+    provider=None,
+    runtime_config=None,
+    guard_label="MapRoutePlanning",
+    app_base_url=None,
+    recommended_coords=None,
+    selected_profile=None,
+    budget_ms=45000,
+    configuration_error=None,
+):
     diagnostic_id = new_diagnostic_id()
     started = time.monotonic()
     provider_plan = {}
@@ -3062,9 +3140,12 @@ def _plan_route_path_with_provider_runtime(
                      _format_log_diagnostic(actual_mode, 80, sensitive_values), waypoint_count)
 
     try:
+        if configuration_error is not None:
+            raise configuration_error
         runtime_config = runtime_config or _read_config_ini(CONFIG_FILE)
         provider_plan = _plan_route_with_map_provider(
             waypoints, provider=provider, route_mode="walking", runtime_config=runtime_config,
+            **({"selected_profile": selected_profile} if selected_profile is not None else {}),
         )
         provider = provider_plan["provider"]
         sensitive_values.extend(
@@ -3085,10 +3166,11 @@ def _plan_route_path_with_provider_runtime(
                 raise RuntimeError("Chrome浏览器池不可用，无法进行路径规划。")
             # The worker creates the context inside the same queued command and deadline.
             page = None
-            runtime_page_origin, origin_source = resolve_backend_page_origin(runtime_config, provider, app_base_url)
+            profile_options = {"selected_profile": selected_profile} if selected_profile is not None else {}
+            runtime_page_origin, origin_source = resolve_backend_page_origin(runtime_config, provider, app_base_url, **profile_options)
             diagnostic_context.update({"runtime_page_origin": runtime_page_origin, "origin_source": origin_source})
             try:
-                origin_candidates = describe_backend_page_origin_candidates(runtime_config, provider, app_base_url)
+                origin_candidates = describe_backend_page_origin_candidates(runtime_config, provider, app_base_url, **profile_options)
             except Exception:
                 origin_candidates = [{"source": "unavailable", "configured": False, "origin": ""}]
             origin_trace = {
@@ -3104,9 +3186,9 @@ def _plan_route_path_with_provider_runtime(
             execution_plan = dict(provider_plan)
             execution_plan["_diagnostic_context"] = diagnostic_context
             execution_plan["_runtime_page_origin"] = runtime_page_origin
-            execution_plan["_deadline_epoch_ms"] = time.time() * 1000 + max(0, 45000 - (time.monotonic() - started) * 1000)
-            logging.info("[路径诊断] phase=dispatch id=%s provider=%s total_budget_ms=45000 setup_elapsed_ms=%s remaining_ms=%s",
-                         diagnostic_id, provider, round((time.monotonic() - started) * 1000),
+            execution_plan["_deadline_epoch_ms"] = time.time() * 1000 + max(0, budget_ms - (time.monotonic() - started) * 1000)
+            logging.info("[路径诊断] phase=dispatch id=%s provider=%s total_budget_ms=%s setup_elapsed_ms=%s remaining_ms=%s",
+                         diagnostic_id, provider, round(budget_ms), round((time.monotonic() - started) * 1000),
                          max(0, round(execution_plan["_deadline_epoch_ms"] - time.time() * 1000)))
         if provider == "local_map":
             origin = provider_plan["provider_config"]["service_url"]
@@ -6278,7 +6360,7 @@ def _get_default_config():
     }
 
     config["Map"] = {
-        "provider": "amap",
+        "provider": "local_map",
         "backend_page_origin": "",
         "frontend_proxy_enabled": "false",
         "tile_cache_ttl_days": "20",

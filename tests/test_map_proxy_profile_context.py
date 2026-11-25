@@ -106,9 +106,18 @@ def test_initialized_context_pins_origin_while_new_page_uses_updated_configurati
     assert "secret" not in old.headers["Set-Cookie"]
 
 
-def test_stale_initial_selection_cannot_silently_pin_the_new_origin(runtime):
+def test_eligible_fallback_context_pins_the_requested_profile_origin(runtime):
     runtime.config.set("Map", "frontend_config_id", "back-two")
     response = runtime.bootstrap(profile="front-one")
+    assert response.status_code == 200
+    assert response.json["map_config_id"] == "front-one"
+    assert runtime.resource(response.json["context_token"]).status_code == 200
+    assert runtime.transport.call_args.kwargs["headers"]["Origin"] == "https://front-one.test"
+
+
+@pytest.mark.parametrize("profile", ["back-two", "missing"])
+def test_proxy_cannot_pin_backend_only_or_unknown_profile(runtime, profile):
+    response = runtime.bootstrap(profile=profile)
     assert response.status_code == 409
     assert "Set-Cookie" not in response.headers
     assert runtime.proxy._profile_contexts == {}

@@ -2,7 +2,9 @@ import { defineStore } from 'pinia'
 import { ref, shallowRef, markRaw, computed } from 'vue'
 
 export const useMapStore = defineStore('map', () => {
-  const activeProvider = ref('amap')
+  const activeProvider = ref('local_map')
+  const providerPayload = shallowRef(null)
+  let fallbackNoticeSession = null
   const mapInstance = shallowRef(null)
   const providerInstances = shallowRef({})
   const isMapReady = ref(false)
@@ -84,6 +86,18 @@ export const useMapStore = defineStore('map', () => {
     Object.assign(mapConfig.value, config)
   }
 
+  function setProviderPayload(data) {
+    if (data?.map_provider) setProvider(data.map_provider)
+    providerPayload.value = data
+  }
+
+  function shouldReportFallback(sessionId, preferred, selected) {
+    if (!preferred || preferred === selected) return false
+    if (fallbackNoticeSession === sessionId) return false
+    fallbackNoticeSession = sessionId
+    return true
+  }
+
   function getKeyRequirement() {
     const requirements = {
       amap: { field: 'amap_js_api_key', fieldLabel: 'JS API Key', value: mapConfig.value.amapKey },
@@ -98,6 +112,7 @@ export const useMapStore = defineStore('map', () => {
   return {
     activeProvider, mapInstance, providerInstances, isMapReady, mapConfig,
     displayName, setProvider, setMapInstance, setConfig, getKeyRequirement,
+    providerPayload, setProviderPayload, shouldReportFallback,
     // 绘制协调
     isDrawing, draftPoints, draftDistance,
     startDrawing, stopDrawing, clearDraft, addDraftPoint,

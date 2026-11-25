@@ -61,8 +61,8 @@ def _read_backend_source():
 class TestMapProviderBackendContract(unittest.TestCase):
     def setUp(self):
         original = main_module.resolve_backend_page_origin
-        def resolve(config, provider, request_origin=None):
-            return original(config, provider, request_origin or "https://runtime.test")
+        def resolve(config, provider, request_origin=None, **options):
+            return original(config, provider, request_origin or "https://runtime.test", **options)
         origin = mock.patch.object(main_module, "resolve_backend_page_origin", side_effect=resolve)
         origin.start()
         self.addCleanup(origin.stop)
@@ -191,7 +191,7 @@ class TestMapProviderBackendContract(unittest.TestCase):
 
         self.assertIn('def _plan_route_with_map_provider(', source)
         self.assertIn('provider_config = _get_map_provider_runtime_config(', source)
-        self.assertIn('provider = _get_active_map_provider(', source)
+        self.assertIn('get_map_config_candidates(runtime_config)', source)
         self.assertIn('plugins = _get_map_provider_plugins(', source)
 
     def test_initial_data_uses_encrypted_map_provider_bundle(self):
@@ -1323,6 +1323,7 @@ globalThis.fetch = async (url, options) => {
             result = main_module._plan_route_path_with_provider_runtime(
                 "session-1",
                 [[113.39, 22.52], [113.40, 22.53]],
+                provider="tencent",
                 runtime_config=runtime_config,
             )
 

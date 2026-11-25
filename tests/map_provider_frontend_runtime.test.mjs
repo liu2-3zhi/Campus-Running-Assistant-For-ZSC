@@ -716,7 +716,6 @@ function createRuntime(provider, options = {}) {
     'getMapProviderDisplayName',
     'getMapProviderConfig',
     'getMapProviderKeyRequirement',
-    'showMissingMapProviderKeyModal',
     'createMapProviderRuntimeConfigSnapshot',
     'queuePendingMapProviderConfig',
     'getRunningTaskMapProvider',
@@ -731,6 +730,7 @@ function createRuntime(provider, options = {}) {
     'bindTaskMapSdkInteractionTracking',
     'bindTaskMapUserInteractionTracking',
     'ensureActiveMapProviderRuntimeIfNeeded',
+    'loadConfiguredMapProviderRuntime',
     'loadScriptOnce',
     'assertMapSdkConfigSignature',
     'loadAMapOnce',
@@ -880,6 +880,8 @@ function createRuntime(provider, options = {}) {
     },
     BMAP_ANCHOR_TOP_LEFT: 'top-left',
     __reloadCalls: 0,
+    testGroup: options.group || 'user',
+    testNotices: [],
   };
   window.location = { reload() { window.__reloadCalls += 1; } };
   window.__scheduledTimeouts = [];
@@ -961,6 +963,17 @@ function createRuntime(provider, options = {}) {
     let providerMapLastFitCoords = {};
     let providerRunnerMarkers = {};
     let pendingMapProviderRuntimeConfig = null;
+    let legacyMapFallbackReported = "";
+    let legacyMapProviderAttempts = Promise.resolve();
+    let legacyMapCandidateLoading = false;
+    const currentUserData = { group: window.testGroup };
+    const swal = { fire: (notice) => window.testNotices.push(notice) };
+    const fetch = (...args) => window.testFetch(...args);
+    const getApiRequestSessionHeaderValue = () => 'test-session';
+    const captureLegacyBusinessContext = () => ({ session: sessionUUID });
+    const isCurrentLegacyBusinessContext = (context) => context.session === sessionUUID;
+    const addAdminViewOriginSessionHeader = () => {};
+    const hydrateMapProviderSecretsForLegacy = async (config) => config;
     let activeTaskMapProviderLock = null;
     const TASK_MAP_AUTO_RESET_IDLE_MS = 120000;
     let taskMapAutoResetTimer = null;
@@ -1139,6 +1152,64 @@ test('legacy campus map initializes without a key and keeps GCJ-02 route and run
   assert.equal(runner.removed, true);
   assert.equal(instance.removed, true);
   assert.equal(lines[0].removed, true);
+});
+
+test('legacy tries exact profiles in order and only tells administrators about a fallback', async () => {
+  for (const group of ['user', 'admin']) {
+    const runtime = createRuntime('amap', { group });
+    const win = runtime.getWindow();
+    win.APP_CONFIG = {
+      ...win.APP_CONFIG,
+      map_config_id: 'first',
+      map_preferred: { config_id: 'first', provider: 'amap' },
+      map_candidates: [
+        { config_id: 'first', provider: 'amap' },
+        { config_id: 'bad-credentials', provider: 'baidu' },
+        { config_id: 'campus', provider: 'local_map' },
+      ],
+    };
+    const tried = [];
+    win.testFetch = async (url) => {
+      assert.equal(url, '/api/frontend-config?map_config_id=bad-credentials');
+      return { ok: false };
+    };
+    const initialize = async (provider) => {
+      tried.push(provider);
+      return provider === 'local_map';
+    };
+    assert.equal(await runtime.ensureActiveMapProviderRuntimeIfNeeded('test', initialize), true);
+    assert.deepEqual(tried, ['amap', 'local_map']);
+    assert.equal(win.APP_CONFIG.map_config_id, 'campus');
+    assert.equal(await runtime.ensureActiveMapProviderRuntimeIfNeeded('test', initialize), true);
+    assert.equal(win.testNotices.length, group === 'admin' ? 1 : 0);
+    if (group === 'admin') assert.equal(win.testNotices[0].toast, true);
+  }
+});
+
+test('legacy campus instances do not survive a switch to another campus profile', async () => {
+  const runtime = createRuntime('local_map');
+  const win = runtime.getWindow();
+  const instances = [];
+  win.ZXLocalCampusMap = {
+    async create(_host, { configId }) {
+      const instance = {
+        configId, on() {}, off() {}, getZoom() { return 17; }, resetCampusView() {},
+        remove() { this.removed = true; },
+      };
+      instances.push(instance);
+      return instance;
+    },
+  };
+  win.APP_CONFIG.map_config_id = 'campus-a';
+  runtime.initProviderMap('map-container');
+  assert.equal(await runtime.waitForProviderMapReady('map-container'), true);
+  win.APP_CONFIG.map_config_id = 'campus-b';
+  assert.equal(runtime.getProviderMapInstance('map-container'), undefined);
+  runtime.initProviderMap('map-container');
+  await runtime.waitForProviderMapDestruction('map-container');
+  assert.equal(await runtime.waitForProviderMapReady('map-container'), true);
+  assert.deepEqual(instances.map((item) => item.configId), ['campus-a', 'campus-b']);
+  assert.equal(instances[0].removed, true);
 });
 
 test('legacy Baidu waits for iframe readiness and replays only the latest route', async () => {

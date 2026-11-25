@@ -682,16 +682,6 @@ async function initializeApp() {
 
       hideLoadingOverlays();
       HiddenMobileLoadingOverlay();
-      try {
-        await waitForLegacyInitialization(
-          ensureActiveMapProviderRuntimeIfNeeded("多账号模式恢复"),
-          "多账号地图运行时恢复",
-          30000,
-        );
-      } catch (e) {
-        if (!isCurrentLegacyBusinessContext(modeContext)) return;
-        logMessage_Error("地图加载失败（多账号模式恢复）", e);
-      }
       if (!isCurrentLegacyBusinessContext(modeContext)) return;
       $("loading-overlay").classList.remove("hidden");
       ShowMobileLoadingOverlay();
@@ -722,67 +712,9 @@ async function initializeApp() {
         $("main-app").classList.add("hidden");
         console.log("[会话恢复] 桌面端：显示 multi-account-app");
       }
-      if (!multiAccountMap && getActiveMapProvider() === "amap" && AMapInstance) {
-        try {
-          multiAccountMap = new AMapInstance.Map("multi-map-container", {
-            viewMode: "3D",
-            pitch: 55,
-            rotation: 0,
-            zoom: 17,
-            center: [113.390342, 22.527403],
-            renderOptions: {
-              willReadFrequently: true,
-            },
-          });
-          const ctrlBar = new AMapInstance.ControlBar({
-            position: { left: "12px", top: "12px" },
-            showZoomBar: false,
-            showControlButton: true,
-          });
-          multiAccountMap.addControl(ctrlBar);
-          try {
-            const buildings = new AMapInstance.BuildingLayer();
-            buildings.setMap(multiAccountMap);
-          } catch (e) {
-            logMessage_Warning("BuildingLayer not available (multi):", e);
-          }
-
-          multiAccountMap.on("zoomchange", () => {
-            if (!multiAccountMap) return;
-            const z = multiAccountMap.getZoom();
-            const zoomLevelEl = $("multi-zoom-level");
-            if (zoomLevelEl) zoomLevelEl.textContent = String(z.toFixed(1));
-          });
-          bindTaskMapSdkInteractionTracking("multi-map-container", multiAccountMap);
-          bindTaskMapUserInteractionTracking(
-            "multi-map-container",
-            multiAccountMap.getContainer && multiAccountMap.getContainer(),
-          );
-          bindTaskMapUserInteractionTracking(
-            "multi-map-container",
-            document.getElementById("multi-map-container"),
-          );
-          if (window.multiMapCleanup) window.multiMapCleanup();
-          window.multiMapCleanup = enhanceMapInteraction(multiAccountMap);
-
-          multiAccountMap.setStatus({
-            doubleClickZoom: true,
-            dragEnable: true,
-            scrollWheel: true,
-            keyboardEnable: true,
-          });
-          ensureMultiControls();
-          removeAmapLicenseOverlay("multi-map-container");
-        } catch (e) {
-          logMessage_Error("初始化多账号地图失败:", e);
-        }
-        $("auth-login-container").classList.add("hidden");
-        $("login-container").classList.add("hidden");
-      } else if (getActiveMapProvider() !== "amap") {
-        initProviderMap("multi-map-container", true);
-        $("auth-login-container").classList.add("hidden");
-        $("login-container").classList.add("hidden");
-      }
+      if (!isMobileMode) void ensureLegacyDesktopMultiMap();
+      $("auth-login-container").classList.add("hidden");
+      $("login-container").classList.add("hidden");
       try {
         const configUsers = await waitForLegacyInitialization(
           callPythonAPI("multi_get_all_config_users"),
@@ -902,15 +834,6 @@ async function initializeApp() {
       }
 
       hideLoadingOverlays();
-      try {
-        await waitForLegacyInitialization(
-          ensureActiveMapProviderRuntimeIfNeeded("会话恢复"),
-          "地图运行时恢复",
-          30000,
-        );
-      } catch (e) {
-        logMessage_Error("地图加载失败（会话恢复）", e);
-      }
       $("loading-overlay").classList.remove("hidden");
 
       syncUserListPollingBySocketState();
@@ -985,16 +908,6 @@ async function initializeApp() {
           logMessage_Error("初始化内嵌管理面板失败:", e);
         }
       }, 100);
-      try {
-        await waitForLegacyInitialization(
-          ensureActiveMapProviderRuntimeIfNeeded("系统账号恢复"),
-          "地图运行时恢复",
-          30000,
-        );
-      } catch (e) {
-        logMessage_Error("地图加载失败（系统账号恢复）", e);
-      }
-
       hideLoadingOverlays();
       if (isGuestMode) {
         logMessage_Info("[游客模式] 部分功能受限，请保存当前地址以便恢复会话");
@@ -1019,15 +932,6 @@ async function initializeApp() {
 
       hideLoadingOverlays();
     } else {
-      try {
-        await waitForLegacyInitialization(
-          ensureActiveMapProviderRuntimeIfNeeded("ready 阶段"),
-          "地图运行时就绪",
-          30000,
-        );
-      } catch (e) {
-        logMessage_Error("地图加载失败（ready 阶段）", e);
-      }
       hideLoadingOverlays();
     }
 
@@ -1058,7 +962,6 @@ async function initializeApp() {
     if (attRefresh) attRefresh.addEventListener("change", onParamChange);
     if (attRadius) attRadius.addEventListener("change", onParamChange);
 
-    $("confirm-amap-key-btn").addEventListener("click", onConfirmAmapKey);
     if (sessionUUID) {
       startSessionValidityCheck();
       startReminderChecker(sessionUUID);

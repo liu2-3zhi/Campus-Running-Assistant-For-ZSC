@@ -2647,6 +2647,7 @@ class Api:
                 "map_providers": map_public_payload["map_providers"],
                 "map_provider_key_bundle": map_public_payload["map_provider_key_bundle"],
                 **({"map_config_id": map_public_payload["map_config_id"]} if "map_config_id" in map_public_payload else {}),
+                **{key: map_public_payload[key] for key in ("map_preferred", "map_candidates", "frontend_proxy_enabled") if key in map_public_payload},
                 "isLoggedIn": is_logged_in,
                 "userInfo": user_info,
                 "is_authenticated": is_authenticated,
@@ -3400,6 +3401,7 @@ class Api:
             "map_providers": login_map_payload["map_providers"],
             "map_provider_key_bundle": login_map_payload["map_provider_key_bundle"],
             **({"map_config_id": login_map_payload["map_config_id"]} if "map_config_id" in login_map_payload else {}),
+            **{key: login_map_payload[key] for key in ("map_preferred", "map_candidates", "frontend_proxy_enabled") if key in login_map_payload},
             # "auth_group": auth_group,
             "cached_notifications": cached_notifications,
         }
@@ -5184,7 +5186,8 @@ class Api:
             return None
 
         provider_name = result.get("provider") or provider
-        _detour_leg_cache_put(cache_provider, start_coord, end_coord, geometry)
+        if not result.get("fallback_used"):
+            _detour_leg_cache_put(cache_provider, start_coord, end_coord, geometry)
         return {
             "geometry": geometry,
             "distance_m": total,

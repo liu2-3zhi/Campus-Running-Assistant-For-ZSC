@@ -7,7 +7,6 @@ import { useMapStore } from '@/stores/map'
 import { useNotificationStore } from '@/stores/notification'
 import { useBackgroundTask } from '@/composables/useBackgroundTask'
 import { callAPI } from '@/services/api'
-import { hydrateMapProviderSecrets } from '@/services/mapKeyRuntime'
 import { connectWebSocket, disconnectWebSocket, isWebSocketConnected, onWebSocketStatus } from '@/services/socket'
 import { useRouter } from 'vue-router'
 import Swal from 'sweetalert2'
@@ -80,8 +79,7 @@ async function loadInitialData() {
   const context = app.captureBusinessContext()
   app.isLoading = true
   try {
-    const responseData = await callAPI('get_initial_data')
-    const data = await hydrateMapProviderSecrets(responseData)
+    const data = await callAPI('get_initial_data')
     if (!viewMounted || requestSession !== auth.sessionUUID || !app.isCurrentBusinessContext(context)) return
     if (data) {
       app.applyBusinessMode(data, context)
@@ -110,17 +108,7 @@ async function loadInitialData() {
         app.pythonParams = params
       }
 
-      const providers = data.map_providers || {}
-      mapStore.setConfig({
-        amapKey: providers.amap?.js_key || '',
-        amapSecurityJsCode: providers.amap?.security_js_code || '',
-        tencentKey: providers.tencent?.map_key || '',
-        tiandituKey: providers.tianditu?.token || '',
-        baiduKey: providers.baidu?.ak || '',
-        frontendProxyEnabled: data.frontend_proxy_enabled === true,
-        frontendConfigId: data.map_config_id || '',
-      })
-      if (data.map_provider) mapStore.setProvider(data.map_provider)
+      mapStore.setProviderPayload(data)
       if (data.task_status) await backgroundTask.applyStatus(data.task_status)
 
       if (data.beian) app.beianData = data.beian

@@ -128,25 +128,15 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             source,
         )
 
-    def test_legacy_login_hydrates_map_keys_before_syncing_config(self):
+    def test_legacy_login_syncs_map_configuration_without_waiting_for_credentials(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
         login_start = source.index("async function onLogin()")
         login_end = source.index("async function onLogout()", login_start)
         login_source = source[login_start:login_end]
 
-        self.assertIn(
-            'const mapProviderSessionUUID = getApiRequestSessionHeaderValue("login");',
-            login_source,
-        )
-        self.assertIn("let result = await callPythonAPI(\"login\", user, pass);", login_source)
-        self.assertRegex(
-            login_source,
-            r"result = await hydrateMapProviderSecretsForLegacy\(\s*result,\s*mapProviderSessionUUID,\s*\);",
-        )
-        self.assertLess(
-            login_source.index("hydrateMapProviderSecretsForLegacy"),
-            login_source.index("syncMapProviderConfigFromInitialData(result)"),
-        )
+        self.assertIn('await callPythonAPI("login", user, pass)', login_source)
+        self.assertIn("syncMapProviderConfigFromInitialData(result)", login_source)
+        self.assertNotIn("hydrateMapProviderSecretsForLegacy", login_source)
 
     def test_vue_runtime_loader_binds_map_runtime_to_business_and_admin_origin(self):
         source = FRONTEND_MAP_KEY_RUNTIME_PATH.read_text(encoding="utf-8")
@@ -156,25 +146,22 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("assertCurrentContext()", source)
         self.assertIn("runtime.decryptMapProviderKeys(keyBundle, sessionId, originSessionId)", source)
 
-    def test_missing_key_modal_is_provider_agnostic(self):
+    def test_missing_key_modal_is_removed(self):
         html = INDEX_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('id="map-provider-key-modal-title"', html)
-        self.assertIn('id="map-provider-key-modal-description"', html)
-        self.assertIn('id="map-provider-key-modal-link"', html)
-        self.assertIn('id="map-provider-key-input-label"', html)
-        self.assertNotIn("程序需要一个有效的高德地图JS API Key才能使用地图功能", html)
+        self.assertNotIn('id="amap-key-modal"', html)
+        self.assertNotIn('id="confirm-amap-key-btn"', html)
 
-    def test_frontend_missing_key_prompt_uses_active_provider_contract(self):
+    def test_frontend_map_credentials_are_checked_per_candidate(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('function showMissingMapProviderKeyModal(', source)
+        self.assertNotIn('function showMissingMapProviderKeyModal(', source)
         self.assertIn('function ensureActiveMapProviderRuntimeIfNeeded(', source)
         self.assertIn('fieldKey: "js_key"', source)
         self.assertIn('fieldKey: "map_key"', source)
         self.assertIn('fieldKey: "token"', source)
         self.assertIn('fieldKey: "ak"', source)
-        self.assertIn('callPythonAPI("save_map_provider_key"', source)
+        self.assertNotIn('callPythonAPI("save_map_provider_key"', source)
         self.assertIn('if (provider !== "amap")', source)
 
     def test_frontend_map_initializers_gate_amap_runtime_by_active_provider(self):
@@ -193,11 +180,11 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         ]
 
         self.assertIn('function renderMapProviderFrontendPlaceholder(', source)
-        self.assertIn('if (!multiAccountMap && getActiveMapProvider() === "amap" && AMapInstance)', init_app_block)
+        self.assertIn("ensureLegacyDesktopMultiMap()", init_app_block)
         self.assertIn('if (getActiveMapProvider() !== "amap")', init_map_block)
         self.assertIn('initProviderMap("map-container", false)', init_map_block)
-        self.assertIn('if (getActiveMapProvider() !== "amap")', mobile_map_block)
-        self.assertIn('initProviderMap(containerId, isMultiAccount)', mobile_map_block)
+        self.assertIn('provider === "amap" ? initMobileAmap(', mobile_map_block)
+        self.assertIn("initializeLegacyProviderContainer(containerId, provider, isMultiAccount)", mobile_map_block)
 
     def test_non_amap_desktop_map_views_initialize_provider_map(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
@@ -214,9 +201,9 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             source.index("function getActiveMapProvider(")
         ]
 
-        self.assertIn('initProviderMap("map-container", false)', show_main_block)
-        self.assertIn('initProviderMap("multi-map-container", true)', switch_multi_block)
-        self.assertIn('initProviderMap("multi-map-container", true)', init_app_block)
+        self.assertIn("ensureSingleMap()", show_main_block)
+        self.assertIn("ensureLegacyDesktopMultiMap()", switch_multi_block)
+        self.assertIn("ensureLegacyDesktopMultiMap()", init_app_block)
 
     def test_non_amap_frontend_maps_load_real_provider_sdks(self):
         source = (
@@ -225,8 +212,8 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             + MAP_RENDER_PATH.read_text(encoding="utf-8")
         )
         runtime_source = source[
-            source.index("async function ensureActiveMapProviderRuntimeIfNeeded("):
-            source.index("function convertMapCoordinatesToGcj02(", source.index("async function ensureActiveMapProviderRuntimeIfNeeded("))
+            source.index("async function loadActiveMapProviderRuntime("):
+            source.index("function convertMapCoordinatesToGcj02(", source.index("async function loadActiveMapProviderRuntime("))
         ]
         init_map_block = source[
             source.index("function initMap("):
@@ -246,7 +233,7 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn('case "tianditu":', runtime_source)
         self.assertIn('case "baidu":', runtime_source)
         self.assertIn('initProviderMap("map-container", false)', init_map_block)
-        self.assertIn("initProviderMap(containerId, isMultiAccount)", mobile_map_block)
+        self.assertIn("initializeLegacyProviderContainer(containerId, provider, isMultiAccount)", mobile_map_block)
 
     def test_non_amap_runtime_loaders_verify_sdk_globals_after_script_callback(self):
         source = SCRIPT_PATH.read_text(encoding="utf-8")
@@ -577,6 +564,10 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
             source.index("async function switchToMultiMode("):
             source.index('const configUsers = await callPythonAPI("multi_get_all_config_users")', source.index("async function switchToMultiMode("))
         ]
+        desktop_multi_source = source[
+            source.index("async function ensureLegacyDesktopMultiMap("):
+            source.index("async function ensureSingleMap(")
+        ]
 
         self.assertIn('zoomProviderMap("map-container", 1)', single_control_source)
         self.assertIn('zoomProviderMap("map-container", -1)', single_control_source)
@@ -590,7 +581,8 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn('if (containerId === "multi-map-container")', provider_instance_source)
         self.assertIn("return multiAccountMap;", provider_instance_source)
         self.assertIn("ensureSingleControls();", show_main_source)
-        self.assertIn("ensureMultiControls();", switch_multi_source)
+        self.assertIn("ensureLegacyDesktopMultiMap()", switch_multi_source)
+        self.assertIn("ensureMultiControls();", desktop_multi_source)
         self.assertIn('zoomProviderMap("map-container", 1)', mobile_control_source)
         self.assertIn('zoomProviderMap("map-container", -1)', mobile_control_source)
         self.assertIn('fitProviderMapToLastRoute("map-container")', mobile_control_source)
@@ -634,17 +626,6 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         self.assertIn("applyProviderMapDefaultView(containerId);", finish_init_source)
         self.assertIn("z-[1000]", source)
 
-    def test_saving_provider_key_refreshes_non_amap_map_instances(self):
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
-        key_source = source[
-            source.index("async function onConfirmAmapKey("):
-            source.index("function bindImmediateRefreshForUserSelects(", source.index("async function onConfirmAmapKey("))
-        ]
-
-        self.assertIn('await ensureActiveMapProviderRuntimeIfNeeded("保存 Key 后刷新")', key_source)
-        self.assertIn("await ensureSingleMap();", key_source)
-        self.assertNotIn('if (getActiveMapProvider() === "amap") {\n          ensureSingleMap();\n        }', key_source)
-
     def test_tianditu_frontend_map_uses_tokenized_tile_layers(self):
         source = (
             SCRIPT_PATH.read_text(encoding="utf-8")
@@ -678,7 +659,11 @@ class TestMapProviderRuntimeGuards(unittest.TestCase):
         init_map_source = extract_function("initMap", "function showMainApp(")
         mobile_map_source = extract_function("initMobileMap", "async function loadMobileTaskHistoryPanel")
 
-        for block in [ensure_single_source, init_map_source, mobile_map_source]:
+        for block in [ensure_single_source, mobile_map_source]:
+            runtime_index = block.index("await ensureActiveMapProviderRuntimeIfNeeded(")
+            init_index = block.index("initializeLegacyProviderContainer(", runtime_index)
+            self.assertLess(runtime_index, init_index)
+        for block in [init_map_source]:
             non_amap_index = block.index('if (getActiveMapProvider() !== "amap")')
             runtime_index = block.index("await ensureActiveMapProviderRuntimeIfNeeded(", non_amap_index)
             init_index = block.index("initProviderMap(", non_amap_index)

@@ -652,10 +652,9 @@ function createLegacyPublicConfigSnapshot(config) {
 
 function applyLegacyAppConfig(config, explicitSessionId) {
   const safeConfig = config && typeof config === "object" ? config : {};
-  window.__mapKeyRuntimeReady = hydrateMapProviderSecretsForLegacy(
-    safeConfig,
-    explicitSessionId,
-  )
+  const hydrated = Array.isArray(safeConfig.map_candidates)
+    ? Promise.resolve(safeConfig) : hydrateMapProviderSecretsForLegacy(safeConfig, explicitSessionId);
+  window.__mapKeyRuntimeReady = hydrated
     .then((hydratedConfig) => {
       window.APP_CONFIG = hydratedConfig;
       window.dispatchEvent(
@@ -685,12 +684,13 @@ function applyLegacyAppConfig(config, explicitSessionId) {
     sms_enabled: false,
     reg_verify_enabled: false,
     enable_phone_modification: false,
-    map_provider: "amap",
+    map_provider: "local_map",
     map_providers: {
       amap: { provider: "amap", display_name: "高德地图", js_key: "", coordinate_system: "gcj02", business_coordinate_system: "gcj02" },
       tencent: { provider: "tencent", display_name: "腾讯地图", map_key: "", coordinate_system: "gcj02", business_coordinate_system: "gcj02" },
       tianditu: { provider: "tianditu", display_name: "天地图", token: "", coordinate_system: "wgs84", business_coordinate_system: "gcj02" },
       baidu: { provider: "baidu", display_name: "百度地图", ak: "", coordinate_system: "bd09", business_coordinate_system: "gcj02" },
+      local_map: { provider: "local_map", display_name: "校园离线地图", coordinate_system: "gcj02", business_coordinate_system: "gcj02" },
     },
   };
 
@@ -1616,7 +1616,7 @@ async function showNetworkErrorDialog() {
 function safeRemoveModalVisible() {
   const openModals = document.querySelectorAll(
     "#admin-panel-modal.flex, #mobile-admin-panel-modal.flex, " +
-    "#amap-key-modal.flex, #user-details-modal.flex, " +
+    "#user-details-modal.flex, " +
     "#task-details-modal.flex, #account-params-modal.flex"
   );
   if (openModals.length === 0) {
@@ -15529,9 +15529,7 @@ function loadAMapOnce() {
     return amapLoadingPromise;
   }
   if (!AMAP_API_KEY) {
-    logMessage_Info("[错误] 尝试加载地图失败：API Key为空。");
-    showMissingMapProviderKeyModal("amap");
-    return Promise.reject("API Key is missing.");
+    return Promise.reject(new Error("地图配置缺少密钥"));
   }
   const securityJsCode = String(getMapProviderConfig("amap").security_js_code || "").trim();
   if (securityJsCode) {
@@ -15561,26 +15559,105 @@ function loadAMapOnce() {
 
   return amapLoadingPromise;
 }
+function waitForLegacyAmapReady(instance) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => finish(false), 10000);
+    const onComplete = () => finish(true);
+    function finish(ready) {
+      clearTimeout(timer);
+      instance.off?.("complete", onComplete);
+      resolve(ready);
+    }
+    instance.on("complete", onComplete);
+  });
+}
+
+async function ensureLegacyDesktopMultiMap() {
+  const ready = await ensureActiveMapProviderRuntimeIfNeeded("多账号地图初始化", async (provider) => {
+    if (provider !== "amap") return initializeLegacyProviderContainer("multi-map-container", provider, true);
+    if (multiAccountMap) return true;
+    multiAccountMap = new AMapInstance.Map("multi-map-container", {
+      viewMode: "3D",
+      pitch: 55,
+      rotation: 0,
+      zoom: 17,
+      center: [113.390342, 22.527403],
+      renderOptions: {
+        willReadFrequently: true,
+      },
+    });
+    const ctrlBar = new AMapInstance.ControlBar({
+      position: { left: "12px", top: "12px" },
+      showZoomBar: false,
+      showControlButton: true,
+    });
+    multiAccountMap.addControl(ctrlBar);
+    try {
+      const buildings = new AMapInstance.BuildingLayer();
+      buildings.setMap(multiAccountMap);
+    } catch (e) {
+      logMessage_Warning("BuildingLayer not available (multi):", e);
+    }
+
+    multiAccountMap.on("zoomchange", () => {
+      const z = multiAccountMap.getZoom();
+      $("multi-zoom-level").textContent = String(z.toFixed(1));
+    });
+
+    multiAccountMap.on("zoomchange", () => {
+      if (!multiAccountMap) return;
+      const z = multiAccountMap.getZoom();
+      const zoomLevelEl = $("multi-zoom-level");
+      if (zoomLevelEl) zoomLevelEl.textContent = String(z.toFixed(1));
+    });
+    bindTaskMapSdkInteractionTracking("multi-map-container", multiAccountMap);
+    bindTaskMapUserInteractionTracking(
+      "multi-map-container",
+      multiAccountMap.getContainer && multiAccountMap.getContainer(),
+    );
+    bindTaskMapUserInteractionTracking(
+      "multi-map-container",
+      document.getElementById("multi-map-container"),
+    );
+    if (window.multiMapCleanup) window.multiMapCleanup();
+    window.multiMapCleanup = enhanceMapInteraction(multiAccountMap);
+
+    multiAccountMap.setStatus({
+      doubleClickZoom: true,
+      dragEnable: true,
+      scrollWheel: true,
+      keyboardEnable: true,
+    });
+    ensureMultiControls();
+    removeAmapLicenseOverlay("multi-map-container");
+    const ready = await waitForLegacyAmapReady(multiAccountMap);
+    if (!ready) {
+      multiAccountMap?.destroy();
+      multiAccountMap = null;
+    }
+    return ready;
+  });
+  if (!ready) renderMapProviderFrontendPlaceholder("multi-map-container", true, "地图暂不可用，请稍后重试。");
+}
+
 async function ensureSingleMap() {
   applyPendingMapProviderConfigIfAny();
-  if (getActiveMapProvider() !== "amap") {
-    try {
-      const isReady = await ensureActiveMapProviderRuntimeIfNeeded("单账号地图初始化");
-      if (isReady) {
-        initProviderMap("map-container", false);
-      }
-    } catch (e) {
-      logMessage_Error("单账号地图供应商运行时加载失败:", e);
-    }
-    return;
-  }
-  if (map || !AMapReady || !AMapInstance) return;
   const container = document.getElementById("map-container");
-  if (!container) return;
-  const isHidden = container.offsetParent === null;
-  if (isHidden) return;
-  initMap(AMapInstance);
+  if (!container || container.offsetParent === null) return;
+  const ready = await ensureActiveMapProviderRuntimeIfNeeded("单账号地图初始化", async (provider) => {
+    if (provider === "amap") {
+      if (map?.getContainer()?.id === "map-container") return true;
+      await initMap(AMapInstance);
+      if (!map) return false;
+      const ready = await waitForLegacyAmapReady(map);
+      if (!ready) destroySingleMap();
+      return ready;
+    }
+    return initializeLegacyProviderContainer("map-container", provider);
+  });
+  if (!ready) renderMapProviderFrontendPlaceholder("map-container", false, "地图暂不可用，请稍后重试。");
 }
+
 function forceProjectionRefresh() {
   if (!map) return;
   try {
@@ -16119,15 +16196,11 @@ function showMainApp() {
   logMessage_Info("等待UI渲染稳定...");
   setTimeout(() => {
     logMessage_Info("UI稳定，开始初始化地图...");
-    ensureActiveMapProviderRuntimeIfNeeded("主应用地图初始化")
-      .then((isReady) => {
-        if (!isReady) return;
-        if (getActiveMapProvider() === "amap" && AMapInstance) {
-          initMap(AMapInstance);
-          ensureSingleControls();
-        } else {
-          initProviderMap("map-container", false);
-          ensureSingleControls();
+    if (isMobileMode) return;
+    ensureSingleMap()
+      .then(() => {
+        ensureSingleControls();
+        if (getActiveMapProvider() !== "amap") {
           if (resolveMapReady) {
             resolveMapReady(null);
           }
@@ -16365,75 +16438,6 @@ $("multi-download-template-btn").addEventListener(
   "click",
   multi_downloadTemplate,
 );
-async function onConfirmAmapKey() {
-  const input = $("amap-key-input");
-  const provider = input.dataset.provider || getActiveMapProvider();
-  const requirement = getMapProviderKeyRequirement(provider);
-  const newKey = input.value.trim();
-  if (!newKey) {
-    // showModalAlert("API Key 不能为空！");
-    swal.fire({
-      title: "错误",
-      text: "API Key 不能为空！",
-      icon: "error",
-    });
-    return;
-  }
-
-  const btn = $("confirm-amap-key-btn");
-  const originalText = btn.textContent;
-  btn.disabled = true;
-  btn.innerHTML = `<span class="inline-block animate-spin mr-2">⏳</span>保存中...`;
-
-  try {
-    const mapProviderSessionUUID = getAuthenticatedSessionHeaderValue();
-    let result = await callPythonAPI("save_map_provider_key", {
-      config_id: $("amap-key-input").dataset.configId || window.APP_CONFIG?.map_config_id,
-      provider: requirement.provider,
-      api_key: newKey,
-    });
-    result = await hydrateMapProviderSecretsForLegacy(result, mapProviderSessionUUID);
-    if (result.success) {
-      syncMapProviderConfigFromInitialData(result);
-      const modal = $("amap-key-modal");
-      modal.classList.add("hidden");
-      modal.classList.remove("flex");
-      safeRemoveModalVisible();
-      logMessage_Info(`${requirement.displayName} API Key已更新，正在尝试重新加载地图...`);
-      try {
-        await ensureActiveMapProviderRuntimeIfNeeded("保存 Key 后刷新");
-        await ensureSingleMap();
-      } catch (e) {
-        logMessage_Error("保存Key后加载地图失败", e);
-        logMessage_Info(
-          "[错误] 新的API Key似乎无效，地图加载失败。请检查后重试。",
-        );
-        modal.classList.remove("hidden");
-        modal.classList.add("flex");
-        document.body.classList.add("modal-visible");
-      }
-    } else {
-      // showModalAlert(`保存失败: ${result.message}`);
-      swal.fire({
-        title: "错误",
-        text: `保存失败: ${result.message}`,
-        icon: "error",
-      });
-    }
-  } catch (e) {
-    logMessage_Error("保存API Key时发生网络错误:", e);
-    // showModalAlert(`保存失败: ${e.message}`);
-    swal.fire({
-      title: "错误",
-      text: `保存失败: ${e.message}`,
-      icon: "error",
-    });
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = originalText;
-  }
-}
-
 function bindImmediateRefreshForUserSelects() {
   const loginSelect = $("user-combo");
   const multiSelect = $("multi-config-user-select");
@@ -16623,44 +16627,24 @@ async function onLogin() {
 
   try {
     logMessage_Info("[前端-登录] 调用后端API进行登录验证...");
-    const mapProviderSessionUUID = getApiRequestSessionHeaderValue("login");
     let result = await callPythonAPI("login", user, pass);
     if (!isCurrentLegacyBusinessContext(modeContext)) return;
     if (result.success) {
       applyLegacyBusinessMode(result, modeContext);
       // 学校账号登录不会结束管理员查看链。
       if (!getStoredAdminReturnOriginSession()) clearAdminReturnOriginState("重新登录");
-      try {
-        result = await hydrateMapProviderSecretsForLegacy(
-          result,
-          mapProviderSessionUUID,
-        );
-      } catch (error) {
-        logMessage_Error("[前端-登录] 地图密钥运行时解密失败:", error);
-      }
-      if (!isCurrentLegacyBusinessContext(modeContext)) return;
       await syncThemeFromServer(result.theme, result.theme_style);
       if (!isCurrentLegacyBusinessContext(modeContext)) return;
       logMessage_Info("[前端-登录] ✓ 登录成功！");
       showButtonSuccess("login-button", "登录成功");
       syncMapProviderConfigFromInitialData(result);
-      if (getActiveMapProvider() === "local_map" || getActiveMapProviderApiKey()) {
-        logMessage_Info(`[前端-登录] 加载${getMapProviderDisplayName()}地图配置...`);
-        try {
-          await ensureActiveMapProviderRuntimeIfNeeded("登录成功");
-          logMessage_Info("[前端-登录] ✓ 地图加载成功");
-        } catch (e) {
-          logMessage_Error("[前端-登录] ✗ 地图加载失败:", e);
-        }
-      } else {
-        showMissingMapProviderKeyModal(getActiveMapProvider());
-      }
 
       if (!isCurrentLegacyBusinessContext(modeContext)) return;
       logMessage_Info("[前端-登录] 显示主应用界面...");
+      currentUserData = result.userInfo || {};
+      if (!currentUserData.group) currentUserData.group = result.group || result.auth_group;
       showMainApp();
       $("loading-overlay").classList.add("hidden");
-      currentUserData = result.userInfo;
       // 从API返回的result中获取group字段，而不是auth_group
       // 原因：后端登录API（main.py第16868行）返回的字段名是"group"，不是"auth_group"
       // 错误使用auth_group会导致currentUserData.group总是默认为"user"
@@ -17457,71 +17441,7 @@ async function switchToMultiMode() {
   }
 
   document.body.classList.remove("modal-visible");
-  try {
-    await ensureActiveMapProviderRuntimeIfNeeded("进入多账号模式");
-  } catch (e) {
-    logMessage_Error("地图未就绪，无法进入多账号地图", e);
-    return;
-  }
-  if (!multiAccountMap && getActiveMapProvider() === "amap" && AMapInstance) {
-    multiAccountMap = new AMapInstance.Map("multi-map-container", {
-      viewMode: "3D",
-      pitch: 55,
-      rotation: 0,
-      zoom: 17,
-      center: [113.390342, 22.527403],
-      renderOptions: {
-        willReadFrequently: true,
-      },
-    });
-    const ctrlBar = new AMapInstance.ControlBar({
-      position: { left: "12px", top: "12px" },
-      showZoomBar: false,
-      showControlButton: true,
-    });
-    multiAccountMap.addControl(ctrlBar);
-    try {
-      const buildings = new AMapInstance.BuildingLayer();
-      buildings.setMap(multiAccountMap);
-    } catch (e) {
-      logMessage_Warning("BuildingLayer not available (multi):", e);
-    }
-
-    multiAccountMap.on("zoomchange", () => {
-      const z = multiAccountMap.getZoom();
-      $("multi-zoom-level").textContent = String(z.toFixed(1));
-    });
-
-    multiAccountMap.on("zoomchange", () => {
-      if (!multiAccountMap) return;
-      const z = multiAccountMap.getZoom();
-      const zoomLevelEl = $("multi-zoom-level");
-      if (zoomLevelEl) zoomLevelEl.textContent = String(z.toFixed(1));
-    });
-    bindTaskMapSdkInteractionTracking("multi-map-container", multiAccountMap);
-    bindTaskMapUserInteractionTracking(
-      "multi-map-container",
-      multiAccountMap.getContainer && multiAccountMap.getContainer(),
-    );
-    bindTaskMapUserInteractionTracking(
-      "multi-map-container",
-      document.getElementById("multi-map-container"),
-    );
-    if (window.multiMapCleanup) window.multiMapCleanup();
-    window.multiMapCleanup = enhanceMapInteraction(multiAccountMap);
-
-    multiAccountMap.setStatus({
-      doubleClickZoom: true,
-      dragEnable: true,
-      scrollWheel: true,
-      keyboardEnable: true,
-    });
-    ensureMultiControls();
-    removeAmapLicenseOverlay("multi-map-container");
-  } else if (getActiveMapProvider() !== "amap") {
-    initProviderMap("multi-map-container", true);
-    ensureMultiControls();
-  }
+  if (!isMobileMode) void ensureLegacyDesktopMultiMap();
 
   const configUsers = await callPythonAPI("multi_get_all_config_users");
   if (!isCurrentLegacyBusinessContext(modeContext)) return;
@@ -24716,46 +24636,16 @@ async function initMobileMap(
     }
     return false;
   }
-  if (getActiveMapProvider() !== "amap") {
-    try {
-      const isReady = await ensureActiveMapProviderRuntimeIfNeeded("移动端地图初始化");
-      if (isReady) {
-        initProviderMap(containerId, isMultiAccount);
-        logMessage_Info(
-          `[移动端地图] 当前提供方为${getMapProviderDisplayName()}，已使用对应前端地图初始化`,
-        );
-      }
-    } catch (e) {
-      logMessage_Error("[移动端地图] 地图供应商运行时加载失败:", e);
-    }
-    return true;
-  }
-  if (typeof AMapInstance === "undefined") {
-    logMessage_Error("[移动端地图] 高德地图API未加载");
-    container.innerHTML = `
-    <div class="absolute inset-0 flex items-center justify-center text-slate-400">
-      <div class="text-center">
-        <svg class="w-12 h-12 mx-auto mb-2 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-        <p class="text-sm">地图加载失败</p>
-        <p class="text-xs mt-1">高德地图API未加载</p>
-      </div>
-    </div>
-  `;
-    if (retryCount < MAX_RETRIES) {
-      logMessage_Info(
-        `[移动端地图] 将在 ${RETRY_DELAY}ms 后重试加载 (${
-          retryCount + 1
-        }/${MAX_RETRIES})`,
-      );
-      setTimeout(() => {
-        initMobileMap(containerId, isMultiAccount, retryCount + 1);
-      }, RETRY_DELAY);
-    }
-    return false;
-  }
+  const ready = await ensureActiveMapProviderRuntimeIfNeeded("移动端地图初始化", (provider) =>
+    provider === "amap" ? initMobileAmap(containerId, isMultiAccount) :
+      initializeLegacyProviderContainer(containerId, provider, isMultiAccount));
+  if (!ready) renderMapProviderFrontendPlaceholder(containerId, isMultiAccount, "地图暂不可用，请稍后重试。");
+  return ready;
+}
+
+async function initMobileAmap(containerId, isMultiAccount) {
+  const container = document.getElementById(containerId);
+  if (!container || !AMapInstance) return false;
   container.innerHTML = `
   <div class="absolute inset-0 flex items-center justify-center text-slate-400">
     <div class="text-center">
@@ -24836,16 +24726,6 @@ async function initMobileMap(
         </div>
       </div>
     `;
-      if (retryCount < MAX_RETRIES) {
-        logMessage_Info(
-          `[移动端地图] 将在 ${RETRY_DELAY}ms 后重试 (${
-            retryCount + 1
-          }/${MAX_RETRIES})`,
-        );
-        setTimeout(() => {
-          initMobileMap(containerId, isMultiAccount, retryCount + 1);
-        }, RETRY_DELAY);
-      }
       return false;
     }
   } else {
@@ -24932,16 +24812,6 @@ async function initMobileMap(
         </div>
       </div>
     `;
-      if (retryCount < MAX_RETRIES) {
-        logMessage_Info(
-          `[移动端地图] 将在 ${RETRY_DELAY}ms 后重试 (${
-            retryCount + 1
-          }/${MAX_RETRIES})`,
-        );
-        setTimeout(() => {
-          initMobileMap(containerId, isMultiAccount, retryCount + 1);
-        }, RETRY_DELAY);
-      }
       return false;
     }
   }
@@ -27775,6 +27645,7 @@ function getInitialDataFailureNotice(response) {
 }
 
 async function hydrateInitialDataMapProviderSecrets(response, sessionId) {
+  if (Array.isArray(response?.map_candidates)) return response;
   try {
     return await hydrateMapProviderSecretsForLegacy(response, sessionId);
   } catch (error) {

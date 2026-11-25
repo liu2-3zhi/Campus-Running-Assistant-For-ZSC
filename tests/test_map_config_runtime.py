@@ -119,10 +119,11 @@ def test_legacy_key_edit_updates_only_frontend_profile(monkeypatch, encryption_c
     )
     result = api_runtime.Api.save_map_provider_key(api, "amap", "edited-front-key")
     assert result["success"] is True
-    front, back = config.get("Map", "configs")
+    front, back, campus = config.get("Map", "configs")
     assert front["js_key"] == "edited-front-key"
     assert back["js_key"] == "back-two-secret"
     assert back["security_js_code"] == "back-two-security"
+    assert campus["provider"] == "local_map"
     assert config.get("Map", "backend_config_id") == "back-two"
     assert result["map_config_id"] == "front-one"
     assert main._decrypt_map_provider_key_bundle(result["map_provider_key_bundle"], encryption_context) == {
@@ -197,6 +198,20 @@ def test_detour_cache_reuses_backend_routes_after_name_order_or_frontend_key_cha
     rows.reverse()
     assert plan()["cached"] is True
     assert planner.call_count == 1
+
+
+def test_detour_fallback_is_not_cached_as_the_primary_route(detour_runtime):
+    _, planner, plan = detour_runtime
+    path = planner.return_value["path"]
+    planner.side_effect = [
+        {"path": path, "provider": "local_map", "fallback_used": True},
+        {"path": path, "provider": "amap", "fallback_used": False},
+    ]
+
+    assert plan()["provider"] == "local_map"
+    assert plan()["provider"] == "amap"
+    assert plan()["cached"] is True
+    assert planner.call_count == 2
 
 
 def test_detour_planning_passes_the_same_configuration_snapshot_used_for_cache(monkeypatch):

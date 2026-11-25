@@ -52,6 +52,7 @@ PROVIDER_KEY_FIELDS = {"amap": "js_key", "tencent": "map_key", "tianditu": "toke
 LEGACY_KEY_FIELDS = {"amap": "amap_js_key", "tencent": "tencent_map_key", "tianditu": "tianditu_token", "baidu": "baidu_map_ak"}
 PROVIDER_NAMES = {"amap": "高德", "tencent": "腾讯", "tianditu": "天地图", "baidu": "百度", "local_map": "校园离线地图"}
 LOCAL_MAP_DEFAULT_SERVICE_URL = "http://127.0.0.1:8765"
+LOCAL_MAP_DEFAULT_ID = "local-map-default"
 
 
 def normalize_backend_page_origin(value):
@@ -163,12 +164,29 @@ def _normalize_map_configs(values, existing=None):
     return result
 
 
+def _default_local_map_profile(configs):
+    used_ids = {entry["id"] for entry in configs}
+    config_id = LOCAL_MAP_DEFAULT_ID
+    suffix = 1
+    while config_id in used_ids:
+        suffix += 1
+        config_id = f"{LOCAL_MAP_DEFAULT_ID}-{suffix}"
+    return {
+        "id": config_id, "name": PROVIDER_NAMES["local_map"], "provider": "local_map",
+        "service_url": LOCAL_MAP_DEFAULT_SERVICE_URL,
+    }
+
+
+def _ensure_local_map_profile(configs):
+    if all(entry["provider"] != "local_map" for entry in configs):
+        configs.append(_default_local_map_profile(configs))
+    return configs
+
+
 def get_map_config_settings(config):
     """Read ordered profiles, migrating the single-profile layout in memory."""
     stored = config.get("Map", "configs", fallback=None)
-    provider = str(config.get("Map", "provider", fallback="amap") or "amap").strip().lower()
-    if provider not in PROVIDER_NAMES:
-        provider = "amap"
+    provider = str(config.get("Map", "provider", fallback="") or "").strip().lower()
     if stored is None:
         providers = _stored_map_providers(config)
         configs = []
@@ -188,7 +206,9 @@ def get_map_config_settings(config):
         configs = _normalize_map_configs(configs)
     else:
         configs = _normalize_map_configs(stored)
-    fallback = next((entry["id"] for entry in configs if entry["provider"] == provider), configs[0]["id"])
+    _ensure_local_map_profile(configs)
+    default_id = next(entry["id"] for entry in configs if entry["provider"] == "local_map")
+    fallback = next((entry["id"] for entry in configs if entry["provider"] == provider), default_id)
     ids = {entry["id"] for entry in configs}
     result = {"configs": configs}
     for scope in ("frontend", "backend"):
@@ -199,18 +219,49 @@ def get_map_config_settings(config):
     return result
 
 
-def get_map_config_selection(config, scope="backend", provider=None):
+def get_map_config_selection(config, scope="backend", provider=None, config_id=None):
     if scope not in ("frontend", "backend"):
         raise ValueError("地图配置用途无效")
     settings = get_map_config_settings(config)
-    selected = next(entry for entry in settings["configs"] if entry["id"] == settings[scope + "_config_id"])
-    if provider is not None and selected["provider"] != provider:
-        selected = next((entry for entry in settings["configs"] if entry["provider"] == provider), None)
+    if config_id is not None:
+        selected = next((entry for entry in settings["configs"] if entry["id"] == config_id
+                         and (provider is None or entry["provider"] == provider)), None)
+    else:
+        selected = next(entry for entry in settings["configs"] if entry["id"] == settings[scope + "_config_id"])
+        if provider is not None and selected["provider"] != provider:
+            selected = next((entry for entry in settings["configs"] if entry["provider"] == provider), None)
     return copy.deepcopy(selected) if selected else {}
 
 
-def _backend_page_origin_candidates(config, provider, request_origin=None, scope="backend"):
-    provider_config = get_map_config_selection(config, scope=scope, provider=provider)
+def get_map_config_candidates(config, scope="backend"):
+    """Return usable profiles in attempt order, with a campus fallback."""
+    if scope not in ("frontend", "backend"):
+        raise ValueError("地图配置用途无效")
+    settings = get_map_config_settings(config)
+    configs = settings["configs"]
+    selected_id = settings[f"{scope}_config_id"]
+    backend_id = settings["backend_config_id"]
+    selected, online, local = [], [], []
+    for entry in configs:
+        # Failover may only expose profiles available to the frontend.
+        if scope == "frontend" and entry["id"] == backend_id != selected_id:
+            continue
+        provider = entry["provider"]
+        if provider != "local_map" and not entry[PROVIDER_KEY_FIELDS[provider]]:
+            continue
+        if entry["id"] == selected_id:
+            selected.append(entry)
+        elif provider == "local_map":
+            local.append(entry)
+        else:
+            online.append(entry)
+    if not local and not any(entry["provider"] == "local_map" for entry in selected):
+        local.append(_default_local_map_profile(configs))
+    return selected + online + local
+
+
+def _backend_page_origin_candidates(config, provider, request_origin=None, scope="backend", selected_profile=None):
+    provider_config = selected_profile if selected_profile is not None else get_map_config_selection(config, scope=scope, provider=provider)
     return (
         (provider_config.get("backend_page_origin", ""), "provider"),
         (config.get("Map", "backend_page_origin", fallback=""), "global"),
@@ -218,10 +269,10 @@ def _backend_page_origin_candidates(config, provider, request_origin=None, scope
     )
 
 
-def describe_backend_page_origin_candidates(config, provider, request_origin=None, scope="backend"):
+def describe_backend_page_origin_candidates(config, provider, request_origin=None, scope="backend", selected_profile=None):
     """Return safe, normalized candidates for correlated origin diagnostics."""
     result = []
-    for value, source in _backend_page_origin_candidates(config, provider, request_origin, scope):
+    for value, source in _backend_page_origin_candidates(config, provider, request_origin, scope, selected_profile):
         try:
             origin = normalize_backend_page_origin(value)
         except (TypeError, ValueError):
@@ -230,8 +281,8 @@ def describe_backend_page_origin_candidates(config, provider, request_origin=Non
     return result
 
 
-def resolve_backend_page_origin(config, provider, request_origin=None, scope="backend"):
-    candidates = _backend_page_origin_candidates(config, provider, request_origin, scope)
+def resolve_backend_page_origin(config, provider, request_origin=None, scope="backend", selected_profile=None):
+    candidates = _backend_page_origin_candidates(config, provider, request_origin, scope, selected_profile)
     for candidate, source in candidates:
         origin = normalize_backend_page_origin(candidate)
         if origin:
@@ -246,7 +297,7 @@ def merge_map_settings(config, updates):
     settings = get_map_config_settings(config)
     configs = settings["configs"]
     if "configs" in updates:
-        configs = _normalize_map_configs(updates["configs"], configs)
+        configs = _ensure_local_map_profile(_normalize_map_configs(updates["configs"], configs))
     selected_ids = {scope: updates.get(scope + "_config_id", settings[scope + "_config_id"])
                     for scope in ("frontend", "backend")}
     ids = {entry["id"] for entry in configs}

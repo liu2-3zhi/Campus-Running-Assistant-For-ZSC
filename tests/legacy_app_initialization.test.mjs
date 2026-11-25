@@ -95,8 +95,8 @@ function createHarness({ mobile = false, guest = false, pathname = `/uuid=${SESS
       'connectWebSocket', 'syncMapProviderConfigFromInitialData', 'renderThemeStyleButtons',
       'syncThemeFromServer', 'createParamInputs', 'onParamChange', 'onUserChange',
       'updateMobileNavVisibility', 'initializeInlineAdminPanel', 'loadMobileSessionsList',
-      'ensureActiveMapProviderRuntimeIfNeeded', 'refreshUserList',
-      'bindImmediateRefreshForUserSelects', 'onConfirmAmapKey',
+      'ensureLegacyDesktopMultiMap', 'refreshUserList',
+      'bindImmediateRefreshForUserSelects',
       'startSessionValidityCheck', 'startReminderChecker', 'clearLogoutElsewhereOverlay',
     ].map(name => [name, noop])),
   })
@@ -215,7 +215,20 @@ for (const mobile of [false, true]) {
   })
 }
 
-for (const phase of ['map runtime', 'config users', 'run settings', 'account list']) {
+test('restoring the desktop account view does not wait for an unavailable map', async () => {
+  const { harness, renderedAccounts } = createMultiAccountHarness()
+  let mapStarted = false
+  harness.context.ensureLegacyDesktopMultiMap = () => {
+    mapStarted = true
+    return new Promise(() => {})
+  }
+  await harness.context.initializeApp()
+  assert.equal(mapStarted, true)
+  assert.equal(renderedAccounts.length, 1)
+  assert.equal(harness.element('loading-overlay').classList.contains('hidden'), true)
+})
+
+for (const phase of ['config users', 'run settings', 'account list']) {
   for (const outcome of ['resolve', 'reject']) {
     test(`multi-account restoration ignores its delayed ${phase} ${outcome} after switching sessions`, async () => {
       const { harness, renderedAccounts, refreshStarts } = createMultiAccountHarness({ enterResult: { success: true } })
@@ -226,17 +239,13 @@ for (const phase of ['map runtime', 'config users', 'run settings', 'account lis
         enteredPhase()
         return new Promise((resolve, reject) => { release = outcome === 'resolve' ? resolve : reject })
       }
-      if (phase === 'map runtime') {
-        harness.context.ensureActiveMapProviderRuntimeIfNeeded = deferred
-      } else {
-        const callPythonAPI = harness.context.callPythonAPI
-        const delayedMethod = {
-          'config users': 'multi_get_all_config_users',
-          'run settings': 'set_multi_run_only_incomplete',
-          'account list': 'multi_get_all_accounts_status',
-        }[phase]
-        harness.context.callPythonAPI = (method, ...args) => method === delayedMethod ? deferred() : callPythonAPI(method, ...args)
-      }
+      const callPythonAPI = harness.context.callPythonAPI
+      const delayedMethod = {
+        'config users': 'multi_get_all_config_users',
+        'run settings': 'set_multi_run_only_incomplete',
+        'account list': 'multi_get_all_accounts_status',
+      }[phase]
+      harness.context.callPythonAPI = (method, ...args) => method === delayedMethod ? deferred() : callPythonAPI(method, ...args)
       const pending = harness.context.initializeApp()
       await entered
       harness.context.sessionUUID = SESSION_B

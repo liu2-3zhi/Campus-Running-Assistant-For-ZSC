@@ -6,14 +6,18 @@
   let sdkLoading;
   let nextLineId = 0;
 
-  function asset(name, isStyle = false) {
+  function sdkUrl(name, configId) {
+    return sdkResource + name + (configId ? "?" + new URLSearchParams({ config_id: configId }) : "");
+  }
+
+  function asset(name, isStyle = false, configId = "") {
     return new Promise((resolve, reject) => {
       const node = document.createElement(isStyle ? "link" : "script");
       if (isStyle) {
         node.rel = "stylesheet";
-        node.href = sdkResource + name;
+        node.href = sdkUrl(name, configId);
       } else {
-        node.src = sdkResource + name;
+        node.src = sdkUrl(name, configId);
       }
       const timer = setTimeout(() => finish(new Error("校园离线地图组件加载超时")), 15000);
       function finish(error) {
@@ -30,17 +34,16 @@
     });
   }
 
-  async function load() {
+  async function load(configId) {
     if (!sdkLoading) {
       sdkLoading = Promise.allSettled([
-        asset("maplibre-gl-csp.js"),
-        asset("maplibre-gl.css", true),
+        asset("maplibre-gl-csp.js", false, configId),
+        asset("maplibre-gl.css", true, configId),
       ]).then((assets) => {
         if (assets.some(({ status }) => status === "rejected") || !window.maplibregl?.Map) {
           assets.forEach(({ value }) => value?.remove());
           throw new Error("校园离线地图组件加载失败");
         }
-        window.maplibregl.setWorkerUrl(new URL(sdkResource + "maplibre-gl-csp-worker.js", location.origin).href);
         return window.maplibregl;
       }).catch((error) => {
         sdkLoading = undefined;
@@ -50,10 +53,12 @@
     return sdkLoading;
   }
 
-  async function create(host, { signal } = {}) {
-    const sdk = await load();
+  async function create(host, { signal, configId } = {}) {
+    const sdk = await load(configId);
+    sdk.setWorkerUrl(new URL(sdkUrl("maplibre-gl-csp-worker.js", configId), location.origin).href);
     const timeout = AbortSignal.timeout(15000);
-    const response = await fetch(resource + "map", {
+    const metadataUrl = resource + "map" + (configId ? "?" + new URLSearchParams({ config_id: configId }) : "");
+    const response = await fetch(metadataUrl, {
       credentials: "same-origin",
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
@@ -99,6 +104,25 @@
     });
     map.once("style.load", () => { map.__campusStyleReady = true; });
     map.resetCampusView = () => map.jumpTo({ center, zoom, bearing: 0, pitch: 0 });
+    try {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => finish(new Error("校园离线底图加载超时")), 10000);
+        const onLoad = () => finish();
+        const onAbort = () => finish(signal.reason);
+        function finish(error) {
+          clearTimeout(timer);
+          map.off("load", onLoad);
+          signal?.removeEventListener("abort", onAbort);
+          if (error) reject(error);
+          else resolve();
+        }
+        map.on("load", onLoad);
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    } catch (error) {
+      map.remove();
+      throw error;
+    }
     return map;
   }
 

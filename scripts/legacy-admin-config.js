@@ -1121,7 +1121,7 @@ function renderMapConfigCards(map) {
   const escape = escapeMapConfigAttribute;
   const options = (selected) => settings.configs.map((entry) => `<option value="${escape(entry.id)}" ${entry.id === selected ? "selected" : ""}>${escape(entry.name)}（${getMapConfigProviderDetails()[entry.provider]?.label || ""}）</option>`).join("");
   return `<div data-map-config-editor class="mb-4">
-    <p class="text-sm text-slate-600 mb-3">同一地图供应商可以添加多份配置。前端地图与后端路径规划分别选择；拖动卡片只调整显示顺序。</p>
+    <p class="text-sm text-slate-600 mb-3">首选配置不可用时，按卡片顺序尝试其他在线配置，校园离线地图兜底。</p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4"><label class="text-sm font-semibold text-slate-700">前端地图使用配置<select data-map-config-select="frontend" class="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg bg-white">${options(settings.frontend_config_id)}</select></label><label class="text-sm font-semibold text-slate-700">后端路径规划使用配置<select data-map-config-select="backend" class="w-full mt-1 px-3 py-2.5 border border-slate-200 rounded-lg bg-white">${options(settings.backend_config_id)}</select></label></div>
     <div data-map-config-list class="space-y-3">${settings.configs.map(renderMapConfigCard).join("")}</div>
     <div class="flex gap-2 mt-3"><select data-map-add-provider aria-label="添加配置的地图供应商" class="min-w-0 flex-1 px-3 py-2 border border-slate-200 rounded-lg bg-white">${Object.entries(getMapConfigProviderDetails()).map(([provider, details]) => `<option value="${provider}">${details.label}</option>`).join("")}</select><button type="button" onclick="addMapConfigCard(this)" class="px-4 py-2 text-sky-700 bg-sky-50 border border-sky-200 rounded-lg text-sm font-semibold">添加配置</button></div>

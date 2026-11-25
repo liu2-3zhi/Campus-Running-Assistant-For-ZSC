@@ -25,7 +25,7 @@ def test_local_task_route_uses_task_footpaths_without_a_browser():
          patch.object(main, "chrome_pool", None, create=True), \
          patch("local_map_provider.fetch_local_map", return_value=(200, data)) as fetch:
         result = main._plan_route_path_with_provider_runtime(
-            "session", [start, end], runtime_config=object(), recommended_coords=recommended,
+            "session", [start, end], provider="local_map", runtime_config=object(), recommended_coords=recommended,
         )
     fetch.assert_called_once_with(
         "http://127.0.0.1:18765", "/api/v1/tasks/plan",
@@ -45,6 +45,26 @@ def test_local_map_relay_does_not_serve_unchecked_executable_assets():
         response = client.get("/api/local-map/sdk/maplibre-gl-csp.js")
     assert response.status_code == 502
     assert b"unexpected script" not in response.data
+
+
+def test_named_campus_fallback_can_load_while_online_map_is_preferred():
+    app = Flask(__name__)
+    origin = "http://127.0.0.1:18766"
+    register_local_map_asset_routes(app, lambda: None, {"campus-fallback": origin}.get)
+    client = app.test_client()
+    metadata = {
+        "coordinate_system": "GCJ-02", "bounds": [113.38, 22.52, 113.39, 22.53],
+        "center": [113.385, 22.525], "minzoom": 14, "maxzoom": 20, "version": "test",
+    }
+    with patch("local_map_provider.fetch_local_map", return_value=(200, metadata)) as fetch:
+        assert client.get("/api/local-map/map").status_code == 404
+        assert client.get("/api/local-map/map?config_id=back-only").status_code == 404
+        fetch.assert_not_called()
+        response = client.get("/api/local-map/map?config_id=campus-fallback")
+    assert response.status_code == 200
+    assert response.json["resource_context"]
+    assert origin not in response.text
+    fetch.assert_called_once_with(origin, "/api/v1/map", content_type="application/json")
 
 
 def test_local_tiles_stay_bound_to_the_map_opened_before_profile_switch():

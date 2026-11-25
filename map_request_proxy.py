@@ -28,7 +28,7 @@ from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 from urllib3.exceptions import ConnectTimeoutError, NewConnectionError
 from urllib3.util import Timeout
 
-from map_runtime_origin import get_map_config_settings, get_tile_cache_settings, resolve_backend_page_origin
+from map_runtime_origin import get_map_config_candidates, get_map_config_settings, get_tile_cache_settings, resolve_backend_page_origin
 from map_proxy_transport import MapProxyTransport, resolve_map_host
 from map_tile_cache import (
     MapTileCache, build_tile_cache_key, canonical_jsonp_payload, is_cacheable_tile_response, parse_jsonp_payload,
@@ -787,19 +787,27 @@ class _MapProxy:
     def _new_profile_context(self, config, claims, config_id):
         settings = get_map_config_settings(config)
         selected_id = settings["frontend_config_id"]
-        if config_id is not None and config_id != selected_id:
+        candidates = get_map_config_candidates(config, scope="frontend")
+        chosen_id = config_id if config_id is not None else selected_id
+        profile = next((item for item in candidates if item["id"] == chosen_id), None)
+        if profile is None and chosen_id != selected_id:
             raise ValueError("地图配置已切换，请刷新页面后重试")
-        origins = {provider: resolve_backend_page_origin(config, provider, _request_origin(), scope="frontend")[0]
-                   for provider in PROXY_HOSTS}
+        origins = {
+            provider: resolve_backend_page_origin(
+                config, provider, _request_origin(), scope="frontend",
+                **({"selected_profile": profile} if profile and profile["provider"] == provider else {}),
+            )[0]
+            for provider in PROXY_HOSTS
+        }
         token = secrets.token_urlsafe(32)
         now = time.monotonic()
         with self._profile_context_lock:
             self._prune_profile_contexts(now)
             self._profile_contexts[token] = {
-                "owner": self._profile_context_owner(claims), "claims": dict(claims), "config_id": selected_id,
+                "owner": self._profile_context_owner(claims), "claims": dict(claims), "config_id": chosen_id,
                 "origins": origins, "expires_at": now + PROXY_COOKIE_MAX_AGE,
             }
-        return token, selected_id
+        return token, chosen_id
 
     @staticmethod
     def _wait_for_tile(flight, deadline):

@@ -26,7 +26,7 @@ class TestMapProviderConfigUi(unittest.TestCase):
         map_config = merge_map_settings(_get_default_config(), {})
 
         self.assertIn("provider", map_config)
-        self.assertIn(map_config.get("provider"), {"amap", "tencent", "tianditu", "baidu"})
+        self.assertEqual(map_config.get("provider"), "local_map")
         self.assertIn("providers", map_config)
         self.assertIn("amap", map_config["providers"])
         self.assertIn("tencent", map_config["providers"])

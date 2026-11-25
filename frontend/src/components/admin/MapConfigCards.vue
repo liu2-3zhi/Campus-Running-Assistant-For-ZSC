@@ -89,7 +89,7 @@ onBeforeUnmount(() => stopDrag())
 
 <template>
   <div class="space-y-4" data-map-config-editor>
-    <p class="text-sm text-[var(--ink-secondary)]">同一地图供应商可添加多份配置，前端地图和后端路径规划可分别选择。拖动手柄调整卡片顺序，也可使用上移、下移按钮。</p>
+    <p class="text-sm text-[var(--ink-secondary)]">首选配置不可用时，按卡片顺序尝试其他在线配置，校园离线地图兜底。</p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <label class="space-y-1 text-sm">
         <span class="text-[var(--ink-secondary)]">前端地图配置</span>

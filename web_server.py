@@ -36,6 +36,7 @@ from captcha_static_cache import behavior_static_cache
 from local_map_provider import register_local_map_asset_routes
 from main_runtime import _main
 from map_request_proxy import register_map_proxy_routes
+from map_runtime_origin import get_map_config_candidates
 
 
 chrome_pool = None
@@ -1996,13 +1997,13 @@ def start_web_server(args_param):
         on_context_authenticated=_refresh_map_proxy_context_actor,
     )
 
-    def _load_local_map_frontend_origin():
+    def _load_local_map_frontend_origin(config_id=None):
         config = _load_map_proxy_runtime_config()
-        if _main()._get_active_map_provider(config, scope="frontend") != "local_map":
-            return None
-        return _main()._get_map_provider_runtime_config(config, provider="local_map", scope="frontend")["service_url"]
+        candidates = get_map_config_candidates(config, scope="frontend")
+        profile = next((entry for entry in candidates if entry["id"] == config_id), None) if config_id is not None else candidates[0]
+        return profile["service_url"] if profile and profile["provider"] == "local_map" else None
 
-    register_local_map_asset_routes(app, _load_local_map_frontend_origin)
+    register_local_map_asset_routes(app, _load_local_map_frontend_origin, _load_local_map_frontend_origin)
 
     # ==================== [修正] 添加缺失的 admin_required 装饰器，并采用权限组判断 ====================
     def admin_required(f):
@@ -10837,7 +10838,7 @@ def start_web_server(args_param):
         "enable_phone_modification": False,
     }
 
-    def get_frontend_config(session_id=None, username=None):
+    def get_frontend_config(session_id=None, username=None, map_config_id=None):
         """辅助函数：读取前端需要的功能开关配置"""
         # [修正] 使用 strict=False 允许读取包含重复项的配置文件（保留最后一个值）
         # 同时设置 optionxform=str 保持大小写敏感，防止 LastUser/lastuser 冲突
@@ -10893,10 +10894,9 @@ def start_web_server(args_param):
         except Exception:
             newbie_help_url = ""
 
+        map_options = {"config_id": map_config_id} if map_config_id is not None else {}
         map_public_payload = _main()._build_public_map_provider_frontend_payload(
-            config,
-            session_id=session_id,
-            username=username,
+            config, session_id=session_id, username=username, **map_options,
         )
 
         return {
@@ -10910,6 +10910,7 @@ def start_web_server(args_param):
             "map_providers": map_public_payload["map_providers"],
             "frontend_proxy_enabled": map_public_payload["frontend_proxy_enabled"],
             "map_provider_key_bundle": map_public_payload["map_provider_key_bundle"],
+            **{key: map_public_payload[key] for key in ("map_config_id", "map_preferred", "map_candidates") if key in map_public_payload},
         }
 
     @app.route("/api/payment/yipay_notify", methods=["GET", "POST"])
@@ -11855,12 +11856,27 @@ def start_web_server(args_param):
 
     # ========== 新增路由：前端配置API ==========
 
+    @login_required
+    def get_frontend_map_candidate():
+        # The header identifies the business session whose runtime will decrypt
+        # this bundle, including when an administrator is viewing that session.
+        session_id = _main().normalize_session_uuid(request.headers.get("X-Session-ID", ""))
+        try:
+            config = get_frontend_config(
+                session_id=session_id, username=g.user, map_config_id=request.args["map_config_id"],
+            )
+        except ValueError as error:
+            return _main()._apply_no_cache_headers(_main().make_response(_main().jsonify({"message": str(error)}), 409))
+        return _main()._apply_no_cache_headers(_main().jsonify(config))
+
     @app.route("/api/frontend-config")
     def api_frontend_config():
         """
         返回前端需要的配置信息（JSON格式）
         用于客户端动态加载配置，减轻服务器端渲染压力
         """
+        if "map_config_id" in request.args:
+            return get_frontend_map_candidate()
         try:
             session_id = _main().normalize_session_uuid(
                 _main().request.headers.get("X-Session-ID", "")
