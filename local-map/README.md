@@ -58,6 +58,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 
 - 点击地图或输入经纬度设置起点、终点、途经点，可拖动位置、调整顺序及清空。
 - 使用校园示例按钮，可在不位于校园的设备上立即测试。
+- 在路线面板的「任务规划」处导入 `task_*.json`，页面会自动按原顺序规划打卡点。地图显示导入的小路、规划路线和编号打卡点，橙色虚线表示离开路网直线补接的部分。
 - 点击设备定位后由浏览器请求权限；允许后显示当前位置，拒绝或定位超时仍可手动选点。
 - 查看路线、距离、时间及吸附位置，在调试面板检查实际请求、响应和耗时，导出 GeoJSON。
 
@@ -87,6 +88,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 | `GET /api/v1/features/{layer}` | 指定图层的 GeoJSON |
 | `GET /api/v1/tiles/{z}/{x}/{y}.png` | 256px 本地 XYZ 图片瓦片 |
 | `POST /api/v1/routes` | 统一步行规划接口 |
+| `POST /api/v1/tasks/plan` | 导入任务 JSON 并规划有序打卡路线 |
 | `GET /valhalla/route?json=...` | 官方 Web 使用的 Valhalla 原生兼容接口 |
 | `GET /openapi.json`、`GET /docs` | 接口契约和本地交互文档 |
 
@@ -105,6 +107,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
 `distance_m`、`duration_s`、`legs`、`snapped_points`。使用步行最短距离策略，
 步速设置为 5.04km/h；时间是引擎估计值。输入点到路段的吸附偏移不作为真实道路。
 吸附超过 50 米、数据范围之外或路网不连通时明确失败，不使用直线伪造路线。
+
+任务规划接口接受原始任务 JSON，使用 `target_points`（2 至 100 个 GCJ-02 坐标）、`target_point_names`（用 `|` 分隔）、`task_name` 和 `recommended_coords`（最多 2000 个坐标）。`recommended_coords` 中的 `[0, 0]` 用于分隔独立小路。任务规划按校园步行道和导入小路的合并路网计算，保留打卡顺序与重复打卡点。导入小路的开放端点可接到 3 米以内的邻近路段，消化样本的坐标间隙。
+
+打卡点不在可达路网上时，从最近的可达路段投影点直线补接。路网有多个不连通的部分时，选择所有打卡点补接距离之和最短的连通部分。响应包含完整的 `route`、有序的 `target_points`、导入的小路 `recommended_paths` 和直线补接 `connectors`。距离及预计时间包含补接段。虚线表示几何补接，实际通行以现场条件为准。
 
 ## 数据与适用范围
 

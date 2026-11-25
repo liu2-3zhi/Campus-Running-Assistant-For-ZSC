@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from campus_map.routing import RouteInputError, RouteNotFoundError, RoutingService, RoutingUnavailableError
+from campus_map.task_planning import plan_task
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -35,6 +36,14 @@ class RouteRequest(BaseModel):
 class GpsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     points: Annotated[list[Point], Field(min_length=1, max_length=40)]
+
+
+class TaskRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    task_name: str = Field(default="", max_length=256)
+    target_point_names: str = Field(default="", max_length=8192)
+    target_points: Annotated[list[Point], Field(min_length=2, max_length=100)]
+    recommended_coords: Annotated[list[Point], Field(max_length=2000)] = Field(default_factory=list)
 
 
 class Geometry(BaseModel):
@@ -70,6 +79,43 @@ class RouteResult(BaseModel):
     distance_m: float
     duration_s: float
     snapped_points: list[SnappedPoint]
+
+
+class TaskTarget(BaseModel):
+    name: str
+    coordinate: Point
+
+
+class ConnectorProperties(BaseModel):
+    target_index: int
+    distance_m: float
+
+
+class ConnectorFeature(BaseModel):
+    type: Literal["Feature"]
+    geometry: Geometry
+    properties: ConnectorProperties
+
+
+class TaskConnectors(BaseModel):
+    type: Literal["FeatureCollection"]
+    features: list[ConnectorFeature]
+
+
+class TaskPaths(BaseModel):
+    type: Literal["FeatureCollection"]
+    features: list[RouteFeature]
+
+
+class TaskResult(BaseModel):
+    coordinate_system: Literal["GCJ-02"]
+    task_name: str
+    target_points: list[TaskTarget]
+    route: RouteFeature
+    distance_m: float
+    duration_s: float
+    connectors: TaskConnectors
+    recommended_paths: TaskPaths
 
 
 class ErrorDetail(BaseModel):
@@ -163,6 +209,16 @@ class _Release:
             raise DataUnavailableError("A local data file is damaged; rebuild the map release.")
         return path
 
+    def feature_collection(self, layer):
+        path = self.asset(self.manifest["layers"][layer]["file"])
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(document, dict) or document.get("type") != "FeatureCollection" or not isinstance(document.get("features"), list):
+                raise ValueError("Invalid FeatureCollection")
+        except (OSError, ValueError) as error:
+            raise DataUnavailableError("A local feature layer is damaged.") from error
+        return document
+
     def routing(self):
         with self._routing_lock:
             if self._routing is None:
@@ -228,8 +284,12 @@ def create_app(data_root: Path | None = None):
         return JSONResponse(status_code=422, content={"error": {"code": "INVALID_INPUT", "message": str(error)}})
 
     @app.exception_handler(RequestValidationError)
-    async def invalid_request(_request, _error):
-        return JSONResponse(status_code=422, content={"error": {"code": "INVALID_INPUT", "message": "Provide GCJ-02 [longitude, latitude] route points (at most 20 waypoints), or WGS84 GPS points for /coordinates/gps."}})
+    async def invalid_request(request, _error):
+        if request.url.path == "/api/v1/tasks/plan":
+            message = "任务需要 2 至 100 个 target_points 和最多 2000 个 recommended_coords，坐标格式为 GCJ-02 [经度, 纬度]。"
+        else:
+            message = "Provide GCJ-02 [longitude, latitude] route points (at most 20 waypoints), or WGS84 GPS points for /coordinates/gps."
+        return JSONResponse(status_code=422, content={"error": {"code": "INVALID_INPUT", "message": message}})
 
     @app.get("/healthz")
     def health():
@@ -270,14 +330,7 @@ def create_app(data_root: Path | None = None):
         active = release()
         if layer not in active.manifest["layers"]:
             raise HTTPException(status_code=404, detail="Unknown map layer")
-        path = active.asset(active.manifest["layers"][layer]["file"])
-        try:
-            document = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(document, dict) or document.get("type") != "FeatureCollection" or not isinstance(document.get("features"), list):
-                raise ValueError("Invalid FeatureCollection")
-        except (OSError, ValueError) as error:
-            raise DataUnavailableError("A local feature layer is damaged.") from error
-        return JSONResponse(content=document, media_type="application/geo+json")
+        return JSONResponse(content=active.feature_collection(layer), media_type="application/geo+json")
 
     @app.get("/api/v1/tiles/{z}/{x}/{y}.png")
     def tiles(z: int, x: int, y: int):
@@ -293,6 +346,17 @@ def create_app(data_root: Path | None = None):
               description="GCJ-02（火星坐标）[经度, 纬度]；输入原样进入 GCJ-02 离线路网，不做逆向坐标转换。最多 20 个有序途经点，每个途经点独立分段。道路吸附上限 50 米，无法连接时返回明确错误。吸附点不代表建筑入口。")
     def routes(body: RouteRequest):
         return release().routing().route(body.start, body.end, body.waypoints)
+
+    @app.post("/api/v1/tasks/plan", response_model=TaskResult, responses=ROUTE_ERRORS,
+              summary="离线规划校园任务",
+              description="直接接受任务 JSON，按 target_points 顺序经过每个打卡点。recommended_coords 作为可步行小路，[0, 0] 分隔小路。路网未到达打卡点时，从同一可达路网上最近的位置以直线补接。")
+    def tasks(body: TaskRequest):
+        active = release()
+        if "roads" not in active.manifest["layers"]:
+            raise DataUnavailableError("The active map is missing its roads layer.")
+        roads = active.feature_collection("roads")["features"]
+        return plan_task(active.manifest["bounds"], roads, body.recommended_coords,
+                         body.target_points, body.task_name, body.target_point_names)
 
     @app.get("/valhalla/route", responses=ROUTE_ERRORS,
              description="官方 Web 的原生兼容接口。坐标与 polyline6 均为 GCJ-02；所有请求固定为步行最短路和 50 米吸附，与统一 API 共用引擎。")

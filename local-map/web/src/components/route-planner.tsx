@@ -11,10 +11,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { X, Footprints } from 'lucide-react';
 import { useDirectionsPermalink } from '@/hooks/use-directions-permalink';
+import { TaskPlanner } from './task-planner';
+import { useTaskPlannerStore } from '@/stores/task-planner-store';
 
 export const RoutePlanner = () => {
   const open = useCommonStore((state) => state.directionsPanelOpen);
   const toggleDirections = useCommonStore((state) => state.toggleDirections);
+  const showTask = useTaskPlannerStore((state) => state.showTask);
   useDirectionsPermalink(true);
 
   return (
@@ -26,7 +29,7 @@ export const RoutePlanner = () => {
         <SheetHeader className="justify-between">
           <SheetTitle className="flex items-center gap-2">
             <Footprints className="size-5" />
-            校园步行路线
+            {showTask ? '校园任务路线' : '校园步行路线'}
           </SheetTitle>
           <Button
             variant="ghost"
@@ -43,9 +46,14 @@ export const RoutePlanner = () => {
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-3 px-2 min-w-0">
-          <CampusPanel />
-          <DirectionsControl />
-          <RouteDebugPanel />
+          <TaskPlanner />
+          {!showTask && (
+            <>
+              <CampusPanel />
+              <DirectionsControl />
+              <RouteDebugPanel />
+            </>
+          )}
           <p className="text-xs text-muted-foreground">
             Valhalla Web App · MIT · © OpenStreetMap contributors / ODbL 1.0
           </p>

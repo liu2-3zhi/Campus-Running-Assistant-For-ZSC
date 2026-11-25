@@ -1,0 +1,176 @@
+{
+  "Admin": {
+    "super_admin": "admin"
+  },
+  "Config": {
+    "default_ui": "old",
+    "frontend_mode": "original"
+  },
+  "Guest": {
+    "allow_guest_login": "true",
+    "max_active_guest_sessions": "100",
+    "guest_session_inactivity_timeout": "300",
+    "guest_token_ttl_seconds": "3600",
+    "guest_token_grace_seconds": "60"
+  },
+  "System": {
+    "session_expiry_days": "7",
+    "school_accounts_dir": "school_accounts",
+    "system_accounts_dir": "system_accounts",
+    "sessions_dir": "sessions",
+    "tokens_dir": "tokens",
+    "permissions_file": "permissions.json",
+    "session_monitor_check_interval": "60",
+    "session_inactivity_timeout": "300"
+  },
+  "Logging": {
+    "redact_sensitive_logs": "false",
+    "log_rotation_size_mb": "10",
+    "log_backup_count": "10",
+    "archive_max_size_mb": "5120",
+    "random_background_cache_max_size_mb": "1024",
+    "log_dir": "logs",
+    "archive_dir": "logs/archive"
+  },
+  "Security": {
+    "password_storage": "plaintext",
+    "brute_force_protection": "true",
+    "login_log_retention_days": "90"
+  },
+  "Daily_Restart": {
+    "enabled": "false",
+    "time": "00:00"
+  },
+  "Map": {
+    "provider": "amap",
+    "configs": [
+      {
+        "id": "legacy-amap",
+        "name": "高德1",
+        "provider": "amap",
+        "js_key": "",
+        "backend_page_origin": "",
+        "security_js_code": ""
+      },
+      {
+        "id": "legacy-tencent",
+        "name": "腾讯1",
+        "provider": "tencent",
+        "map_key": "",
+        "backend_page_origin": ""
+      },
+      {
+        "id": "legacy-tianditu",
+        "name": "天地图1",
+        "provider": "tianditu",
+        "token": "",
+        "backend_page_origin": ""
+      },
+      {
+        "id": "legacy-baidu",
+        "name": "百度1",
+        "provider": "baidu",
+        "ak": "",
+        "backend_page_origin": ""
+      }
+    ],
+    "frontend_config_id": "legacy-amap",
+    "backend_config_id": "legacy-amap",
+    "backend_page_origin": "",
+    "frontend_proxy_enabled": false,
+    "tile_cache_ttl_days": 20,
+    "tile_cache_max_size_gb": 10.0,
+    "providers": {
+      "amap": {
+        "js_key": "",
+        "backend_page_origin": "",
+        "security_js_code": ""
+      },
+      "tencent": {
+        "map_key": "",
+        "backend_page_origin": ""
+      },
+      "tianditu": {
+        "token": "",
+        "backend_page_origin": ""
+      },
+      "baidu": {
+        "ak": "",
+        "backend_page_origin": ""
+      }
+    }
+  },
+  "IP_Location": {
+    "query_order": "uapipro,amap,baidu",
+    "amap_web_api_key": "",
+    "uapipro_api_key": ""
+  },
+  "Captcha": {
+    "length": "4",
+    "scale_factor": "2",
+    "noise_level": "0.08"
+  },
+  "CDN": {
+    "cdn_enabled": "true",
+    "cache_time": "3600"
+  },
+  "Features": {
+    "enable_phone_modification": "false",
+    "enable_phone_login": "false",
+    "enable_phone_registration_verify": "false",
+    "enable_sms_service": "false",
+    "account_cancellation_wait_hours": "24"
+  },
+  "SMS_Service_SMSBao": {
+    "username": "",
+    "api_key": "",
+    "signature": "【电科大跑步助手】",
+    "template_register": "您的验证码是：{code}，{minutes}分钟内有效。",
+    "code_expire_minutes": "5",
+    "send_interval_seconds": "180",
+    "rate_limit_per_account_day": "10",
+    "rate_limit_per_ip_day": "20",
+    "rate_limit_per_phone_day": "5"
+  },
+  "Beian": {
+    "icp_number": "",
+    "show_icp": "false",
+    "police_number": "",
+    "show_police": "false"
+  },
+  "baidu_cloud": {
+    "api_key": "",
+    "secret_key": "",
+    "strategy_id": ""
+  },
+  "Content_Review": {
+    "enable_message_review": "false"
+  },
+  "Rainbow_YiPay": {
+    "host": "",
+    "pid": "",
+    "key": "",
+    "app_host": "",
+    "pubc_key": "",
+    "product_id": "1001",
+    "enabled_payment_methods": "alipay,wxpay",
+    "payment_timeout_minutes": "900"
+  },
+  "Payment_Settings": {
+    "require_payment": "true",
+    "single_run_cost": "1.0",
+    "default_available_runs": "2"
+  },
+  "Profile_Display": {
+    "show_available_runs": "true",
+    "available_runs_format": "剩余免费次数：{available_runs} 次"
+  },
+  "Registration_Display": {
+    "show_available_runs_on_register": "true",
+    "register_available_runs_hint": "注册即可得 {available_runs} 次校园跑"
+  },
+  "Help": {
+    "show_newbie_help": "false",
+    "newbie_help_url": ""
+  }
+}

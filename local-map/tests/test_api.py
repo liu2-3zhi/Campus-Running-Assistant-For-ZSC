@@ -80,6 +80,73 @@ def test_routes_and_native_endpoint(client):
     assert native.json()["trip"]["status"] == 0
 
 
+def test_task_route_visits_targets_in_order_and_projects_onto_the_path(client):
+    start = [113.383, 22.529]
+    end = [113.385, 22.529]
+    off_path = [113.384, 22.5292]
+    body = {
+        "task_name": "校园任务",
+        "recommended_coords": [start, end],
+        "target_points": [start, off_path, end, off_path],
+        "target_point_names": "起点|打卡点|折返点|打卡点",
+        "run_coords (gps)": [[1, 2]],
+        "draft_coords (gps)": [],
+    }
+
+    response = client.post("/api/v1/tasks/plan", json=body)
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["coordinate_system"] == "GCJ-02"
+    assert result["task_name"] == body["task_name"]
+    assert result["target_points"] == [
+        {"name": name, "coordinate": point}
+        for name, point in zip(body["target_point_names"].split("|"), body["target_points"])
+    ]
+    projection = [113.384, 22.529]
+    coordinates = result["route"]["geometry"]["coordinates"]
+    assert len(coordinates) == 7
+    for point, expected in zip(coordinates, [start, projection, off_path, projection, end, projection, off_path]):
+        assert point == pytest.approx(expected, abs=1e-8)
+    connectors = result["connectors"]["features"]
+    assert [feature["properties"]["target_index"] for feature in connectors] == [1, 3]
+    assert connectors[0]["geometry"]["coordinates"][0] == pytest.approx(projection, abs=1e-8)
+    assert connectors[0]["properties"]["distance_m"] == pytest.approx(22.24, abs=0.01)
+    assert result["distance_m"] > 350
+
+
+def test_task_gaps_are_preserved_and_target_uses_the_nearest_reachable_segment(client):
+    start = [113.381, 22.529]
+    middle = [113.382, 22.529]
+    end = [113.383, 22.529]
+    isolated = [[113.382, 22.5295], [113.384, 22.5295]]
+    target = [113.3825, 22.5295]
+    response = client.post("/api/v1/tasks/plan", json={
+        "recommended_coords": [start, end, [0, 0], [0, 0], *isolated],
+        "target_points": [start, middle, end, target],
+    })
+    assert response.status_code == 200
+    result = response.json()
+    assert [feature["geometry"]["coordinates"] for feature in result["recommended_paths"]["features"]] == [[start, end], isolated]
+    assert result["route"]["geometry"]["coordinates"][-1] == target
+    connector, = result["connectors"]["features"]
+    assert connector["properties"]["target_index"] == 3
+    assert connector["geometry"]["coordinates"][0] == pytest.approx([113.3825, 22.529], abs=1e-8)
+
+
+def test_task_input_checks_coordinates_and_requires_two_targets(client):
+    valid_path = [[113.383, 22.529], [113.385, 22.529]]
+    path = "/api/v1/tasks/plan"
+    for recommended, targets in [
+        (valid_path, valid_path[:1]),
+        ([[True, 22.529], valid_path[1]], valid_path),
+        (valid_path, [valid_path[0], [113.38, 23]]),
+    ]:
+        response = client.post(path, json={"recommended_coords": recommended, "target_points": targets})
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "INVALID_INPUT"
+
+
 @pytest.mark.parametrize("body", [
     {"start": [True, 22.529], "end": [113.385, 22.531]},
     {"start": [113.383, 22.529], "end": [113.385, 22.531], "waypoints": [[113.384, 22.53]] * 21},

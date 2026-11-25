@@ -26,6 +26,7 @@ import {
 } from './constants';
 import type { MapStyleType } from './types';
 import { RouteLines } from './parts/route-lines';
+import { TaskRouteLayers } from './parts/task-route-layers';
 import { HighlightSegment } from './parts/highlight-segment';
 import { HeightgraphHoverMarker } from './parts/heightgraph-hover-marker';
 import { MapInfoPopup } from './parts/map-info-popup';
@@ -44,6 +45,7 @@ import { maxBounds } from './constants';
 import { getInitialMapPosition, LAST_CENTER_KEY } from './utils';
 import { useCommonStore } from '@/stores/common-store';
 import { useDirectionsStore } from '@/stores/directions-store';
+import { useTaskPlannerStore } from '@/stores/task-planner-store';
 import { useIsochronesStore } from '@/stores/isochrones-store';
 import {
   useDirectionsQuery,
@@ -92,6 +94,9 @@ export const MapComponent = () => {
   const heightgraphData: FeatureCollection[] = [];
   const waypoints = useDirectionsStore((state) => state.waypoints);
   const directionResults = useDirectionsStore((state) => state.results);
+  const taskPlan = useTaskPlannerStore((state) =>
+    state.showTask ? state.plan : null
+  );
   const setActiveRouteIndex = useDirectionsStore(
     (state) => state.setActiveRouteIndex
   );
@@ -317,7 +322,7 @@ export const MapComponent = () => {
 
   useEffect(() => {
     //When a route is cleared resets the key to null
-    if (!coordinates || coordinates.length === 0) {
+    if (taskPlan || !coordinates || coordinates.length === 0) {
       lastZoomedCoordKeyRef.current = null;
       return;
     }
@@ -403,7 +408,7 @@ export const MapComponent = () => {
     });
     //the coordKey guard above keeps this to one fit per route
     //panel change no longer rerun this
-  }, [coordinates, markers, activeTab]);
+  }, [coordinates, markers, activeTab, taskPlan]);
 
   const handleMapTilesClick = useCallback(
     (event: maplibregl.MapLayerMouseEvent) => {
@@ -441,6 +446,8 @@ export const MapComponent = () => {
         handledLongPressRef.current = false;
         return;
       }
+
+      if (taskPlan) return;
 
       if (showContextPopup) {
         setShowContextPopup(false);
@@ -511,6 +518,7 @@ export const MapComponent = () => {
       activeTab,
       handleMapTilesClick,
       setActiveRouteIndex,
+      taskPlan,
     ]
   );
 
@@ -528,14 +536,14 @@ export const MapComponent = () => {
 
   const handleMapContextMenu = useCallback(
     (event: { lngLat: { lng: number; lat: number } }) => {
-      if (activeTab === 'tiles') return;
+      if (activeTab === 'tiles' || taskPlan) return;
 
       const { lngLat } = event;
       setPopupLngLat(lngLat);
       setShowInfoPopup(false);
       setShowContextPopup(true);
     },
-    [activeTab]
+    [activeTab, taskPlan]
   );
 
   // Handle move end to save position
@@ -648,7 +656,7 @@ export const MapComponent = () => {
 
   const handleMouseMove = useCallback(
     (event: maplibregl.MapLayerMouseEvent) => {
-      if (!mapRef.current || showInfoPopup) return; // Don't show if click popup is visible
+      if (!mapRef.current || showInfoPopup || taskPlan) return;
 
       //re-rendering mid-drag would reset the marker position.
       if (isDraggingMarkerRef.current) return;
@@ -686,7 +694,7 @@ export const MapComponent = () => {
         }
       }
     },
-    [showInfoPopup, routeHoverPopup, onRouteLineHover]
+    [showInfoPopup, routeHoverPopup, onRouteLineHover, taskPlan]
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -747,7 +755,9 @@ export const MapComponent = () => {
                 VALHALLA_ACCESS_RESTRICTIONS_PERMANENT_LAYER_ID,
                 VALHALLA_ACCESS_RESTRICTIONS_TIMED_LAYER_ID,
               ]
-            : ['routes-line', 'routes-hit-target']
+            : taskPlan
+              ? []
+              : ['routes-line', 'routes-hit-target']
         }
         mapStyle={resolvedMapStyle}
         style={{ width: '100%', height: '100vh' }}
@@ -765,41 +775,48 @@ export const MapComponent = () => {
       >
         <NavigationControl />
         <GcjGeolocateControl onError={handleGeolocateError} />
-        <RouteLines />
-        <HighlightSegment />
-        {markers.map((marker) => (
-          <Marker
-            anchor="bottom"
-            key={marker.id}
-            longitude={marker.lng}
-            latitude={marker.lat}
-            draggable={true}
-            onDragStart={() => {
-              isDraggingMarkerRef.current = true;
-              setRouteHoverPopup(null);
-            }}
-            onDragEnd={(e) => {
-              isDraggingMarkerRef.current = false;
-              if (marker.type === 'waypoint') {
-                updateWaypointPosition({
-                  latLng: { lat: e.lngLat.lat, lng: e.lngLat.lng },
-                  index: marker.index ?? 0,
-                });
-              } else if (marker.type === 'isocenter') {
-                updateIsoPosition(e.lngLat.lng, e.lngLat.lat);
-              }
-            }}
-          >
-            <MarkerIcon color={marker.color!} number={marker.number} />
-          </Marker>
-        ))}
+        {taskPlan ? (
+          <TaskRouteLayers plan={taskPlan} />
+        ) : (
+          <>
+            <RouteLines />
+            <HighlightSegment />
+          </>
+        )}
+        {!taskPlan &&
+          markers.map((marker) => (
+            <Marker
+              anchor="bottom"
+              key={marker.id}
+              longitude={marker.lng}
+              latitude={marker.lat}
+              draggable={true}
+              onDragStart={() => {
+                isDraggingMarkerRef.current = true;
+                setRouteHoverPopup(null);
+              }}
+              onDragEnd={(e) => {
+                isDraggingMarkerRef.current = false;
+                if (marker.type === 'waypoint') {
+                  updateWaypointPosition({
+                    latLng: { lat: e.lngLat.lat, lng: e.lngLat.lng },
+                    index: marker.index ?? 0,
+                  });
+                } else if (marker.type === 'isocenter') {
+                  updateIsoPosition(e.lngLat.lng, e.lngLat.lat);
+                }
+              }}
+            >
+              <MarkerIcon color={marker.color!} number={marker.number} />
+            </Marker>
+          ))}
 
         <HeightgraphHoverMarker
           hoverDistance={heightgraphHoverDistance}
           heightgraphData={heightgraphData}
         />
 
-        {showContextPopup && popupLngLat && (
+        {!taskPlan && showContextPopup && popupLngLat && (
           <Popup
             longitude={popupLngLat.lng}
             latitude={popupLngLat.lat}
@@ -816,7 +833,7 @@ export const MapComponent = () => {
           </Popup>
         )}
 
-        {showInfoPopup && popupLngLat && (
+        {!taskPlan && showInfoPopup && popupLngLat && (
           <Popup
             longitude={popupLngLat.lng}
             latitude={popupLngLat.lat}
@@ -835,7 +852,7 @@ export const MapComponent = () => {
           </Popup>
         )}
 
-        {routeHoverPopup && (
+        {!taskPlan && routeHoverPopup && (
           <RouteHoverPopup
             lng={routeHoverPopup.lng}
             lat={routeHoverPopup.lat}
