@@ -374,6 +374,7 @@ def test_running_task_refuses_mode_changes_without_stopping_it(monkeypatch, oper
 @pytest.mark.parametrize("offline", [False, True])
 def test_initial_data_error_does_not_change_execution_mode(tmp_path, offline):
     api = make_login_runtime()
+    api.config_path = str(tmp_path / "config.json")
     api.user_dir = str(tmp_path / "missing")
     api.is_offline_mode = offline
     response = api.get_initial_data()
