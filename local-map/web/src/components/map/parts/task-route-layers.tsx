@@ -68,7 +68,10 @@ export function TaskRouteLayers({ plan }: { plan: TaskPlan }) {
 
   useEffect(() => {
     if (!map || !ready) return;
-    const coordinates = plan.route.geometry.coordinates;
+    const coordinates = [
+      ...plan.route.geometry.coordinates,
+      ...plan.target_points.map(({ coordinate }) => coordinate),
+    ];
     const [lng, lat] = coordinates[0]!;
     const bounds = coordinates.reduce<[TaskCoordinate, TaskCoordinate]>(
       ([[west, south], [east, north]], [longitude, latitude]) => [
@@ -83,7 +86,7 @@ export function TaskRouteLayers({ plan }: { plan: TaskPlan }) {
     map.fitBounds(bounds, {
       padding: {
         left: panelOpen && window.innerWidth >= 550 ? 432 : 42,
-        right: 42,
+        right: window.innerWidth >= 640 ? 88 : 42,
         top: 48,
         bottom: 48,
       },
@@ -139,21 +142,29 @@ export function TaskRouteLayers({ plan }: { plan: TaskPlan }) {
           }}
         />
       </Source>
-      {Array.from(groupedTargets, ([key, { coordinate, labels, order }]) => (
-        <Marker key={key} longitude={coordinate[0]} latitude={coordinate[1]}>
-          <span
-            className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-white bg-[#006FAD] px-1 text-xs font-semibold text-white shadow-sm"
-            title={labels.join('、')}
-            role="img"
-            aria-label={labels
-              .map((label, index) => `${order[index]} ${label}`)
-              .join('、')}
-            data-testid="task-target-marker"
-          >
-            {order.join('/')}
-          </span>
-        </Marker>
-      ))}
+      {Array.from(groupedTargets, ([key, { coordinate, labels, order }]) => {
+        const name = [...new Set(labels)].join('、');
+        return (
+          <Marker key={key} longitude={coordinate[0]} latitude={coordinate[1]}>
+            <span
+              className="relative inline-flex text-xs font-semibold"
+              title={name}
+              role="img"
+              aria-label={labels
+                .map((label, index) => `${order[index]} ${label}`)
+                .join('、')}
+              data-testid="task-target-marker"
+            >
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-white bg-[#006FAD] px-1 text-white shadow-sm">
+                {order.join('/')}
+              </span>
+              <span className="absolute bottom-full left-1/2 mb-0.5 max-w-32 -translate-x-1/2 truncate rounded border border-[#006FAD]/35 bg-white px-1.5 py-0.5 text-slate-900 shadow-sm sm:top-1/2 sm:bottom-auto sm:left-full sm:mb-0 sm:ml-1 sm:translate-x-0 sm:-translate-y-1/2">
+                {name}
+              </span>
+            </span>
+          </Marker>
+        );
+      })}
     </>
   );
 }

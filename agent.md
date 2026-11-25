@@ -99,6 +99,7 @@
 - 地图供应商前端运行时的重点测试是 `tests/map_provider_frontend_runtime.test.mjs`。
 - 后端供应商路线规划合同主要看 `tests/test_map_provider_business_execution_contract.py`、`tests/test_map_provider_backend_contract.py`、`tests/test_map_provider_runtime_guards.py`。
 - 校园离线地图使用独立配置 ID 和服务地址，无需 API Key。主程序任务规划将原始 GCJ-02 打卡点和推荐小路发给 `/api/v1/tasks/plan`，同源底图接口只转发固定资源。升级 MapLibre 时要同步更新 `local_map_provider.py` 中 SDK、Worker 和样式的 SHA-256。
+- 校园离线地图首次打开任务时须按路线和原始打卡点共同调整视野，只有打卡点的任务也要定位。浏览器验收要检查标记矩形是否在地图画面内，不能只统计 DOM 或路线坐标。
 - 地图控件、SDK 加载、右键拖动、3D 视角这类问题，自动化测试通过后，尽量再直接加载真实地图验证；用户截图反复指出的问题不能只靠静态代码判断。
 
 ## 腾讯地图控件踩坑

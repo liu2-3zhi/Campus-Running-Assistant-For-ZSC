@@ -77,7 +77,6 @@
       zoom,
       minZoom: minzoom,
       maxZoom: Math.max(zoom, Math.min(maxzoom + 2, 22)),
-      maxBounds: [[bounds[0], bounds[1]], [bounds[2], bounds[3]]],
       renderWorldCopies: false,
       attributionControl: { compact: true },
       style: {
@@ -87,6 +86,7 @@
             type: "raster",
             tiles: [tileUrl],
             tileSize: 256,
+            // Limit raster requests while allowing the camera to fit labels at the edges.
             bounds, minzoom, maxzoom,
             attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
           },

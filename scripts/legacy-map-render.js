@@ -1275,13 +1275,15 @@ function drawProviderTaskOnMap(containerId, data) {
   if (!data) return;
   const redraw = () => drawProviderTaskOnMap(containerId, data);
   rememberProviderMapRedraw(containerId, redraw);
+  const isCampusMap = getActiveMapProvider() === "local_map";
+  const hasFitCoordinates = providerMapLastFitCoords[containerId]?.length > 0;
   const routeCoords = data.run_coords?.length
     ? data.run_coords
     : data.draft_coords?.length
       ? data.draft_coords
       : data.recommended_coords || [];
+  const activeProgress = !!(data.run_coords?.length && hasActiveRouteProgress(data));
   if (routeCoords.length > 0) {
-    const activeProgress = !!(data.run_coords?.length && hasActiveRouteProgress(data));
     if (activeProgress && updateProviderRouteProgressSegmentsInPlace(containerId, data)) {
       return;
     }
@@ -1292,7 +1294,7 @@ function drawProviderTaskOnMap(containerId, data) {
       showEndpoints: false,
       // 运行中（进度着色）不要重新适配视野：用户的手动缩放/拖动应被保留，
       // 需要自动回正时由 scheduleTaskMapAutoResetAfterUserInteraction 统一处理
-      preserveView: activeProgress,
+      preserveView: activeProgress || isCampusMap,
       routeSegments: activeProgress
         ? buildProviderRouteProgressSegmentsByProgress(routeCoords, data)
         : null,
@@ -1301,6 +1303,12 @@ function drawProviderTaskOnMap(containerId, data) {
     clearProviderMapOverlays(containerId);
   }
   syncProviderTaskCheckpointMarkers(containerId, data, routeCoords);
+  if (isCampusMap) {
+    const coordinates = [...normalizeRouteCoords(routeCoords), ...normalizeRouteCoords(data.target_points)]
+      .filter((point) => !isRouteSegmentSeparator(point));
+    providerMapLastFitCoords[containerId] = coordinates;
+    if (!activeProgress || !hasFitCoordinates) fitProviderMapToCoordinates(containerId, coordinates);
+  }
   rememberProviderMapRedraw(containerId, redraw);
 }
 

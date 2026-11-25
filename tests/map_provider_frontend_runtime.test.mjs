@@ -1001,6 +1001,7 @@ function createRuntime(provider, options = {}) {
       rememberProviderMapRedraw,
       addProviderMarker,
       drawProviderRouteOnMap,
+      drawProviderTaskOnMap,
       ensureActiveMapProviderRuntimeIfNeeded,
       loadActiveMapProviderRuntime,
       getActiveMapProvider,
@@ -1116,10 +1117,21 @@ test('legacy campus map initializes without a key and keeps GCJ-02 route and run
   assert.equal(runtime.initProviderMap('map-container'), false);
   assert.equal(await runtime.waitForProviderMapReady('map-container'), true);
   const route = [[113.39, 22.52], [113.391, 22.521]];
+  const target = [113.394, 22.529];
+  runtime.drawProviderTaskOnMap('map-container', {
+    status: 1, run_coords: route, target_points: [target], target_point_names: '求知路2',
+  });
+  assert.deepEqual(fitting.at(-1), [...route, target], 'initial history view fits the route and checkpoint');
   runtime.drawProviderRouteOnMap('map-container', route, { showEndpoints: false });
-  assert.deepEqual(lines[0].points, route);
+  assert.deepEqual(lines.at(-1).points, route);
   assert.deepEqual(fitting.at(-1), route);
   assert.equal(runtime.addProviderMarker('map-container', { lng: route[0][0], lat: route[0][1] }, { label: '求知路2' }).label, '求知路2');
+  runtime.drawProviderTaskOnMap('map-container', { target_points: [target], target_point_names: '求知路2' });
+  assert.deepEqual(fitting.at(-1), [target], 'a task with no route still fits its checkpoint');
+  runtime.drawProviderTaskOnMap('map-container', {
+    recommended_coords: [...route, [0, 0]], target_points: [target], target_point_names: '求知路2',
+  });
+  assert.deepEqual(fitting.at(-1), [...route, target], 'fitting includes checkpoints outside the line');
   const runner = runtime.updateProviderRunnerMarker('map-container', route[0]);
   assert.equal(runtime.updateProviderRunnerMarker('map-container', route[1]), runner);
   assert.deepEqual(runner.point, route[1]);
